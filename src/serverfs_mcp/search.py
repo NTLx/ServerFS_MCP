@@ -48,11 +48,17 @@ def run_search(
         str(max_file_bytes),
         f"--max-count={limit}",
         "--line-number",
+        "--hidden",
     ]
     if not case_sensitive:
         args.append("--ignore-case")
     if glob:
         args.extend(["--glob", glob])
+    # exclude denied basenames (e.g. *.env, *.pem) and hidden dirs rg would
+    # otherwise skip-skip inconsistently with our path policy; we filter
+    # hidden paths ourselves after the fact
+    for pattern in ("!.git", "!.hg", "!.svn"):
+        args.extend(["--glob", pattern])
     args.append("--")  # end of options: query then path operand follow
     args.append(query)
     args.append(".")
@@ -81,6 +87,8 @@ def run_search(
     truncated = False
     prefix = f"{rel_root}/" if rel_root else ""
     stdout = proc.stdout.decode("utf-8", errors="replace")
+    from .filesystem import _denied_entry, _hidden_component
+
     for line in stdout.splitlines():
         if not line:
             continue
@@ -91,6 +99,11 @@ def run_search(
         path_part, line_part, _column, text_part = parts
         if path_part.startswith("./"):
             path_part = path_part[2:]
+        # enforce our path policy on results: hidden components and denied
+        # basenames never surface as matches
+        segs = path_part.split("/")
+        if any(_hidden_component(seg) for seg in segs) or _denied_entry(segs[-1]):
+            continue
         try:
             line_no = int(line_part)
         except ValueError:

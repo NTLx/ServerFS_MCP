@@ -1,0 +1,234 @@
+services:
+  serverfs-mcp:
+    build:
+      context: .
+    image: ${SERVERFS_IMAGE:-serverfs-mcp:0.1.0}
+
+    restart: unless-stopped
+
+    user: "${SERVERFS_UID:-10001}:${SERVERFS_GID:-10001}"
+
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+
+      SERVERFS_LOG_LEVEL: ${SERVERFS_LOG_LEVEL:-INFO}
+
+      SERVERFS_MAX_READ_BYTES: ${SERVERFS_MAX_READ_BYTES:-524288}
+      SERVERFS_MAX_READ_LINES: ${SERVERFS_MAX_READ_LINES:-500}
+
+      SERVERFS_DEFAULT_LIST_LIMIT: ${SERVERFS_DEFAULT_LIST_LIMIT:-100}
+      SERVERFS_MAX_LIST_ENTRIES: ${SERVERFS_MAX_LIST_ENTRIES:-500}
+
+      SERVERFS_DEFAULT_SEARCH_RESULTS: ${SERVERFS_DEFAULT_SEARCH_RESULTS:-50}
+      SERVERFS_MAX_SEARCH_RESULTS: ${SERVERFS_MAX_SEARCH_RESULTS:-100}
+
+      SERVERFS_MAX_WALK_ENTRIES: ${SERVERFS_MAX_WALK_ENTRIES:-200000}
+      SERVERFS_SEARCH_TIMEOUT_SECONDS: ${SERVERFS_SEARCH_TIMEOUT_SECONDS:-15}
+      SERVERFS_SEARCH_MAX_FILE_BYTES: ${SERVERFS_SEARCH_MAX_FILE_BYTES:-52428800}
+
+      SERVERFS_ALLOW_HIDDEN: ${SERVERFS_ALLOW_HIDDEN:-false}
+
+      WORKDIR_01_ALIAS: ${WORKDIR_01_ALIAS:-}
+      WORKDIR_01_DESCRIPTION: ${WORKDIR_01_DESCRIPTION:-}
+      WORKDIR_02_ALIAS: ${WORKDIR_02_ALIAS:-}
+      WORKDIR_02_DESCRIPTION: ${WORKDIR_02_DESCRIPTION:-}
+      WORKDIR_03_ALIAS: ${WORKDIR_03_ALIAS:-}
+      WORKDIR_03_DESCRIPTION: ${WORKDIR_03_DESCRIPTION:-}
+      WORKDIR_04_ALIAS: ${WORKDIR_04_ALIAS:-}
+      WORKDIR_04_DESCRIPTION: ${WORKDIR_04_DESCRIPTION:-}
+      WORKDIR_05_ALIAS: ${WORKDIR_05_ALIAS:-}
+      WORKDIR_05_DESCRIPTION: ${WORKDIR_05_DESCRIPTION:-}
+      WORKDIR_06_ALIAS: ${WORKDIR_06_ALIAS:-}
+      WORKDIR_06_DESCRIPTION: ${WORKDIR_06_DESCRIPTION:-}
+      WORKDIR_07_ALIAS: ${WORKDIR_07_ALIAS:-}
+      WORKDIR_07_DESCRIPTION: ${WORKDIR_07_DESCRIPTION:-}
+      WORKDIR_08_ALIAS: ${WORKDIR_08_ALIAS:-}
+      WORKDIR_08_DESCRIPTION: ${WORKDIR_08_DESCRIPTION:-}
+      WORKDIR_09_ALIAS: ${WORKDIR_09_ALIAS:-}
+      WORKDIR_09_DESCRIPTION: ${WORKDIR_09_DESCRIPTION:-}
+      WORKDIR_10_ALIAS: ${WORKDIR_10_ALIAS:-}
+      WORKDIR_10_DESCRIPTION: ${WORKDIR_10_DESCRIPTION:-}
+      WORKDIR_11_ALIAS: ${WORKDIR_11_ALIAS:-}
+      WORKDIR_11_DESCRIPTION: ${WORKDIR_11_DESCRIPTION:-}
+      WORKDIR_12_ALIAS: ${WORKDIR_12_ALIAS:-}
+      WORKDIR_12_DESCRIPTION: ${WORKDIR_12_DESCRIPTION:-}
+      WORKDIR_13_ALIAS: ${WORKDIR_13_ALIAS:-}
+      WORKDIR_13_DESCRIPTION: ${WORKDIR_13_DESCRIPTION:-}
+      WORKDIR_14_ALIAS: ${WORKDIR_14_ALIAS:-}
+      WORKDIR_14_DESCRIPTION: ${WORKDIR_14_DESCRIPTION:-}
+      WORKDIR_15_ALIAS: ${WORKDIR_15_ALIAS:-}
+      WORKDIR_15_DESCRIPTION: ${WORKDIR_15_DESCRIPTION:-}
+      WORKDIR_16_ALIAS: ${WORKDIR_16_ALIAS:-}
+      WORKDIR_16_DESCRIPTION: ${WORKDIR_16_DESCRIPTION:-}
+
+    volumes:
+      - type: bind
+        source: ${WORKDIR_01_PATH:-./.empty}
+        target: /workdirs/01
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_02_PATH:-./.empty}
+        target: /workdirs/02
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_03_PATH:-./.empty}
+        target: /workdirs/03
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_04_PATH:-./.empty}
+        target: /workdirs/04
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_05_PATH:-./.empty}
+        target: /workdirs/05
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_06_PATH:-./.empty}
+        target: /workdirs/06
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_07_PATH:-./.empty}
+        target: /workdirs/07
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_08_PATH:-./.empty}
+        target: /workdirs/08
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_09_PATH:-./.empty}
+        target: /workdirs/09
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_10_PATH:-./.empty}
+        target: /workdirs/10
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_11_PATH:-./.empty}
+        target: /workdirs/11
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_12_PATH:-./.empty}
+        target: /workdirs/12
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_13_PATH:-./.empty}
+        target: /workdirs/13
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_14_PATH:-./.empty}
+        target: /workdirs/14
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_15_PATH:-./.empty}
+        target: /workdirs/15
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${WORKDIR_16_PATH:-./.empty}
+        target: /workdirs/16
+        read_only: true
+        bind:
+          create_host_path: false
+
+    expose:
+      - "8000"
+
+    networks:
+      - serverfs_internal
+
+    read_only: true
+
+    tmpfs:
+      - /tmp
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          ".venv/bin/python",
+          "-c",
+          "import socket; socket.create_connection(('127.0.0.1', 8000), timeout=2).close()",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  openai-tunnel:
+    image: ${OPENAI_TUNNEL_IMAGE:-ghcr.io/openai/tunnel-client:v0.0.14}
+
+    restart: unless-stopped
+
+    depends_on:
+      serverfs-mcp:
+        condition: service_healthy
+
+    environment:
+      CONTROL_PLANE_API_KEY: ${CONTROL_PLANE_API_KEY}
+      CONTROL_PLANE_TUNNEL_ID: ${CONTROL_PLANE_TUNNEL_ID}
+      CONTROL_PLANE_BASE_URL: ${CONTROL_PLANE_BASE_URL:-https://api.openai.com}
+
+      MCP_SERVER_URL: http://serverfs-mcp:8000/mcp
+
+      MCP_STARTUP_WAIT_TIMEOUT: ${MCP_STARTUP_WAIT_TIMEOUT:-60s}
+
+      LOG_LEVEL: ${TUNNEL_LOG_LEVEL:-info}
+      LOG_FORMAT: ${TUNNEL_LOG_FORMAT:-json}
+
+      HEALTH_LISTEN_ADDR: ${HEALTH_LISTEN_ADDR:-:8080}
+
+    expose:
+      - "8080"
+
+    networks:
+      - serverfs_internal
+      - tunnel_egress
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+
+networks:
+
+  serverfs_internal:
+    internal: true
+
+  tunnel_egress:

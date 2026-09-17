@@ -1,8 +1,9 @@
 """End-to-end tool-layer security tests through the MCP tool surface.
 
 These exercise the tools the way the agent would: via mcp.call_tool with
-nested {input: {...}} arguments, verifying that security errors surface as
-recoverable ToolError messages and that no internal paths leak.
+flat arguments matching the published input schema, verifying that security
+errors surface as recoverable ToolError messages and that no internal paths
+leak.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ def call_error(server, name: str, args: dict) -> str:
 
     async def _call():
         try:
-            await server.call_tool(name, {"input": args})
+            await server.call_tool(name, args)
         except ToolError as e:
             return str(e)
         raise AssertionError(f"expected ToolError from {name}, got success")
@@ -40,7 +41,7 @@ def call_success(server, name: str, args: dict) -> dict:
     """Call a tool expecting success; return structured content."""
 
     async def _call():
-        result = await server.call_tool(name, {"input": args})
+        result = await server.call_tool(name, args)
         assert not result.is_error, result
         return result.structured_content
 

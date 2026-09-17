@@ -1,19 +1,31 @@
 """MCP tool registration: the only 6 tools v0.1 exposes.
 
-Each tool funnels user input through the shared path resolver and raises
-ToolError with a CODE: message for every anticipated failure, so the agent
-gets a short, recoverable error instead of a traceback.
+Tools use flat parameter signatures: the SDK turns each function parameter
+into a top-level input-schema property, so agents call e.g.
+``list_directory {"workdir": "projects", "path": ""}`` directly.
+
+Every tool funnels user input through the shared path resolver and raises
+ToolError with a CODE: message for anticipated failures, so the agent gets a
+short, recoverable error instead of a traceback.
 """
 
 from __future__ import annotations
 
+import os
+import stat as stat_module
+from typing import Annotated
+
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from .config import Settings
+from .filesystem import find_files as find_files_impl
+from .filesystem import list_directory as list_directory_impl
+from .filesystem import stat_file as stat_file_impl
 from .models import (
+    FileMatch,
     FindFilesResult,
     ListDirectoryResult,
     ListWorkdirsResult,
@@ -21,17 +33,18 @@ from .models import (
     SearchTextResult,
     StatFileResult,
 )
-from .paths import (
-    PathSecurityError,
-    ResolvedPath,
-    resolve_workdir_path,
-)
+from .paths import PathSecurityError, ResolvedPath, resolve_workdir_path
 from .search import SearchTimeout, run_search
 from .workdirs import WorkdirRegistry
 
 ANNOTATIONS = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 
 _BINARY_SAMPLE = 1024
+
+WorkdirArg = Annotated[str, Field(description="Workdir alias to operate on")]
+PathArg = Annotated[
+    str, Field(default="", description="Directory path relative to the workdir root")
+]
 
 
 def _resolve(
@@ -47,46 +60,6 @@ def _resolve(
         raise ToolError(f"{code}: {workdir}:{path} — {exc.message}") from exc
 
 
-# ---- input schemas ----
-
-
-class ListDirectoryInput(BaseModel):
-    workdir: str = Field(description="Workdir alias to list")
-    path: str = Field(default="", description="Directory path relative to the workdir root")
-    offset: int = Field(default=0, ge=0, description="Number of entries to skip")
-    limit: int = Field(default=100, ge=1, description="Maximum entries to return")
-
-
-class FindFilesInput(BaseModel):
-    workdir: str = Field(description="Workdir alias to search in")
-    path: str = Field(default="", description="Directory path relative to the workdir root")
-    pattern: str = Field(description="Glob pattern matched against file names (e.g. *.py)")
-    limit: int = Field(default=50, ge=1, description="Maximum matches to return")
-
-
-class SearchTextInput(BaseModel):
-    workdir: str = Field(description="Workdir alias to search in")
-    path: str = Field(default="", description="Directory path relative to the workdir root")
-    query: str = Field(description="Literal text to search for (not a regex)")
-    glob: str | None = Field(
-        default=None, description="Optional glob filter on file names (e.g. *.py)"
-    )
-    case_sensitive: bool = Field(default=True, description="Whether matching is case-sensitive")
-    limit: int = Field(default=50, ge=1, description="Maximum matches to return")
-
-
-class ReadTextFileInput(BaseModel):
-    workdir: str = Field(description="Workdir alias containing the file")
-    path: str = Field(description="File path relative to the workdir root")
-    start_line: int = Field(default=1, ge=1, description="1-based first line to read")
-    max_lines: int = Field(default=200, ge=1, description="Maximum lines to return")
-
-
-class StatFileInput(BaseModel):
-    workdir: str = Field(description="Workdir alias containing the path")
-    path: str = Field(description="Path relative to the workdir root")
-
-
 # ---- shared read-file logic (tools + resource template) ----
 
 
@@ -98,15 +71,12 @@ def _read_text_file_impl(
     start_line: int,
     max_lines: int,
 ) -> ReadTextFileResult:
-
     resolved = _resolve(registry, workdir, path, settings)
-    import os
 
     try:
         st = os.stat(resolved.container_path, follow_symlinks=False)
     except FileNotFoundError:
         raise ToolError(f"PATH_NOT_FOUND: {workdir}:{path} does not exist") from None
-    import stat as stat_module
 
     if stat_module.S_ISDIR(st.st_mode):
         raise ToolError(f"NOT_A_FILE: {workdir}:{path} is a directory")
@@ -117,11 +87,9 @@ def _read_text_file_impl(
         sample = fh.read(_BINARY_SAMPLE)
         if b"\x00" in sample:
             raise ToolError(f"BINARY_FILE: {workdir}:{path} appears to be a binary file")
-        # skip BOM on the first line only
         bom = sample.startswith(b"\xef\xbb\xbf")
         fh.seek(0)
         lines: list[bytes] = []
-        # skip to start_line
         line_no = 0
         bytes_returned = 0
         end_line = start_line - 1
@@ -146,9 +114,6 @@ def _read_text_file_impl(
             lines.append(raw)
             bytes_returned += len(raw)
             end_line = line_no
-        else:
-            # iterator exhausted: has_more only if more lines exist beyond
-            has_more = False
 
         try:
             text = b"".join(lines).decode("utf-8")
@@ -189,87 +154,108 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
         return registry.list_result()
 
     @mcp.tool(annotations=ANNOTATIONS)
-    def list_directory(input: ListDirectoryInput) -> ListDirectoryResult:
+    def list_directory(
+        workdir: WorkdirArg,
+        path: PathArg = "",
+        offset: Annotated[int, Field(default=0, ge=0, description="Entries to skip")] = 0,
+        limit: Annotated[
+            int, Field(default=100, ge=1, description="Maximum entries to return")
+        ] = 100,
+    ) -> ListDirectoryResult:
         """List entries of a directory inside a workdir.
 
         Entries are sorted by name. Hidden files are excluded. Symlinks are
         shown as type "symlink" and never followed.
         """
-        resolved = _resolve(registry, input.workdir, input.path, settings)
-        limit = min(input.limit, settings.max_list_entries)
+        resolved = _resolve(registry, workdir, path, settings)
+        limit = min(limit, settings.max_list_entries)
         try:
-            entries, has_more = list_directory(resolved, offset=input.offset, limit=limit)
+            entries, has_more = list_directory_impl(resolved, offset=offset, limit=limit)
         except NotADirectoryError:
-            raise ToolError(
-                f"NOT_A_DIRECTORY: {input.workdir}:{input.path} is not a directory"
-            ) from None
+            raise ToolError(f"NOT_A_DIRECTORY: {workdir}:{path} is not a directory") from None
         except FileNotFoundError:
-            raise ToolError(
-                f"PATH_NOT_FOUND: {input.workdir}:{input.path} does not exist"
-            ) from None
+            raise ToolError(f"PATH_NOT_FOUND: {workdir}:{path} does not exist") from None
         return ListDirectoryResult(
-            workdir=input.workdir,
-            path=input.path,
+            workdir=workdir,
+            path=path,
             entries=entries,
-            offset=input.offset,
+            offset=offset,
             limit=limit,
             returned=len(entries),
             has_more=has_more,
         )
 
     @mcp.tool(annotations=ANNOTATIONS)
-    def find_files(input: FindFilesInput) -> FindFilesResult:
+    def find_files(
+        workdir: WorkdirArg,
+        pattern: Annotated[
+            str, Field(description='Glob pattern matched against file names, e.g. "*compose*.yml"')
+        ],
+        path: PathArg = "",
+        limit: Annotated[
+            int, Field(default=50, ge=1, description="Maximum matches to return")
+        ] = 50,
+    ) -> FindFilesResult:
         """Find files by name using a glob pattern, recursively.
 
         Pattern is matched against file names (fnmatch semantics), e.g.
         "*compose*.yml". Symlinked directories are not followed.
         """
-        resolved = _resolve(registry, input.workdir, input.path, settings)
-        import os
-
+        resolved = _resolve(registry, workdir, path, settings)
         try:
             st = os.stat(resolved.container_path, follow_symlinks=False)
         except FileNotFoundError:
-            raise ToolError(
-                f"PATH_NOT_FOUND: {input.workdir}:{input.path} does not exist"
-            ) from None
-        if not st.st_mode & 0o170000 == 0o040000:
-            raise ToolError(f"NOT_A_DIRECTORY: {input.workdir}:{input.path}")
-        limit = min(input.limit, settings.max_search_results)
-        matches, truncated = find_files(
+            raise ToolError(f"PATH_NOT_FOUND: {workdir}:{path} does not exist") from None
+        if not stat_module.S_ISDIR(st.st_mode):
+            raise ToolError(f"NOT_A_DIRECTORY: {workdir}:{path} is not a directory")
+        limit = min(limit, settings.max_search_results)
+        matches, truncated = find_files_impl(
             resolved,
-            pattern=input.pattern,
+            pattern=pattern,
             limit=limit,
             max_walk_entries=settings.max_walk_entries,
         )
         return FindFilesResult(
-            matches=[{"path": m} for m in matches],  # type: ignore[arg-type]
+            matches=[FileMatch(path=m) for m in matches],
             returned=len(matches),
             truncated=truncated,
         )
 
     @mcp.tool(annotations=ANNOTATIONS)
-    def search_text(input: SearchTextInput) -> SearchTextResult:
+    def search_text(
+        workdir: WorkdirArg,
+        query: Annotated[str, Field(description="Literal text to search for (not a regex)")],
+        path: PathArg = "",
+        glob: Annotated[
+            str | None, Field(default=None, description='Optional glob filter, e.g. "*.py"')
+        ] = None,
+        case_sensitive: Annotated[
+            bool, Field(default=True, description="Whether matching is case-sensitive")
+        ] = True,
+        limit: Annotated[
+            int, Field(default=50, ge=1, description="Maximum matches to return")
+        ] = 50,
+    ) -> SearchTextResult:
         """Search text file contents for a literal string (not regex).
 
         Uses ripgrep. UTF-8 text files are searched; oversized files are
         skipped. Provide a glob like "*.py" to restrict file names.
         """
-        resolved = _resolve(registry, input.workdir, input.path, settings)
-        limit = min(input.limit, settings.max_search_results)
+        resolved = _resolve(registry, workdir, path, settings)
+        limit = min(limit, settings.max_search_results)
         try:
             matches, truncated = run_search(
                 resolved,
-                query=input.query,
-                glob=input.glob,
-                case_sensitive=input.case_sensitive,
+                query=query,
+                glob=glob,
+                case_sensitive=case_sensitive,
                 limit=limit,
                 timeout_seconds=settings.search_timeout_seconds,
                 max_file_bytes=settings.search_max_file_bytes,
             )
         except SearchTimeout:
             raise ToolError(
-                f"SEARCH_TIMEOUT: search in {input.workdir}:{input.path} exceeded "
+                f"SEARCH_TIMEOUT: search in {workdir}:{path} exceeded "
                 f"{settings.search_timeout_seconds}s"
             ) from None
         except RuntimeError as exc:
@@ -281,36 +267,39 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
         )
 
     @mcp.tool(annotations=ANNOTATIONS)
-    def read_text_file(input: ReadTextFileInput) -> ReadTextFileResult:
+    def read_text_file(
+        workdir: WorkdirArg,
+        path: Annotated[str, Field(description="File path relative to the workdir root")],
+        start_line: Annotated[
+            int, Field(default=1, ge=1, description="1-based first line to read")
+        ] = 1,
+        max_lines: Annotated[
+            int, Field(default=200, ge=1, description="Maximum lines to return")
+        ] = 200,
+    ) -> ReadTextFileResult:
         """Read a UTF-8 text file with line-based pagination.
 
-        Reads at most max_lines lines and max_bytes bytes (both configurable
-        server-side). Use next_start_line to continue reading.
+        Reads at most max_lines lines and a server-configured byte budget.
+        Use next_start_line to continue reading.
         """
-        max_lines = min(input.max_lines, settings.max_read_lines)
-        return _read_text_file_impl(
-            registry,
-            settings,
-            input.workdir,
-            input.path,
-            input.start_line,
-            max_lines,
-        )
+        max_lines = min(max_lines, settings.max_read_lines)
+        return _read_text_file_impl(registry, settings, workdir, path, start_line, max_lines)
 
     @mcp.tool(annotations=ANNOTATIONS)
-    def stat_file(input: StatFileInput) -> StatFileResult:
+    def stat_file(
+        workdir: WorkdirArg,
+        path: Annotated[str, Field(description="Path relative to the workdir root")],
+    ) -> StatFileResult:
         """Get metadata for one file or directory.
 
         Returns type (file/directory/symlink), size, modified time (RFC 3339
         UTC) and best-effort MIME type. Symlinks are not followed.
         """
-        resolved = _resolve(registry, input.workdir, input.path, settings)
+        resolved = _resolve(registry, workdir, path, settings)
         try:
-            result = stat_file(resolved)
+            result = stat_file_impl(resolved)
         except FileNotFoundError:
-            raise ToolError(
-                f"PATH_NOT_FOUND: {input.workdir}:{input.path} does not exist"
-            ) from None
+            raise ToolError(f"PATH_NOT_FOUND: {workdir}:{path} does not exist") from None
         return result
 
 

@@ -32,7 +32,9 @@ DEFAULT_DENY_BASENAMES = {
     "id_ed25519",
 }
 DEFAULT_DENY_GLOBS = (
+    ".env",
     ".env.*",
+    "*.env",
     "*.pem",
     "*.key",
 )
