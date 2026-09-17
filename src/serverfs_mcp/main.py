@@ -6,7 +6,7 @@ import os
 import sys
 
 from mcp.server import MCPServer
-from mcp.server.mcpserver.exceptions import ResourceError
+from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 
 from . import logging as jsonlog
 from .config import Settings, settings_from_env
@@ -46,9 +46,18 @@ def register_resource_template(mcp: MCPServer, registry, settings: Settings) -> 
             result = READ_IMPL(
                 registry, settings, workdir, path, start_line=1, max_lines=settings.max_read_lines
             )
+        except ToolError as exc:
+            raise ResourceError(str(exc)) from exc
         except Exception as exc:
-            msg = getattr(exc, "message", str(exc))
-            raise ResourceError(f"{getattr(exc, 'code', 'READ_FAILED')}: {msg}") from exc
+            raise ResourceError(f"READ_FAILED: {workdir}:{path} could not be read") from exc
+        if result.has_more:
+            # resources are all-or-nothing: a silently truncated file would
+            # mislead clients that have no pagination channel
+            raise ResourceError(
+                "RESOURCE_TOO_LARGE: "
+                f"{workdir}:{path} exceeds the resource read budget; "
+                "use read_text_file for paginated access"
+            )
         return result.content
 
 
@@ -70,7 +79,24 @@ def main() -> int:
         sys.stderr.write(f"ServerFS: configuration error: {exc}\n")
         return 2
 
-    jsonlog.info("startup", workdirs=len(registry), log_level=settings.log_level)
+    log_startup(settings, registry)
     mcp = create_server(settings, registry)
     mcp.run("streamable-http", host="0.0.0.0", port=8000, streamable_http_path="/mcp")
     return 0
+
+
+def log_startup(settings: Settings, registry) -> None:
+    """Emit the startup event including the effective security mode.
+
+    Documents which policy the process runs under so operators can explain
+    observed access without reading code (extra deny CONTENT is never
+    logged — only the rule count).
+    """
+    jsonlog.info(
+        "startup",
+        workdirs=len(registry),
+        log_level=settings.log_level,
+        allow_hidden=settings.allow_hidden,
+        default_deny_enabled=not settings.disable_default_deny,
+        extra_deny_rule_count=len(settings.extra_deny_globs),
+    )

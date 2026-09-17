@@ -29,7 +29,7 @@ class EntryInfo(BaseModel):
 
     name: str = Field(description="Entry name within its parent directory")
     path: str = Field(description="Workdir-relative path of the entry")
-    type: str = Field(description='"file", "directory" or "symlink"')
+    type: str = Field(description='"file", "directory", "symlink" or "other"')
     size: int | None = Field(
         default=None, description="Size in bytes (files only; omitted for others)"
     )
@@ -101,7 +101,7 @@ class StatFileResult(BaseModel):
 
     workdir: str
     path: str
-    type: str = Field(description='"file", "directory" or "symlink"')
+    type: str = Field(description='"file", "directory", "symlink" or "other"')
     size: int | None = Field(
         default=None, description="Size in bytes (files only; omitted for others)"
     )

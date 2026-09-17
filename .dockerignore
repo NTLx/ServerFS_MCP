@@ -10,5 +10,5 @@ dist/
 build/
 *.egg-info/
 .env
-empty/
+.empty/
 tests/

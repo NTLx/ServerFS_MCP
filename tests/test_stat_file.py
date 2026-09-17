@@ -38,17 +38,17 @@ class TestStatFile:
         assert result.size is None
         assert result.mime_type is None
 
-    def test_symlink_rejected_by_path_layer(self, workdir) -> None:
-        """Path policy rejects symlinks before stat; stat never sees one."""
+    def test_stat_final_symlink_reported_as_symlink(self, workdir) -> None:
+        """§25: lstat semantics on the final component; target never revealed."""
         import os
-
-        from serverfs_mcp.paths import SymlinkNotAllowedError
 
         root = workdir.container_path
         (root / "real.txt").write_text("x")
         os.symlink("real.txt", root / "latest")
-        with pytest.raises(SymlinkNotAllowedError):
-            stat_file(resolve(workdir, "latest"))
+        result = stat_file(resolve(workdir, "latest"))
+        assert result.type == "symlink"
+        assert result.size is None
+        assert result.mime_type is None
 
     def test_missing_file(self, workdir) -> None:
         with pytest.raises(FileNotFoundError):

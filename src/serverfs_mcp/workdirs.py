@@ -83,7 +83,7 @@ def build_registry(
                 raise WorkdirError(
                     f"slot {slot:02d}: workdir path is configured "
                     f"(no '{DISABLED_SENTINEL}' present) but alias is empty. "
-                    "Set WORKDIR_{slot:02d}_ALIAS."
+                    f"Set WORKDIR_{slot:02d}_ALIAS."
                 )
             continue  # case A: normally disabled slot
 
@@ -91,7 +91,7 @@ def build_registry(
             # case B: alias set but no host path bound
             raise WorkdirError(
                 f"slot {slot:02d}: alias '{alias}' is set but the slot is "
-                "disabled (no path bound). Set WORKDIR_{slot:02d}_PATH in .env."
+                f"disabled (no path bound). Set WORKDIR_{slot:02d}_PATH in .env."
             )
 
         if not ALIAS_RE.fullmatch(alias):

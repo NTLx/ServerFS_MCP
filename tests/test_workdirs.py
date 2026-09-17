@@ -17,7 +17,7 @@ from serverfs_mcp.workdirs import (
 def make_root(tmp_path: Path, enabled: dict[int, bool] | None = None) -> Path:
     """Create a 16-slot root; enabled slots have real dirs, others sentinels."""
     root = tmp_path / "workdirs"
-    root.mkdir()
+    root.mkdir(parents=True)
     for slot in range(1, SLOT_COUNT + 1):
         d = root / f"{slot:02d}"
         d.mkdir()
@@ -116,6 +116,26 @@ class TestSlotStates:
         aliases = {s: f"dir{s:02d}" for s in range(1, 17)}
         reg = build_registry(aliases, {s: "" for s in range(1, 17)}, workdir_root=root)
         assert len(reg) == 16
+
+    def test_error_messages_contain_real_slot_names(self, tmp_path: Path) -> None:
+        """§34: messages must render WORKDIR_03_ALIAS, not a literal
+        '{slot:02d}' placeholder."""
+        # case C: mounted dir without alias on slot 03
+        root = make_root(tmp_path / "a", {3: True})
+        with pytest.raises(WorkdirError) as exc_info:
+            build_registry(*envs(""), workdir_root=root)
+        assert "WORKDIR_03_ALIAS" in str(exc_info.value)
+        assert "{slot" not in str(exc_info.value)
+
+        # case B: alias set but slot disabled on slot 05 (slot 01 must be a
+        # real dir so the earlier slot does not fail first)
+        root = make_root(tmp_path / "b", {1: True})  # slot 5 carries the sentinel
+        aliases, descriptions = envs("projects")
+        aliases[5] = "projects5"
+        with pytest.raises(WorkdirError) as exc_info:
+            build_registry(aliases, descriptions, workdir_root=root)
+        assert "WORKDIR_05_PATH" in str(exc_info.value)
+        assert "{slot" not in str(exc_info.value)
 
     def test_reserved_sentinel_in_real_workdir_fails(self, tmp_path: Path) -> None:
         """Real mounted dir containing .serverfs-disabled -> conflict."""

@@ -1,29 +1,26 @@
-"""Path safety layer: the single entry point for all filesystem access.
+"""Path safety layer: the single policy gate for all filesystem access.
 
-Every tool and the resource template resolve paths through
-``resolve_workdir_path``. Nothing else in the codebase may join workdir roots
-with user input.
+``resolve_workdir_path`` performs pure policy validation (normalization,
+traversal, hidden, deny) and never touches the filesystem. Filesystem
+operations then walk components via file descriptors (see fdio.py), so
+symlink enforcement and object identity are checked atomically at open
+time — there is no separate lstat→open TOCTOU window.
 
-Policy (v0.1):
+Policy:
 - relative paths only, NUL rejected
 - ``..`` segments are normalized, result must stay inside the workdir
-- symlinks are not followed: a symlink anywhere on the path is rejected
 - hidden path components (leading ``.``) are rejected unless allow_hidden
 - credential-like names are denied by the built-in rules (defense in depth);
-  admins can append their own globs (SERVERFS_EXTRA_DENY_GLOBS) or opt out of
-  the built-in set entirely (SERVERFS_DISABLE_DEFAULT_DENY=true)
-- only regular files and directories are accessible
+  admins can append their own globs (SERVERFS_EXTRA_DENY_GLOBS) or opt out
+  of the built-in set entirely (SERVERFS_DISABLE_DEFAULT_DENY=true)
 """
 
 from __future__ import annotations
 
 import fnmatch
-import os
-import stat as stat_module
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-from .models import WorkdirInfo  # noqa: F401  (re-exported types live in models)
 from .workdirs import Workdir
 
 # credential-like patterns denied by the built-in rules
@@ -49,46 +46,16 @@ DEFAULT_DENY_DIR_NAMES = {
 }
 
 
-@dataclass(frozen=True)
-class DenyPolicy:
-    """Filename deny rules applied on every channel (read/list/find/search).
-
-    Built-in credential rules run unless disabled; admin-provided globs
-    always run. Glob semantics:
-    - plain glob (``*.pem``) matches the final path component only
-    - ``name/**`` (``.ssh/**``) matches that name as any directory component
-    """
-
-    extra_globs: tuple[str, ...] = field(default=())
-    default_deny_enabled: bool = True
-
-    def is_denied(self, rel_parts: tuple[str, ...]) -> bool:
-        """True when the relative path (or a single basename) is denied."""
-        if not rel_parts:
-            return False
-        *dirs, base = rel_parts
-        if self.default_deny_enabled:
-            if any(d in DEFAULT_DENY_DIR_NAMES for d in dirs):
-                return True
-            if base in DEFAULT_DENY_BASENAMES:
-                return True
-            if any(fnmatch.fnmatchcase(base, g) for g in DEFAULT_DENY_GLOBS):
-                return True
-        for g in self.extra_globs:
-            if g.endswith("/**"):
-                head = g[:-3]
-                if head and any(fnmatch.fnmatchcase(d, head) for d in dirs):
-                    return True
-            elif fnmatch.fnmatchcase(base, g):
-                return True
-        return False
-
-
 class PathSecurityError(Exception):
     """Base class for anticipated path-policy violations."""
 
     code = "ACCESS_DENIED"
     message = "path is not accessible"
+
+    def __init__(self, message: str | None = None):
+        super().__init__(message or self.message)
+        if message is not None:
+            self.message = message
 
 
 class AbsolutePathError(PathSecurityError):
@@ -126,16 +93,54 @@ class UnsupportedFileTypeError(PathSecurityError):
     message = "only regular files and directories are supported"
 
 
-def _is_hidden_component(component: str) -> bool:
+def is_hidden_component(component: str) -> bool:
+    """A path component is hidden when it starts with ``.`` (except . and ..)."""
     return component.startswith(".") and component not in (".", "..")
+
+
+@dataclass(frozen=True)
+class DenyPolicy:
+    """Filename deny rules applied on every channel (read/list/find/search).
+
+    Built-in credential rules run unless disabled; admin-provided globs
+    always run. Glob semantics:
+    - plain glob (``*.pem``) matches the final path component only
+    - ``name/**`` (``.ssh/**``) matches that name as ANY path component —
+      the directory itself and everything below it
+    """
+
+    extra_globs: tuple[str, ...] = ()
+    default_deny_enabled: bool = True
+
+    def is_denied(self, rel_parts: tuple[str, ...]) -> bool:
+        """True when the relative path (or a single basename) is denied."""
+        if not rel_parts:
+            return False
+        *dirs, base = rel_parts
+        components = rel_parts
+        if self.default_deny_enabled:
+            if any(c in DEFAULT_DENY_DIR_NAMES for c in components):
+                return True
+            if base in DEFAULT_DENY_BASENAMES:
+                return True
+            if any(fnmatch.fnmatchcase(base, g) for g in DEFAULT_DENY_GLOBS):
+                return True
+        for g in self.extra_globs:
+            if g.endswith("/**"):
+                head = g[:-3]
+                if head and any(fnmatch.fnmatchcase(c, head) for c in components):
+                    return True
+            elif fnmatch.fnmatchcase(base, g):
+                return True
+        return False
 
 
 def _split_relative_path(relative_path: str) -> tuple[str, ...]:
     """Split a client-relative path into normalized components.
 
-    Raises on absolute paths, NUL bytes, and backslash tricks (we treat ``\\``
-    as a literal character, not a separator, so it can never produce a
-    Windows-style escape).
+    Raises on absolute paths, NUL bytes, and backslash tricks (we treat
+    ``\\`` as a literal character, not a separator, so it can never produce
+    a Windows-style escape).
     """
     if "\x00" in relative_path:
         raise NulPathError()
@@ -144,7 +149,7 @@ def _split_relative_path(relative_path: str) -> tuple[str, ...]:
         raise AbsolutePathError()
     if relative_path.startswith("~"):
         raise AbsolutePathError()
-    # split on "/" only; posixPurePath handles this natively for POSIX
+    # split on "/" only; backslash is a literal filename character on Linux
     raw_parts = relative_path.split("/")
     parts: list[str] = []
     for seg in raw_parts:
@@ -160,26 +165,41 @@ def _split_relative_path(relative_path: str) -> tuple[str, ...]:
 
 
 class ResolvedPath:
-    """A validated workdir-relative path, carrying the policy it was
-    validated under so listing/searching below it filter identically."""
+    """A policy-validated workdir-relative path.
+
+    Carries the access policy it was validated under (allow_hidden + deny
+    rules); operations and listings below it must consult the same policy
+    so every channel filters identically.
+    """
 
     def __init__(
         self,
         workdir: Workdir,
         rel_parts: tuple[str, ...],
-        deny_policy: DenyPolicy | None = None,
+        *,
+        allow_hidden: bool,
+        deny_policy: DenyPolicy,
     ):
         self._workdir = workdir
         self._rel_parts = rel_parts
-        self._deny_policy = deny_policy if deny_policy is not None else DenyPolicy()
+        self._allow_hidden = allow_hidden
+        self._deny_policy = deny_policy
 
     @property
     def workdir(self) -> Workdir:
         return self._workdir
 
     @property
+    def rel_parts(self) -> tuple[str, ...]:
+        return self._rel_parts
+
+    @property
     def rel_path(self) -> str:
         return "/".join(self._rel_parts)
+
+    @property
+    def allow_hidden(self) -> bool:
+        return self._allow_hidden
 
     @property
     def deny_policy(self) -> DenyPolicy:
@@ -203,36 +223,17 @@ def resolve_workdir_path(
     allow_hidden: bool,
     deny_policy: DenyPolicy | None = None,
 ) -> ResolvedPath:
-    """Validate a client path against every safety policy.
+    """Validate a client path against every policy rule (no FS access).
 
-    Symlink check strategy: walk each existing prefix component with
-    ``os.lstat``; if any component is a symlink, reject. This is done before
-    any ``stat``/``open`` so symlink targets are never touched. The workdir
-    root itself is always a bind mount and never a symlink in production.
+    Symlink enforcement is NOT done here: it happens atomically at open
+    time via fdio's O_NOFOLLOW component walk.
     """
     policy = deny_policy if deny_policy is not None else DenyPolicy()
     rel_parts = _split_relative_path(relative_path)
 
-    if not allow_hidden and any(_is_hidden_component(c) for c in rel_parts):
+    if not allow_hidden and any(is_hidden_component(c) for c in rel_parts):
         raise HiddenPathNotAllowedError()
     if policy.is_denied(rel_parts):
         raise DeniedPathError()
 
-    resolved = ResolvedPath(workdir, rel_parts, policy)
-
-    # symlink check, component by component (lstat, never follow)
-    current = workdir.container_path
-    for seg in rel_parts:
-        current = current / seg
-        try:
-            st = os.lstat(current)
-        except FileNotFoundError:
-            # missing components are fine here; the caller's stat/open will
-            # surface a proper PATH_NOT_FOUND
-            return resolved
-        except OSError as exc:
-            raise PathSecurityError(f"cannot access path: {exc.strerror}") from exc
-        if stat_module.S_ISLNK(st.st_mode):
-            raise SymlinkNotAllowedError()
-
-    return resolved
+    return ResolvedPath(workdir, rel_parts, allow_hidden=allow_hidden, deny_policy=policy)

@@ -60,6 +60,35 @@ class TestBasics:
         assert len(ts) == 20
 
 
+class TestEntryTypes:
+    def test_fifo_reported_as_other(self, workdir) -> None:
+        os.mkfifo(workdir.container_path / "apipe")
+        entries, _ = list_directory(resolve(workdir), offset=0, limit=100)
+        by_name = {e.name: e for e in entries}
+        assert by_name["apipe"].type == "other"
+
+    def test_socket_reported_as_other(self, workdir) -> None:
+        import socket
+
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.bind(str(workdir.container_path / "asock"))
+        s.close()
+        entries, _ = list_directory(resolve(workdir), offset=0, limit=100)
+        by_name = {e.name: e for e in entries}
+        assert by_name["asock"].type == "other"
+
+    def test_entry_type_matrix(self, workdir) -> None:
+        root = workdir.container_path
+        (root / "f.txt").write_text("x")
+        (root / "d").mkdir()
+        os.symlink("f.txt", root / "l")
+        entries, _ = list_directory(resolve(workdir), offset=0, limit=100)
+        by_name = {e.name: e for e in entries}
+        assert by_name["f.txt"].type == "file"
+        assert by_name["d"].type == "directory"
+        assert by_name["l"].type == "symlink"
+
+
 class TestSymlinks:
     def test_symlink_visible_typed(self, workdir) -> None:
         root = workdir.container_path

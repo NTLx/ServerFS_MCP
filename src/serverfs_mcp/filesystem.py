@@ -1,22 +1,28 @@
-"""Read-only filesystem operations.
+"""Read-only filesystem operations over FD-based traversal.
 
 Everything here performs live reads against the current filesystem — no
 caching, no indexing. Limits are enforced by the caller (tools layer).
+Object identity is anchored on directory/file descriptors (see fdio.py),
+so concurrent host-side renames cannot redirect access.
 """
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
+import fnmatch
 import os
 import stat as stat_module
-from pathlib import Path
 
+from . import fdio
+from .fdio import open_directory_fd, stat_final
 from .models import EntryInfo, StatFileResult
-from .paths import PathSecurityError, ResolvedPath, UnsupportedFileTypeError
+from .paths import ResolvedPath, UnsupportedFileTypeError
 
 _ENTRY_TYPE_FILE = "file"
 _ENTRY_TYPE_DIR = "directory"
 _ENTRY_TYPE_SYMLINK = "symlink"
+_ENTRY_TYPE_OTHER = "other"
 
 
 def _rfc3339_utc(mtime: float | None) -> str | None:
@@ -25,27 +31,45 @@ def _rfc3339_utc(mtime: float | None) -> str | None:
     return _dt.datetime.fromtimestamp(mtime, tz=_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _entry_type(mode: int) -> str:
+def entry_type(mode: int) -> str:
+    """Map a stat mode to the entry type exposed to agents."""
     if stat_module.S_ISLNK(mode):
         return _ENTRY_TYPE_SYMLINK
     if stat_module.S_ISDIR(mode):
         return _ENTRY_TYPE_DIR
-    return _ENTRY_TYPE_FILE
+    if stat_module.S_ISREG(mode):
+        return _ENTRY_TYPE_FILE
+    # FIFO, socket, block/char device
+    return _ENTRY_TYPE_OTHER
+
+
+def _entry_visible(name: str, rel: str, resolved: ResolvedPath) -> bool:
+    """One filter used by list/find: hidden + deny, from the same policy."""
+    if not resolved.allow_hidden and name.startswith("."):
+        return False
+    segs = (*resolved.rel_parts, name) if not rel else (*tuple(rel.split("/")), name)
+    if resolved.deny_policy.is_denied(segs):
+        return False
+    return True
 
 
 def check_supported_file_type(resolved: ResolvedPath) -> None:
-    """Reject anything that is not a regular file or directory.
+    """Reject anything that is not a regular file or directory (by FD)."""
+    from .fdio import stat_final
 
-    Must be called before opening a path so FIFO/socket/device reads can never
-    block. Uses lstat (no symlink following; symlinks are already rejected by
-    the path layer).
-    """
-    try:
-        st = os.lstat(resolved.container_path)
-    except FileNotFoundError:
-        raise
+    with _root_fd(resolved) as root_fd:
+        st = stat_final(root_fd, resolved.rel_parts)
     if not (stat_module.S_ISREG(st.st_mode) or stat_module.S_ISDIR(st.st_mode)):
         raise UnsupportedFileTypeError()
+
+
+@contextlib.contextmanager
+def _root_fd(resolved: ResolvedPath):
+    fd = os.open(str(resolved.workdir.container_path), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        yield fd
+    finally:
+        os.close(fd)
 
 
 def list_directory(
@@ -53,81 +77,46 @@ def list_directory(
 ) -> tuple[list[EntryInfo], bool]:
     """List one directory, sorted by name, with offset/limit pagination.
 
-    Returns (entries, has_more). Symlinks are reported as type "symlink"
-    without following them or revealing targets. Hidden and denied entries
-    are filtered here (the path layer guards direct access to them).
+    Single scandir pass over a directory FD: name filter + immediate
+    lstat-style stat (follow_symlinks=False) in the same scan, then sort,
+    then paginate. Entries that vanish mid-scan are skipped entirely.
     """
-    root = resolved.container_path
-    deny_policy = resolved.deny_policy
-    base_parts = tuple(resolved.rel_path.split("/")) if resolved.rel_path else ()
-    try:
-        st = os.stat(root)
-    except FileNotFoundError:
-        raise
-    if not stat_module.S_ISDIR(st.st_mode):
-        raise NotADirectoryError(f"NOT_A_DIRECTORY: {resolved.rel_path} is not a directory")
-
-    names: list[str] = []
-    with os.scandir(root) as it:
-        for entry in it:
-            name = entry.name
-            if _hidden_component(name):
-                continue
-            if deny_policy.is_denied((*base_parts, name)):
-                continue
-            names.append(name)
-
-    names.sort()
-    selected = names[offset : offset + limit]
-    has_more = offset + limit < len(names)
-
     entries: list[EntryInfo] = []
-    with os.scandir(root) as it:
-        stat_cache = {e.name: e for e in it}
-    for name in selected:
-        entry = stat_cache[name]
-        try:
-            st = entry.stat(follow_symlinks=False)
-        except OSError:
-            # entry vanished between the two scandir passes — report without stat
-            entries.append(
-                EntryInfo(
-                    name=name,
-                    path=f"{resolved.rel_path}/{name}" if resolved.rel_path else name,
-                    type=_ENTRY_TYPE_SYMLINK,
+    with contextlib.ExitStack() as stack:
+        root = stack.enter_context(_root_fd(resolved))
+        dir_fd = stack.enter_context(open_directory_fd(root, resolved.rel_parts))
+        rel = resolved.rel_path
+        with os.scandir(dir_fd) as it:
+            for e in it:
+                name = e.name
+                if not _entry_visible(name, rel, resolved):
+                    continue
+                try:
+                    st = e.stat(follow_symlinks=False)
+                except OSError:
+                    # vanished between scandir and stat — skip
+                    continue
+                etype = entry_type(st.st_mode)
+                entries.append(
+                    EntryInfo(
+                        name=name,
+                        path=f"{rel}/{name}" if rel else name,
+                        type=etype,
+                        size=st.st_size if etype == _ENTRY_TYPE_FILE else None,
+                        modified_at=_rfc3339_utc(st.st_mtime),
+                    )
                 )
-            )
-            continue
-        etype = _entry_type(st.st_mode)
-        entries.append(
-            EntryInfo(
-                name=name,
-                path=f"{resolved.rel_path}/{name}" if resolved.rel_path else name,
-                type=etype,
-                size=st.st_size if etype == _ENTRY_TYPE_FILE else None,
-                modified_at=_rfc3339_utc(st.st_mtime),
-            )
-        )
-    return entries, has_more
-
-
-def _hidden_component(name: str) -> bool:
-    return name.startswith(".")
-
-
-def fnmatch_name(name: str, pattern: str) -> bool:
-    import fnmatch
-
-    return fnmatch.fnmatchcase(name, pattern)
+    entries.sort(key=lambda x: x.name)
+    has_more = offset + limit < len(entries)
+    return entries[offset : offset + limit], has_more
 
 
 def stat_file(resolved: ResolvedPath) -> StatFileResult:
-    """Stat a single path (lstat semantics: symlinks reported as symlinks)."""
-    try:
-        st = os.lstat(resolved.container_path)
-    except FileNotFoundError:
-        raise
-    etype = _entry_type(st.st_mode)
+    """lstat the final component through FD traversal (no symlink follow)."""
+    with contextlib.ExitStack() as stack:
+        root = stack.enter_context(_root_fd(resolved))
+        st = stat_final(root, resolved.rel_parts)
+    etype = entry_type(st.st_mode)
     mime_type = None
     if etype == _ENTRY_TYPE_FILE:
         import mimetypes
@@ -154,63 +143,90 @@ def find_files(
 ) -> tuple[list[str], bool]:
     """Recursively find files matching a glob pattern under a directory.
 
-    Uses os.scandir + explicit stack; never follows symlinked directories.
-    Stops as soon as ``limit`` matches are found or ``max_walk_entries``
-    entries have been visited. Returns (relative paths, truncated).
+    Directory traversal walks child directories by FD (O_NOFOLLOW), so
+    symlinked directories are never entered. Stops as soon as ``limit``
+    matches are found or ``max_walk_entries`` entries have been visited.
+    Returns (relative paths, truncated).
+
+    truncated=true means the scan stopped early due to a limit — either
+    ``limit`` matches were collected or ``max_walk_entries`` was hit — so
+    the result set is not guaranteed to be complete.
     """
-    root = resolved.container_path
-    deny_policy = resolved.deny_policy
+    root = os.open(
+        str(resolved.workdir.container_path), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+    )
     matches: list[str] = []
     visited = 0
     truncated = False
-    stack: list[tuple[Path, str]] = [(root, resolved.rel_path)]
-
-    while stack:
-        current, rel = stack.pop()
-        rel_parts = tuple(rel.split("/")) if rel else ()
+    # stack of (dir_fd, rel_parts); FDs are owned by the loop and closed on
+    # pop. DirEntry paths are fd-relative, so children are stat'ed and
+    # sub-directories opened while the owning fd is still open.
+    stack: list[tuple[int, tuple[str, ...]]] = []
+    try:
+        # open the search root itself (final component included, O_NOFOLLOW)
         try:
-            with os.scandir(current) as it:
-                children = list(it)
-        except (FileNotFoundError, NotADirectoryError):
-            continue
-        except OSError:
-            continue
-        children.sort(key=lambda e: e.name)
-        for child in children:
-            visited += 1
-            if visited > max_walk_entries:
-                truncated = True
-                return matches, truncated
-            name = child.name
-            if _hidden_component(name):
-                continue
-            if deny_policy.is_denied((*rel_parts, name)):
-                continue
-            child_rel = f"{rel}/{name}" if rel else name
+            if not resolved.rel_parts:
+                start_fd = os.dup(root)
+            else:
+                *parents, final = resolved.rel_parts
+                with fdio.walk_parent_dirs(root, tuple(parents)) as parent_fd:
+                    start_fd = os.open(
+                        final,
+                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                        dir_fd=parent_fd,
+                    )
+        except OSError as exc:
+            fdio._map_open_error(exc, resolved.rel_parts[-1] if resolved.rel_parts else "")
+        stack.append((start_fd, resolved.rel_parts))
+        while stack:
+            current_fd, rel_parts = stack.pop()
             try:
-                st = child.stat(follow_symlinks=False)
+                child_infos: list[tuple[str, int]] = []
+                with os.scandir(current_fd) as it:
+                    for child in it:
+                        try:
+                            st = child.stat(follow_symlinks=False)
+                        except OSError:
+                            continue  # vanished mid-scan
+                        child_infos.append((child.name, st.st_mode))
+                child_infos.sort(key=lambda c: c[0])
+                for name, mode in child_infos:
+                    visited += 1
+                    if visited > max_walk_entries:
+                        truncated = True
+                        return matches, truncated
+                    child_parts = (*rel_parts, name)
+                    if not resolved.allow_hidden and name.startswith("."):
+                        continue
+                    if resolved.deny_policy.is_denied(child_parts):
+                        continue
+                    child_rel = "/".join(child_parts)
+                    if stat_module.S_ISDIR(mode):
+                        try:
+                            child_fd = os.open(
+                                name,
+                                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                dir_fd=current_fd,
+                            )
+                        except OSError:
+                            continue
+                        stack.append((child_fd, child_parts))
+                    elif stat_module.S_ISREG(mode):
+                        if fnmatch.fnmatchcase(name, pattern):
+                            matches.append(child_rel)
+                            if len(matches) >= limit:
+                                truncated = True
+                                return matches, truncated
+            finally:
+                os.close(current_fd)
+    finally:
+        for fd, _ in stack:
+            try:
+                os.close(fd)
             except OSError:
-                continue
-            if stat_module.S_ISDIR(st.st_mode):
-                stack.append((child.path, child_rel))
-            elif stat_module.S_ISREG(st.st_mode):
-                if fnmatch_name(name, pattern):
-                    matches.append(child_rel)
-                    if len(matches) >= limit:
-                        return matches, False
+                pass
+        try:
+            os.close(root)
+        except OSError:
+            pass
     return matches, truncated
-
-
-def iter_text_lines(resolved: ResolvedPath) -> object:
-    """Open a validated file for line iteration (binary mode, caller decodes)."""
-    return open(resolved.container_path, "rb")
-
-
-# re-exported for the tools layer
-__all__ = [
-    "PathSecurityError",
-    "check_supported_file_type",
-    "find_files",
-    "list_directory",
-    "stat_file",
-]

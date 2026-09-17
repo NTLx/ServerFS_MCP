@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import socket
-
 import pytest
 
 from serverfs_mcp.paths import (
@@ -14,7 +11,6 @@ from serverfs_mcp.paths import (
     NulPathError,
     PathOutsideWorkdirError,
     PathSecurityError,
-    SymlinkNotAllowedError,
     resolve_workdir_path,
 )
 
@@ -81,51 +77,6 @@ class TestTraversal:
         (workdir.container_path / "sub").mkdir()
         r = resolve(workdir, "sub/./../sub")
         assert r.rel_path == "sub"
-
-
-class TestSymlinks:
-    def _mklink(self, workdir, name: str, target: str) -> None:
-        os.symlink(target, workdir.container_path / name)
-
-    def test_symlink_to_etc_rejected(self, workdir) -> None:
-        self._mklink(workdir, "etclink", "/etc")
-        with pytest.raises(SymlinkNotAllowedError):
-            resolve(workdir, "etclink")
-
-    def test_path_through_symlink_dir_rejected(self, workdir) -> None:
-        self._mklink(workdir, "etclink", "/etc")
-        with pytest.raises(SymlinkNotAllowedError):
-            resolve(workdir, "etclink/passwd")
-
-    def test_symlink_inside_workdir_rejected(self, workdir) -> None:
-        (workdir.container_path / "real.txt").write_text("x")
-        self._mklink(workdir, "selflink", "real.txt")
-        with pytest.raises(SymlinkNotAllowedError):
-            resolve(workdir, "selflink")
-
-    def test_symlink_dir_inside_workdir_rejected(self, workdir) -> None:
-        (workdir.container_path / "realdir").mkdir()
-        self._mklink(workdir, "dirlink", "realdir")
-        with pytest.raises(SymlinkNotAllowedError):
-            resolve(workdir, "dirlink")
-
-    def test_symlink_to_another_workdir_rejected(self, workdir, workdir_root) -> None:
-        (workdir_root / "02" / "a.txt").write_text("secret")
-        self._mklink(workdir, "crosslink", "../02")
-        with pytest.raises(SymlinkNotAllowedError):
-            resolve(workdir, "crosslink/a.txt")
-
-    def test_broken_symlink_rejected(self, workdir) -> None:
-        self._mklink(workdir, "broken", "does-not-exist")
-        with pytest.raises(SymlinkNotAllowedError):
-            resolve(workdir, "broken")
-
-    def test_nested_symlink_component_rejected(self, workdir) -> None:
-        (workdir.container_path / "real").mkdir()
-        self._mklink(workdir, "lnk", "real")
-        (workdir.container_path / "real" / "file.txt").write_text("x")
-        with pytest.raises(SymlinkNotAllowedError):
-            resolve(workdir, "lnk/file.txt")
 
 
 class TestHidden:
@@ -253,27 +204,3 @@ class TestDisableDefaultDeny:
                 allow_hidden=True,
                 deny_policy=DenyPolicy(extra_globs=("*.sqlite",), default_deny_enabled=False),
             )
-
-
-class TestSpecialFiles:
-    def test_fifo_rejected_before_open(self, workdir) -> None:
-        fifo = workdir.container_path / "apipe"
-        os.mkfifo(fifo)
-        from serverfs_mcp.filesystem import check_supported_file_type
-        from serverfs_mcp.paths import UnsupportedFileTypeError
-
-        r = resolve(workdir, "apipe")
-        with pytest.raises(UnsupportedFileTypeError):
-            check_supported_file_type(r)
-
-    def test_unix_socket_rejected_before_open(self, workdir) -> None:
-        sock_path = workdir.container_path / "asock"
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.bind(str(sock_path))
-        s.close()
-        from serverfs_mcp.filesystem import check_supported_file_type
-        from serverfs_mcp.paths import UnsupportedFileTypeError
-
-        r = resolve(workdir, "asock")
-        with pytest.raises(UnsupportedFileTypeError):
-            check_supported_file_type(r)

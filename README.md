@@ -104,12 +104,14 @@ Defense in depth — each layer is independent:
 |---|---|
 | Read-only MCP tools | Only 6 tools exist; there is no write/execute capability and no configuration to enable one. Read-only is a product property, not an option. |
 | Tool annotations | All tools advertise `readOnlyHint=true`, `openWorldHint=false`. (Hints, not a security mechanism.) |
-| Path resolution | Every path is normalized and confined to the workdir root. `..`, absolute paths, NUL bytes rejected. Symlinks anywhere on the path are rejected (`SYMLINK_NOT_ALLOWED`), including links pointing inside the same workdir. |
-| Special files | FIFOs, sockets, device files rejected before open (`UNSUPPORTED_FILE_TYPE`) — reads can never block. |
-| Hidden files | Dot-prefixed path components are denied everywhere (list/find/search/read/stat), not just hidden from listings. |
+| Path resolution | Every path is normalized and confined to the workdir root. `..`, absolute paths, NUL bytes rejected. |
+| FD-based traversal | All filesystem access walks components with `openat(2)` + `O_NOFOLLOW` on directory file descriptors — component identity and symlink rejection are atomic at open time, so there is no lstat→open TOCTOU window. A symlink as a *parent* component is rejected (`SYMLINK_NOT_ALLOWED`) including links pointing inside the same workdir; a symlink as the *final* component is reported by `stat_file` as `type: "symlink"` (target never revealed) and rejected by `read_text_file`/`list_directory`. rg runs rooted at a pre-validated directory FD (`/proc/self/fd`) with symlink following never enabled. |
+| Special files | FIFOs, sockets and device files appear in `list_directory`/`stat_file` as `type: "other"` but are rejected before any content read (`UNSUPPORTED_FILE_TYPE`) — reads can never block. |
+| Hidden files | Dot-prefixed path components are denied everywhere (list/find/search/read/stat/resource), not just hidden from listings. With `SERVERFS_ALLOW_HIDDEN=true` they become visible on *every* channel, still subject to the deny rules. |
 | Credential deny rules | `.env`, `.env.*`, `*.env`, `*.pem`, `*.key`, `id_rsa`, `id_ed25519`, `.ssh/`, `.aws/`, `.gnupg/`, `.kube/` are denied on every channel — even with `SERVERFS_ALLOW_HIDDEN=true`. Append your own patterns via `SERVERFS_EXTRA_DENY_GLOBS` (e.g. `*.sqlite,internal/**`); those apply unconditionally. The built-in set can be released with `SERVERFS_DISABLE_DEFAULT_DENY=true` — see the warning below. |
 | Read limits | `SERVERFS_MAX_READ_LINES` (500) and `SERVERFS_MAX_READ_BYTES` (512 KiB); a single line over the byte budget returns `LINE_TOO_LARGE` rather than a truncated line. |
-| Search limits | rg subprocess with argument-array invocation (no shell, no string concatenation), 15 s timeout, 50 MiB per-file ceiling, result caps, walk-entry caps with early stop. |
+| Search limits | rg subprocess with argument-array invocation (no shell, no string concatenation), streamed `--json` output, wall-clock 15 s deadline (terminate → grace → kill, no orphan processes), 50 MiB per-file ceiling, and a true *global* result limit: rg is terminated as soon as `limit + 1` policy-valid matches exist, instead of scanning the whole tree. Result paths are re-checked against hidden/deny policy. |
+| Audit log | Every tool call emits a structured `tool_call` event (tool, workdir, relative path, duration, success, `error_code`, plus per-tool counts). File contents, search queries and host/container paths are never logged. The `startup` event records the effective security mode (`allow_hidden`, `default_deny_enabled`, `extra_deny_rule_count`). |
 | Docker | Read-only bind mounts (`create_host_path: false`), read-only container root filesystem, tmpfs `/tmp`, non-root UID 10001, `cap_drop: ALL`, `no-new-privileges`. |
 | Network | MCP container is on an `internal: true` network only — no Internet egress, no published ports. Only the tunnel container bridges to the outside. |
 | Secrets | `CONTROL_PLANE_*` never enters the MCP container (verified with `docker compose exec serverfs-mcp env`). |
@@ -126,12 +128,12 @@ Error messages are short, agent-recoverable codes (`PATH_NOT_FOUND`, `SYMLINK_NO
 |---|---|
 | `list_workdirs` | Discover configured workdirs |
 | `list_directory` | Sorted directory listing with offset/limit pagination |
-| `find_files` | Recursive filename glob search (early-stop, walk caps) |
-| `search_text` | Literal (non-regex) content search via ripgrep |
+| `find_files` | Recursive filename glob search; `truncated=true` whenever the scan stopped early at the match limit or the walk-entry cap |
+| `search_text` | Literal (non-regex) content search via ripgrep, global streamed result limit with early-stop |
 | `read_text_file` | UTF-8 reading with line pagination and byte caps |
-| `stat_file` | type / size / mtime (RFC 3339 UTC) / best-effort MIME |
+| `stat_file` | type (`file`/`directory`/`symlink`/`other`) / size / mtime (RFC 3339 UTC) / best-effort MIME |
 
-A `serverfs://{workdir}/{path}` resource template is also exposed; it goes through the exact same validation as `read_text_file`.
+A `serverfs://{workdir}/{path}` resource template is also exposed; it goes through the exact same validation as `read_text_file`. Resources are all-or-nothing: a file that exceeds the read budget returns `RESOURCE_TOO_LARGE` instead of a silently truncated body — use `read_text_file` for paginated access.
 
 ## Operations
 
@@ -144,7 +146,7 @@ docker compose logs -f
 
 ## Upgrade
 
-Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins, then `docker compose build && docker compose up -d`. Avoid `latest`.
+Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins, then `docker compose build && docker compose up -d`. Avoid `latest`.
 
 ## Development
 

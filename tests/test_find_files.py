@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from serverfs_mcp.filesystem import find_files
-from serverfs_mcp.paths import resolve_workdir_path
+from serverfs_mcp.paths import DenyPolicy, resolve_workdir_path
 
 
 def resolve(workdir, path=""):
@@ -69,7 +69,9 @@ class TestLimits:
             resolve(workdir), pattern="*.py", limit=3, max_walk_entries=200_000
         )
         assert len(matches) == 3
-        assert truncated is False
+        # hitting the match limit stops the scan early: results are not
+        # guaranteed complete, so truncated must be true
+        assert truncated is True
         assert matches == ["m0.py", "m1.py", "m2.py"]
 
     def test_walk_entry_limit(self, workdir) -> None:
@@ -102,6 +104,14 @@ class TestFiltering:
             resolve(workdir), pattern="*.py", limit=50, max_walk_entries=200_000
         )
         assert matches == ["realdir/inside.py"]
+
+    def test_hidden_traversed_when_allowed(self, workdir) -> None:
+        root = workdir.container_path
+        (root / ".cache").mkdir()
+        (root / ".cache" / "x.py").write_text("x")
+        resolved = resolve_workdir_path(workdir, "", allow_hidden=True, deny_policy=DenyPolicy())
+        matches, _ = find_files(resolved, pattern="*.py", limit=50, max_walk_entries=200_000)
+        assert matches == [".cache/x.py"]
 
     def test_denied_file_ignored(self, workdir) -> None:
         root = workdir.container_path
