@@ -58,6 +58,8 @@ def list_directory(
     are filtered here (the path layer guards direct access to them).
     """
     root = resolved.container_path
+    deny_policy = resolved.deny_policy
+    base_parts = tuple(resolved.rel_path.split("/")) if resolved.rel_path else ()
     try:
         st = os.stat(root)
     except FileNotFoundError:
@@ -71,7 +73,7 @@ def list_directory(
             name = entry.name
             if _hidden_component(name):
                 continue
-            if _denied_entry(name):
+            if deny_policy.is_denied((*base_parts, name)):
                 continue
             names.append(name)
 
@@ -111,16 +113,6 @@ def list_directory(
 
 def _hidden_component(name: str) -> bool:
     return name.startswith(".")
-
-
-def _denied_entry(name: str) -> bool:
-    # basename-level deny for listing; directory-level deny (.ssh etc.) is
-    # handled because such dirs are themselves hidden and filtered above.
-    from .paths import DEFAULT_DENY_BASENAMES, DEFAULT_DENY_GLOBS
-
-    if name in DEFAULT_DENY_BASENAMES:
-        return True
-    return any(fnmatch_name(name, g) for g in DEFAULT_DENY_GLOBS)
 
 
 def fnmatch_name(name: str, pattern: str) -> bool:
@@ -167,6 +159,7 @@ def find_files(
     entries have been visited. Returns (relative paths, truncated).
     """
     root = resolved.container_path
+    deny_policy = resolved.deny_policy
     matches: list[str] = []
     visited = 0
     truncated = False
@@ -174,6 +167,7 @@ def find_files(
 
     while stack:
         current, rel = stack.pop()
+        rel_parts = tuple(rel.split("/")) if rel else ()
         try:
             with os.scandir(current) as it:
                 children = list(it)
@@ -190,7 +184,7 @@ def find_files(
             name = child.name
             if _hidden_component(name):
                 continue
-            if _denied_entry(name):
+            if deny_policy.is_denied((*rel_parts, name)):
                 continue
             child_rel = f"{rel}/{name}" if rel else name
             try:

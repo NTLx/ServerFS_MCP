@@ -26,6 +26,8 @@ class Settings:
     search_timeout_seconds: float = 15.0
     search_max_file_bytes: int = 52_428_800
     allow_hidden: bool = False
+    extra_deny_globs: tuple[str, ...] = ()
+    disable_default_deny: bool = False
 
 
 def _get_int(env: Mapping[str, str], key: str, default: int) -> int:
@@ -62,6 +64,12 @@ def _get_log_level(env: Mapping[str, str]) -> str:
     return raw if raw in {"DEBUG", "INFO", "WARNING", "ERROR"} else "INFO"
 
 
+def _get_deny_globs(env: Mapping[str, str]) -> tuple[str, ...]:
+    """Parse a comma-separated glob list; empty/whitespace entries dropped."""
+    raw = env.get("SERVERFS_EXTRA_DENY_GLOBS", "")
+    return tuple(g for g in (s.strip() for s in raw.split(",")) if g)
+
+
 def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
     """Build Settings from an environment mapping (defaults: os.environ)."""
     if env is None:
@@ -78,4 +86,6 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         search_timeout_seconds=_get_float(env, "SERVERFS_SEARCH_TIMEOUT_SECONDS", 15.0),
         search_max_file_bytes=_get_int(env, "SERVERFS_SEARCH_MAX_FILE_BYTES", 52_428_800),
         allow_hidden=_get_bool(env, "SERVERFS_ALLOW_HIDDEN", False),
+        extra_deny_globs=_get_deny_globs(env),
+        disable_default_deny=_get_bool(env, "SERVERFS_DISABLE_DEFAULT_DENY", False),
     )

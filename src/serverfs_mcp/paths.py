@@ -9,7 +9,9 @@ Policy (v0.1):
 - ``..`` segments are normalized, result must stay inside the workdir
 - symlinks are not followed: a symlink anywhere on the path is rejected
 - hidden path components (leading ``.``) are rejected unless allow_hidden
-- credential-like names are always denied (defense in depth)
+- credential-like names are denied by the built-in rules (defense in depth);
+  admins can append their own globs (SERVERFS_EXTRA_DENY_GLOBS) or opt out of
+  the built-in set entirely (SERVERFS_DISABLE_DEFAULT_DENY=true)
 - only regular files and directories are accessible
 """
 
@@ -18,12 +20,13 @@ from __future__ import annotations
 import fnmatch
 import os
 import stat as stat_module
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .models import WorkdirInfo  # noqa: F401  (re-exported types live in models)
 from .workdirs import Workdir
 
-# credential-like patterns that are always denied, even with allow_hidden=true
+# credential-like patterns denied by the built-in rules
 DEFAULT_DENY_BASENAMES = {
     ".env",
     "id_rsa",
@@ -44,6 +47,41 @@ DEFAULT_DENY_DIR_NAMES = {
     ".gnupg",
     ".kube",
 }
+
+
+@dataclass(frozen=True)
+class DenyPolicy:
+    """Filename deny rules applied on every channel (read/list/find/search).
+
+    Built-in credential rules run unless disabled; admin-provided globs
+    always run. Glob semantics:
+    - plain glob (``*.pem``) matches the final path component only
+    - ``name/**`` (``.ssh/**``) matches that name as any directory component
+    """
+
+    extra_globs: tuple[str, ...] = field(default=())
+    default_deny_enabled: bool = True
+
+    def is_denied(self, rel_parts: tuple[str, ...]) -> bool:
+        """True when the relative path (or a single basename) is denied."""
+        if not rel_parts:
+            return False
+        *dirs, base = rel_parts
+        if self.default_deny_enabled:
+            if any(d in DEFAULT_DENY_DIR_NAMES for d in dirs):
+                return True
+            if base in DEFAULT_DENY_BASENAMES:
+                return True
+            if any(fnmatch.fnmatchcase(base, g) for g in DEFAULT_DENY_GLOBS):
+                return True
+        for g in self.extra_globs:
+            if g.endswith("/**"):
+                head = g[:-3]
+                if head and any(fnmatch.fnmatchcase(d, head) for d in dirs):
+                    return True
+            elif fnmatch.fnmatchcase(base, g):
+                return True
+        return False
 
 
 class PathSecurityError(Exception):
@@ -92,19 +130,6 @@ def _is_hidden_component(component: str) -> bool:
     return component.startswith(".") and component not in (".", "..")
 
 
-def _is_denied(rel_parts: tuple[str, ...]) -> bool:
-    """True when any component of the relative path matches deny rules."""
-    if not rel_parts:
-        return False
-    *dirs, base = rel_parts
-    for d in dirs:
-        if d in DEFAULT_DENY_DIR_NAMES:
-            return True
-    if base in DEFAULT_DENY_BASENAMES:
-        return True
-    return any(fnmatch.fnmatchcase(base, g) for g in DEFAULT_DENY_GLOBS)
-
-
 def _split_relative_path(relative_path: str) -> tuple[str, ...]:
     """Split a client-relative path into normalized components.
 
@@ -135,11 +160,18 @@ def _split_relative_path(relative_path: str) -> tuple[str, ...]:
 
 
 class ResolvedPath:
-    """A validated workdir-relative path with its container path."""
+    """A validated workdir-relative path, carrying the policy it was
+    validated under so listing/searching below it filter identically."""
 
-    def __init__(self, workdir: Workdir, rel_parts: tuple[str, ...]):
+    def __init__(
+        self,
+        workdir: Workdir,
+        rel_parts: tuple[str, ...],
+        deny_policy: DenyPolicy | None = None,
+    ):
         self._workdir = workdir
         self._rel_parts = rel_parts
+        self._deny_policy = deny_policy if deny_policy is not None else DenyPolicy()
 
     @property
     def workdir(self) -> Workdir:
@@ -148,6 +180,10 @@ class ResolvedPath:
     @property
     def rel_path(self) -> str:
         return "/".join(self._rel_parts)
+
+    @property
+    def deny_policy(self) -> DenyPolicy:
+        return self._deny_policy
 
     @property
     def container_path(self) -> Path:
@@ -165,6 +201,7 @@ def resolve_workdir_path(
     relative_path: str,
     *,
     allow_hidden: bool,
+    deny_policy: DenyPolicy | None = None,
 ) -> ResolvedPath:
     """Validate a client path against every safety policy.
 
@@ -173,14 +210,15 @@ def resolve_workdir_path(
     any ``stat``/``open`` so symlink targets are never touched. The workdir
     root itself is always a bind mount and never a symlink in production.
     """
+    policy = deny_policy if deny_policy is not None else DenyPolicy()
     rel_parts = _split_relative_path(relative_path)
 
     if not allow_hidden and any(_is_hidden_component(c) for c in rel_parts):
         raise HiddenPathNotAllowedError()
-    if _is_denied(rel_parts):
+    if policy.is_denied(rel_parts):
         raise DeniedPathError()
 
-    resolved = ResolvedPath(workdir, rel_parts)
+    resolved = ResolvedPath(workdir, rel_parts, policy)
 
     # symlink check, component by component (lstat, never follow)
     current = workdir.container_path

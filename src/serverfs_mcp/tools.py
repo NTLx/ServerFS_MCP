@@ -33,7 +33,7 @@ from .models import (
     SearchTextResult,
     StatFileResult,
 )
-from .paths import PathSecurityError, ResolvedPath, resolve_workdir_path
+from .paths import DenyPolicy, PathSecurityError, ResolvedPath, resolve_workdir_path
 from .search import SearchTimeout, run_search
 from .workdirs import WorkdirRegistry
 
@@ -47,6 +47,14 @@ PathArg = Annotated[
 ]
 
 
+def deny_policy_from_settings(settings: Settings) -> DenyPolicy:
+    """Build the DenyPolicy a request runs under from runtime settings."""
+    return DenyPolicy(
+        extra_globs=tuple(settings.extra_deny_globs),
+        default_deny_enabled=not settings.disable_default_deny,
+    )
+
+
 def _resolve(
     registry: WorkdirRegistry, workdir: str, path: str, settings: Settings
 ) -> ResolvedPath:
@@ -54,7 +62,12 @@ def _resolve(
     if wd is None:
         raise ToolError(f"WORKDIR_NOT_FOUND: {workdir!r} is not a configured workdir")
     try:
-        return resolve_workdir_path(wd, path, allow_hidden=settings.allow_hidden)
+        return resolve_workdir_path(
+            wd,
+            path,
+            allow_hidden=settings.allow_hidden,
+            deny_policy=deny_policy_from_settings(settings),
+        )
     except PathSecurityError as exc:
         code = getattr(exc, "code", "ACCESS_DENIED")
         raise ToolError(f"{code}: {workdir}:{path} — {exc.message}") from exc

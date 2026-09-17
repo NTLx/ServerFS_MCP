@@ -94,6 +94,89 @@ class TestToolErrors:
         assert "ACCESS_DENIED" in msg
 
 
+class TestExtraDenyGlobsViaTools:
+    """SERVERFS_EXTRA_DENY_GLOBS applies to every channel uniformly."""
+
+    def _srv(self, workdir, **settings_kw):
+        settings = Settings(**settings_kw)
+        return create_server(settings, _registry_for(workdir))
+
+    def test_extra_glob_blocks_read(self, workdir) -> None:
+        (workdir.container_path / "db.sqlite").write_text("NEEDLE\n")
+        srv = self._srv(workdir, extra_deny_globs=("*.sqlite",))
+        msg = call_error(srv, "read_text_file", {"workdir": "test", "path": "db.sqlite"})
+        assert "DENIED_PATH" in msg
+
+    def test_extra_glob_blocks_stat(self, workdir) -> None:
+        (workdir.container_path / "db.sqlite").write_text("NEEDLE\n")
+        srv = self._srv(workdir, extra_deny_globs=("*.sqlite",))
+        msg = call_error(srv, "stat_file", {"workdir": "test", "path": "db.sqlite"})
+        assert "DENIED_PATH" in msg
+
+    def test_extra_glob_hides_from_list(self, workdir) -> None:
+        (workdir.container_path / "db.sqlite").write_text("NEEDLE\n")
+        (workdir.container_path / "ok.txt").write_text("x\n")
+        srv = self._srv(workdir, extra_deny_globs=("*.sqlite",))
+        data = call_success(srv, "list_directory", {"workdir": "test", "path": ""})
+        names = [e["name"] for e in data["entries"]]
+        assert "db.sqlite" not in names
+        assert "ok.txt" in names
+
+    def test_extra_glob_skips_find(self, workdir) -> None:
+        (workdir.container_path / "db.sqlite").write_text("x\n")
+        srv = self._srv(workdir, extra_deny_globs=("*.sqlite",))
+        data = call_success(srv, "find_files", {"workdir": "test", "pattern": "*.sqlite"})
+        assert data["returned"] == 0
+
+    def test_extra_glob_filters_search(self, workdir) -> None:
+        (workdir.container_path / "db.sqlite").write_text("NEEDLE\n")
+        (workdir.container_path / "note.txt").write_text("NEEDLE\n")
+        srv = self._srv(workdir, extra_deny_globs=("*.sqlite",))
+        data = call_success(srv, "search_text", {"workdir": "test", "query": "NEEDLE"})
+        assert data["returned"] == 1
+        assert data["matches"][0]["path"] == "note.txt"
+
+    def test_extra_dir_glob_blocks_nested_read_and_search(self, workdir) -> None:
+        (workdir.container_path / "internal").mkdir()
+        (workdir.container_path / "internal" / "doc.md").write_text("NEEDLE\n")
+        srv = self._srv(workdir, extra_deny_globs=("internal/**",))
+        msg = call_error(srv, "read_text_file", {"workdir": "test", "path": "internal/doc.md"})
+        assert "DENIED_PATH" in msg
+        data = call_success(srv, "search_text", {"workdir": "test", "query": "NEEDLE"})
+        assert data["returned"] == 0
+
+
+class TestDisableDefaultDenyViaTools:
+    """SERVERFS_DISABLE_DEFAULT_DENY=true releases the built-in rules only."""
+
+    def _srv(self, workdir):
+        settings = Settings(allow_hidden=True, disable_default_deny=True)
+        return create_server(settings, _registry_for(workdir))
+
+    def test_env_file_readable_when_disabled(self, workdir) -> None:
+        (workdir.container_path / "app.env").write_text("VALUE=1\n")
+        data = call_success(
+            self._srv(workdir), "read_text_file", {"workdir": "test", "path": "app.env"}
+        )
+        assert data["content"] == "VALUE=1\n"
+
+    def test_id_rsa_readable_when_disabled_and_hidden_allowed(self, workdir) -> None:
+        (workdir.container_path / "id_rsa").write_text("KEY\n")
+        data = call_success(
+            self._srv(workdir), "read_text_file", {"workdir": "test", "path": "id_rsa"}
+        )
+        assert data["content"] == "KEY\n"
+
+    def test_extra_globs_survive_disable(self, workdir) -> None:
+        (workdir.container_path / "db.sqlite").write_text("x\n")
+        settings = Settings(
+            allow_hidden=True, disable_default_deny=True, extra_deny_globs=("*.sqlite",)
+        )
+        srv = create_server(settings, _registry_for(workdir))
+        msg = call_error(srv, "read_text_file", {"workdir": "test", "path": "db.sqlite"})
+        assert "DENIED_PATH" in msg
+
+
 class TestNoInternalLeak:
     @pytest.mark.parametrize(
         "tool,args",

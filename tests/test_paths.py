@@ -181,6 +181,80 @@ class TestDenyRules:
             resolve(workdir, "sub/../.env", allow_hidden=True)
 
 
+class TestExtraDenyGlobs:
+    def resolve_extra(self, workdir, path, globs, default_deny=True):
+        from serverfs_mcp.paths import DenyPolicy, resolve_workdir_path
+
+        return resolve_workdir_path(
+            workdir,
+            path,
+            allow_hidden=True,
+            deny_policy=DenyPolicy(extra_globs=tuple(globs), default_deny_enabled=default_deny),
+        )
+
+    def test_extra_glob_denies_basename(self, workdir) -> None:
+        (workdir.container_path / "prod.sqlite").write_text("x")
+        with pytest.raises(DeniedPathError):
+            self.resolve_extra(workdir, "prod.sqlite", ["*.sqlite"])
+
+    def test_extra_glob_non_matching_still_visible(self, workdir) -> None:
+        (workdir.container_path / "prod.sqlite").write_text("x")
+        (workdir.container_path / "notes.txt").write_text("x")
+        r = self.resolve_extra(workdir, "notes.txt", ["*.sqlite"])
+        assert r.rel_path == "notes.txt"
+
+    def test_extra_dir_glob_denies_children(self, workdir) -> None:
+        (workdir.container_path / "internal").mkdir()
+        (workdir.container_path / "internal" / "doc.md").write_text("x")
+        with pytest.raises(DeniedPathError):
+            self.resolve_extra(workdir, "internal/doc.md", ["internal/**"])
+
+    def test_extra_dir_glob_pattern_with_wildcard(self, workdir) -> None:
+        (workdir.container_path / "logs_a").mkdir()
+        (workdir.container_path / "logs_a" / "f.txt").write_text("x")
+        with pytest.raises(DeniedPathError):
+            self.resolve_extra(workdir, "logs_a/f.txt", ["logs_*/**"])
+
+
+class TestDisableDefaultDeny:
+    def resolve_custom(self, workdir, path):
+        from serverfs_mcp.paths import DenyPolicy, resolve_workdir_path
+
+        return resolve_workdir_path(
+            workdir,
+            path,
+            allow_hidden=True,
+            deny_policy=DenyPolicy(default_deny_enabled=False),
+        )
+
+    def test_default_deny_disabled_permits_env_file(self, workdir) -> None:
+        (workdir.container_path / "app.env").write_text("x")
+        r = self.resolve_custom(workdir, "app.env")
+        assert r.rel_path == "app.env"
+
+    def test_default_deny_disabled_permits_pem_and_ssh(self, workdir) -> None:
+        (workdir.container_path / "cert.pem").write_text("x")
+        r = self.resolve_custom(workdir, "cert.pem")
+        assert r.rel_path == "cert.pem"
+        d = workdir.container_path / ".ssh"
+        d.mkdir()
+        (d / "config").write_text("x")
+        r = self.resolve_custom(workdir, ".ssh/config")
+        assert r.rel_path == ".ssh/config"
+
+    def test_disabled_default_does_not_disable_extra(self, workdir) -> None:
+        from serverfs_mcp.paths import DenyPolicy, resolve_workdir_path
+
+        (workdir.container_path / "prod.sqlite").write_text("x")
+        with pytest.raises(DeniedPathError):
+            resolve_workdir_path(
+                workdir,
+                "prod.sqlite",
+                allow_hidden=True,
+                deny_policy=DenyPolicy(extra_globs=("*.sqlite",), default_deny_enabled=False),
+            )
+
+
 class TestSpecialFiles:
     def test_fifo_rejected_before_open(self, workdir) -> None:
         fifo = workdir.container_path / "apipe"

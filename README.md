@@ -107,7 +107,7 @@ Defense in depth — each layer is independent:
 | Path resolution | Every path is normalized and confined to the workdir root. `..`, absolute paths, NUL bytes rejected. Symlinks anywhere on the path are rejected (`SYMLINK_NOT_ALLOWED`), including links pointing inside the same workdir. |
 | Special files | FIFOs, sockets, device files rejected before open (`UNSUPPORTED_FILE_TYPE`) — reads can never block. |
 | Hidden files | Dot-prefixed path components are denied everywhere (list/find/search/read/stat), not just hidden from listings. |
-| Credential deny rules | `.env`, `.env.*`, `*.env`, `*.pem`, `*.key`, `id_rsa`, `id_ed25519`, `.ssh/`, `.aws/`, `.gnupg/`, `.kube/` are always denied — even with `SERVERFS_ALLOW_HIDDEN=true`. |
+| Credential deny rules | `.env`, `.env.*`, `*.env`, `*.pem`, `*.key`, `id_rsa`, `id_ed25519`, `.ssh/`, `.aws/`, `.gnupg/`, `.kube/` are denied on every channel — even with `SERVERFS_ALLOW_HIDDEN=true`. Append your own patterns via `SERVERFS_EXTRA_DENY_GLOBS` (e.g. `*.sqlite,internal/**`); those apply unconditionally. The built-in set can be released with `SERVERFS_DISABLE_DEFAULT_DENY=true` — see the warning below. |
 | Read limits | `SERVERFS_MAX_READ_LINES` (500) and `SERVERFS_MAX_READ_BYTES` (512 KiB); a single line over the byte budget returns `LINE_TOO_LARGE` rather than a truncated line. |
 | Search limits | rg subprocess with argument-array invocation (no shell, no string concatenation), 15 s timeout, 50 MiB per-file ceiling, result caps, walk-entry caps with early stop. |
 | Docker | Read-only bind mounts (`create_host_path: false`), read-only container root filesystem, tmpfs `/tmp`, non-root UID 10001, `cap_drop: ALL`, `no-new-privileges`. |
@@ -117,6 +117,8 @@ Defense in depth — each layer is independent:
 File contents are treated as **untrusted data** — ServerFS only returns them as text and never acts on anything inside them.
 
 Error messages are short, agent-recoverable codes (`PATH_NOT_FOUND`, `SYMLINK_NOT_ALLOWED`, …) and never contain internal container paths or host paths.
+
+> **Warning — `SERVERFS_DISABLE_DEFAULT_DENY=true`**: this releases only the *built-in* credential rules (`.env`, `*.pem`, `id_rsa`, `.ssh/**`, …), letting the agent read credential material inside your workdirs. `SERVERFS_EXTRA_DENY_GLOBS` still applies and is the intended place for compensating rules. Hidden-path filtering (`SERVERFS_ALLOW_HIDDEN`) is a separate, independent switch. Use this option only when a workdir legitimately contains files matching the built-in patterns and you have reviewed the exposure.
 
 ## Tools
 

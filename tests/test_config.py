@@ -35,3 +35,29 @@ class TestRobustParsing:
         assert settings_from_env({"SERVERFS_LOG_LEVEL": "debug"}).log_level == "DEBUG"
         assert settings_from_env({"SERVERFS_LOG_LEVEL": ""}).log_level == "INFO"
         assert settings_from_env({"SERVERFS_LOG_LEVEL": "bogus"}).log_level == "INFO"
+
+
+class TestDenyConfig:
+    def test_extra_deny_globs_default_empty(self) -> None:
+        assert settings_from_env({}).extra_deny_globs == ()
+        assert settings_from_env({"SERVERFS_EXTRA_DENY_GLOBS": ""}).extra_deny_globs == ()
+        assert settings_from_env({"SERVERFS_EXTRA_DENY_GLOBS": " , ,"}).extra_deny_globs == ()
+
+    def test_extra_deny_globs_parsed(self) -> None:
+        s = settings_from_env({"SERVERFS_EXTRA_DENY_GLOBS": "*.sqlite, backup_*, secrets_*.json"})
+        assert s.extra_deny_globs == ("*.sqlite", "backup_*", "secrets_*.json")
+
+    def test_disable_default_deny_default_false(self) -> None:
+        assert settings_from_env({}).disable_default_deny is False
+        assert (
+            settings_from_env({"SERVERFS_DISABLE_DEFAULT_DENY": ""}).disable_default_deny is False
+        )
+
+    def test_disable_default_deny_true(self) -> None:
+        assert (
+            settings_from_env({"SERVERFS_DISABLE_DEFAULT_DENY": "true"}).disable_default_deny
+            is True
+        )
+        assert (
+            settings_from_env({"SERVERFS_DISABLE_DEFAULT_DENY": "1"}).disable_default_deny is True
+        )
