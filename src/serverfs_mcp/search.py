@@ -46,8 +46,6 @@ def run_search(
         "--no-messages",
         "--max-filesize",
         str(max_file_bytes),
-        "--max-count",
-        "1",  # per-file match cap is not the result cap; we cap below
         f"--max-count={limit}",
         "--line-number",
     ]
@@ -55,8 +53,9 @@ def run_search(
         args.append("--ignore-case")
     if glob:
         args.extend(["--glob", glob])
-    args.append("--")  # end of options: everything after is a path operand
-    args.append(".")  # search under the resolved directory
+    args.append("--")  # end of options: query then path operand follow
+    args.append(query)
+    args.append(".")
     # cwd is the resolved directory so rg reports paths relative to it
     cwd = str(resolved.container_path)
 
@@ -81,11 +80,17 @@ def run_search(
     matches: list[TextMatch] = []
     truncated = False
     prefix = f"{rel_root}/" if rel_root else ""
-    stdout = proc.stdout.decode("utf-8", errors="strict")
+    stdout = proc.stdout.decode("utf-8", errors="replace")
     for line in stdout.splitlines():
         if not line:
             continue
-        path_part, line_part, text_part = line.split(":", 2)
+        # --vimgrep format: path:line:column:text — strip the leading "./"
+        parts = line.split(":", 3)
+        if len(parts) != 4:
+            continue
+        path_part, line_part, _column, text_part = parts
+        if path_part.startswith("./"):
+            path_part = path_part[2:]
         try:
             line_no = int(line_part)
         except ValueError:

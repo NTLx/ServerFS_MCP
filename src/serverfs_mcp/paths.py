@@ -16,6 +16,8 @@ Policy (v0.1):
 from __future__ import annotations
 
 import fnmatch
+import os
+import stat as stat_module
 from pathlib import Path
 
 from .models import WorkdirInfo  # noqa: F401  (re-exported types live in models)
@@ -182,16 +184,14 @@ def resolve_workdir_path(
     current = workdir.container_path
     for seg in rel_parts:
         current = current / seg
-        import os
-
         try:
             st = os.lstat(current)
         except FileNotFoundError:
-            raise
+            # missing components are fine here; the caller's stat/open will
+            # surface a proper PATH_NOT_FOUND
+            return resolved
         except OSError as exc:
             raise PathSecurityError(f"cannot access path: {exc.strerror}") from exc
-        import stat as stat_module
-
         if stat_module.S_ISLNK(st.st_mode):
             raise SymlinkNotAllowedError()
 

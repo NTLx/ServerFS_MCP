@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from serverfs_mcp.config import Settings
-from serverfs_mcp.workdirs import SLOT_COUNT, WorkdirRegistry, build_registry
+from serverfs_mcp.workdirs import SLOT_COUNT, Workdir, WorkdirRegistry, build_registry
 
 
 @pytest.fixture()
@@ -31,6 +31,13 @@ def registry(workdir_root: Path) -> WorkdirRegistry:
         {1: "A test workdir", **{s: "" for s in range(2, SLOT_COUNT + 1)}},
         workdir_root=workdir_root,
     )
+
+
+@pytest.fixture()
+def workdir(registry) -> Workdir:
+    wd = registry.get("test")
+    assert wd is not None
+    return wd
 
 
 @pytest.fixture()
