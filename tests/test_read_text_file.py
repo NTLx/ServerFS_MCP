@@ -29,6 +29,35 @@ class TestEncodings:
         assert r.content == "content\n"
         assert not r.content.startswith("﻿")
 
+    def test_bom_start_line_2_verbatim(self, registry, settings, workdir) -> None:
+        """BOM is stripped from the physical first line ONLY; a read that
+        starts at line 2 must return that line without losing 3 bytes."""
+        (workdir.container_path / "bom2.txt").write_bytes(
+            "\ufefffirst\nsecond line\n".encode("utf-8")
+        )
+        r = read(registry, settings, "bom2.txt", start=2)
+        assert r.content == "second line\n"
+
+    def test_bom_chinese_second_line(self, registry, settings, workdir) -> None:
+        (workdir.container_path / "bom3.txt").write_bytes("\ufeff第一行\n第二行\n".encode("utf-8"))
+        r = read(registry, settings, "bom3.txt", start=2)
+        assert r.content == "第二行\n"
+
+    def test_bom_pagination_continuous(self, registry, settings, workdir) -> None:
+        """Page-by-page reading of a BOM file reassembles the exact content."""
+        (workdir.container_path / "bom4.txt").write_bytes(
+            "\ufeffline1\nline2\nline3\n".encode("utf-8")
+        )
+        pages = []
+        start = 1
+        while True:
+            r = read(registry, settings, "bom4.txt", start=start, max_lines=1)
+            pages.append(r.content)
+            if not r.has_more:
+                break
+            start = r.next_start_line
+        assert "".join(pages) == "line1\nline2\nline3\n"
+
     def test_empty_file(self, registry, settings, workdir) -> None:
         (workdir.container_path / "empty.txt").write_text("")
         r = read(registry, settings, "empty.txt")

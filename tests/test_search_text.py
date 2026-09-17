@@ -35,21 +35,26 @@ def _search(
     timeout: float = 15,
     max_file_bytes: int = 52_428_800,
 ):
+    """Mirror the production call path exactly: rg's cwd/FD is the SEARCH
+    ROOT (workdir root + rel_parts), not the workdir root."""
+    from serverfs_mcp.fdio import open_directory_fd
+
     resolved = resolve_workdir_path(
         wd, path, allow_hidden=allow_hidden, deny_policy=deny or DenyPolicy()
     )
     root_fd = os.open(str(wd.container_path), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
-        return run_search(
-            root_fd,
-            resolved,
-            query=query,
-            glob=glob,
-            case_sensitive=case_sensitive,
-            limit=limit,
-            timeout_seconds=timeout,
-            max_file_bytes=max_file_bytes,
-        )
+        with open_directory_fd(root_fd, resolved.rel_parts) as search_fd:
+            return run_search(
+                search_fd,
+                resolved,
+                query=query,
+                glob=glob,
+                case_sensitive=case_sensitive,
+                limit=limit,
+                timeout_seconds=timeout,
+                max_file_bytes=max_file_bytes,
+            )
     finally:
         os.close(root_fd)
 
@@ -220,6 +225,17 @@ class TestPolicyOnResults:
         (root / "foo" / "a.txt").write_text("NEEDLE\n")
         matches, _ = _search(workdir, path="foo", query="NEEDLE")
         assert [m.path for m in matches] == ["foo/a.txt"]
+
+    def test_repeated_dir_name_not_collapsed(self, workdir) -> None:
+        """Release-review P1: search root foo containing foo/test.txt must
+        report foo/foo/test.txt — rg paths are relative to the search root
+        FD, so no prefix may ever be guessed and stripped."""
+        root = workdir.container_path
+        (root / "foo").mkdir()
+        (root / "foo" / "foo").mkdir()
+        (root / "foo" / "foo" / "test.txt").write_text("NEEDLE\n")
+        matches, _ = _search(workdir, path="foo", query="NEEDLE")
+        assert [m.path for m in matches] == ["foo/foo/test.txt"]
 
     def test_results_below_denied_dir_filtered(self, workdir) -> None:
         """Matches inside a denied subdirectory never surface (root search)."""

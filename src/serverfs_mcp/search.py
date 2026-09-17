@@ -95,14 +95,10 @@ def _parse_match_event(
         parts = parts[1:]
     if not parts:
         return None
-    # rg paths are relative to the search root; strip that prefix when it
-    # repeats the base so the final path is exactly workdir-relative
-    if (
-        base_parts
-        and len(parts) > len(base_parts)
-        and tuple(parts[: len(base_parts)]) == base_parts
-    ):
-        parts = parts[len(base_parts) :]
+    # rg runs with cwd at the search root FD, so its paths are already
+    # relative to that root; the workdir-relative result is simply
+    # base_parts + rg-relative parts (a repeated directory name such as
+    # foo/foo/test.txt must NOT be collapsed).
     if not resolved.allow_hidden and any(is_hidden_component(seg) for seg in parts):
         return None
     full = (*base_parts, *parts)
