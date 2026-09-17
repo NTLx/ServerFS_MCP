@@ -1332,10 +1332,7 @@ ripgrep / rg
 
 ```python
 subprocess.run(
-    [
-        "rg",
-        ...
-    ],
+    ["rg", ...],
     shell=False,
 )
 ```
