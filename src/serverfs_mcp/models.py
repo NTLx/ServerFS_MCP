@@ -98,6 +98,12 @@ class ReadTextFileResult(BaseModel):
     next_start_line: int | None = Field(
         default=None, description="Line number to pass as start_line to continue reading"
     )
+    revision: str = Field(
+        description=(
+            "Opaque revision of the file content; pass it as expected_revision to "
+            "edit_text_file. Stable across pages of the same unchanged file."
+        ),
+    )
 
 
 class StatFileResult(BaseModel):
@@ -113,3 +119,75 @@ class StatFileResult(BaseModel):
         default=None, description="Last modification time as RFC 3339 UTC"
     )
     mime_type: str | None = Field(default=None, description="Best-effort MIME type (files only)")
+    revision: str = Field(
+        description=(
+            "Opaque revision of this object (metadata included); pass it as "
+            "expected_revision to edit_text_file / delete_file / delete_directory."
+        ),
+    )
+
+
+class TextEdit(BaseModel):
+    """One exact-match edit within edit_text_file."""
+
+    old_text: str = Field(
+        description=(
+            "Exact text to replace. Empty is allowed only to fill a completely "
+            "empty file. Include enough context to make the match unique."
+        )
+    )
+    new_text: str = Field(description="Replacement text")
+    expected_count: int = Field(
+        default=1, ge=1, description="Number of occurrences old_text must have; else EDIT_CONFLICT"
+    )
+
+
+class CreateTextFileResult(BaseModel):
+    """Result of create_text_file."""
+
+    workdir: str
+    path: str
+    created: bool
+    bytes_written: int
+    revision: str = Field(description="Revision of the created file")
+
+
+class EditTextFileResult(BaseModel):
+    """Result of edit_text_file."""
+
+    workdir: str
+    path: str
+    edited: bool
+    edits_applied: int
+    bytes_before: int
+    bytes_after: int
+    revision_before: str
+    revision: str = Field(description="Revision of the file after the edit")
+
+
+class DeleteFileResult(BaseModel):
+    """Result of delete_file."""
+
+    workdir: str
+    path: str
+    deleted: bool
+    bytes_deleted: int
+    revision_deleted: str
+
+
+class CreateDirectoryResult(BaseModel):
+    """Result of create_directory."""
+
+    workdir: str
+    path: str
+    created: bool
+    revision: str = Field(description="Revision of the created directory")
+
+
+class DeleteDirectoryResult(BaseModel):
+    """Result of delete_directory."""
+
+    workdir: str
+    path: str
+    deleted: bool
+    revision_deleted: str

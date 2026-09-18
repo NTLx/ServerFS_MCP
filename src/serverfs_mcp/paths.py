@@ -13,6 +13,9 @@ Policy:
 - credential-like names are denied by the built-in rules (defense in depth);
   admins can append their own globs (SERVERFS_EXTRA_DENY_GLOBS) or opt out
   of the built-in set entirely (SERVERFS_DISABLE_DEFAULT_DENY=true)
+- the reserved internal namespace (``.serverfs-tmp-*``) is denied on every
+  channel unconditionally — it is not a policy knob, so allow_hidden, the
+  default rules and the extra globs cannot release it
 """
 
 from __future__ import annotations
@@ -44,6 +47,11 @@ DEFAULT_DENY_DIR_NAMES = {
     ".gnupg",
     ".kube",
 }
+
+# Internal namespace for the same-directory temp files that back atomic
+# create/edit. Reserved: never visible, readable or mutable through any
+# channel, in any configuration. See is_reserved_path().
+RESERVED_TEMP_PREFIX = ".serverfs-tmp-"
 
 
 class PathSecurityError(Exception):
@@ -88,6 +96,11 @@ class DeniedPathError(PathSecurityError):
     message = "path is denied by credential-protection policy"
 
 
+class ReservedPathError(PathSecurityError):
+    code = "RESERVED_PATH"
+    message = "path uses the reserved ServerFS internal namespace"
+
+
 class UnsupportedFileTypeError(PathSecurityError):
     code = "UNSUPPORTED_FILE_TYPE"
     message = "only regular files and directories are supported"
@@ -96,6 +109,16 @@ class UnsupportedFileTypeError(PathSecurityError):
 def is_hidden_component(component: str) -> bool:
     """A path component is hidden when it starts with ``.`` (except . and ..)."""
     return component.startswith(".") and component not in (".", "..")
+
+
+def is_reserved_component(component: str) -> bool:
+    """True for a name inside the reserved internal temp namespace."""
+    return component.startswith(RESERVED_TEMP_PREFIX)
+
+
+def is_reserved_path(rel_parts: tuple[str, ...]) -> bool:
+    """True when any component of a workdir-relative path is reserved."""
+    return any(is_reserved_component(c) for c in rel_parts)
 
 
 @dataclass(frozen=True)
@@ -107,6 +130,10 @@ class DenyPolicy:
     - plain glob (``*.pem``) matches the final path component only
     - ``name/**`` (``.ssh/**``) matches that name as ANY path component —
       the directory itself and everything below it
+
+    The reserved internal namespace is denied here too, unconditionally:
+    entry filtering (list/find/search) and path resolution both consult
+    this one matcher, so no configuration can expose a temp artifact.
     """
 
     extra_globs: tuple[str, ...] = ()
@@ -116,6 +143,8 @@ class DenyPolicy:
         """True when the relative path (or a single basename) is denied."""
         if not rel_parts:
             return False
+        if is_reserved_path(rel_parts):
+            return True
         *dirs, base = rel_parts
         components = rel_parts
         if self.default_deny_enabled:
@@ -231,6 +260,8 @@ def resolve_workdir_path(
     policy = deny_policy if deny_policy is not None else DenyPolicy()
     rel_parts = _split_relative_path(relative_path)
 
+    if is_reserved_path(rel_parts):
+        raise ReservedPathError()
     if not allow_hidden and any(is_hidden_component(c) for c in rel_parts):
         raise HiddenPathNotAllowedError()
     if policy.is_denied(rel_parts):

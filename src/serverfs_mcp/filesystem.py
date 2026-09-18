@@ -17,6 +17,7 @@ import stat as stat_module
 from . import fdio
 from .fdio import open_directory_fd, stat_final
 from .models import EntryInfo, StatFileResult
+from .mutations import compute_revision
 from .paths import ResolvedPath, UnsupportedFileTypeError
 
 _ENTRY_TYPE_FILE = "file"
@@ -63,13 +64,9 @@ def check_supported_file_type(resolved: ResolvedPath) -> None:
         raise UnsupportedFileTypeError()
 
 
-@contextlib.contextmanager
 def _root_fd(resolved: ResolvedPath):
-    fd = os.open(str(resolved.workdir.container_path), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
-    try:
-        yield fd
-    finally:
-        os.close(fd)
+    """Root-FD context manager for a resolved workdir path (fdio.root_fd)."""
+    return fdio.root_fd(str(resolved.workdir.container_path))
 
 
 def list_directory(
@@ -131,6 +128,7 @@ def stat_file(resolved: ResolvedPath) -> StatFileResult:
         size=st.st_size if etype == _ENTRY_TYPE_FILE else None,
         modified_at=_rfc3339_utc(st.st_mtime),
         mime_type=mime_type,
+        revision=compute_revision(st),
     )
 
 
@@ -152,9 +150,7 @@ def find_files(
     ``limit`` matches were collected or ``max_walk_entries`` was hit — so
     the result set is not guaranteed to be complete.
     """
-    root = os.open(
-        str(resolved.workdir.container_path), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
-    )
+    root = fdio.open_root(str(resolved.workdir.container_path))
     matches: list[str] = []
     visited = 0
     truncated = False

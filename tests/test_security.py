@@ -455,24 +455,48 @@ class TestAuditLogging:
 
 
 class TestToolSurface:
-    """§52: exactly six tools with the required annotations."""
+    """§95: exactly eleven tools — six read, five mutation — with the
+    required annotations."""
 
-    def test_six_tools_with_annotations(self, server) -> None:
+    READ_TOOLS = [
+        "find_files",
+        "list_directory",
+        "list_workdirs",
+        "read_text_file",
+        "search_text",
+        "stat_file",
+    ]
+    MUTATION_TOOLS = [
+        "create_directory",
+        "create_text_file",
+        "delete_directory",
+        "delete_file",
+        "edit_text_file",
+    ]
+    # read_only, destructive, idempotent
+    EXPECTED_ANNOTATIONS = {
+        **{name: (True, None, None) for name in READ_TOOLS},
+        "create_text_file": (False, False, True),
+        "create_directory": (False, False, True),
+        "edit_text_file": (False, True, True),
+        "delete_file": (False, True, True),
+        "delete_directory": (False, True, True),
+    }
+
+    def test_eleven_tools_with_annotations(self, server) -> None:
 
         async def check():
             tools = await server.list_tools()
             names = sorted(t.name for t in tools)
-            assert names == [
-                "find_files",
-                "list_directory",
-                "list_workdirs",
-                "read_text_file",
-                "search_text",
-                "stat_file",
-            ]
+            assert names == sorted(self.READ_TOOLS + self.MUTATION_TOOLS)
             for t in tools:
-                assert t.annotations is not None
-                assert t.annotations.read_only_hint is True
-                assert t.annotations.open_world_hint is False
+                assert t.annotations is not None, t.name
+                read_only, destructive, idempotent = self.EXPECTED_ANNOTATIONS[t.name]
+                assert t.annotations.read_only_hint is read_only, t.name
+                assert t.annotations.open_world_hint is False, t.name
+                if destructive is not None:
+                    assert t.annotations.destructive_hint is destructive, t.name
+                if idempotent is not None:
+                    assert t.annotations.idempotent_hint is idempotent, t.name
 
         asyncio.run(check())
