@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Settings:
-    """Tunable limits for reads, listings and searches."""
+    """Tunable limits for reads, listings, searches and mutations."""
 
     log_level: str = "INFO"
     max_read_bytes: int = 524_288
@@ -28,6 +28,8 @@ class Settings:
     allow_hidden: bool = False
     extra_deny_globs: tuple[str, ...] = ()
     disable_default_deny: bool = False
+    max_write_bytes: int = 1_048_576
+    max_edits_per_call: int = 50
 
 
 def _get_int(env: Mapping[str, str], key: str, default: int) -> int:
@@ -88,4 +90,6 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         allow_hidden=_get_bool(env, "SERVERFS_ALLOW_HIDDEN", False),
         extra_deny_globs=_get_deny_globs(env),
         disable_default_deny=_get_bool(env, "SERVERFS_DISABLE_DEFAULT_DENY", False),
+        max_write_bytes=_get_int(env, "SERVERFS_MAX_WRITE_BYTES", 1_048_576),
+        max_edits_per_call=_get_int(env, "SERVERFS_MAX_EDITS_PER_CALL", 50),
     )

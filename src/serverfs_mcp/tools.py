@@ -1,4 +1,4 @@
-"""MCP tool registration: the only 6 tools v0.1 exposes.
+"""MCP tool registration: six read tools and five controlled mutation tools.
 
 Tools use flat parameter signatures: the SDK turns each function parameter
 into a top-level input-schema property, so agents call e.g.
@@ -8,6 +8,11 @@ Every tool funnels user input through the shared path resolver and raises
 ToolError with a CODE: message for anticipated failures, so the agent gets a
 short, recoverable error instead of a traceback. Each call also emits a
 structured audit log event (no content, no query text, no host paths).
+
+Mutation tools add one more gate ahead of the path policy: the workdir must
+be configured read-write. ServerFS refuses to write even if the Docker bind
+mount happens to be writable, so application authorization and mount mode
+are independent layers.
 """
 
 from __future__ import annotations
@@ -24,11 +29,16 @@ from pydantic import Field
 
 from . import logging as jsonlog
 from .config import Settings
-from .fdio import open_directory_fd, open_file_fd
+from .fdio import open_directory_fd, open_file_fd, root_fd
 from .filesystem import find_files as find_files_impl
 from .filesystem import list_directory as list_directory_impl
 from .filesystem import stat_file as stat_file_impl
 from .models import (
+    CreateDirectoryResult,
+    CreateTextFileResult,
+    DeleteDirectoryResult,
+    DeleteFileResult,
+    EditTextFileResult,
     FileMatch,
     FindFilesResult,
     ListDirectoryResult,
@@ -36,12 +46,36 @@ from .models import (
     ReadTextFileResult,
     SearchTextResult,
     StatFileResult,
+    TextEdit,
 )
+from .mutations import MutationError
+from .mutations import compute_revision as revision_of
+from .mutations import create_directory as create_directory_impl
+from .mutations import create_text_file as create_text_file_impl
+from .mutations import delete_directory as delete_directory_impl
+from .mutations import delete_file as delete_file_impl
+from .mutations import edit_text_file as edit_text_file_impl
 from .paths import DenyPolicy, PathSecurityError, ResolvedPath, resolve_workdir_path
 from .search import SearchTimeout, run_search
 from .workdirs import WorkdirRegistry
 
+# read-only tools
 ANNOTATIONS = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+# creation is additive: repeating the same call cannot change anything twice
+CREATE_ANNOTATIONS = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=False,
+    idempotent_hint=True,
+    open_world_hint=False,
+)
+# edit/delete replace or remove data: idempotent because a retry with the
+# same arguments cannot apply a second change (REVISION_CONFLICT/not-found)
+DESTRUCTIVE_ANNOTATIONS = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=True,
+    idempotent_hint=True,
+    open_world_hint=False,
+)
 
 _BINARY_SAMPLE = 1024
 
@@ -67,13 +101,9 @@ def deny_policy_from_settings(settings: Settings) -> DenyPolicy:
     )
 
 
-@contextlib.contextmanager
 def _root_fd(resolved: ResolvedPath):
-    fd = os.open(str(resolved.workdir.container_path), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
-    try:
-        yield fd
-    finally:
-        os.close(fd)
+    """Root-FD context manager for a resolved workdir path (fdio.root_fd)."""
+    return root_fd(str(resolved.workdir.container_path))
 
 
 def _resolve(
@@ -93,6 +123,32 @@ def _resolve(
     except PathSecurityError as exc:
         code = getattr(exc, "code", "ACCESS_DENIED")
         raise ToolError(f"{code}: {workdir}:{path} — {exc.message}") from exc
+
+
+def _resolve_mutable(
+    registry: WorkdirRegistry, workdir: str, path: str, settings: Settings
+) -> ResolvedPath:
+    """Resolve a path for mutation: authorize the workdir, then the path.
+
+    Authorization comes first (a read-only workdir rejects every mutation
+    regardless of the path), then the same policy gate the read channels
+    use, then the workdir root itself is refused: no mutation ever targets
+    the workdir root.
+    """
+    wd = registry.get(workdir)
+    if wd is None:
+        raise ToolError(f"WORKDIR_NOT_FOUND: {workdir!r} is not a configured workdir")
+    if wd.read_only:
+        raise ToolError(
+            f"WORKDIR_READ_ONLY: {workdir} is configured read-only. "
+            "Only workdirs reported as read-write accept mutations."
+        )
+    resolved = _resolve(registry, workdir, path, settings)
+    if not resolved.rel_parts:
+        raise ToolError(
+            f"ROOT_MUTATION_NOT_ALLOWED: the root of {workdir} cannot be created, edited or deleted"
+        )
+    return resolved
 
 
 # ---- audit logging ----
@@ -132,6 +188,52 @@ def _error_code(exc: ToolError) -> str:
     return str(exc).split(":", 1)[0].strip()
 
 
+def _mutation_tool_error(exc: Exception, workdir: str, path: str) -> ToolError:
+    """Map a mutation failure to a coded ToolError (no internal paths).
+
+    Nothing here renders a host path, a container path, a temp file name or
+    any payload: the message is built from the agent's own inputs and a
+    fixed phrase, exactly like the read tools.
+    """
+    if isinstance(exc, ToolError):
+        return exc
+    if isinstance(exc, MutationError):
+        return ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
+    if isinstance(exc, PathSecurityError):
+        return ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
+    if isinstance(exc, FileNotFoundError):
+        return ToolError(f"PATH_NOT_FOUND: {workdir}:{path} does not exist")
+    if isinstance(exc, IsADirectoryError):
+        return ToolError(f"NOT_A_FILE: {workdir}:{path} is a directory")
+    if isinstance(exc, NotADirectoryError):
+        return ToolError(f"NOT_A_DIRECTORY: {workdir}:{path} is not a directory")
+    if isinstance(exc, PermissionError):
+        return ToolError(f"ACCESS_DENIED: {workdir}:{path} (permission denied)")
+    if isinstance(exc, OSError):
+        return ToolError(f"MUTATION_IO_ERROR: {workdir}:{path} ({exc.strerror})")
+    jsonlog.debug("mutation_unexpected_error", error_type=type(exc).__name__)
+    return ToolError(f"MUTATION_IO_ERROR: {workdir}:{path}")
+
+
+def _run_mutation(tool: str, workdir: str, path: str, t0: float, body):
+    """Run one mutation body: exactly one audit event, never a traceback."""
+    try:
+        result, fields = body()
+    except Exception as exc:
+        err = _mutation_tool_error(exc, workdir, path)
+        _audit(
+            tool,
+            t0,
+            success=False,
+            workdir=workdir,
+            path=path,
+            error_code=_error_code(err),
+        )
+        raise err from exc
+    _audit(tool, t0, success=True, workdir=workdir, path=path, **fields)
+    return result
+
+
 # ---- shared read-file logic (tools + resource template) ----
 
 
@@ -161,6 +263,10 @@ def _read_text_file_impl(
         except OSError as exc:
             raise ToolError(f"ACCESS_DENIED: {workdir}:{path} ({exc.strerror})") from None
 
+        # identity is checked on the FD we read, before and after: a file
+        # that changes underneath us must not yield a snapshot whose
+        # revision does not match the content we are returning
+        revision = revision_of(os.fstat(fd))
         with open(fd, "rb", closefd=False) as fh:
             sample = fh.read(_BINARY_SAMPLE)
             if b"\x00" in sample:
@@ -194,6 +300,11 @@ def _read_text_file_impl(
                 bytes_returned += len(raw)
                 end_line = line_no
 
+        if revision_of(os.fstat(fd)) != revision:
+            raise ToolError(
+                f"FILE_CHANGED_DURING_READ: {workdir}:{path} changed while being read; retry"
+            )
+
         try:
             text = b"".join(lines).decode("utf-8")
         except UnicodeDecodeError:
@@ -214,6 +325,7 @@ def _read_text_file_impl(
         bytes_returned=bytes_returned,
         has_more=has_more,
         next_start_line=next_start_line,
+        revision=revision,
     )
 
 
@@ -221,7 +333,7 @@ def _read_text_file_impl(
 
 
 def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings) -> None:
-    """Register the six v0.1 tools on the MCPServer instance."""
+    """Register the six read tools and the five mutation tools."""
     global default_list_limit, default_search_limit, list_limit_arg, search_limit_arg
     default_list_limit = min(settings.default_list_limit, settings.max_list_entries)
     default_search_limit = min(settings.default_search_results, settings.max_search_results)
@@ -586,6 +698,174 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
             type=result.type,
         )
         return result
+
+    @mcp.tool(annotations=CREATE_ANNOTATIONS)
+    def create_text_file(
+        workdir: WorkdirArg,
+        path: Annotated[str, Field(description="Path of the file to create, relative to the root")],
+        content: Annotated[str, Field(description="Full UTF-8 text content of the new file")],
+    ) -> CreateTextFileResult:
+        """Create a NEW UTF-8 text file. Never overwrites an existing path.
+
+        Use this only when the target does not exist — inspect it first with
+        stat_file or list_directory if it might. If anything already occupies
+        the path (file, directory or symlink) the call fails with
+        PATH_ALREADY_EXISTS; there is no overwrite or force option. The
+        parent directory must already exist. Content is written exactly as
+        given (no newline or whitespace normalization) and published
+        atomically, so a concurrent reader sees either no file or the whole
+        file. Requires a read-write workdir.
+        """
+        t0 = time.monotonic()
+
+        def body():
+            resolved = _resolve_mutable(registry, workdir, path, settings)
+            result = create_text_file_impl(resolved, content, settings)
+            return result, {"bytes_written": result.bytes_written, "revision": result.revision}
+
+        return _run_mutation("create_text_file", workdir, path, t0, body)
+
+    @mcp.tool(annotations=DESTRUCTIVE_ANNOTATIONS)
+    def edit_text_file(
+        workdir: WorkdirArg,
+        path: Annotated[str, Field(description="Path of the file to edit, relative to the root")],
+        expected_revision: Annotated[
+            str,
+            Field(
+                description=(
+                    "Revision returned by read_text_file or stat_file for this file; "
+                    "the edit is refused if the file changed since"
+                )
+            ),
+        ],
+        edits: Annotated[
+            list[TextEdit],
+            Field(min_length=1, description="Exact-match text edits, applied in order"),
+        ],
+    ) -> EditTextFileResult:
+        """Replace exact text in an existing UTF-8 text file. Never creates one.
+
+        Read the file first (read_text_file or stat_file) and pass the
+        revision it returned as expected_revision; if the file has changed
+        since, the call fails with REVISION_CONFLICT — re-read the file and
+        retry with fresh text. If the path does not exist the call fails with
+        PATH_NOT_FOUND: it will not create a file, so a mistyped path cannot
+        silently become a new file.
+
+        Each edit replaces every occurrence of exactly `old_text` and
+        requires that count to equal `expected_count` (default 1); a mismatch
+        fails with EDIT_CONFLICT, so include enough surrounding context to
+        make the match unique. All edits in one call are applied in order and
+        are all-or-nothing: if one fails, the file is left untouched.
+        Deletions and replacements happen in a single atomic step, so no
+        reader ever sees a partial file.
+        """
+        t0 = time.monotonic()
+
+        def body():
+            resolved = _resolve_mutable(registry, workdir, path, settings)
+            result = edit_text_file_impl(resolved, expected_revision, edits, settings)
+            return result, {
+                "edit_count": result.edits_applied,
+                "bytes_before": result.bytes_before,
+                "bytes_after": result.bytes_after,
+                "revision": result.revision,
+            }
+
+        return _run_mutation("edit_text_file", workdir, path, t0, body)
+
+    @mcp.tool(annotations=DESTRUCTIVE_ANNOTATIONS)
+    def delete_file(
+        workdir: WorkdirArg,
+        path: Annotated[str, Field(description="Path of the file to delete, relative to the root")],
+        expected_revision: Annotated[
+            str,
+            Field(
+                description=(
+                    "Revision returned by stat_file or read_text_file for this file; "
+                    "the delete is refused if the file changed since"
+                )
+            ),
+        ],
+    ) -> DeleteFileResult:
+        """Permanently delete one regular file.
+
+        Stat or read it first and pass the current revision as
+        expected_revision, so a file that changed (or was already replaced)
+        is not deleted by mistake. Any regular file can be deleted, binary
+        included — only *editing* is limited to UTF-8 text. Directories are
+        not accepted here (see delete_directory) and symlinks are never
+        followed or removed. The deletion is permanent: there is no trash,
+        backup or undo.
+        """
+        t0 = time.monotonic()
+
+        def body():
+            resolved = _resolve_mutable(registry, workdir, path, settings)
+            result = delete_file_impl(resolved, expected_revision)
+            return result, {
+                "bytes_deleted": result.bytes_deleted,
+                "revision": result.revision_deleted,
+            }
+
+        return _run_mutation("delete_file", workdir, path, t0, body)
+
+    @mcp.tool(annotations=CREATE_ANNOTATIONS)
+    def create_directory(
+        workdir: WorkdirArg,
+        path: Annotated[
+            str, Field(description="Path of the directory to create, relative to the root")
+        ],
+    ) -> CreateDirectoryResult:
+        """Create ONE new directory. The parent must already exist.
+
+        Not recursive: to create a/b/c, first create a/b, then a/b/c — each
+        step is explicit and auditable. Fails with PATH_ALREADY_EXISTS if
+        anything already occupies the path (an existing directory included),
+        so a repeat call never performs a second change. Requires a
+        read-write workdir.
+        """
+        t0 = time.monotonic()
+
+        def body():
+            resolved = _resolve_mutable(registry, workdir, path, settings)
+            result = create_directory_impl(resolved)
+            return result, {"revision": result.revision}
+
+        return _run_mutation("create_directory", workdir, path, t0, body)
+
+    @mcp.tool(annotations=DESTRUCTIVE_ANNOTATIONS)
+    def delete_directory(
+        workdir: WorkdirArg,
+        path: Annotated[
+            str, Field(description="Path of the directory to delete, relative to the root")
+        ],
+        expected_revision: Annotated[
+            str,
+            Field(
+                description=(
+                    "Revision returned by stat_file for this directory; "
+                    "the delete is refused if it changed since"
+                )
+            ),
+        ],
+    ) -> DeleteDirectoryResult:
+        """Permanently delete one EMPTY directory. Never recursive.
+
+        Stat the directory first and pass its revision as expected_revision.
+        If the directory holds anything at all — including hidden, denied or
+        temporary entries — the call fails with DIRECTORY_NOT_EMPTY; list it
+        and delete the contents first, one file at a time. There is no
+        recursive or force option, and the deletion is permanent.
+        """
+        t0 = time.monotonic()
+
+        def body():
+            resolved = _resolve_mutable(registry, workdir, path, settings)
+            result = delete_directory_impl(resolved, expected_revision)
+            return result, {"revision": result.revision_deleted}
+
+        return _run_mutation("delete_directory", workdir, path, t0, body)
 
 
 def _fs_error(exc: OSError, workdir: str, path: str) -> ToolError:

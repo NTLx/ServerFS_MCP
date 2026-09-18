@@ -1,12 +1,14 @@
 # AGENTS.md
 
 Read `README.md` for current behaviour, the security model, deployment and the release
-contract. Read `dev_plan.md` as the original v0.1 design and implementation baseline —
-historical context, not current requirements. Where the two disagree, the README, the
-tests and the implementation win; `SERVERFS_DISABLE_DEFAULT_DENY` is one rule this
-project deliberately reversed. This file carries what neither of them does: the reasons
-behind the design, the traps that already cost debugging time here, and how work gets
-verified in this repository.
+contract. Read `dev_plan_v0.2.md` for the current design baseline: per-workdir read-write
+access and the controlled mutation tools. Read `dev_plan.md` as the original v0.1 design
+and implementation baseline — historical context, not current requirements. Where they
+disagree, the README, the tests and the implementation win;
+`SERVERFS_DISABLE_DEFAULT_DENY` is one rule this project deliberately reversed, and v0.1's
+"read-only is a product property, not an option" was superseded by v0.2's per-workdir
+opt-in. This file carries what none of them does: the reasons behind the design, the traps
+that already cost debugging time here, and how work gets verified in this repository.
 
 ## Change protocol
 
@@ -24,7 +26,10 @@ calls the tool.
 
 Before declaring anything done, the full gate in `README.md` → Development passes:
 `uv sync --frozen`, `ruff check`, `ruff format --check`, `pytest`,
-`docker compose config`, `docker compose build`. All six, actually executed.
+`docker compose config`, `SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`.
+All six, actually executed. The scratch tag is not decoration: `image` doubles as
+the tag Compose builds to, so an untagged build repoints whatever `SERVERFS_IMAGE`
+names — see Traps.
 
 Then report: files changed, how each issue was fixed, regression tests added, pytest
 counts, and residual limitations. Anything not executed is `Not verified` — never
@@ -43,26 +48,70 @@ a defect, not a shortcut.
 
 `allow_hidden` and the credential deny rules are independent axes; all four
 combinations are legal configurations and are covered by tests. Keep them uncoupled.
+The reserved names are a third axis that is **not** configurable: they ride inside
+`DenyPolicy.is_denied` so entry filtering and path resolution cannot drift apart, and
+`resolve_workdir_path` raises `RESERVED_PATH` ahead of the deny check so the agent gets
+the precise code. Two names are reserved — `.serverfs-tmp-*` (`RESERVED_TEMP_PREFIX`)
+and the workdir registry's disabled-slot sentinel `.serverfs-disabled`
+(`workdirs.DISABLED_SENTINEL`, enforced centrally by `paths.is_reserved_component`).
+Adding a third internal name means adding it *there*, in `RESERVED_RG_EXCLUDES` and in
+the reserved-channel tests — not at a call site.
 
 Tracing a deny bypass means following the *full* workdir-relative path on every
 channel. A policy decision made against a search root's own relative path is a
 partial path, and partial paths are how bypasses ship.
+
+## Mutation contract (v0.2)
+
+Five tools, no general-purpose write. `create_text_file` and `create_directory` require
+the target to be absent; `edit_text_file` requires it to exist and to be a UTF-8 regular
+file; `delete_file` takes any regular file; `delete_directory` takes an empty directory.
+No `force`, `recursive` or `overwrite` flag exists anywhere, and none may be added: the
+agent-facing contract is "the precondition is the error message".
+
+The mutation pipeline in `mutations.py` is `authorize (workdir read-write) → resolve
+(policy) → root/parent FD walk → act on the final NAME with dir_fd=parent_fd`. Every
+mutation takes the process-wide `mutation_lock()`; reads never do.
+
+- **create** publishes with `os.link` from a reserved same-directory temp file, which
+  cannot overwrite anything and leaves no check-then-create window.
+- **edit** reads and verifies the target by FD, applies exact-match edits in memory,
+  writes a temp file, copies mode/ownership/xattrs onto it, re-checks the revision, and
+  publishes with `os.replace`. Nothing is written before every edit validates.
+- **delete** re-checks the revision, then `unlinkat`/`rmdirat` by name while still
+  holding the verified FD. `delete_file` refuses a file the process cannot read —
+  directory write permission alone must not delete it.
+
+Fatal versus logged: everything before the commit (temp `fsync`, metadata copy, the
+final revision re-check) aborts the mutation; the directory `fsync` after the commit is
+logged as `directory_fsync_failed` and the call still reports the mutation, because the
+entry is already visible. The same reasoning applies to the text-file contract: the NUL
+gate lives on both sides (`content` for create, `old_text`/`new_text` for edit) so no
+mutation channel can produce a file every read channel then refuses.
+
+Revision tokens are `v1:<16 hex>` of a SHA-256 over the stat tuple. Two rules make them
+usable: compute them from the same object the caller will later stat, and derive them
+from the whole tuple (size, mtime_ns, ctime_ns, nlink) so metadata changes are visible.
+`read_text_file` fstats before and after reading and reports
+`FILE_CHANGED_DURING_READ` rather than returning content that does not match its
+revision. `edit`/`delete` verify `expected_revision` inside the lock *and* immediately
+before the commit.
 
 ## Filesystem access
 
 Request-derived traversal is FD-based: each component is opened relative to an
 already-open directory descriptor — `dir_fd` plus `O_NOFOLLOW`, and `O_DIRECTORY` for
 directories — and the final descriptor is `fstat`ed. `fdio.py` holds the shared
-primitives and is the security boundary; `find_files` and the private `_root_fd`
-helpers in `tools.py` and `filesystem.py` open descriptors of their own and must keep
-the same semantics. No request-derived path travels as `lstat`-then-`open(path)`: that
-gap is the TOCTOU window this design closes.
+primitives and is the security boundary. No request-derived path travels as
+`lstat`-then-`open(path)`: that gap is the TOCTOU window this design closes.
 
 The workdir root is the one path opened by name — the trusted anchor from
 configuration, carrying no request input, which is why the walk starts there.
-`fdio.open_root` is that operation, error-mapped like the rest of `fdio`, and it
-currently has no callers: the same two modules re-implement it without the mapping.
-Prefer converging on the shared primitive over adding a third copy.
+Every root open goes through `fdio.open_root` / its context-managed wrapper
+`fdio.root_fd`: `tools.py`, `filesystem.py` and `mutations.py` each keep a thin
+`_root_fd` helper that delegates there, and `find_files` calls `open_root`
+directly only because it owns the descriptor across a whole walk. Do not add a
+fourth root-open implementation, and do not bypass the error mapping in `fdio`.
 
 ## Search
 
@@ -84,12 +133,22 @@ most.
 `SERVERFS_ALLOW_HIDDEN`, `SERVERFS_DISABLE_DEFAULT_DENY` and
 `SERVERFS_EXTRA_DENY_GLOBS` are product features, not oversights: safe by default,
 explicitly releasable by the administrator. `EXTRA_DENY_GLOBS` applies
-unconditionally and survives `DISABLE_DEFAULT_DENY=true` by design.
+unconditionally and survives `DISABLE_DEFAULT_DENY=true` by design — and so does the
+reserved temp namespace.
+
+`WORKDIR_XX_READ_ONLY` (default `true`) is the v0.2 write switch, and it is one variable
+driving two layers on purpose: ServerFS's own authorization and the Compose bind-mount
+flag. A read-only workdir must refuse mutations even if the mount is accidentally
+writable — application authorization is checked before the path policy, so
+`WORKDIR_READ_ONLY` wins over `HIDDEN_PATH_NOT_ALLOWED`. Parsing is strict
+(`true/false/1/0/yes/no/on/off`, empty = read-only) and an unknown value is a startup
+error: this switch must never fail open, and an upgrade from v0.1 must not gain write
+access by omission.
 
 The deployment shape — `serverfs-mcp` + `openai-tunnel`, internal-only network, no
-published ports, no OAuth, 16 workdir slots — is fixed for v0.1. Write support,
-shell execution, indexing, a web UI and non-OpenAI clients are out of scope for
-v0.1, not pending work.
+published ports, no OAuth, 16 workdir slots — is fixed for v0.2. Shell execution,
+indexing, a web UI, rename/move/copy, recursive mkdir/rmdir, binary editing, chmod/chown
+and non-OpenAI clients are out of scope for v0.2, not pending work.
 
 ## Traps
 
@@ -98,6 +157,20 @@ v0.1, not pending work.
   is still refused by the kernel, so this adds no race.
 - An empty component set means the workdir root: `os.dup` that descriptor.
   `/proc/self/fd/N` is a symlink in its own right and `O_NOFOLLOW` rejects it.
+- `linkat`, `unlinkat` and `renameat` all update the *moved* inode's ctime and nlink.
+  A revision computed before publication therefore does not match the next `stat_file`
+  of the same file, and an agent that creates then immediately edits gets a spurious
+  `REVISION_CONFLICT`. Compute the revision after the commit — both create and edit
+  fstat the temp FD again once the name is in its final place.
+- `os.scandir(fd)` does not close the descriptor it was given, so the FD walk helpers
+  can keep owning and closing it. Do not "fix" the double-looking close.
+- `Path.read_text()` translates CRLF to LF. Any test asserting byte fidelity of created
+  or edited content must compare `read_bytes()`, or it fails on correct output.
+- `docker compose config` refuses `1`/`0` for a boolean field
+  (`failed to cast to expected type: invalid boolean: 1`) and merely warns on
+  `yes/no/on/off` under YAML 1.2. `WORKDIR_XX_READ_ONLY` must be documented as
+  `true`/`false`; the parsing differences between Compose and `parse_read_only` are
+  fail-closed by construction, because an ambiguous value stops the deployment.
 - A test helper that opens a different root than production hides real bugs. The
   scoped-search path collapse (`foo/foo/`) survived a full green suite because the
   helper passed the workdir root where production passes the search root. Keep
@@ -112,6 +185,12 @@ v0.1, not pending work.
   a throwaway stack under a separate compose project name rather than against it.
 - Rebuilding the image is not deploying it: the running container keeps the old
   image until `docker compose up -d` recreates it.
+- `docker compose build` tags the result `SERVERFS_IMAGE`, which in a production
+  `.env` is a pinned release (`ghcr.io/ntlx/serverfs_mcp:0.1.1`). A bare build
+  therefore shadows that release locally: the running container is unaffected,
+  but the next `up -d` starts v0.2 code under a v0.1.1 tag. Always build under a
+  scratch tag (`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`). Upgrading
+  a deployment is `pull` + `up -d`, never `build`.
 
 ## Release
 

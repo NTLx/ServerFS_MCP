@@ -1,9 +1,9 @@
 """Workdir registry.
 
-Reads WORKDIR_XX_ALIAS / WORKDIR_XX_DESCRIPTION from the environment and the
-disabled sentinel file /workdirs/XX/.serverfs-disabled to build the set of
-enabled workdirs. Validation failures raise WorkdirError with a message
-suitable for both logs and startup exit.
+Reads WORKDIR_XX_ALIAS / WORKDIR_XX_DESCRIPTION / WORKDIR_XX_READ_ONLY from
+the environment and the disabled sentinel file /workdirs/XX/.serverfs-disabled
+to build the set of enabled workdirs. Validation failures raise WorkdirError
+with a message suitable for both logs and startup exit.
 """
 
 from __future__ import annotations
@@ -18,6 +18,14 @@ SLOT_COUNT = 16
 DISABLED_SENTINEL = ".serverfs-disabled"
 ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 WORKDIR_ROOT = Path("/workdirs")
+
+# Strict booleans for WORKDIR_XX_READ_ONLY: a security switch must never
+# fail open, so anything outside this set aborts startup.
+_TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
+_FALSE_VALUES = frozenset({"false", "0", "no", "off"})
+
+ACCESS_READ_ONLY = "read-only"
+ACCESS_READ_WRITE = "read-write"
 
 SENTINEL_CONFLICT_MSG = (
     "workdir root for slot {slot} contains the reserved file "
@@ -36,6 +44,12 @@ class Workdir:
     alias: str
     container_path: Path
     description: str | None
+    read_only: bool = True
+
+    @property
+    def access(self) -> str:
+        """Agent-facing access mode derived from the authorization flag."""
+        return ACCESS_READ_ONLY if self.read_only else ACCESS_READ_WRITE
 
 
 class WorkdirRegistry:
@@ -50,29 +64,58 @@ class WorkdirRegistry:
 
     def list_result(self) -> ListWorkdirsResult:
         return ListWorkdirsResult(
-            workdirs=[WorkdirInfo(alias=w.alias, description=w.description) for w in self._all]
+            workdirs=[
+                WorkdirInfo(alias=w.alias, description=w.description, access=w.access)
+                for w in self._all
+            ]
         )
 
     def __len__(self) -> int:
         return len(self._all)
 
 
+def parse_read_only(slot: int, raw: str) -> bool:
+    """Parse WORKDIR_XX_READ_ONLY strictly; empty means the safe default.
+
+    Accepts (case-insensitive) true/false/1/0/yes/no/on/off. Any other value
+    is a configuration error: guessing would silently turn a read-only
+    workdir writable, or the reverse.
+    """
+    value = raw.strip().lower()
+    if not value:
+        return True
+    if value in _TRUE_VALUES:
+        return True
+    if value in _FALSE_VALUES:
+        return False
+    raise WorkdirError(
+        f"slot {slot:02d}: invalid WORKDIR_{slot:02d}_READ_ONLY value {raw.strip()!r}. "
+        "Use true or false (also accepted: 1/0, yes/no, on/off)."
+    )
+
+
 def build_registry(
     env_alias: dict[int, str],
     env_description: dict[int, str],
+    env_read_only: dict[int, str] | None = None,
     workdir_root: Path = WORKDIR_ROOT,
 ) -> WorkdirRegistry:
     """Validate all 16 slots and build the registry.
 
-    env_alias / env_description map slot number -> raw env value (may be
-    empty). workdir_root is injectable for tests.
+    env_alias / env_description / env_read_only map slot number -> raw env
+    value (may be empty). A missing env_read_only mapping (or an empty value
+    for a slot) means read-only: configurations written for v0.1, which had
+    no such variable, therefore upgrade read-only. workdir_root is injectable
+    for tests.
     """
     workdirs: list[Workdir] = []
     seen_aliases: dict[str, int] = {}
+    read_only_env = env_read_only or {}
 
     for slot in range(1, SLOT_COUNT + 1):
         alias = env_alias.get(slot, "").strip()
         description = env_description.get(slot, "").strip() or None
+        read_only = parse_read_only(slot, read_only_env.get(slot, ""))
         slot_path = workdir_root / f"{slot:02d}"
         sentinel = slot_path / DISABLED_SENTINEL
         sentinel_present = _is_sentinel(slot, slot_path, sentinel, alias)
@@ -84,6 +127,13 @@ def build_registry(
                     f"slot {slot:02d}: workdir path is configured "
                     f"(no '{DISABLED_SENTINEL}' present) but alias is empty. "
                     f"Set WORKDIR_{slot:02d}_ALIAS."
+                )
+            if not read_only:
+                raise WorkdirError(
+                    f"slot {slot:02d}: disabled slot has "
+                    f"WORKDIR_{slot:02d}_READ_ONLY=false. A slot without an alias "
+                    "cannot be written to; set it back to true or remove the "
+                    "variable."
                 )
             continue  # case A: normally disabled slot
 
@@ -109,7 +159,13 @@ def build_registry(
         seen_aliases[alias] = slot
 
         workdirs.append(
-            Workdir(slot=slot, alias=alias, container_path=slot_path, description=description)
+            Workdir(
+                slot=slot,
+                alias=alias,
+                container_path=slot_path,
+                description=description,
+                read_only=read_only,
+            )
         )
 
     return WorkdirRegistry(workdirs)

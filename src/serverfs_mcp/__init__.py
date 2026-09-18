@@ -1,8 +1,15 @@
-"""ServerFS MCP: read-only MCP server for Linux workdirs.
+"""ServerFS MCP: secure MCP server for Linux workdirs.
 
-A secure, read-only MCP server that exposes explicitly configured Linux
-directories as real-time workdirs to OpenAI AI agents through Secure MCP
-Tunnel.
+A secure MCP server that exposes explicitly configured Linux directories as
+controlled workdirs to AI agents, read-only by default with opt-in
+per-workdir file mutation.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import version
+
+# Single source of truth for the version the MCP server reports: the
+# installed package metadata (pyproject.toml). Docker image tags come from
+# the Git tag and never flow back into the source tree.
+SERVER_VERSION = version("serverfs-mcp")
+
+__version__ = SERVER_VERSION
