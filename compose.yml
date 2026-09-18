@@ -31,134 +31,153 @@ services:
       SERVERFS_EXTRA_DENY_GLOBS: ${SERVERFS_EXTRA_DENY_GLOBS:-}
       SERVERFS_DISABLE_DEFAULT_DENY: ${SERVERFS_DISABLE_DEFAULT_DENY:-false}
 
+      SERVERFS_MAX_WRITE_BYTES: ${SERVERFS_MAX_WRITE_BYTES:-1048576}
+      SERVERFS_MAX_EDITS_PER_CALL: ${SERVERFS_MAX_EDITS_PER_CALL:-50}
+
       WORKDIR_01_ALIAS: ${WORKDIR_01_ALIAS:-}
       WORKDIR_01_DESCRIPTION: ${WORKDIR_01_DESCRIPTION:-}
+      WORKDIR_01_READ_ONLY: ${WORKDIR_01_READ_ONLY:-true}
       WORKDIR_02_ALIAS: ${WORKDIR_02_ALIAS:-}
       WORKDIR_02_DESCRIPTION: ${WORKDIR_02_DESCRIPTION:-}
+      WORKDIR_02_READ_ONLY: ${WORKDIR_02_READ_ONLY:-true}
       WORKDIR_03_ALIAS: ${WORKDIR_03_ALIAS:-}
       WORKDIR_03_DESCRIPTION: ${WORKDIR_03_DESCRIPTION:-}
+      WORKDIR_03_READ_ONLY: ${WORKDIR_03_READ_ONLY:-true}
       WORKDIR_04_ALIAS: ${WORKDIR_04_ALIAS:-}
       WORKDIR_04_DESCRIPTION: ${WORKDIR_04_DESCRIPTION:-}
+      WORKDIR_04_READ_ONLY: ${WORKDIR_04_READ_ONLY:-true}
       WORKDIR_05_ALIAS: ${WORKDIR_05_ALIAS:-}
       WORKDIR_05_DESCRIPTION: ${WORKDIR_05_DESCRIPTION:-}
+      WORKDIR_05_READ_ONLY: ${WORKDIR_05_READ_ONLY:-true}
       WORKDIR_06_ALIAS: ${WORKDIR_06_ALIAS:-}
       WORKDIR_06_DESCRIPTION: ${WORKDIR_06_DESCRIPTION:-}
+      WORKDIR_06_READ_ONLY: ${WORKDIR_06_READ_ONLY:-true}
       WORKDIR_07_ALIAS: ${WORKDIR_07_ALIAS:-}
       WORKDIR_07_DESCRIPTION: ${WORKDIR_07_DESCRIPTION:-}
+      WORKDIR_07_READ_ONLY: ${WORKDIR_07_READ_ONLY:-true}
       WORKDIR_08_ALIAS: ${WORKDIR_08_ALIAS:-}
       WORKDIR_08_DESCRIPTION: ${WORKDIR_08_DESCRIPTION:-}
+      WORKDIR_08_READ_ONLY: ${WORKDIR_08_READ_ONLY:-true}
       WORKDIR_09_ALIAS: ${WORKDIR_09_ALIAS:-}
       WORKDIR_09_DESCRIPTION: ${WORKDIR_09_DESCRIPTION:-}
+      WORKDIR_09_READ_ONLY: ${WORKDIR_09_READ_ONLY:-true}
       WORKDIR_10_ALIAS: ${WORKDIR_10_ALIAS:-}
       WORKDIR_10_DESCRIPTION: ${WORKDIR_10_DESCRIPTION:-}
+      WORKDIR_10_READ_ONLY: ${WORKDIR_10_READ_ONLY:-true}
       WORKDIR_11_ALIAS: ${WORKDIR_11_ALIAS:-}
       WORKDIR_11_DESCRIPTION: ${WORKDIR_11_DESCRIPTION:-}
+      WORKDIR_11_READ_ONLY: ${WORKDIR_11_READ_ONLY:-true}
       WORKDIR_12_ALIAS: ${WORKDIR_12_ALIAS:-}
       WORKDIR_12_DESCRIPTION: ${WORKDIR_12_DESCRIPTION:-}
+      WORKDIR_12_READ_ONLY: ${WORKDIR_12_READ_ONLY:-true}
       WORKDIR_13_ALIAS: ${WORKDIR_13_ALIAS:-}
       WORKDIR_13_DESCRIPTION: ${WORKDIR_13_DESCRIPTION:-}
+      WORKDIR_13_READ_ONLY: ${WORKDIR_13_READ_ONLY:-true}
       WORKDIR_14_ALIAS: ${WORKDIR_14_ALIAS:-}
       WORKDIR_14_DESCRIPTION: ${WORKDIR_14_DESCRIPTION:-}
+      WORKDIR_14_READ_ONLY: ${WORKDIR_14_READ_ONLY:-true}
       WORKDIR_15_ALIAS: ${WORKDIR_15_ALIAS:-}
       WORKDIR_15_DESCRIPTION: ${WORKDIR_15_DESCRIPTION:-}
+      WORKDIR_15_READ_ONLY: ${WORKDIR_15_READ_ONLY:-true}
       WORKDIR_16_ALIAS: ${WORKDIR_16_ALIAS:-}
       WORKDIR_16_DESCRIPTION: ${WORKDIR_16_DESCRIPTION:-}
+      WORKDIR_16_READ_ONLY: ${WORKDIR_16_READ_ONLY:-true}
 
     volumes:
       - type: bind
         source: ${WORKDIR_01_PATH:-./.empty}
         target: /workdirs/01
-        read_only: true
+        read_only: ${WORKDIR_01_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_02_PATH:-./.empty}
         target: /workdirs/02
-        read_only: true
+        read_only: ${WORKDIR_02_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_03_PATH:-./.empty}
         target: /workdirs/03
-        read_only: true
+        read_only: ${WORKDIR_03_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_04_PATH:-./.empty}
         target: /workdirs/04
-        read_only: true
+        read_only: ${WORKDIR_04_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_05_PATH:-./.empty}
         target: /workdirs/05
-        read_only: true
+        read_only: ${WORKDIR_05_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_06_PATH:-./.empty}
         target: /workdirs/06
-        read_only: true
+        read_only: ${WORKDIR_06_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_07_PATH:-./.empty}
         target: /workdirs/07
-        read_only: true
+        read_only: ${WORKDIR_07_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_08_PATH:-./.empty}
         target: /workdirs/08
-        read_only: true
+        read_only: ${WORKDIR_08_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_09_PATH:-./.empty}
         target: /workdirs/09
-        read_only: true
+        read_only: ${WORKDIR_09_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_10_PATH:-./.empty}
         target: /workdirs/10
-        read_only: true
+        read_only: ${WORKDIR_10_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_11_PATH:-./.empty}
         target: /workdirs/11
-        read_only: true
+        read_only: ${WORKDIR_11_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_12_PATH:-./.empty}
         target: /workdirs/12
-        read_only: true
+        read_only: ${WORKDIR_12_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_13_PATH:-./.empty}
         target: /workdirs/13
-        read_only: true
+        read_only: ${WORKDIR_13_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_14_PATH:-./.empty}
         target: /workdirs/14
-        read_only: true
+        read_only: ${WORKDIR_14_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_15_PATH:-./.empty}
         target: /workdirs/15
-        read_only: true
+        read_only: ${WORKDIR_15_READ_ONLY:-true}
         bind:
           create_host_path: false
       - type: bind
         source: ${WORKDIR_16_PATH:-./.empty}
         target: /workdirs/16
-        read_only: true
+        read_only: ${WORKDIR_16_READ_ONLY:-true}
         bind:
           create_host_path: false
 

@@ -16,6 +16,10 @@ class WorkdirInfo(BaseModel):
     description: str | None = Field(
         default=None, description="Optional human-provided description of the workdir"
     )
+    access: str = Field(
+        default="read-only",
+        description='"read-only" or "read-write"; mutation tools only work in read-write',
+    )
 
 
 class ListWorkdirsResult(BaseModel):

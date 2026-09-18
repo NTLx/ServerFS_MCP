@@ -7,10 +7,13 @@ from pathlib import Path
 import pytest
 
 from serverfs_mcp.workdirs import (
+    ACCESS_READ_ONLY,
+    ACCESS_READ_WRITE,
     DISABLED_SENTINEL,
     SLOT_COUNT,
     WorkdirError,
     build_registry,
+    parse_read_only,
 )
 
 
@@ -144,3 +147,125 @@ class TestSlotStates:
         (root / "01" / "other.txt").touch()
         with pytest.raises(WorkdirError, match="reserved"):
             build_registry(*envs("projects"), workdir_root=root)
+
+
+def read_only_env(by_slot: dict[int, str] | None = None) -> dict[int, str]:
+    """A full slot->raw-value mapping; unlisted slots keep the default."""
+    values = {s: "" for s in range(1, SLOT_COUNT + 1)}
+    values.update(by_slot or {})
+    return values
+
+
+class TestReadOnlyParsing:
+    """§11: WORKDIR_XX_READ_ONLY is a security switch — unknown values abort
+    startup instead of guessing."""
+
+    @pytest.mark.parametrize("raw", ["true", "TRUE", " True ", "1", "yes", "on"])
+    def test_true_values(self, raw: str) -> None:
+        assert parse_read_only(1, raw) is True
+
+    @pytest.mark.parametrize("raw", ["false", "FALSE", " False ", "0", "no", "off"])
+    def test_false_values(self, raw: str) -> None:
+        assert parse_read_only(1, raw) is False
+
+    def test_empty_means_read_only(self) -> None:
+        """§9: a v0.1 configuration has no such variable at all."""
+        assert parse_read_only(1, "") is True
+
+    @pytest.mark.parametrize("raw", ["rw", "enable", "foobar", "maybe", "2", "tru"])
+    def test_unknown_values_raise(self, raw: str) -> None:
+        with pytest.raises(WorkdirError, match="READ_ONLY"):
+            parse_read_only(3, raw)
+
+    def test_unknown_value_names_the_slot(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        with pytest.raises(WorkdirError) as exc_info:
+            build_registry(
+                *envs("projects"),
+                read_only_env({1: "rw"}),
+                workdir_root=root,
+            )
+        assert "WORKDIR_01_READ_ONLY" in str(exc_info.value)
+
+    def test_unknown_value_on_a_disabled_slot_still_fails(self, tmp_path: Path) -> None:
+        """Typos must not survive because the slot happens to be disabled."""
+        root = make_root(tmp_path, {1: True})
+        with pytest.raises(WorkdirError):
+            build_registry(
+                *envs("projects"),
+                read_only_env({7: "yesplease"}),
+                workdir_root=root,
+            )
+
+
+class TestReadOnlyDefaults:
+    def test_missing_variable_is_read_only(self, tmp_path: Path) -> None:
+        """An upgrade from v0.1 must not gain write access."""
+        root = make_root(tmp_path, {1: True})
+        reg = build_registry(*envs("projects"), workdir_root=root)
+        assert reg.get("projects").read_only is True
+        assert reg.get("projects").access == ACCESS_READ_ONLY
+
+    def test_omitted_slot_in_the_mapping_is_read_only(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True, 2: True})
+        aliases, _ = envs("projects")
+        aliases[2] = "logs"
+        reg = build_registry(
+            aliases, {s: "" for s in range(1, 17)}, {1: "false"}, workdir_root=root
+        )
+        assert reg.get("projects").read_only is False
+        assert reg.get("logs").read_only is True
+
+    def test_explicit_false_is_read_write(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        reg = build_registry(*envs("projects"), read_only_env({1: "false"}), workdir_root=root)
+        workdir = reg.get("projects")
+        assert workdir.read_only is False
+        assert workdir.access == ACCESS_READ_WRITE
+
+    def test_access_values_are_exactly_two(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True, 2: True})
+        aliases, _ = envs("projects")
+        aliases[2] = "logs"
+        reg = build_registry(
+            aliases,
+            {s: "" for s in range(1, 17)},
+            read_only_env({2: "no"}),
+            workdir_root=root,
+        )
+        assert {w.access for w in reg.list_result().workdirs} == {
+            ACCESS_READ_ONLY,
+            ACCESS_READ_WRITE,
+        }
+
+    def test_registry_reports_access_per_workdir(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True, 2: True})
+        aliases, _ = envs("projects")
+        aliases[2] = "logs"
+        reg = build_registry(
+            aliases,
+            {s: "" for s in range(1, 17)},
+            read_only_env({2: "false"}),
+            workdir_root=root,
+        )
+        reported = {w.alias: w.access for w in reg.list_result().workdirs}
+        assert reported == {"projects": ACCESS_READ_ONLY, "logs": ACCESS_READ_WRITE}
+
+
+class TestDisabledSlotConsistency:
+    """§10: a disabled slot may not be declared writable."""
+
+    def test_disabled_slot_with_read_only_false_fails(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path)  # every slot disabled
+        with pytest.raises(WorkdirError, match="disabled slot"):
+            build_registry(*envs(), read_only_env({3: "false"}), workdir_root=root)
+
+    def test_disabled_slot_with_read_only_true_is_fine(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path)
+        reg = build_registry(*envs(), read_only_env({3: "true"}), workdir_root=root)
+        assert len(reg) == 0
+
+    def test_enabled_slot_with_read_only_false_is_fine(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        reg = build_registry(*envs("projects"), read_only_env({1: "false"}), workdir_root=root)
+        assert reg.get("projects").read_only is False
