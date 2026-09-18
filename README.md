@@ -43,10 +43,35 @@ cp .env.example .env
 #  2. fill CONTROL_PLANE_TUNNEL_ID and CONTROL_PLANE_API_KEY
 
 chmod 600 .env          # the file contains a runtime API key
+docker compose pull     # fetch the published image from GHCR
 docker compose up -d
 docker compose ps       # serverfs-mcp should become (healthy)
 docker compose logs -f openai-tunnel
 ```
+
+Building from source instead of pulling: run `docker compose build` before `docker compose up -d`.
+
+## Docker Image & Release Channels
+
+Images are published to GitHub Container Registry by GitHub Actions:
+
+| Channel | Tag | Updated by |
+|---|---|---|
+| Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.1.0` | `v0.1.0` |
+| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.1` | newest `v0.1.x` |
+| Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
+
+Every image is multi-arch: `linux/amd64` and `linux/arm64`.
+
+Release automation — the image version comes from the **Git tag**, never from a GitHub Release event:
+
+```text
+push to main   →  edge
+tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
+```
+
+For example `v0.1.2` publishes `0.1.2`, `0.1` and `latest`. `latest` always points at the newest stable release; `main` never updates it (only `edge`).
 
 ## Workdir Configuration
 
@@ -147,6 +172,14 @@ docker compose logs -f
 ## Upgrade
 
 Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins, then `docker compose build && docker compose up -d`. Avoid `latest`.
+
+For **production**, pin `SERVERFS_IMAGE` to an exact release instead of `latest`:
+
+```env
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.1.0
+```
+
+Pinned deploys are reproducible, upgrades are explicit (`docker compose pull && docker compose up -d` after editing the version), and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
 
 ## Development
 
