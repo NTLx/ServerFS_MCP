@@ -74,7 +74,10 @@ The mutation pipeline in `mutations.py` is `authorize (workdir read-write) → r
 mutation takes the process-wide `mutation_lock()`; reads never do.
 
 - **create** publishes with `os.link` from a reserved same-directory temp file, which
-  cannot overwrite anything and leaves no check-then-create window.
+  cannot overwrite anything and leaves no check-then-create window. `create_text_file`
+  deliberately advertises `idempotentHint=false`: even a repeat that ultimately fails
+  with `PATH_ALREADY_EXISTS` creates and removes that temp entry first, so the parent
+  directory's metadata/revision may change. `create_directory` remains idempotent.
 - **edit** reads and verifies the target by FD, applies exact-match edits in memory,
   writes a temp file, copies mode/ownership/xattrs onto it, re-checks the revision, and
   publishes with `os.replace`. Nothing is written before every edit validates.

@@ -476,7 +476,7 @@ class TestToolSurface:
     # read_only, destructive, idempotent
     EXPECTED_ANNOTATIONS = {
         **{name: (True, None, None) for name in READ_TOOLS},
-        "create_text_file": (False, False, True),
+        "create_text_file": (False, False, False),
         "create_directory": (False, False, True),
         "edit_text_file": (False, True, True),
         "delete_file": (False, True, True),

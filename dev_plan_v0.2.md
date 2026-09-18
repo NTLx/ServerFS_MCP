@@ -174,11 +174,13 @@ Mutation concurrency:
    new content, never a partial file.
 
 Resulting guarantee: two callers holding the same revision cannot both commit — exactly
-one wins, the other gets `REVISION_CONFLICT`. Idempotent retries are safe: a repeated
-create yields `PATH_ALREADY_EXISTS`, a repeated edit with the same revision yields
-`REVISION_CONFLICT`, a repeated delete yields `PATH_NOT_FOUND` — in every case without a
-second change to the filesystem. That is why all five mutation tools advertise
-`idempotentHint=true`.
+one wins, the other gets `REVISION_CONFLICT`. Retry hints are intentionally conservative:
+a repeated `create_directory` performs no second mutation and is idempotent; repeated
+edit/delete calls with the same revision cannot commit twice. `create_text_file` is the
+exception and advertises `idempotentHint=false`: its no-overwrite algorithm creates a
+same-directory reserved temp file before `linkat`, so a failed repeat can still change
+parent-directory metadata/revision when that temp entry is created and cleaned up, even
+though the target file itself is unchanged.
 
 **Documented limitation.** This is compare-and-swap against *this process* plus a
 last-moment re-check, not a linearizable filesystem. POSIX has no atomic "compare inode

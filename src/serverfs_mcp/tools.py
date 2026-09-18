@@ -61,8 +61,16 @@ from .workdirs import WorkdirRegistry
 
 # read-only tools
 ANNOTATIONS = ToolAnnotations(read_only_hint=True, open_world_hint=False)
-# creation is additive: repeating the same call cannot change anything twice
-CREATE_ANNOTATIONS = ToolAnnotations(
+# create_text_file may touch parent-directory metadata even when publication
+# fails (the same-directory temp file is created and cleaned up), so advertise
+# the conservative retry hint. create_directory has no such temporary entry.
+CREATE_FILE_ANNOTATIONS = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=False,
+    idempotent_hint=False,
+    open_world_hint=False,
+)
+CREATE_DIRECTORY_ANNOTATIONS = ToolAnnotations(
     read_only_hint=False,
     destructive_hint=False,
     idempotent_hint=True,
@@ -699,7 +707,7 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
         )
         return result
 
-    @mcp.tool(annotations=CREATE_ANNOTATIONS)
+    @mcp.tool(annotations=CREATE_FILE_ANNOTATIONS)
     def create_text_file(
         workdir: WorkdirArg,
         path: Annotated[str, Field(description="Path of the file to create, relative to the root")],
@@ -810,7 +818,7 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
 
         return _run_mutation("delete_file", workdir, path, t0, body)
 
-    @mcp.tool(annotations=CREATE_ANNOTATIONS)
+    @mcp.tool(annotations=CREATE_DIRECTORY_ANNOTATIONS)
     def create_directory(
         workdir: WorkdirArg,
         path: Annotated[
