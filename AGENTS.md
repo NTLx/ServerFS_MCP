@@ -185,6 +185,13 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   a throwaway stack under a separate compose project name rather than against it.
 - Rebuilding the image is not deploying it: the running container keeps the old
   image until `docker compose up -d` recreates it.
+- Recreating `serverfs-mcp` strands the tunnel, and `/readyz` will not tell you:
+  `docker compose up -d` recreates only the service whose image changed, so the
+  tunnel keeps running with its MCP session and connections belonging to a container
+  that no longer exists — ready, quiet, idle. Restart it in the same breath
+  (`docker compose restart openai-tunnel`). Its `mcp session initialized` line then
+  reports the running `server_version`, which is the cheapest proof of what the
+  deployment actually serves.
 - `docker compose build` tags the result `SERVERFS_IMAGE`, which in a production
   `.env` is a pinned release (`ghcr.io/ntlx/serverfs_mcp:0.1.1`). A bare build
   therefore shadows that release locally: the running container is unaffected,
