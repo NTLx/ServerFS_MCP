@@ -58,7 +58,14 @@ docker compose ps       # serverfs-mcp should become (healthy)
 docker compose logs -f openai-tunnel
 ```
 
-Building from source instead of pulling: run `docker compose build` before `docker compose up -d`.
+Building from source instead of pulling — build under a scratch tag, never under the tag a production `.env` pins:
+
+```bash
+SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
+SERVERFS_IMAGE=serverfs-mcp:dev docker compose up -d
+```
+
+A bare `docker compose build` writes to whatever `SERVERFS_IMAGE` names, so with a pinned production `.env` it would silently repoint that release tag at local code. Upgrading a pinned deployment pulls the published image instead; see [Upgrade](#upgrade).
 
 ## Docker Image & Release Channels
 
@@ -166,10 +173,10 @@ Defense in depth — each layer is independent:
 | Mutation serialization | All mutations run under one process-wide lock, so two callers holding the same revision cannot both commit; exactly one wins and the other gets `REVISION_CONFLICT`. Reads never take the lock. |
 | Exact-match edits | Edits replace literal text (never regex, never fuzzy), must match `expected_count` occurrences exactly, and apply in order as an all-or-nothing transaction. No edit touches the disk until every edit has been validated. |
 | Atomic publication | `create_text_file` writes a reserved same-directory temp file and publishes it with `linkat(2)`, which cannot overwrite. `edit_text_file` writes a temp file and publishes with `renameat(2)`. A concurrent reader sees either the complete old or the complete new content — never a partial file, and never a truncated-then-rewritten file. |
-| Metadata preservation | Editing replaces an inode, so ServerFS copies mode, ownership and extended attributes onto the replacement *before* the rename, and fails with `METADATA_PRESERVATION_FAILED` if any of them cannot be reproduced. A file with multiple hard links is refused outright (`MULTIPLE_HARDLINKS_NOT_SUPPORTED` rather than silently splitting the link). |
+| Metadata preservation | Editing replaces an inode, so ServerFS copies ownership, mode and extended attributes onto the replacement *before* the rename — in that order, because `chown(2)` clears setuid/setgid bits and can disturb `security.*` metadata — and fails with `METADATA_PRESERVATION_FAILED` if any of them cannot be reproduced. A file with multiple hard links is refused outright (`MULTIPLE_HARDLINKS_NOT_SUPPORTED` rather than silently splitting the link). |
 | No recursive delete, no force | `delete_directory` removes an empty directory only; anything inside it — hidden, denied or a leftover temp file — yields `DIRECTORY_NOT_EMPTY` and the interior is never named in the error. `create_directory` is not recursive. No tool takes a `force`, `recursive` or `overwrite` argument. |
 | Workdir root is immutable | The workdir root itself can never be created, edited or deleted (`ROOT_MUTATION_NOT_ALLOWED`). |
-| Reserved temp namespace | `.serverfs-tmp-*` is a hard-reserved internal namespace: not listable, findable, searchable, readable, stat-able or mutable, in every configuration — `SERVERFS_ALLOW_HIDDEN` and `SERVERFS_DISABLE_DEFAULT_DENY` do not release it, and ripgrep is told to skip those names outright. |
+| Reserved names | Two internal names are hard-reserved: `.serverfs-tmp-*` (atomic-publication temp files) and `.serverfs-disabled` (the workdir registry's disabled-slot marker, which startup reads — an agent able to create it would break the next start). Neither is listable, findable, searchable, readable, stat-able or mutable, in every configuration: `SERVERFS_ALLOW_HIDDEN` and `SERVERFS_DISABLE_DEFAULT_DENY` do not release them, and ripgrep is told to skip those names outright. |
 | Tool annotations | Read tools advertise `readOnlyHint=true`; `create_*` advertise `read_only=false, destructive=false`; `edit`/`delete_*` advertise `read_only=false, destructive=true`; all advertise `idempotentHint=true` and `openWorldHint=false`. Repeating an identical call never changes anything twice (the second attempt fails or is a no-op). (Hints, not a security mechanism.) |
 | Path resolution | Every path is normalized and confined to the workdir root. `..`, absolute paths, NUL bytes rejected. |
 | FD-based traversal | All filesystem access — reads *and* mutations — walks components with `openat(2)` + `O_NOFOLLOW` on directory file descriptors, and mutations act on the final name through the parent FD (`mkdirat`, `linkat`, `renameat`, `unlinkat`, `rmdirat`). Component identity and symlink rejection are atomic at open time, so there is no lstat→open TOCTOU window. A symlink as a *parent* component is rejected (`SYMLINK_NOT_ALLOWED`) including links pointing inside the same workdir; a symlink as the *final* component is reported by `stat_file` as `type: "symlink"` (target never revealed), rejected by `read_text_file`/`list_directory`, and never followed or replaced by a mutation. rg runs rooted at a pre-validated directory FD (`/proc/self/fd`) with symlink following never enabled. |
@@ -232,7 +239,23 @@ docker compose logs -f
 
 ## Upgrade
 
-Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins, then `docker compose build && docker compose up -d`. Avoid `latest`.
+Two distinct paths — do not mix them.
+
+Upgrading a **deployed instance** uses the published image: edit `SERVERFS_IMAGE`, then
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Building the **source** yourself (dependency pins, local changes) uses a scratch tag, so a pinned release tag is never repointed at local code:
+
+```bash
+SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
+SERVERFS_IMAGE=serverfs-mcp:dev docker compose up -d
+```
+
+Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins and rebuilding along the source path. Avoid `latest`.
 
 For **production**, pin `SERVERFS_IMAGE` to an exact release instead of `latest`:
 
@@ -240,11 +263,11 @@ For **production**, pin `SERVERFS_IMAGE` to an exact release instead of `latest`
 SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.2.0
 ```
 
-Pinned deploys are reproducible, upgrades are explicit (`docker compose pull && docker compose up -d` after editing the version), and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
+Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
 
 ### Upgrading from v0.1
 
-Nothing to do beyond bumping `SERVERFS_IMAGE`: the new tool surface is additive, every existing workdir stays read-only (no `WORKDIR_XX_READ_ONLY` in a v0.1 `.env` means `true`), and the deny/hidden policy is unchanged. Run `docker compose up -d` last — `docker compose build` alone does not replace the running container.
+Nothing to do beyond bumping `SERVERFS_IMAGE`: the new tool surface is additive, every existing workdir stays read-only (no `WORKDIR_XX_READ_ONLY` in a v0.1 `.env` means `true`), and the deny/hidden policy is unchanged. Run `docker compose pull && docker compose up -d` last — starting the container is what replaces the running one.
 
 ## Development
 
@@ -254,8 +277,10 @@ uv run ruff check .
 uv run ruff format --check .
 uv run pytest
 docker compose config
-docker compose build
+SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 ```
+
+The scratch tag on the last line matters: `image` doubles as the tag Compose builds to, so an untagged build with a pinned production `.env` present would repoint that release tag at your working tree.
 
 ## Not in v0.2 (by design)
 

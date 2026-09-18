@@ -22,7 +22,7 @@ import time
 from . import logging as jsonlog
 from .fdio import proc_fd_path
 from .models import TextMatch
-from .paths import RESERVED_TEMP_PREFIX, ResolvedPath, is_hidden_component
+from .paths import RESERVED_RG_EXCLUDES, ResolvedPath, is_hidden_component
 
 _RG_BENIGN_EXIT = {0, 1}
 _GRACE_SECONDS = 2.0
@@ -53,11 +53,12 @@ def _rg_args(
         args.append("--ignore-case")
     if glob:
         args.extend(["--glob", glob])
-    # VCS internals and the reserved temp namespace are excluded here so rg
-    # never even reads them (temp artifacts of an in-flight mutation must
-    # not be searchable); hidden/deny policy is enforced on every result
-    # path as well (defense in depth), and rg never follows symlinks.
-    for excluded in ("!.git", "!.hg", "!.svn", f"!{RESERVED_TEMP_PREFIX}*"):
+    # VCS internals and the reserved names are excluded here so rg never even
+    # reads them (temp artifacts of an in-flight mutation, and the
+    # disabled-slot sentinel, must not be searchable); hidden/deny policy is
+    # enforced on every result path as well (defense in depth), and rg never
+    # follows symlinks.
+    for excluded in ("!.git", "!.hg", "!.svn", *RESERVED_RG_EXCLUDES):
         args.extend(["--glob", excluded])
     args.append("--")  # everything after is operands: query then path
     args.append(query)

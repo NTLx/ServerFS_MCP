@@ -293,17 +293,26 @@ def _preserve_metadata(src_fd: int, dst_fd: int, st: os.stat_result) -> None:
     silently lost. When a piece cannot be preserved the mutation fails
     before the rename: losing a mode bit, an ACL or a SELinux label is
     worse than a failed edit.
+
+    The order — ownership, then mode, then xattrs — is load-bearing rather
+    than cosmetic; see the comments at each step.
     """
-    try:
-        os.fchmod(dst_fd, stat_module.S_IMODE(st.st_mode))
-    except OSError as exc:
-        raise MetadataPreservationError("file mode could not be preserved") from exc
     dst_st = os.fstat(dst_fd)
     if (dst_st.st_uid, dst_st.st_gid) != (st.st_uid, st.st_gid):
         try:
             os.fchown(dst_fd, st.st_uid, st.st_gid)
         except OSError as exc:
             raise MetadataPreservationError("ownership could not be preserved") from exc
+    # ownership first: chown(2) clears S_ISUID/S_ISGID, so the mode has to
+    # be applied after it — in the other order the replacement silently
+    # loses those bits
+    try:
+        os.fchmod(dst_fd, stat_module.S_IMODE(st.st_mode))
+    except OSError as exc:
+        raise MetadataPreservationError("file mode could not be preserved") from exc
+    # xattrs last, from the original: the ownership change above can
+    # disturb security.* metadata, and the replacement must end up
+    # holding what the original held, not what a chown left behind
     _copy_xattrs(src_fd, dst_fd)
 
 

@@ -125,18 +125,29 @@ anything is created, and `SERVERFS_EXTRA_DENY_GLOBS` applies to them identically
 credential rules for reads *and* mutations. No mutation-only deny policy was added —
 `EXTRA_DENY_GLOBS` remains the compensating control and always applies.
 
-### Reserved internal namespace
+### Reserved internal names
 
 Atomic create/edit needs a same-directory temp file. Those files are named
-`.serverfs-tmp-<random>`; the prefix `.serverfs-tmp-` is a **hard reserved namespace**:
+`.serverfs-tmp-<random>`; the prefix `.serverfs-tmp-` is a **hard reserved namespace**.
+The workdir registry's disabled-slot marker `.serverfs-disabled` is reserved alongside
+it: `WorkdirRegistry` reads that name from the host layout at startup and refuses to
+start when it finds it where it does not expect it, so a channel that could create it
+would turn a file write into a startup failure. (Deleting it is not reachable — a
+disabled slot has no alias, so no channel can address it — but the marker is ServerFS's
+own and is reserved in both directions rather than only where it bites.) No enabled
+workdir can legally contain it — the registry refuses to start on that layout — so the
+reservation costs no configuration anything.
+
+Both names:
 
 - not listable, findable, searchable, readable, stat-able, creatable, editable or
   deletable — in every configuration;
 - *not* released by `SERVERFS_ALLOW_HIDDEN`, `SERVERFS_DISABLE_DEFAULT_DENY` or
   `SERVERFS_EXTRA_DENY_GLOBS`;
 - direct access answers `RESERVED_PATH`; listings simply omit them;
-- `search_text` passes an exclusion glob to ripgrep so intermediate temp files are never
-  read at all, with the result-path policy re-check kept as defense in depth.
+- `search_text` passes exclusions to ripgrep (`paths.RESERVED_RG_EXCLUDES`) so
+  intermediate temp files are never read at all, with the result-path policy re-check
+  kept as defense in depth.
 
 If the process is `SIGKILL`ed mid-mutation a temp file can survive on disk. It stays
 invisible to the agent forever; v0.2 ships no startup scavenger and no recursive cleanup,
@@ -194,16 +205,24 @@ Publication:
 ```
 create:  temp(O_EXCL) → write → fsync → linkat(temp, target)   # EEXIST = no overwrite
                                         → unlinkat(temp) → fsync(dir)
-edit:    temp(O_EXCL) → write → preserve mode/owner/xattrs → fsync
+edit:    temp(O_EXCL) → write → preserve owner/mode/xattrs → fsync
                                         → re-check revision → renameat(temp, target)
                                         → fsync(dir)
 ```
 
-Metadata preservation happens **before** the rename and failure is fatal: mode is always
-copied, ownership only when it differs (a foreign owner cannot be reproduced by a
-non-root container), and xattrs are copied wholesale; any unreproducible piece raises
-`METADATA_PRESERVATION_FAILED` with the original file untouched. Losing a mode bit, an ACL
-or a SELinux label silently would be worse than a failed edit.
+Metadata preservation happens **before** the rename and failure is fatal: ownership is
+copied only when it differs (a foreign owner cannot be reproduced by a non-root
+container), mode is always copied, and xattrs are copied wholesale; any unreproducible
+piece raises `METADATA_PRESERVATION_FAILED` with the original file untouched. Losing a
+mode bit, an ACL or a SELinux label silently would be worse than a failed edit.
+
+The order — **ownership, then mode, then xattrs** — is load-bearing, not cosmetic.
+`chown(2)` clears `S_ISUID`/`S_ISGID` on the file it touches, so applying the mode first
+lets a successful `fchown` strip setuid/setgid from the published inode while the edit
+still reports success (measured: `0o2755` published as `0o755`). Copying xattrs last
+keeps the replacement holding what the *original* held rather than what the ownership
+change left behind, since ownership changes can disturb `security.*` metadata. Both
+properties are pinned by tests (`TestEditMetadata`).
 
 Durability has two different failure semantics on purpose. The temp file's own `fsync`
 runs *before* publication, so a failure there aborts the mutation with `MUTATION_IO_ERROR`

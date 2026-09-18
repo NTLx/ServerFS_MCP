@@ -13,9 +13,10 @@ Policy:
 - credential-like names are denied by the built-in rules (defense in depth);
   admins can append their own globs (SERVERFS_EXTRA_DENY_GLOBS) or opt out
   of the built-in set entirely (SERVERFS_DISABLE_DEFAULT_DENY=true)
-- the reserved internal namespace (``.serverfs-tmp-*``) is denied on every
-  channel unconditionally — it is not a policy knob, so allow_hidden, the
-  default rules and the extra globs cannot release it
+- the reserved internal names (``.serverfs-tmp-*`` and the disabled-slot
+  sentinel) are denied on every channel unconditionally — they are not a
+  policy knob, so allow_hidden, the default rules and the extra globs cannot
+  release them
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ import fnmatch
 from dataclasses import dataclass
 from pathlib import Path
 
-from .workdirs import Workdir
+from .workdirs import DISABLED_SENTINEL, Workdir
 
 # credential-like patterns denied by the built-in rules
 DEFAULT_DENY_BASENAMES = {
@@ -52,6 +53,20 @@ DEFAULT_DENY_DIR_NAMES = {
 # create/edit. Reserved: never visible, readable or mutable through any
 # channel, in any configuration. See is_reserved_path().
 RESERVED_TEMP_PREFIX = ".serverfs-tmp-"
+
+# The workdir registry's disabled-slot marker is reserved for the same reason,
+# with a sharper edge: WorkdirRegistry reads this name from the host layout at
+# startup and refuses to start when it finds it somewhere it does not expect.
+# A mutation channel that could create it would therefore turn a file write
+# into a startup failure (reproduced before this rule existed). Deleting it is
+# not reachable — a disabled slot has no alias, so no channel can address it —
+# but the marker is ServerFS's own and is reserved in both directions rather
+# than only where it bites. The registry owns the name
+# (workdirs.DISABLED_SENTINEL); this module enforces it centrally.
+
+# The reserved names as ripgrep exclusion globs: a search must not even read
+# a reserved file (the result-path re-check stays as defense in depth).
+RESERVED_RG_EXCLUDES = (f"!{RESERVED_TEMP_PREFIX}*", f"!{DISABLED_SENTINEL}")
 
 
 class PathSecurityError(Exception):
@@ -112,8 +127,13 @@ def is_hidden_component(component: str) -> bool:
 
 
 def is_reserved_component(component: str) -> bool:
-    """True for a name inside the reserved internal temp namespace."""
-    return component.startswith(RESERVED_TEMP_PREFIX)
+    """True for a name inside the reserved internal namespace.
+
+    Covers both the atomic-publication temp prefix and the workdir
+    registry's disabled-slot sentinel: neither may be reached through any
+    channel, and neither is releasable by configuration.
+    """
+    return component.startswith(RESERVED_TEMP_PREFIX) or component == DISABLED_SENTINEL
 
 
 def is_reserved_path(rel_parts: tuple[str, ...]) -> bool:
@@ -131,9 +151,10 @@ class DenyPolicy:
     - ``name/**`` (``.ssh/**``) matches that name as ANY path component —
       the directory itself and everything below it
 
-    The reserved internal namespace is denied here too, unconditionally:
+    The reserved internal names are denied here too, unconditionally:
     entry filtering (list/find/search) and path resolution both consult
-    this one matcher, so no configuration can expose a temp artifact.
+    this one matcher, so no configuration can expose a temp artifact or
+    the disabled-slot sentinel.
     """
 
     extra_globs: tuple[str, ...] = ()

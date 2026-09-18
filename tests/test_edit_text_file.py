@@ -842,9 +842,93 @@ class TestEditMetadata:
             os.close(src_fd)
             os.close(dst_fd)
 
+    def test_setgid_bit_survives_an_ownership_change(self, workdir) -> None:
+        """§45: chown(2) clears S_ISUID/S_ISGID, so ownership must be applied
+        *before* the mode. In the other order the edit publishes a file whose
+        mode silently lost those bits — the one outcome this contract
+        forbids."""
+        group = _supplementary_group()
+        if group is None:
+            pytest.skip("no supplementary group available to change the gid to")
+        srv = make_server(workdir, read_write_access=True)
+        seed(workdir, "a.txt", "content\n")
+        target = workdir.container_path / "a.txt"
+        os.chown(target, os.getuid(), group)
+        os.chmod(target, 0o2755)
+        assert stat_module.S_IMODE(os.stat(target).st_mode) == 0o2755
+
+        edit(
+            srv,
+            "a.txt",
+            revision_of(srv, "a.txt"),
+            [{"old_text": "content", "new_text": "changed"}],
+        )
+
+        published = os.stat(target)
+        assert stat_module.S_IMODE(published.st_mode) == 0o2755
+        assert published.st_gid == group
+        assert target.read_text() == "changed\n"
+
+    def test_metadata_is_applied_ownership_then_mode_then_xattrs(
+        self, workdir, monkeypatch
+    ) -> None:
+        """The ordering is load-bearing, not cosmetic: chown must precede the
+        mode (see above) and xattrs must be copied last, so the replacement
+        ends up holding what the original held rather than what a chown left
+        behind."""
+        from serverfs_mcp import mutations
+
+        group = _supplementary_group()
+        if group is None:
+            pytest.skip("no supplementary group available to change the gid to")
+        seed(workdir, "a.txt", "content\n")
+        target = workdir.container_path / "a.txt"
+        try:
+            os.setxattr(target, "user.serverfs-order", b"x")
+        except OSError as exc:
+            if exc.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
+                pytest.skip("filesystem does not support user xattrs")
+            raise
+        os.chown(target, os.getuid(), group)
+
+        order: list[str] = []
+        for name in ("fchown", "fchmod", "setxattr"):
+            real = getattr(os, name)
+
+            def record(*args, _name=name, _real=real, **kwargs):
+                order.append(_name)
+                return _real(*args, **kwargs)
+
+            monkeypatch.setattr(os, name, record)
+
+        src_fd = os.open(target, os.O_RDONLY)
+        dst_fd = os.open(
+            workdir.container_path / ".serverfs-tmp-order",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        try:
+            mutations._preserve_metadata(src_fd, dst_fd, os.fstat(src_fd))
+        finally:
+            os.close(src_fd)
+            os.close(dst_fd)
+        assert order == ["fchown", "fchmod", "setxattr"]
+
 
 def _raise_eperm(*args, **kwargs):
     raise OSError(errno.EPERM, "Operation not permitted")
+
+
+def _supplementary_group() -> int | None:
+    """A group other than the primary one that this process may chgrp to.
+
+    ``fchown`` only runs when the replacement inode's owners differ from the
+    original's, so the gid must actually change for the ordering to matter.
+    """
+    for gid in os.getgroups():
+        if gid != os.getgid():
+            return gid
+    return None
 
 
 class TestEditBinaryContent:

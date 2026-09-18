@@ -31,6 +31,17 @@ MUTATION_TOOLS = [
 ]
 REVISION_TOOLS = ["edit_text_file", "delete_file", "delete_directory"]
 
+# Names inside the reserved internal namespace. The temp prefix covers the
+# atomic-publication artifacts; the sentinel is the workdir registry's own
+# marker (workdirs.DISABLED_SENTINEL), which startup reads from the host
+# layout — reaching it through a channel would be a startup denial of service.
+RESERVED_NAMES = [
+    ".serverfs-tmp-abc",
+    "sub/.serverfs-tmp-deep",
+    ".serverfs-disabled",
+    "sub/.serverfs-disabled",
+]
+
 
 def prepare(workdir, tool: str, path: str) -> None:
     """Make the target satisfy this tool's precondition."""
@@ -177,8 +188,9 @@ class TestRootProtection:
 
 
 class TestReservedNamespace:
-    """§103: ``.serverfs-tmp-*`` is invisible and immutable on every
-    channel, even in the most permissive configuration."""
+    """§103: the reserved internal namespace — ``.serverfs-tmp-*`` and the
+    disabled-slot sentinel — is invisible and immutable on every channel,
+    even in the most permissive configuration."""
 
     def permissive(self, workdir):
         return make_server(
@@ -187,11 +199,11 @@ class TestReservedNamespace:
 
     def seed(self, workdir) -> None:
         (workdir.container_path / "visible.txt").write_text("NEEDLE\n")
-        (workdir.container_path / ".serverfs-tmp-abc").write_text("NEEDLE\n")
         os.mkdir(workdir.container_path / "sub")
-        (workdir.container_path / "sub" / ".serverfs-tmp-deep").write_text("NEEDLE\n")
+        for name in RESERVED_NAMES:
+            (workdir.container_path / name).write_text("NEEDLE\n")
 
-    @pytest.mark.parametrize("name", [".serverfs-tmp-abc", "sub/.serverfs-tmp-deep"])
+    @pytest.mark.parametrize("name", RESERVED_NAMES)
     def test_not_listed(self, workdir, name) -> None:
         srv = self.permissive(workdir)
         self.seed(workdir)
@@ -199,7 +211,7 @@ class TestReservedNamespace:
         entries = call_success(srv, "list_directory", {"workdir": "test", "path": parent})[
             "entries"
         ]
-        assert all(not e["name"].startswith(".serverfs-tmp-") for e in entries)
+        assert all(e["name"] != os.path.basename(name) for e in entries)
         assert any(e["name"] == "visible.txt" for e in entries) if not parent else True
 
     def test_not_found_by_find_files(self, workdir) -> None:
@@ -214,15 +226,14 @@ class TestReservedNamespace:
         data = call_success(srv, "search_text", {"workdir": "test", "query": "NEEDLE"})
         assert [m["path"] for m in data["matches"]] == ["visible.txt"]
 
-    def test_search_root_inside_the_namespace(self, workdir) -> None:
+    @pytest.mark.parametrize("name", [".serverfs-tmp-abc", ".serverfs-disabled"])
+    def test_search_root_inside_the_namespace(self, workdir, name) -> None:
         srv = self.permissive(workdir)
         self.seed(workdir)
-        msg = call_error(
-            srv, "search_text", {"workdir": "test", "path": ".serverfs-tmp-abc", "query": "NEEDLE"}
-        )
+        msg = call_error(srv, "search_text", {"workdir": "test", "path": name, "query": "NEEDLE"})
         assert error_code(msg) == "RESERVED_PATH"
 
-    @pytest.mark.parametrize("name", [".serverfs-tmp-abc", "sub/.serverfs-tmp-deep"])
+    @pytest.mark.parametrize("name", RESERVED_NAMES)
     def test_not_readable_or_stat_able(self, workdir, name) -> None:
         srv = self.permissive(workdir)
         self.seed(workdir)
@@ -243,11 +254,11 @@ class TestReservedNamespace:
 
         assert "RESERVED_PATH" in asyncio.run(_read())
 
+    @pytest.mark.parametrize("target", RESERVED_NAMES)
     @pytest.mark.parametrize("tool", MUTATION_TOOLS)
-    def test_not_mutable(self, workdir, tool) -> None:
+    def test_not_mutable(self, workdir, tool, target) -> None:
         srv = self.permissive(workdir)
         self.seed(workdir)
-        target = ".serverfs-tmp-abc"
         args = {
             "workdir": "test",
             "path": target,
@@ -275,6 +286,21 @@ class TestReservedNamespace:
         self.seed(workdir)
         data = call_success(srv, "search_text", {"workdir": "test", "query": "NEEDLE"})
         assert all(".serverfs-tmp" not in m["path"] for m in data["matches"])
+        assert all(".serverfs-disabled" not in m["path"] for m in data["matches"])
+
+    @pytest.mark.parametrize("tool", ["create_text_file", "create_directory"])
+    @pytest.mark.parametrize("name", [".serverfs-disabled", "sub/.serverfs-disabled"])
+    def test_absent_reserved_names_cannot_be_created(self, workdir, tool, name) -> None:
+        """The reservation is a *would-be* path rule, not just a check on
+        what exists: planting the sentinel would stop the next startup."""
+        srv = self.permissive(workdir)
+        (workdir.container_path / "visible.txt").write_text("NEEDLE\n")
+        (workdir.container_path / "sub").mkdir()
+        args = {"workdir": "test", "path": name}
+        args["content"] = "x" if tool == "create_text_file" else None
+        msg = call_error(srv, tool, {k: v for k, v in args.items() if v is not None})
+        assert error_code(msg) == "RESERVED_PATH"
+        assert not (workdir.container_path / name).exists()
 
 
 class TestPolicyMatrix:

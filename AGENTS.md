@@ -26,7 +26,10 @@ calls the tool.
 
 Before declaring anything done, the full gate in `README.md` → Development passes:
 `uv sync --frozen`, `ruff check`, `ruff format --check`, `pytest`,
-`docker compose config`, `docker compose build`. All six, actually executed.
+`docker compose config`, `SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`.
+All six, actually executed. The scratch tag is not decoration: `image` doubles as
+the tag Compose builds to, so an untagged build repoints whatever `SERVERFS_IMAGE`
+names — see Traps.
 
 Then report: files changed, how each issue was fixed, regression tests added, pytest
 counts, and residual limitations. Anything not executed is `Not verified` — never
@@ -45,10 +48,14 @@ a defect, not a shortcut.
 
 `allow_hidden` and the credential deny rules are independent axes; all four
 combinations are legal configurations and are covered by tests. Keep them uncoupled.
-The reserved namespace (`RESERVED_TEMP_PREFIX`, `.serverfs-tmp-*`) is a third axis that
-is **not** configurable: it rides inside `DenyPolicy.is_denied` so entry filtering and
-path resolution cannot drift apart, and `resolve_workdir_path` raises `RESERVED_PATH`
-ahead of the deny check so the agent gets the precise code.
+The reserved names are a third axis that is **not** configurable: they ride inside
+`DenyPolicy.is_denied` so entry filtering and path resolution cannot drift apart, and
+`resolve_workdir_path` raises `RESERVED_PATH` ahead of the deny check so the agent gets
+the precise code. Two names are reserved — `.serverfs-tmp-*` (`RESERVED_TEMP_PREFIX`)
+and the workdir registry's disabled-slot sentinel `.serverfs-disabled`
+(`workdirs.DISABLED_SENTINEL`, enforced centrally by `paths.is_reserved_component`).
+Adding a third internal name means adding it *there*, in `RESERVED_RG_EXCLUDES` and in
+the reserved-channel tests — not at a call site.
 
 Tracing a deny bypass means following the *full* workdir-relative path on every
 channel. A policy decision made against a search root's own relative path is a
@@ -95,16 +102,16 @@ before the commit.
 Request-derived traversal is FD-based: each component is opened relative to an
 already-open directory descriptor — `dir_fd` plus `O_NOFOLLOW`, and `O_DIRECTORY` for
 directories — and the final descriptor is `fstat`ed. `fdio.py` holds the shared
-primitives and is the security boundary; `find_files` and the private `_root_fd`
-helpers in `tools.py` and `filesystem.py` open descriptors of their own and must keep
-the same semantics. No request-derived path travels as `lstat`-then-`open(path)`: that
-gap is the TOCTOU window this design closes.
+primitives and is the security boundary. No request-derived path travels as
+`lstat`-then-`open(path)`: that gap is the TOCTOU window this design closes.
 
 The workdir root is the one path opened by name — the trusted anchor from
 configuration, carrying no request input, which is why the walk starts there.
-`fdio.open_root` is that operation, error-mapped like the rest of `fdio`, and it
-currently has no callers: the same two modules re-implement it without the mapping.
-Prefer converging on the shared primitive over adding a third copy.
+Every root open goes through `fdio.open_root` / its context-managed wrapper
+`fdio.root_fd`: `tools.py`, `filesystem.py` and `mutations.py` each keep a thin
+`_root_fd` helper that delegates there, and `find_files` calls `open_root`
+directly only because it owns the descriptor across a whole walk. Do not add a
+fourth root-open implementation, and do not bypass the error mapping in `fdio`.
 
 ## Search
 
@@ -178,6 +185,12 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   a throwaway stack under a separate compose project name rather than against it.
 - Rebuilding the image is not deploying it: the running container keeps the old
   image until `docker compose up -d` recreates it.
+- `docker compose build` tags the result `SERVERFS_IMAGE`, which in a production
+  `.env` is a pinned release (`ghcr.io/ntlx/serverfs_mcp:0.1.1`). A bare build
+  therefore shadows that release locally: the running container is unaffected,
+  but the next `up -d` starts v0.2 code under a v0.1.1 tag. Always build under a
+  scratch tag (`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`). Upgrading
+  a deployment is `pull` + `up -d`, never `build`.
 
 ## Release
 
