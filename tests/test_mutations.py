@@ -455,6 +455,88 @@ class TestMutationAudit:
             assert events[0]["success"] is True, tool
 
 
+class TestDurabilityReporting:
+    """A directory fsync failure lands AFTER the entry is visible to readers.
+    The mutation must be reported as what it is — done — with a warning for
+    the operator instead of an error the agent would misread as "nothing
+    happened"."""
+
+    @pytest.fixture()
+    def failing_fsync(self, monkeypatch):
+        import errno as errno_module
+
+        from serverfs_mcp import fdio
+        from serverfs_mcp import logging as jsonlog
+
+        warnings: list[dict] = []
+
+        def boom(fd):
+            raise OSError(errno_module.EIO, "Input/output error")
+
+        monkeypatch.setattr(fdio, "fsync_directory", boom)
+        monkeypatch.setattr(
+            jsonlog, "warning", lambda event, **fields: warnings.append({"event": event, **fields})
+        )
+        return warnings
+
+    def test_create_reports_success(self, workdir, failing_fsync) -> None:
+        srv = make_server(workdir, read_write_access=True)
+        data = call_success(
+            srv, "create_text_file", {"workdir": "test", "path": "a.txt", "content": "content\n"}
+        )
+        assert data["created"] is True
+        assert (workdir.container_path / "a.txt").read_text() == "content\n"
+        assert [w["event"] for w in failing_fsync] == ["directory_fsync_failed"]
+        assert "a.txt" not in json.dumps(failing_fsync)
+
+    def test_edit_reports_success(self, workdir, failing_fsync) -> None:
+        srv = make_server(workdir, read_write_access=True)
+        (workdir.container_path / "a.txt").write_text("old\n")
+        revision = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
+        data = call_success(
+            srv,
+            "edit_text_file",
+            {
+                "workdir": "test",
+                "path": "a.txt",
+                "expected_revision": revision,
+                "edits": [{"old_text": "old", "new_text": "new"}],
+            },
+        )
+        assert data["edited"] is True
+        assert (workdir.container_path / "a.txt").read_text() == "new\n"
+
+    def test_delete_reports_success(self, workdir, failing_fsync) -> None:
+        srv = make_server(workdir, read_write_access=True)
+        (workdir.container_path / "a.txt").write_text("x\n")
+        revision = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
+        data = call_success(
+            srv,
+            "delete_file",
+            {"workdir": "test", "path": "a.txt", "expected_revision": revision},
+        )
+        assert data["deleted"] is True
+        assert not (workdir.container_path / "a.txt").exists()
+        assert [w["event"] for w in failing_fsync] == ["directory_fsync_failed"]
+
+    def test_fsync_failure_before_publish_is_still_fatal(self, workdir, monkeypatch) -> None:
+        """The temp file's own fsync happens before the commit: failing there
+        must abort, not silently publish unflushed content."""
+        import errno as errno_module
+
+        srv = make_server(workdir, read_write_access=True)
+
+        def boom(fd):
+            raise OSError(errno_module.EIO, "Input/output error")
+
+        monkeypatch.setattr(os, "fsync", boom)
+        msg = call_error(
+            srv, "create_text_file", {"workdir": "test", "path": "a.txt", "content": "x"}
+        )
+        assert error_code(msg) == "MUTATION_IO_ERROR"
+        assert list(workdir.container_path.iterdir()) == []
+
+
 class TestNoInternalLeak:
     """§105: mutation errors carry a code and the agent's own path, never a
     host path, container path, temp name or payload."""

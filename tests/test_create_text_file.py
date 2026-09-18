@@ -169,6 +169,22 @@ class TestCreateConflict:
         msg = call_error(srv, "create_text_file", {"workdir": "test", "path": "", "content": "x"})
         assert error_code(msg) == "ROOT_MUTATION_NOT_ALLOWED"
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores permission bits")
+    def test_parent_without_read_permission(self, workdir) -> None:
+        """The FD walk needs read permission on every parent component, so a
+        write-only directory fails closed rather than being traversed."""
+        srv = make_server(workdir, read_write_access=True)
+        locked = workdir.container_path / "locked"
+        locked.mkdir()
+        os.chmod(locked, 0o300)
+        try:
+            msg = call_error(
+                srv, "create_text_file", {"workdir": "test", "path": "locked/x.txt", "content": "x"}
+            )
+            assert error_code(msg) == "ACCESS_DENIED"
+        finally:
+            os.chmod(locked, 0o700)
+
     @pytest.mark.parametrize("path", ["../escape.txt", "/etc/escape.txt", "~/escape.txt"])
     def test_paths_outside_the_workdir(self, workdir, path) -> None:
         srv = make_server(workdir, read_write_access=True)

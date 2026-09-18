@@ -205,6 +205,19 @@ non-root container), and xattrs are copied wholesale; any unreproducible piece r
 `METADATA_PRESERVATION_FAILED` with the original file untouched. Losing a mode bit, an ACL
 or a SELinux label silently would be worse than a failed edit.
 
+Durability has two different failure semantics on purpose. The temp file's own `fsync`
+runs *before* publication, so a failure there aborts the mutation with `MUTATION_IO_ERROR`
+and nothing is published. The directory `fsync` runs *after* publication, when the entry
+is already visible to every reader: a failure there means "not durable across a crash",
+not "nothing happened", so it is logged as `directory_fsync_failed` for the operator and
+the tool still reports the mutation it actually performed. Reporting a failed call for a
+committed change would contradict the filesystem and invite a pointless retry.
+
+The text-file contract is enforced on the *result* too, not only on the source:
+`edit_text_file` rejects `old_text`/`new_text` containing `U+0000`
+(`BINARY_CONTENT_NOT_ALLOWED`) exactly as `create_text_file` rejects it in `content`, so
+no mutation channel can turn a text file into one that every channel then refuses to read.
+
 Audit: every mutation emits one `tool_call` event with tool, workdir, relative path,
 duration, success, `error_code`, and per-tool counters (`bytes_written`, `edit_count`,
 `bytes_before`/`bytes_after`, `bytes_deleted`, `revision`). Content, `old_text`/`new_text`

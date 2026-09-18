@@ -75,6 +75,13 @@ mutation takes the process-wide `mutation_lock()`; reads never do.
   holding the verified FD. `delete_file` refuses a file the process cannot read —
   directory write permission alone must not delete it.
 
+Fatal versus logged: everything before the commit (temp `fsync`, metadata copy, the
+final revision re-check) aborts the mutation; the directory `fsync` after the commit is
+logged as `directory_fsync_failed` and the call still reports the mutation, because the
+entry is already visible. The same reasoning applies to the text-file contract: the NUL
+gate lives on both sides (`content` for create, `old_text`/`new_text` for edit) so no
+mutation channel can produce a file every read channel then refuses.
+
 Revision tokens are `v1:<16 hex>` of a SHA-256 over the stat tuple. Two rules make them
 usable: compute them from the same object the caller will later stat, and derive them
 from the whole tuple (size, mtime_ns, ctime_ns, nlink) so metadata changes are visible.

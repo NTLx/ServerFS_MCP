@@ -46,6 +46,7 @@ import threading
 from collections.abc import Iterator
 
 from . import fdio
+from . import logging as jsonlog
 from .config import Settings
 from .fdio import stat_at, unlink_at, walk_parent_dirs
 from .models import (
@@ -258,6 +259,21 @@ def _utf8_size(text: str) -> int:
         raise BinaryContentError("text is not valid UTF-8") from None
 
 
+def _persist_directory(parent_fd: int) -> None:
+    """Persist a committed directory entry (create/link/replace/unlink).
+
+    Every caller reaches this AFTER the mutation is visible to readers, so a
+    failed fsync means "not durable across a crash", not "nothing happened".
+    Failing the tool call here would contradict what the filesystem already
+    shows and invite a pointless retry, so the operator gets a warning and
+    the agent gets the truth about the mutation.
+    """
+    try:
+        fdio.fsync_directory(parent_fd)
+    except OSError as exc:
+        jsonlog.warning("directory_fsync_failed", errno=exc.errno)
+
+
 def _decode_text(data: bytes) -> tuple[str, bool]:
     """Decode a text file, hiding the physical BOM from the caller."""
     has_bom = data.startswith(_UTF8_BOM)
@@ -358,7 +374,7 @@ def _publish_new_file(parent_fd: int, name: str, data: bytes) -> str:
         # it removes the debris. Best-effort by design.
         unlink_at(parent_fd, temp_name)
         os.close(temp_fd)
-    fdio.fsync_directory(parent_fd)
+    _persist_directory(parent_fd)
     return revision
 
 
@@ -395,7 +411,7 @@ def create_directory(resolved: ResolvedPath) -> CreateDirectoryResult:
                 os.mkdir(name, 0o777, dir_fd=parent_fd)
             except FileExistsError:
                 raise PathAlreadyExistsError() from None
-            fdio.fsync_directory(parent_fd)
+            _persist_directory(parent_fd)
             revision = compute_revision(stat_at(parent_fd, name))
     return CreateDirectoryResult(
         workdir=resolved.workdir.alias,
@@ -431,6 +447,12 @@ def _validate_edits(edits: list[TextEdit], settings: Settings) -> None:
         raise EditConflictError("no edits supplied")
     if len(edits) > settings.max_edits_per_call:
         raise TooManyEditsError(f"at most {settings.max_edits_per_call} edits per call")
+    for edit in edits:
+        # The source file is verified NUL-free, so a request that carries no
+        # NUL cannot produce a binary result — and edit must not become the
+        # one way to create a file no text channel can read again.
+        if "\x00" in edit.old_text or "\x00" in edit.new_text:
+            raise BinaryContentError()
     total = sum(_utf8_size(e.old_text) + _utf8_size(e.new_text) for e in edits)
     if total > settings.max_write_bytes:
         raise WriteTooLargeError(f"edits exceed {settings.max_write_bytes} bytes")
@@ -461,7 +483,7 @@ def _replace_at(
     finally:
         unlink_at(parent_fd, temp_name)
         os.close(temp_fd)
-    fdio.fsync_directory(parent_fd)
+    _persist_directory(parent_fd)
     return revision
 
 
@@ -523,7 +545,7 @@ def delete_file(resolved: ResolvedPath, expected_revision: str) -> DeleteFileRes
                 # unlink by NAME while still holding the verified FD: the
                 # object we checked is the object whose directory entry goes
                 os.unlink(name, dir_fd=parent_fd)
-            fdio.fsync_directory(parent_fd)
+            _persist_directory(parent_fd)
     return DeleteFileResult(
         workdir=resolved.workdir.alias,
         path=resolved.rel_path,
@@ -556,7 +578,7 @@ def delete_directory(resolved: ResolvedPath, expected_revision: str) -> DeleteDi
                         # something appeared after the emptiness check
                         raise DirectoryNotEmptyError() from None
                     raise
-            fdio.fsync_directory(parent_fd)
+            _persist_directory(parent_fd)
     return DeleteDirectoryResult(
         workdir=resolved.workdir.alias,
         path=resolved.rel_path,

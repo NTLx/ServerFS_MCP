@@ -847,6 +847,69 @@ def _raise_eperm(*args, **kwargs):
     raise OSError(errno.EPERM, "Operation not permitted")
 
 
+class TestEditBinaryContent:
+    """The text-file contract holds for the *result* too: edit must not be a
+    back door to creating binary content that no channel can read again."""
+
+    def test_nul_in_new_text_is_refused(self, workdir) -> None:
+        srv = make_server(workdir, read_write_access=True)
+        seed(workdir, "a.txt", "hello world\n")
+        msg = call_error(
+            srv,
+            "edit_text_file",
+            {
+                "workdir": "test",
+                "path": "a.txt",
+                "expected_revision": revision_of(srv, "a.txt"),
+                "edits": [{"old_text": "hello", "new_text": "he\x00llo"}],
+            },
+        )
+        assert error_code(msg) == "BINARY_CONTENT_NOT_ALLOWED"
+        assert (workdir.container_path / "a.txt").read_bytes() == b"hello world\n"
+
+    def test_nul_in_old_text_is_refused(self, workdir) -> None:
+        srv = make_server(workdir, read_write_access=True)
+        seed(workdir, "a.txt", "hello world\n")
+        msg = call_error(
+            srv,
+            "edit_text_file",
+            {
+                "workdir": "test",
+                "path": "a.txt",
+                "expected_revision": revision_of(srv, "a.txt"),
+                "edits": [{"old_text": "he\x00llo", "new_text": "x"}],
+            },
+        )
+        assert error_code(msg) == "BINARY_CONTENT_NOT_ALLOWED"
+
+    def test_file_stays_readable_after_a_rejected_binary_edit(self, workdir) -> None:
+        srv = make_server(workdir, read_write_access=True)
+        seed(workdir, "a.txt", "hello world\n")
+        call_error(
+            srv,
+            "edit_text_file",
+            {
+                "workdir": "test",
+                "path": "a.txt",
+                "expected_revision": revision_of(srv, "a.txt"),
+                "edits": [{"old_text": "hello", "new_text": "he\x00llo"}],
+            },
+        )
+        read = call_success(srv, "read_text_file", {"workdir": "test", "path": "a.txt"})
+        assert read["content"] == "hello world\n"
+
+    def test_a_clean_edit_afterwards_still_works(self, workdir) -> None:
+        srv = make_server(workdir, read_write_access=True)
+        seed(workdir, "a.txt", "hello world\n")
+        edit(
+            srv,
+            "a.txt",
+            revision_of(srv, "a.txt"),
+            [{"old_text": "hello", "new_text": "goodbye"}],
+        )
+        assert (workdir.container_path / "a.txt").read_bytes() == b"goodbye world\n"
+
+
 class TestEditAtomicity:
     def test_replace_failure_leaves_the_original_untouched(self, workdir, monkeypatch) -> None:
         srv = make_server(workdir, read_write_access=True)

@@ -12,7 +12,7 @@ import os
 import re
 import time
 
-from helpers import call_success, make_server, read_write
+from helpers import call_error, call_success, error_code, make_server, read_write
 
 REVISION_RE = re.compile(r"^v1:[0-9a-f]{16}$")
 
@@ -202,6 +202,37 @@ class TestRevisionOpacity:
         a = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})
         b = call_success(srv, "stat_file", {"workdir": "test", "path": "b.txt"})
         assert a["revision"] != b["revision"]
+
+
+class TestFileChangedDuringRead:
+    """A read must never return content whose revision does not describe it."""
+
+    def test_read_detects_a_change_mid_read(self, workdir, monkeypatch) -> None:
+        """Simulated by making the second identity check disagree with the
+        first — the real trigger is an external write during the read."""
+        from serverfs_mcp import tools
+
+        srv = make_server(workdir)
+        (workdir.container_path / "a.txt").write_text("content\n")
+        real = tools.revision_of
+        calls = {"n": 0}
+
+        def flaky(st):
+            calls["n"] += 1
+            return "v1:" + "0" * 16 if calls["n"] == 2 else real(st)
+
+        monkeypatch.setattr(tools, "revision_of", flaky)
+        msg = call_error(srv, "read_text_file", {"workdir": "test", "path": "a.txt"})
+        assert error_code(msg) == "FILE_CHANGED_DURING_READ"
+        assert calls["n"] == 2
+
+    def test_unchanged_file_is_not_flagged(self, workdir) -> None:
+        srv = make_server(workdir)
+        (workdir.container_path / "a.txt").write_text("content\n")
+        assert (
+            call_success(srv, "read_text_file", {"workdir": "test", "path": "a.txt"})["content"]
+            == "content\n"
+        )
 
 
 class TestRevisionForReadOnlyWorkdir:
