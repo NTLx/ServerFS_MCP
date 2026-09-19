@@ -118,6 +118,73 @@ def test_missing_or_non_directory_host_path_fails(tmp_path: Path) -> None:
         BridgeConfig.load(path)
 
 
+def test_codex_config_is_strict_and_fail_closed(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+
+    path = write_config(
+        tmp_path,
+        repo,
+        codex={
+            "enabled": True,
+            "autostart": False,
+            "codex_home": str(codex_home),
+            "codex_bin": "codex",
+            "request_timeout_seconds": 5,
+            "event_idle_timeout_seconds": 60,
+            "max_message_bytes": 4096,
+        },
+    )
+    config = BridgeConfig.load(path)
+    assert config.codex.enabled is True
+    assert config.codex.control_socket == (
+        codex_home / "app-server-control" / "app-server-control.sock"
+    )
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["codex"]["autostart"] = "false"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON boolean"):
+        BridgeConfig.load(path)
+
+    data["codex"]["autostart"] = False
+    data["codex"]["unexpected"] = True
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown codex field"):
+        BridgeConfig.load(path)
+
+
+def test_codex_allowlist_requires_enabled_runtime_and_workspace_write(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    path = write_config(tmp_path, repo, enable_fake_runtime=False)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["workdirs"][0]["agent_runtimes"] = ["codex"]
+    data["workdirs"][0]["agent_mode"] = "review"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="codex.enabled is false"):
+        BridgeConfig.load(path)
+
+    data["codex"] = {
+        "enabled": True,
+        "autostart": False,
+        "codex_home": str(codex_home),
+    }
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="requires agent_mode=workspace-write"):
+        BridgeConfig.load(path)
+
+    data["workdirs"][0]["agent_mode"] = "workspace-write"
+    data["workdirs"][0]["read_only"] = False
+    path.write_text(json.dumps(data), encoding="utf-8")
+    config = BridgeConfig.load(path)
+    assert config.policies.get("repo").mode is AgentMode.WORKSPACE_WRITE
+
+
 @pytest.mark.parametrize("field", ["allowed_peer_uid", "allowed_peer_gid"])
 def test_peer_credentials_do_not_coerce_or_accept_negative_values(
     tmp_path: Path, field: str

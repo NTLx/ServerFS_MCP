@@ -13,12 +13,14 @@ from ..models import RuntimeInfo
 EmitEvent = Callable[[str, dict[str, Any]], Awaitable[None]]
 RequestApproval = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 AskQuestion = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+AbandonInteraction = Callable[[], Awaitable[None]]
 
 
 @dataclass(frozen=True)
 class TaskContext:
     task_id: str
     workdir: str
+    workdir_root: Path
     cwd: Path
     profile: str
     prompt: str
@@ -26,6 +28,7 @@ class TaskContext:
     emit_event: EmitEvent
     request_approval: RequestApproval
     ask_question: AskQuestion
+    abandon_interaction: AbandonInteraction
 
 
 @dataclass(frozen=True)

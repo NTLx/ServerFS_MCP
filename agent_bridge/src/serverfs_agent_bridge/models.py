@@ -40,10 +40,9 @@ class AgentMode(StrEnum):
     WORKSPACE_WRITE = "workspace-write"
 
 
-# Phase A knows the provider names that the v0.3 configuration may mention, but
-# only ``fake`` has an implementation in this package.  Keeping the complete
-# configured-name allowlist here lets configuration fail on typos without
-# pretending that a future provider is available.
+# The v0.3 configuration validates provider names centrally. Phase A supplies
+# the deterministic ``fake`` runtime; Phase B adds Codex; Claude remains a
+# future Phase C runtime.
 KNOWN_RUNTIME_NAMES = frozenset({"fake", "codex", "claude"})
 
 

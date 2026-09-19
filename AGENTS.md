@@ -11,12 +11,18 @@ v0.1 baseline. Where current behaviour disagrees with a historical plan, README,
 and implementation win; where new v0.3 work is being implemented, `dev_plan_v0.3.md`
 defines the intended new contract unless the maintainer explicitly revises it.
 
-The `agent_bridge/` directory is currently **v0.3 Phase A development code only**. It is
-not part of the released ServerFS MCP package, is not wired into `compose.yml`, and must
-not be treated as production behavior. Phase A may implement only the provider-neutral
-Bridge core, fake adapter and tests. Do not add Codex/Claude integration or production
-Compose wiring until the corresponding rollout phase in `dev_plan_v0.3.md` is explicitly
-started.
+The `agent_bridge/` directory is **v0.3 development code**, not released behavior and
+not wired into `compose.yml`. Phase A (provider-neutral core + FakeAdapter) is frozen.
+Phase B is now active and may implement **Codex only**, using the official managed Codex
+App Server daemon behind the adapter boundary. Codex Phase B uses **native server-side
+Codex semantics**: choose the starting workdir, but do not inject sandbox, approval-policy,
+MCP/skill/plugin, web-feature or shell-environment overrides. Preserve the user's existing
+Codex configuration and relay native approval/question requests through the Bridge. Codex
+native mode currently requires the provider-neutral `workspace-write` profile only so
+the Bridge holds the workdir lease; do not pretend the Phase A `review` profile makes
+native Codex read-only. Do not add Claude integration, Agent MCP tools, production
+Compose/systemd wiring, or change the released v0.2 MCP surface in Phase B. Real provider
+behavior must be proven against an installed Codex daemon before Phase B is complete.
 `SERVERFS_DISABLE_DEFAULT_DENY` is one rule this project deliberately reversed, and v0.1's
 "read-only is a product property, not an option" was superseded by v0.2's per-workdir
 opt-in. This file carries what none of them does: the reasons behind the design, the traps
