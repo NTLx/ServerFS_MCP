@@ -631,10 +631,15 @@ class BridgeService:
 
     def _redact_text(self, workdir_alias: str, value: str) -> str:
         root = self.policies.get(workdir_alias).host_path
-        root_text = str(root)
-        if value == root_text:
-            return "."
-        return value.replace(f"{root_text}/", "<workdir>/").replace(root_text, "<workdir>")
+        if Path(value).is_absolute():
+            relative = redact_host_path(root, value)
+            # A bare workdir-relative path reads as an unrelated token in agent
+            # prose, so this channel keeps the `<workdir>/...` display form that
+            # _redact_embedded_workdir also produces.
+            if relative == "<outside-workdir>" or relative == ".":
+                return relative
+            return f"<workdir>/{relative}"
+        return _redact_embedded_workdir(root, value)
 
     def _redact_value(self, task_id: str, value: Any) -> Any:
         task = self.store.get_task(task_id)
@@ -644,10 +649,9 @@ class BridgeService:
     def _redact_value_for_root(self, root: Path, value: Any) -> Any:
         private_keys = {"native_session_id", "native_turn_id", "thread_id", "turn_id"}
         if isinstance(value, str):
-            if value == str(root) or value.startswith(f"{root}/"):
+            if Path(value).is_absolute():
                 return redact_host_path(root, value)
-            root_text = str(root)
-            return value.replace(f"{root_text}/", "<workdir>/").replace(root_text, "<workdir>")
+            return _redact_embedded_workdir(root, value)
         if isinstance(value, Path):
             return redact_host_path(root, value)
         if isinstance(value, dict):
@@ -733,6 +737,31 @@ class BridgeService:
             return await waiter
         finally:
             self._pending_waiters.pop(request_id, None)
+
+
+def _redact_embedded_workdir(root: Path, value: str) -> str:
+    root_text = str(root)
+    start = 0
+    chunks: list[str] = []
+    while True:
+        index = value.find(root_text, start)
+        if index < 0:
+            chunks.append(value[start:])
+            return "".join(chunks)
+
+        before = value[index - 1] if index > 0 else ""
+        end = index + len(root_text)
+        after = value[end] if end < len(value) else ""
+        before_ok = not before or before.isspace() or before in "'\"([{<,:="
+        after_ok = not after or after == "/" or after.isspace() or after in "'\")]}>,:;"
+
+        if before_ok and after_ok:
+            chunks.append(value[start:index])
+            chunks.append("<workdir>")
+            start = end
+        else:
+            chunks.append(value[start:end])
+            start = end
 
 
 def _validate_answers(
