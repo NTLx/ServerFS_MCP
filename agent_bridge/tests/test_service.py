@@ -385,6 +385,29 @@ async def test_pending_request_payload_and_final_response_redact_host_root(tmp_p
     assert final_task["final_response"] == "<workdir>/result.txt"
     assert str(root) not in str(final_task)
 
+    sibling = root.parent / f"{root.name}2" / "notes.txt"
+    sibling_task = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt=f"complete:{sibling}",
+    )
+    sibling_done = await wait_for_status(service, sibling_task["task_id"], "succeeded")
+    assert sibling_done["final_response"] == "<outside-workdir>"
+    assert str(root.parent) not in str(sibling_done)
+
+    prose = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt=f"complete:failed at {root}/trace.log",
+    )
+    prose_done = await wait_for_status(service, prose["task_id"], "succeeded")
+    assert prose_done["final_response"] == "failed at <workdir>/trace.log"
+    assert str(root) not in str(prose_done)
+
     service._append_event(
         final["task_id"],
         "provider.path",
