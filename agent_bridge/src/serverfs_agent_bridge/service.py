@@ -759,9 +759,33 @@ def _redact_embedded_workdir(root: Path, value: str) -> str:
             chunks.append(value[start:index])
             chunks.append("<workdir>")
             start = end
-        else:
-            chunks.append(value[start:end])
-            start = end
+            continue
+
+        if before_ok and after and not after.isspace():
+            # The token starts like the configured workdir but isn't that
+            # directory or one of its descendants (for example repo2 next to
+            # repo). Treat the whole absolute path token as outside rather
+            # than leaking the host root prefix in free text.
+            token_end = _embedded_path_token_end(value, end)
+            chunks.append(value[start:index])
+            chunks.append("<outside-workdir>")
+            start = token_end
+            continue
+
+        chunks.append(value[start:end])
+        start = end
+
+
+def _embedded_path_token_end(value: str, start: int) -> int:
+    terminators = set(" \t\r\n'\"()[]{}<>,;")
+    end = start
+    while end < len(value) and value[end] not in terminators:
+        end += 1
+    # Sentence punctuation abutting a path is ordinary prose, not part of the
+    # token, so keep it outside the redaction marker.
+    while end > start and value[end - 1] in ".!?:":
+        end -= 1
+    return end
 
 
 def _validate_answers(
