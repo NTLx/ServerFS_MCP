@@ -11,7 +11,11 @@ from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.leases import LeaseManager
 from serverfs_agent_bridge.models import AgentMode
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
-from serverfs_agent_bridge.service import BridgeLimits, BridgeService
+from serverfs_agent_bridge.service import (
+    BridgeLimits,
+    BridgeService,
+    _redact_embedded_workdir,
+)
 from serverfs_agent_bridge.store import TaskStore
 
 
@@ -408,6 +412,17 @@ async def test_pending_request_payload_and_final_response_redact_host_root(tmp_p
     assert prose_done["final_response"] == "failed at <workdir>/trace.log"
     assert str(root) not in str(prose_done)
 
+    sibling_prose = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt=f"complete:see {sibling} for details",
+    )
+    sibling_prose_done = await wait_for_status(service, sibling_prose["task_id"], "succeeded")
+    assert sibling_prose_done["final_response"] == "see <outside-workdir> for details"
+    assert str(root.parent) not in str(sibling_prose_done)
+
     service._append_event(
         final["task_id"],
         "provider.path",
@@ -428,3 +443,34 @@ async def test_pending_request_payload_and_final_response_redact_host_root(tmp_p
     ]
     assert str(root) not in str(provider_event)
     await service.close()
+
+
+def test_embedded_workdir_redaction_token_boundaries(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    sibling = tmp_path / "repo2"
+    sibling.mkdir()
+
+    def redact(value: str) -> str:
+        return _redact_embedded_workdir(root, value)
+
+    # Whole-token workdir references keep the display form.
+    assert redact(f"failed at {root}/trace.log") == "failed at <workdir>/trace.log"
+    assert redact(f"failed at {root}") == "failed at <workdir>"
+
+    # A sibling directory is a different path and must not leak the host root.
+    assert redact(f"see {sibling} for details") == "see <outside-workdir> for details"
+    assert redact(f"see '{sibling}/a.txt' now") == "see '<outside-workdir>' now"
+
+    # Several tokens in one string are resolved independently.
+    assert (
+        redact(f"first {root}/a.txt then {sibling}/b.txt")
+        == "first <workdir>/a.txt then <outside-workdir>"
+    )
+
+    # Punctuation abutting a path is prose and survives redaction.
+    assert redact(f"see {sibling}/notes.txt.") == "see <outside-workdir>."
+    assert redact(f"see {sibling}/notes.txt! ok") == "see <outside-workdir>! ok"
+
+    # Text without a workdir reference is returned unchanged.
+    assert redact("nothing to redact here") == "nothing to redact here"
