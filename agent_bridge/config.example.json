@@ -1,0 +1,18 @@
+{
+  "socket_path": "/tmp/serverfs-agent-bridge/bridge.sock",
+  "state_dir": "/tmp/serverfs-agent-bridge/state",
+  "lock_dir": "/tmp/serverfs-agent-bridge/locks",
+  "allowed_peer_uid": null,
+  "allowed_peer_gid": null,
+  "enable_fake_runtime": true,
+  "workdirs": [
+    {
+      "slot": 1,
+      "alias": "scratch",
+      "host_path": "/tmp/serverfs-agent-bridge/workdir",
+      "read_only": false,
+      "agent_mode": "workspace-write",
+      "agent_runtimes": ["fake"]
+    }
+  ]
+}

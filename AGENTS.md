@@ -1,10 +1,22 @@
 # AGENTS.md
 
-Read `README.md` for current behaviour, the security model, deployment and the release
-contract. Read `dev_plan_v0.2.md` for the current design baseline: per-workdir read-write
-access and the controlled mutation tools. Read `dev_plan.md` as the original v0.1 design
-and implementation baseline — historical context, not current requirements. Where they
-disagree, the README, the tests and the implementation win;
+Read `README.md` for the currently released behaviour, security model, deployment and
+release contract. Read `dev_plan_v0.3.md` for the next-version design baseline: the
+optional Agent Bridge, provider-neutral long-running task model, Codex App Server mapping,
+Claude Agent SDK mapping, human approvals/questions and cross-process workdir leases.
+`dev_plan_v0.3.md` is design intent, not shipped behaviour: do not rewrite README or
+existing v0.2 code as though Agent Bridge features already exist. Read `dev_plan_v0.2.md`
+for the released v0.2 filesystem-mutation baseline, and `dev_plan.md` for the original
+v0.1 baseline. Where current behaviour disagrees with a historical plan, README, tests
+and implementation win; where new v0.3 work is being implemented, `dev_plan_v0.3.md`
+defines the intended new contract unless the maintainer explicitly revises it.
+
+The `agent_bridge/` directory is currently **v0.3 Phase A development code only**. It is
+not part of the released ServerFS MCP package, is not wired into `compose.yml`, and must
+not be treated as production behavior. Phase A may implement only the provider-neutral
+Bridge core, fake adapter and tests. Do not add Codex/Claude integration or production
+Compose wiring until the corresponding rollout phase in `dev_plan_v0.3.md` is explicitly
+started.
 `SERVERFS_DISABLE_DEFAULT_DENY` is one rule this project deliberately reversed, and v0.1's
 "read-only is a product property, not an option" was superseded by v0.2's per-workdir
 opt-in. This file carries what none of them does: the reasons behind the design, the traps
