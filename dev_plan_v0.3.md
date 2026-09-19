@@ -251,67 +251,78 @@ WORKDIR_02_AGENT_RUNTIMES=codex,claude
 Rules:
 
 - `disabled`: no agent task may be submitted.
-- `review`: provider is constrained to a read-only ceiling.
-- `workspace-write`: provider may modify this workdir under the interactive approval
-  model below.
+- `review` remains a provider-neutral Phase A profile for adapters that can honestly
+  enforce read-only execution.
+- `workspace-write` means the delegated agent may mutate files, so the Bridge holds the
+  cross-process workdir lease for the active turn.
 - `workspace-write` requires `WORKDIR_XX_READ_ONLY=false`; configuration mismatch is
   a startup error.
 - runtime names are strict allowlist values; unknown names fail configuration.
 - MCP callers cannot request a runtime not allowlisted on that workdir.
+- **Codex Phase B native mode accepts only `workspace-write`**. This is a scheduling
+  and lease declaration, not a Codex sandbox override.
 
-No v0.3 public profile provides unrestricted host access.
+## 8. Provider-native execution policy
 
-## 8. Permission ceiling vs provider permission prompts
+For Codex Phase B, ServerFS deliberately does **not** redefine the user's Codex execution
+environment.
 
-The ServerFS profile is a **hard ceiling**. Provider-native approval is a second,
-narrower layer.
+The selected ServerFS workdir determines:
 
-A provider approval can never grant more than the ServerFS profile allows.
+- which administrator-approved workdir may be used to start a Codex task;
+- the initial `cwd` passed to Codex;
+- which workdir lease ServerFS holds while that Codex turn is active.
 
-Examples:
+It is **not** a Codex filesystem/network sandbox boundary.
 
-- `review` + provider asks to write -> Bridge denies without prompting the user.
-- `workspace-write` + provider asks for workdir-local write -> may proceed according
-  to provider/Bridge policy.
-- provider asks for filesystem access outside the configured workdir -> deny.
-- provider asks for network access -> may be surfaced to ChatGPT if enabled by policy.
-- provider asks for an unrestricted/bypass mode -> deny in v0.3.
+ServerFS does not override, disable or synthesize Codex:
 
-ServerFS may restrict a provider more than its native configuration; it must never make
-the provider less restrictive than the configured ServerFS ceiling.
+- sandbox mode;
+- approval policy;
+- MCP servers;
+- skills/plugins/apps;
+- web/network features;
+- shell environment policy;
+- user/project Codex configuration.
 
-## 9. Default permission behavior
+Codex therefore behaves as closely as practical to the same server user's direct Codex
+usage. Its existing configuration, project trust, authentication and provider-level
+permissions remain authoritative.
 
-Do not use `bypassPermissions`, `danger-full-access`, or equivalent by default.
+If Codex itself emits an approval or user-input request, the Bridge relays that native
+interaction to ChatGPT and returns the user's decision. ServerFS does not silently deny
+the request merely because it refers to network access or a path outside the selected
+workdir.
 
-Recommended initial mapping:
+This is an intentional product boundary:
 
-### review
+> ServerFS controls **whether and where delegation starts**. Codex controls **what its
+> configured runtime is allowed to do after delegation starts**.
 
-Codex:
-- read-only sandbox
-- no write escalation beyond profile
+The workdir lease remains necessary because native Codex may modify files even when
+ServerFS itself is not performing a mutation.
 
-Claude:
-- `permission_mode="plan"` or a tested equivalent read-only configuration
-- writes denied by Bridge policy
+## 9. Codex native-mode behavior
 
-### workspace-write
+Phase B should preserve the familiar server-side Codex environment:
 
-Codex:
-- `workspaceWrite` sandbox
-- provider approval requests preserved and bridged
+- connect to the user's existing official managed App Server daemon;
+- pass the selected `cwd` and user prompt;
+- omit per-thread/per-turn sandbox overrides;
+- omit per-thread/per-turn approval-policy overrides;
+- omit config overrides that disable MCPs, skills, plugins, web search or shell features;
+- do not rewrite Codex config files;
+- do not copy provider credentials into ServerFS;
+- preserve Codex-native approval/question behavior through the Bridge.
 
-Claude:
-- start with `permission_mode="default"`
-- `can_use_tool` handles ask-path operations
-- Bridge may auto-allow narrowly classified workdir-local safe edits
-- destructive filesystem changes, shell escalation, network, or ambiguous operations
-  remain interactive
+`codex.autostart` defaults to false. This is preferred for native-mode predictability
+because the already-running official daemon uses the environment inherited when that
+daemon was started. If an administrator explicitly enables autostart, the Bridge may call
+only the official idempotent daemon start lifecycle command and must document that the
+daemon then inherits the Bridge service environment.
 
-Do not use Claude `acceptEdits` blindly as the ServerFS policy implementation:
-officially it also auto-approves filesystem commands such as `rm`, `rmdir`, `mv`
-and `cp` inside the working directory. The Bridge must keep its own ceiling/classifier.
+Claude Phase C may make a separate provider-specific choice; do not force Codex's native
+mode semantics onto Claude before its official SDK behavior is evaluated.
 
 ## 10. Public MCP task model
 
@@ -548,7 +559,7 @@ Rules:
 - never modify global Codex/Claude config files
 - no permanent approval in v0.3
 - no Codex exec-policy amendment exposure in v0.3
-- requested permission subsets are bounded by the ServerFS workdir/profile ceiling
+- provider adapters may apply provider-specific limits only when that provider's phase explicitly defines them; Codex Phase B native mode does not impose an additional ServerFS permission ceiling
 
 ### 13.6 answer_agent_question
 
@@ -719,8 +730,12 @@ Provider-native absolute paths must be normalized:
 
 - paths under the selected workdir -> workdir-relative paths
 - configured workdir root itself -> "."
-- paths outside the selected workdir -> do not disclose the raw path; the operation is
-  outside the v0.3 filesystem ceiling and is denied
+- paths outside the selected workdir -> display `<outside-workdir>` rather than the raw
+  host path
+
+This redaction is an MCP information-disclosure rule only. It does not prevent native
+Codex from requesting or using such a path if Codex's own configuration and the user's
+approval allow it.
 
 Codex `cwd`, `grantRoot`, and permission path fields must not leak the host mapping.
 
@@ -734,12 +749,14 @@ prefixes from display strings.
 ```text
 thread/start
   cwd = resolved host workdir + relative cwd
-  sandbox = profile mapping
   serviceName = "serverfs-agent-bridge"
+  # no sandbox / approval / config override
 
 turn/start
   threadId
+  cwd
   user input = task prompt
+  # no sandbox / approval / config override
 ```
 
 Persist:
@@ -825,12 +842,14 @@ item/permissions/requestApproval
 
 The adapter:
 
-1. normalizes requested filesystem/network permissions
-2. removes/denies anything outside the ServerFS profile ceiling
-3. exposes the remaining requested permission IDs
-4. maps `approve_once` to turn scope
-5. maps `approve_session` to session scope
-6. returns only the granted subset to Codex
+1. preserves the native Codex permission request as provider data;
+2. exposes its top-level permission categories as selectable permission IDs;
+3. sends the request to ChatGPT without imposing an additional ServerFS permission
+   ceiling;
+4. maps `approve_once` to turn scope;
+5. maps `approve_session` to session scope;
+6. returns either the user's selected permission categories or the full native request
+   when the user approves without narrowing the set.
 
 ### User input
 
@@ -847,7 +866,10 @@ mark the ServerFS request stale and reject a late response.
 
 ### Codex daemon lifecycle
 
-The adapter connects to the official control socket.
+The adapter connects to the official control socket using WebSocket-over-UDS, matching
+Codex's current remote app-server client implementation. On connection it performs the
+normal JSON-RPC `initialize` request followed by the `initialized` notification before
+issuing thread/turn requests.
 
 v0.3 should support explicit settings such as:
 
@@ -1022,6 +1044,12 @@ Rules:
 This intentionally serializes ServerFS mutations with a coding agent that may edit many
 files over a long turn.
 
+For Codex native mode, the lease covers only the selected ServerFS workdir slot. If the
+user's native Codex configuration permits the agent to access or modify paths outside
+that workdir, those external paths are not serialized by ServerFS. Administrators who
+need a stronger filesystem/network boundary should configure that boundary in Codex
+itself rather than expecting Agent Bridge to synthesize a second sandbox.
+
 ## 22. Bridge persistence
 
 Use SQLite in a private host state directory.
@@ -1064,7 +1092,6 @@ SERVERFS_AGENT_MAX_EVENT_BYTES=65536
 SERVERFS_AGENT_MAX_EVENTS_PER_TASK=10000
 SERVERFS_AGENT_MAX_ACTIVE_TASKS=4
 SERVERFS_AGENT_TASK_RETENTION_HOURS=168
-SERVERFS_AGENT_MAX_RUN_SECONDS=21600
 ```
 
 Values are implementation defaults to validate during development, not promises that may
@@ -1226,8 +1253,14 @@ Use `uv` for the Bridge environment.
 
 Claude adapter depends on the official `claude-agent-sdk`.
 
-Codex adapter should use Python stdlib JSON/async I/O against the official App Server
-socket rather than importing private Codex implementation packages.
+Codex adapter should connect to the official managed App Server control socket using the
+transport Codex itself currently uses for remote Unix-socket clients: **WebSocket frames
+over the Unix-domain socket**, with the WebSocket handshake URI `ws://localhost/rpc` and
+JSON-RPC messages inside text frames. Do not treat the daemon control socket as raw JSONL.
+The official Python Codex SDK currently launches its own stdio app-server and does not
+expose a supported attach-to-existing-daemon transport, so Phase B uses a small
+WebSocket-over-UDS client behind `CodexAdapter`. Keep that transport isolated because the
+managed daemon remains experimental and may change upstream.
 
 Do not restructure the released v0.2 package into a monorepo workspace until the
 implementation proves that the extra complexity is useful.
@@ -1332,7 +1365,7 @@ Must test:
 - concurrent workdir mutation -> WORKDIR_BUSY
 - provider unavailable
 - workdir agent mode disabled
-- review profile cannot write
+- Codex native mode rejects the provider-neutral `review` profile rather than pretending to enforce read-only behavior
 
 ## 31. Rollout order
 
@@ -1390,9 +1423,9 @@ Do not release until all of the following are true:
 [ ] task polling survives separate MCP calls
 [ ] approval round-trip works through ChatGPT
 [ ] question round-trip works through ChatGPT
-[ ] outside-workdir filesystem escalation is denied
-[ ] no permanent approval is exposed
-[ ] no bypass/unrestricted public profile exists
+[ ] ServerFS injects no Codex sandbox/approval/config override in native mode
+[ ] Codex-native approval/question requests are faithfully bridged when App Server emits them
+[ ] ServerFS exposes no separate bypass/unrestricted Agent profile of its own
 [ ] cancel is tested
 [ ] continuation by prior task is tested
 [ ] workdir write lease is tested
@@ -1408,6 +1441,15 @@ The official managed App Server daemon is documented as experimental. Keep all d
 details behind the adapter and version/protocol probes.
 
 Do not assume a pending server request survives a Bridge connection loss until tested.
+
+Phase B intentionally supports the core Codex human-interaction requests needed for the
+initial delegation surface: command approval, file-change approval, permission approval
+and `item/tool/requestUserInput`. The user's existing Codex MCP servers remain enabled in
+native mode, but MCP-originated `mcpServer/elicitation/request` is not yet translated into
+ServerFS's provider-neutral interaction model. The Bridge must reject unsupported server
+requests promptly rather than leave the Codex turn hanging. Add MCP elicitation later as
+a separate interaction-surface extension instead of prematurely generalizing the Phase B
+question model to arbitrary MCP form/URL schemas.
 
 ### Claude
 
@@ -1452,11 +1494,13 @@ The invariant is:
 MCP caller
    -> explicit workdir
    -> explicit agent enablement
-   -> explicit provider/profile ceiling
+   -> provider-specific delegation mode
    -> ServerFS Agent Bridge
    -> official provider runtime
    -> human-in-the-loop when native runtime asks
 ```
 
-No provider feature may bypass the ServerFS workdir/profile ceiling merely because the
-native provider supports a broader mode.
+ServerFS always controls whether delegation is enabled and which configured workdir is
+selected. Execution restrictions after delegation are provider-specific: Codex Phase B
+intentionally preserves the server user's native Codex policy, while later providers may
+define stricter adapter-level ceilings when their official integration model requires it.

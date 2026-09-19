@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -19,14 +20,48 @@ _CONFIG_KEYS = frozenset(
         "allowed_peer_uid",
         "allowed_peer_gid",
         "enable_fake_runtime",
+        "codex",
         "workdirs",
     }
 )
 _WORKDIR_KEYS = frozenset(
     {"slot", "alias", "host_path", "read_only", "agent_mode", "agent_runtimes"}
 )
+_CODEX_KEYS = frozenset(
+    {
+        "enabled",
+        "autostart",
+        "codex_home",
+        "codex_bin",
+        "request_timeout_seconds",
+        "event_idle_timeout_seconds",
+        "max_message_bytes",
+    }
+)
 _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _MAX_WORKDIR_SLOTS = 16
+
+
+def _default_codex_home() -> Path:
+    configured = os.environ.get("CODEX_HOME")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".codex"
+
+
+@dataclass(frozen=True)
+class CodexSettings:
+    enabled: bool = False
+    autostart: bool = False
+    codex_home: Path = field(default_factory=_default_codex_home)
+    codex_bin: str = "codex"
+    request_timeout_seconds: float = 10.0
+    event_idle_timeout_seconds: float | None = None
+    max_message_bytes: int = 128 * 1024 * 1024
+
+    @property
+    def control_socket(self) -> Path:
+        return self.codex_home / "app-server-control" / "app-server-control.sock"
 
 
 @dataclass(frozen=True)
@@ -37,6 +72,7 @@ class BridgeConfig:
     allowed_peer_uid: int | None
     allowed_peer_gid: int | None
     enable_fake_runtime: bool
+    codex: CodexSettings
     policies: PolicyRegistry
 
     @classmethod
@@ -107,6 +143,16 @@ class BridgeConfig:
         if not enable_fake_runtime and any("fake" in policy.runtimes for policy in policies):
             raise ValueError("fake runtime is allowlisted but enable_fake_runtime is false")
 
+        codex = _load_codex_settings(data.get("codex"))
+        codex_policies = [policy for policy in policies if "codex" in policy.runtimes]
+        if not codex.enabled and codex_policies:
+            raise ValueError("codex runtime is allowlisted but codex.enabled is false")
+        if any(policy.mode is not AgentMode.WORKSPACE_WRITE for policy in codex_policies):
+            raise ValueError(
+                "codex native mode requires agent_mode=workspace-write "
+                "for every allowlisted workdir"
+            )
+
         return cls(
             socket_path=_config_path(
                 data.get("socket_path", "/run/serverfs-agent-bridge/bridge.sock"),
@@ -121,8 +167,67 @@ class BridgeConfig:
             allowed_peer_uid=_optional_int(data.get("allowed_peer_uid")),
             allowed_peer_gid=_optional_int(data.get("allowed_peer_gid")),
             enable_fake_runtime=enable_fake_runtime,
+            codex=codex,
             policies=PolicyRegistry(policies),
         )
+
+
+def _load_codex_settings(value: Any) -> CodexSettings:
+    if value is None:
+        return CodexSettings()
+    if not isinstance(value, dict):
+        raise ValueError("codex must be an object")
+    _reject_unknown_keys(value, _CODEX_KEYS, "codex")
+
+    enabled = _strict_bool(value.get("enabled", False), "codex.enabled")
+    autostart = _strict_bool(value.get("autostart", False), "codex.autostart")
+    if autostart and not enabled:
+        raise ValueError("codex.autostart requires codex.enabled=true")
+
+    home_value = value.get("codex_home", str(_default_codex_home()))
+    codex_home = _config_path(home_value, "codex.codex_home", expand_user=True)
+    if enabled:
+        try:
+            home_stat = codex_home.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError("codex.codex_home must exist when Codex is enabled") from exc
+        if not home_stat.is_dir():
+            raise ValueError("codex.codex_home must be a directory")
+        codex_home = home_stat
+
+    codex_bin = _strict_string(value.get("codex_bin", "codex"), "codex.codex_bin")
+    if any(char in codex_bin for char in ("\x00", "\n", "\r")):
+        raise ValueError("codex.codex_bin contains an invalid character")
+
+    request_timeout = _strict_positive_number(
+        value.get("request_timeout_seconds", 10.0),
+        "codex.request_timeout_seconds",
+    )
+    event_idle_timeout_value = value.get("event_idle_timeout_seconds")
+    event_idle_timeout = (
+        None
+        if event_idle_timeout_value is None
+        else _strict_positive_number(
+            event_idle_timeout_value,
+            "codex.event_idle_timeout_seconds",
+        )
+    )
+    max_message_bytes = _strict_int(
+        value.get("max_message_bytes", 128 * 1024 * 1024),
+        "codex.max_message_bytes",
+    )
+    if max_message_bytes < 1024:
+        raise ValueError("codex.max_message_bytes must be at least 1024")
+
+    return CodexSettings(
+        enabled=enabled,
+        autostart=autostart,
+        codex_home=codex_home,
+        codex_bin=codex_bin,
+        request_timeout_seconds=request_timeout,
+        event_idle_timeout_seconds=event_idle_timeout,
+        max_message_bytes=max_message_bytes,
+    )
 
 
 def _optional_int(value: Any) -> int | None:
@@ -155,6 +260,17 @@ def _strict_int(value: Any, label: str) -> int:
     if value < 0:
         raise ValueError(f"{label} must not be negative")
     return value
+
+
+def _strict_positive_number(value: Any, label: str) -> float:
+    import math
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a JSON number")
+    number = float(value)
+    if not math.isfinite(number) or not number > 0:
+        raise ValueError(f"{label} must be a finite positive number")
+    return number
 
 
 def _config_path(value: Any, label: str, *, expand_user: bool = False) -> Path:

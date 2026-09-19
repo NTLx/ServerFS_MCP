@@ -456,6 +456,7 @@ class BridgeService:
             context = TaskContext(
                 task_id=task_id,
                 workdir=task.workdir_alias,
+                workdir_root=self.policies.get(task.workdir_alias).host_path,
                 cwd=cwd,
                 profile=task.profile,
                 prompt=prompt,
@@ -475,6 +476,7 @@ class BridgeService:
                     payload=payload,
                     waiting_status=TaskStatus.WAITING_FOR_QUESTION,
                 ),
+                abandon_interaction=lambda: self._abandon_interaction(task_id),
             )
             if continue_native_session_id is None:
                 result = await adapter.run_task(context)
@@ -649,21 +651,50 @@ class BridgeService:
         if isinstance(value, Path):
             return redact_host_path(root, value)
         if isinstance(value, dict):
-            return {
-                key: (
-                    redact_host_path(root, item)
-                    if key in {"path", "cwd", "relative_cwd", "host_path", "file_path"}
-                    and isinstance(item, (str, Path))
-                    else self._redact_value_for_root(root, item)
-                )
-                for key, item in value.items()
-                if key not in private_keys
+            path_keys = {
+                "path",
+                "cwd",
+                "relative_cwd",
+                "host_path",
+                "file_path",
+                "grantRoot",
             }
+            path_list_keys = {"read", "write", "readableRoots", "writableRoots"}
+            redacted: dict[str, Any] = {}
+            for key, item in value.items():
+                if key in private_keys:
+                    continue
+                if key in path_keys and isinstance(item, (str, Path)):
+                    redacted[key] = redact_host_path(root, item)
+                    continue
+                if key in path_list_keys and isinstance(item, list):
+                    redacted[key] = [
+                        redact_host_path(root, child)
+                        if isinstance(child, (str, Path))
+                        else self._redact_value_for_root(root, child)
+                        for child in item
+                    ]
+                    continue
+                redacted[key] = self._redact_value_for_root(root, item)
+            return redacted
         if isinstance(value, list):
             return [self._redact_value_for_root(root, item) for item in value]
         if isinstance(value, tuple):
             return [self._redact_value_for_root(root, item) for item in value]
         return value
+
+    async def _abandon_interaction(self, task_id: str) -> None:
+        request_id = self.store.abandon_pending_request(task_id)
+        if request_id is None:
+            return
+        waiter = self._pending_waiters.pop(request_id, None)
+        if waiter is not None and not waiter.done():
+            waiter.cancel()
+        self._try_append_event(
+            task_id,
+            "interaction.stale",
+            {"request_id": request_id},
+        )
 
     async def _wait_for_request(
         self,

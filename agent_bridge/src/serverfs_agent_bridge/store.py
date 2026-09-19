@@ -482,6 +482,48 @@ class TaskStore:
             ).fetchone()
         return int(row["n"])
 
+    def abandon_pending_request(self, task_id: str) -> str | None:
+        """Atomically stale a provider-cleared request and resume its task."""
+        now = utc_now()
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            task = con.execute(
+                "SELECT status, pending_request_id FROM tasks WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            if task is None:
+                raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {task_id}")
+            request_id = task["pending_request_id"]
+            if request_id is None:
+                return None
+            if TaskStatus(task["status"]) not in (
+                TaskStatus.WAITING_FOR_APPROVAL,
+                TaskStatus.WAITING_FOR_QUESTION,
+            ):
+                raise BridgeError("REQUEST_STALE", "task is not waiting for provider input")
+            con.execute(
+                """
+                UPDATE pending_requests
+                SET status = ?, resolved_at = ?
+                WHERE request_id = ? AND status = ?
+                """,
+                (
+                    RequestStatus.STALE.value,
+                    now,
+                    request_id,
+                    RequestStatus.PENDING.value,
+                ),
+            )
+            con.execute(
+                """
+                UPDATE tasks
+                SET status = ?, pending_request_id = NULL, updated_at = ?
+                WHERE task_id = ? AND pending_request_id = ?
+                """,
+                (TaskStatus.RUNNING.value, now, task_id, request_id),
+            )
+            return str(request_id)
+
     def stale_task_request(self, task_id: str) -> None:
         now = utc_now()
         with self._connect() as con:

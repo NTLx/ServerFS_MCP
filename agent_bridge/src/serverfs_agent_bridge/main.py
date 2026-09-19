@@ -6,7 +6,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from .adapters import FakeAdapter
+from .adapters import CodexAdapter, FakeAdapter
 from .config import BridgeConfig
 from .leases import LeaseManager
 from .protocol import BridgeProtocolServer
@@ -19,6 +19,9 @@ async def _serve(config: BridgeConfig) -> None:
     if config.enable_fake_runtime:
         fake = FakeAdapter()
         adapters[fake.name] = fake
+    if config.codex.enabled:
+        codex = CodexAdapter(config.codex)
+        adapters[codex.name] = codex
 
     store = TaskStore(config.state_dir)
     service = BridgeService(

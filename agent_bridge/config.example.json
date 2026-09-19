@@ -5,6 +5,15 @@
   "allowed_peer_uid": null,
   "allowed_peer_gid": null,
   "enable_fake_runtime": true,
+  "codex": {
+    "enabled": false,
+    "autostart": false,
+    "codex_home": "~/.codex",
+    "codex_bin": "codex",
+    "request_timeout_seconds": 10,
+    "event_idle_timeout_seconds": null,
+    "max_message_bytes": 134217728
+  },
   "workdirs": [
     {
       "slot": 1,

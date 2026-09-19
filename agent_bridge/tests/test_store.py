@@ -99,6 +99,26 @@ def test_restart_interrupts_nonterminal_and_stales_request(tmp_path: Path) -> No
     assert request.status == "stale"
 
 
+def test_provider_can_atomically_abandon_pending_request(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    make_task(store)
+    store.transition_task("agt_test", TaskStatus.STARTING)
+    store.transition_task("agt_test", TaskStatus.RUNNING)
+    store.create_pending_request(
+        task_id="agt_test",
+        request_id="req_native",
+        kind="approval",
+        payload={},
+        waiting_status=TaskStatus.WAITING_FOR_APPROVAL,
+    )
+
+    assert store.abandon_pending_request("agt_test") == "req_native"
+    assert store.get_task("agt_test").status == "running"
+    assert store.get_task("agt_test").pending_request_id is None
+    assert store.get_request("req_native").status == "stale"
+    assert store.abandon_pending_request("agt_test") is None
+
+
 def test_event_cursor(tmp_path: Path) -> None:
     store = TaskStore(tmp_path / "state")
     make_task(store)

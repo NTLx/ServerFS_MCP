@@ -384,4 +384,24 @@ async def test_pending_request_payload_and_final_response_redact_host_root(tmp_p
     final_task = await wait_for_status(service, final["task_id"], "succeeded")
     assert final_task["final_response"] == "<workdir>/result.txt"
     assert str(root) not in str(final_task)
+
+    service._append_event(
+        final["task_id"],
+        "provider.path",
+        {
+            "cwd": str(root),
+            "changes": [
+                {"path": str(root / "inside.txt")},
+                {"path": str(root.parent / "outside.txt")},
+            ],
+        },
+    )
+    events = service.read_events(final["task_id"])["events"]
+    provider_event = next(event for event in events if event["event_type"] == "provider.path")
+    assert provider_event["payload"]["cwd"] == "."
+    assert provider_event["payload"]["changes"] == [
+        {"path": "inside.txt"},
+        {"path": "<outside-workdir>"},
+    ]
+    assert str(root) not in str(provider_event)
     await service.close()
