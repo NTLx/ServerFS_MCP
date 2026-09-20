@@ -20,6 +20,7 @@ from __future__ import annotations
 import contextlib
 import os
 import time
+from pathlib import Path
 from typing import Annotated
 
 from mcp.server import MCPServer
@@ -28,6 +29,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from . import logging as jsonlog
+from .agent_leases import AgentLeaseError, WorkdirBusyError, mutation_agent_lease
 from .config import Settings
 from .fdio import open_directory_fd, open_file_fd, root_fd
 from .filesystem import find_files as find_files_impl
@@ -48,7 +50,7 @@ from .models import (
     StatFileResult,
     TextEdit,
 )
-from .mutations import MutationError
+from .mutations import MutationError, mutation_lock
 from .mutations import compute_revision as revision_of
 from .mutations import create_directory as create_directory_impl
 from .mutations import create_text_file as create_text_file_impl
@@ -205,6 +207,10 @@ def _mutation_tool_error(exc: Exception, workdir: str, path: str) -> ToolError:
     """
     if isinstance(exc, ToolError):
         return exc
+    if isinstance(exc, WorkdirBusyError):
+        return ToolError(f"WORKDIR_BUSY: {workdir} has an active Agent writer")
+    if isinstance(exc, AgentLeaseError):
+        return ToolError(f"AGENT_LOCK_UNAVAILABLE: shared Agent lease for {workdir} is unavailable")
     if isinstance(exc, MutationError):
         return ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
     if isinstance(exc, PathSecurityError):
@@ -728,7 +734,15 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
 
         def body():
             resolved = _resolve_mutable(registry, workdir, path, settings)
-            result = create_text_file_impl(resolved, content, settings)
+            with (
+                mutation_lock(),
+                mutation_agent_lease(
+                    Path(settings.agent_lock_dir),
+                    resolved.workdir.slot,
+                    enabled=settings.agent_bridge_enabled,
+                ),
+            ):
+                result = create_text_file_impl(resolved, content, settings)
             return result, {"bytes_written": result.bytes_written, "revision": result.revision}
 
         return _run_mutation("create_text_file", workdir, path, t0, body)
@@ -772,7 +786,15 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
 
         def body():
             resolved = _resolve_mutable(registry, workdir, path, settings)
-            result = edit_text_file_impl(resolved, expected_revision, edits, settings)
+            with (
+                mutation_lock(),
+                mutation_agent_lease(
+                    Path(settings.agent_lock_dir),
+                    resolved.workdir.slot,
+                    enabled=settings.agent_bridge_enabled,
+                ),
+            ):
+                result = edit_text_file_impl(resolved, expected_revision, edits, settings)
             return result, {
                 "edit_count": result.edits_applied,
                 "bytes_before": result.bytes_before,
@@ -810,7 +832,15 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
 
         def body():
             resolved = _resolve_mutable(registry, workdir, path, settings)
-            result = delete_file_impl(resolved, expected_revision)
+            with (
+                mutation_lock(),
+                mutation_agent_lease(
+                    Path(settings.agent_lock_dir),
+                    resolved.workdir.slot,
+                    enabled=settings.agent_bridge_enabled,
+                ),
+            ):
+                result = delete_file_impl(resolved, expected_revision)
             return result, {
                 "bytes_deleted": result.bytes_deleted,
                 "revision": result.revision_deleted,
@@ -837,7 +867,15 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
 
         def body():
             resolved = _resolve_mutable(registry, workdir, path, settings)
-            result = create_directory_impl(resolved)
+            with (
+                mutation_lock(),
+                mutation_agent_lease(
+                    Path(settings.agent_lock_dir),
+                    resolved.workdir.slot,
+                    enabled=settings.agent_bridge_enabled,
+                ),
+            ):
+                result = create_directory_impl(resolved)
             return result, {"revision": result.revision}
 
         return _run_mutation("create_directory", workdir, path, t0, body)
@@ -870,7 +908,15 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
 
         def body():
             resolved = _resolve_mutable(registry, workdir, path, settings)
-            result = delete_directory_impl(resolved, expected_revision)
+            with (
+                mutation_lock(),
+                mutation_agent_lease(
+                    Path(settings.agent_lock_dir),
+                    resolved.workdir.slot,
+                    enabled=settings.agent_bridge_enabled,
+                ),
+            ):
+                result = delete_directory_impl(resolved, expected_revision)
             return result, {"revision": result.revision_deleted}
 
         return _run_mutation("delete_directory", workdir, path, t0, body)

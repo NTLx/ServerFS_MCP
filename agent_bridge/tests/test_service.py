@@ -445,6 +445,33 @@ async def test_pending_request_payload_and_final_response_redact_host_root(tmp_p
     await service.close()
 
 
+@pytest.mark.asyncio
+async def test_provider_bridge_error_message_redacts_host_paths(tmp_path: Path) -> None:
+    class ErrorAdapter(FakeAdapter):
+        async def run_task(self, context):
+            raise BridgeError(
+                "AGENT_PROVIDER_ERROR",
+                f"provider failed at {context.workdir_root}/secret.txt",
+            )
+
+    service = make_service(tmp_path)
+    root = service.policies.get("repo").host_path
+    service.adapters = {"fake": ErrorAdapter()}
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="fail",
+    )
+    failed = await wait_for_status(service, submitted["task_id"], "failed")
+    assert failed["error_code"] == "AGENT_PROVIDER_ERROR"
+    assert failed["error_message"] == "provider failed at <workdir>/secret.txt"
+    assert str(root) not in str(failed)
+    await service.close()
+
+
 def test_embedded_workdir_redaction_token_boundaries(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()

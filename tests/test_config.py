@@ -37,6 +37,35 @@ class TestRobustParsing:
         assert settings_from_env({"SERVERFS_LOG_LEVEL": "bogus"}).log_level == "INFO"
 
 
+class TestAgentBridgeConfig:
+    def test_defaults_are_disabled(self) -> None:
+        s = settings_from_env({})
+        assert s.agent_bridge_enabled is False
+        assert s.agent_bridge_socket == "/run/serverfs-agent-bridge/bridge.sock"
+        assert s.agent_bridge_timeout_seconds == 30.0
+        assert s.agent_lock_dir == "/run/serverfs-agent-locks"
+
+    def test_explicit_agent_bridge_settings(self) -> None:
+        s = settings_from_env(
+            {
+                "SERVERFS_AGENT_BRIDGE_ENABLED": "true",
+                "SERVERFS_AGENT_BRIDGE_SOCKET": "/tmp/bridge.sock",
+                "SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS": "7.5",
+                "SERVERFS_AGENT_LOCK_DIR": "/tmp/locks",
+            }
+        )
+        assert s.agent_bridge_enabled is True
+        assert s.agent_bridge_socket == "/tmp/bridge.sock"
+        assert s.agent_bridge_timeout_seconds == 7.5
+        assert s.agent_lock_dir == "/tmp/locks"
+
+    def test_invalid_enable_value_fails_closed(self) -> None:
+        assert (
+            settings_from_env({"SERVERFS_AGENT_BRIDGE_ENABLED": "definitely"}).agent_bridge_enabled
+            is False
+        )
+
+
 class TestDenyConfig:
     def test_extra_deny_globs_default_empty(self) -> None:
         assert settings_from_env({}).extra_deny_globs == ()

@@ -27,7 +27,7 @@ Phase B is frozen and provides **Codex native-mode delegation**:
   override the user's Codex sandbox, approval policy, MCPs, skills/plugins, web features
   or shell environment
 
-Phase C is now implementing **Claude Code native-mode delegation**:
+Phase C is frozen and provides **Claude Code native-mode delegation**:
 
 - official Python Claude Agent SDK / `ClaudeSDKClient`
 - existing system-installed `claude` executable through `cli_path`
@@ -39,7 +39,7 @@ Phase C is now implementing **Claude Code native-mode delegation**:
 - `interrupt()` cancellation
 - live steer disabled until real installed-SDK behavior proves the intended semantics
 
-Agent MCP public tools and production deployment remain out of scope for Phase C.
+Phase D is now implementing the ServerFS MCP client/tool surface and shared writer-lease integration. Production Compose/systemd wiring and ChatGPT end-to-end deployment remain Phase E.
 
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
 paths must already be real directories, aliases and slots are validated, and unknown
@@ -57,13 +57,35 @@ identity explicitly.
 Run from this directory:
 
 ```bash
-uv sync
+uv sync --frozen
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest
 ```
 
 The repository-level v0.2 tests must also remain green.
+
+## Two-process MCP E2E harness
+
+The Phase D end-to-end gate lives in `../tests/e2e/` and is run from the repository
+root with the **root** environment, which starts this package as a separate host
+process:
+
+```bash
+uv sync --frozen                        # in agent_bridge/
+uv run python tests/e2e/run_e2e.py      # from the repository root
+```
+
+It launches the Bridge over a real Unix socket and drives the published MCP surface
+against it, covering runtime listing, submit/poll/events, approval and question
+round-trips, steering, cancellation and the shared cross-process writer lease. The MCP
+public runtime allowlist is only `codex`/`claude`, so the harness supplies the
+deterministic `FakeAdapter` under the name `codex` on the Bridge side; the production
+adapter keeps `name == "fake"` and never enters that allowlist.
+
+This is a harness, not a pytest suite. CI installs the root dependencies only, so the
+harness is deliberately excluded from `uv run pytest` (its files are not named
+`test_*.py`). Install both environments before running it.
 
 ## Local fake-runtime smoke test
 
@@ -77,8 +99,7 @@ cp config.example.json /tmp/serverfs-agent-bridge.json
 uv run serverfs-agent-bridge --config /tmp/serverfs-agent-bridge.json
 ```
 
-The protocol is newline-delimited JSON over the configured Unix socket. Phase D will add
-the ServerFS MCP client side; until then this socket is for tests/development only.
+The protocol is newline-delimited JSON over the configured Unix socket. Phase D adds the thin ServerFS MCP client and eight provider-neutral Agent tools, but production socket/lock bind mounts remain Phase E.
 
 ## Phase B Codex live smoke
 
@@ -117,10 +138,15 @@ ServerFS-controlled read-only Codex mode.
 `list_agent_runtimes` / `probe()` never autostarts Codex. If
 `codex.autostart=true`, the official `codex app-server daemon start` lifecycle command
 may be invoked only when an actual task needs Codex and the daemon is unavailable.
-The socket parent is created only when missing; existing parents must already be owned by
-the bridge user and not be group/world writable. Existing files at the socket path are
-never removed. State and lease directories are likewise required to be private (`0700`),
-and SQLite database/WAL/SHM files are kept at `0600`.
+The socket parent is created when missing; an existing parent must already be owned by
+the bridge user and not group/world writable, and its mode and group are then forced to
+the private or shared runtime-asset mode below. Existing files at the socket path are
+never removed. State remains private (`0700`) and SQLite database/WAL/SHM files stay
+`0600`. Lease/socket runtime assets use private `0700/0600` mode by default; when an
+explicit `allowed_peer_gid` is configured for Phase D/E container sharing, the Bridge
+switches only those runtime assets to group-readable `0750` directories with `0640`
+lock files and a `0660` socket. All 16 lock files are pre-created before the Bridge
+serves requests; task execution only ever opens an existing lock file.
 
 ## Phase C Claude live smoke
 

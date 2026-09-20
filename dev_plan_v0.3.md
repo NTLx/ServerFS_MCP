@@ -191,6 +191,28 @@ host /run/serverfs-agent-bridge
   -> container /run/serverfs-agent-bridge
 ```
 
+Production identity model for the default deployment:
+
+```text
+serverfs-mcp process UID:GID       10001:10001
+host Agent Bridge process UID      the existing server user that owns Codex/Claude auth
+shared ServerFS group GID          10001
+Bridge allowed_peer_uid            10001
+Bridge allowed_peer_gid            10001
+
+/run/serverfs-agent-bridge         owner=Bridge user, group=10001, mode 0750
+bridge.sock                        owner=Bridge user, group=10001, mode 0660
+```
+
+The Bridge user must be allowed to chgrp its dedicated runtime directories/files to the
+shared group. Running the Bridge with its normal user UID preserves access to that user's
+Codex/Claude authentication and settings; the shared group exists only for local UDS and
+lease-file access.
+
+If Docker user namespaces, rootless Docker or userns-remap changes the credentials seen by
+the host kernel, do **not** assume 10001. Phase E must measure the actual host-side
+`SO_PEERCRED` UID/GID and configure `allowed_peer_uid/gid` accordingly.
+
 No TCP listener and no host-published port are introduced.
 
 The bridge MUST:
@@ -1085,6 +1107,19 @@ Recommended implementation:
 
 using Linux `flock`.
 
+The Bridge pre-creates all 16 lock files before serving requests. In private development
+mode the directory/files remain `0700/0600`. When a shared peer GID is configured, use:
+
+```text
+/run/serverfs-agent-locks          owner=Bridge user, group=<shared GID>, mode 0750
+01.lock .. 16.lock                 owner=Bridge user, group=<shared GID>, mode 0640
+```
+
+Phase E bind-mounts this directory **read-only** into `serverfs-mcp`. The MCP container
+opens the already-existing lock file `O_RDONLY|O_NOFOLLOW` and takes `flock(LOCK_EX)`;
+it never creates or modifies host lock files. Linux `flock` is inode-based, so the
+read-only bind still coordinates with the Bridge's read-write descriptor on the same file.
+
 Rules:
 
 - ServerFS `create/edit/delete/mkdir/rmdir` takes the workdir exclusive lease for the
@@ -1447,12 +1482,14 @@ Phase C — Claude:
 - session resume/cancel
 - real integration tests
 
-Phase D — MCP:
-- eight tools
-- settings/models
-- annotations
-- audit
-- integration with existing ServerFS workdir registry
+Phase D — MCP (active):
+- eight public Agent tools
+- stdlib UDS Bridge client
+- fail-closed global + per-workdir Agent settings
+- conservative tool annotations and audit
+- integration with existing ServerFS workdir/path policy
+- shared cross-process mutation lease consumption
+- **no production Compose/systemd wiring yet**
 
 Phase E — deployment:
 - host service
@@ -1483,6 +1520,9 @@ Do not release until all of the following are true:
 [ ] ServerFS exposes no separate bypass/unrestricted Agent profile of its own
 [ ] cancel is tested
 [ ] continuation by prior task is tested
+[ ] Agent tools are absent when SERVERFS_AGENT_BRIDGE_ENABLED=false
+[ ] Agent tools are present only under explicit global + per-workdir enablement
+[ ] ServerFS mutations return WORKDIR_BUSY while a workspace-write Agent holds the slot lease
 [ ] workdir write lease is tested
 [ ] Bridge restart semantics are tested and documented per provider
 [ ] real ChatGPT -> Tunnel -> Agent E2E passes
@@ -1529,9 +1569,9 @@ Verified on 2026-09-19:
   https://code.claude.com/docs/en/agent-sdk/permissions
 - Official Claude Agent SDK Python repository:
   https://github.com/anthropics/claude-agent-sdk-python
-- MCP Tasks draft:
-  https://tasks.extensions.modelcontextprotocol.io/specification/draft/tasks
-- MCP Python SDK roadmap:
+- MCP Tasks extension / SEP-2663:
+  https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2663-tasks-extension.md
+- MCP Python SDK roadmap (re-verified 2026-09-20: Tasks extension still not implemented):
   https://github.com/modelcontextprotocol/python-sdk/blob/main/ROADMAP.md
 
 ## 35. Final v0.3 product boundary

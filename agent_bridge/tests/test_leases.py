@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,26 @@ def test_different_slots_do_not_conflict(tmp_path: Path) -> None:
     second = manager.acquire_exclusive(2)
     first.release()
     second.release()
+
+
+def test_private_manager_precreates_private_lock_files(tmp_path: Path) -> None:
+    lock_dir = tmp_path / "locks"
+    LeaseManager(lock_dir)
+    assert lock_dir.stat().st_mode & 0o777 == 0o700
+    files = sorted(lock_dir.glob("*.lock"))
+    assert len(files) == 16
+    assert all(path.stat().st_mode & 0o777 == 0o600 for path in files)
+
+
+def test_shared_manager_precreates_group_readable_lock_files(tmp_path: Path) -> None:
+    lock_dir = tmp_path / "locks"
+    LeaseManager(lock_dir, shared_gid=os.getgid())
+    assert lock_dir.stat().st_mode & 0o777 == 0o750
+    assert lock_dir.stat().st_gid == os.getgid()
+    files = sorted(lock_dir.glob("*.lock"))
+    assert len(files) == 16
+    assert all(path.stat().st_mode & 0o777 == 0o640 for path in files)
+    assert all(path.stat().st_gid == os.getgid() for path in files)
 
 
 def test_existing_non_private_lock_dir_fails_without_chmod(tmp_path: Path) -> None:

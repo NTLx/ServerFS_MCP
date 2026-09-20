@@ -546,7 +546,7 @@ class BridgeService:
                     task_id,
                     TaskStatus.INTERRUPTED,
                     error_code=exc.code,
-                    error_message=exc.message,
+                    error_message=self._redact_text(task.workdir_alias, exc.message),
                 )
                 self._try_append_event(task_id, "task.interrupted", {"error_code": exc.code})
             elif TaskStatus(current.status) not in TERMINAL_STATUSES:
@@ -554,7 +554,7 @@ class BridgeService:
                     task_id,
                     TaskStatus.FAILED,
                     error_code=exc.code,
-                    error_message=exc.message,
+                    error_message=self._redact_text(task.workdir_alias, exc.message),
                 )
                 self._try_append_event(task_id, "task.failed", {"error_code": exc.code})
         except Exception:

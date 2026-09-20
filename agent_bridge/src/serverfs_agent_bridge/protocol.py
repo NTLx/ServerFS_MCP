@@ -33,6 +33,7 @@ class BridgeProtocolServer:
         self.socket_path = socket_path
         if not self.socket_path.is_absolute():
             raise ValueError("socket_path must be absolute")
+        self._shared_gid_explicit = allowed_peer_gid is not None
         self.allowed_peer_uid = (
             os.getuid()
             if allowed_peer_uid is None and allowed_peer_gid is None
@@ -55,9 +56,19 @@ class BridgeProtocolServer:
             path=str(self.socket_path),
             limit=MAX_REQUEST_BYTES + 1,
         )
-        os.chmod(self.socket_path, 0o660)
         socket_stat = self.socket_path.stat()
         self._socket_identity = (socket_stat.st_dev, socket_stat.st_ino)
+        socket_mode = 0o660 if self._shared_gid_explicit else 0o600
+        if self._shared_gid_explicit:
+            try:
+                os.chown(self.socket_path, -1, self.allowed_peer_gid)
+            except OSError as exc:
+                await self.close()
+                raise BridgeError(
+                    "SOCKET_DIRECTORY_UNSAFE",
+                    "socket group cannot be set to the authorized peer gid",
+                ) from exc
+        os.chmod(self.socket_path, socket_mode)
 
     def _prepare_socket_parent(self) -> None:
         parent = self.socket_path.parent
@@ -78,7 +89,7 @@ class BridgeProtocolServer:
                 raise BridgeError("SOCKET_DIRECTORY_UNSAFE", "socket directory is not a directory")
             break
 
-        created_mode = 0o750 if self.allowed_peer_gid is not None else 0o700
+        created_mode = 0o750 if self._shared_gid_explicit else 0o700
         for directory in reversed(missing):
             os.mkdir(directory, created_mode)
             os.chmod(directory, created_mode)
@@ -91,6 +102,15 @@ class BridgeProtocolServer:
                 "SOCKET_DIRECTORY_UNSAFE",
                 "socket directory must be owned by the bridge user and not group/world writable",
             )
+        if self._shared_gid_explicit and parent_stat.st_gid != self.allowed_peer_gid:
+            try:
+                os.chown(parent, -1, self.allowed_peer_gid)
+            except OSError as exc:
+                raise BridgeError(
+                    "SOCKET_DIRECTORY_UNSAFE",
+                    "socket directory group cannot be set to the authorized peer gid",
+                ) from exc
+        os.chmod(parent, created_mode)
 
     async def serve_forever(self) -> None:
         if self._server is None:

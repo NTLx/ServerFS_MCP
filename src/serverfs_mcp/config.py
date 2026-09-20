@@ -30,6 +30,10 @@ class Settings:
     disable_default_deny: bool = False
     max_write_bytes: int = 1_048_576
     max_edits_per_call: int = 50
+    agent_bridge_enabled: bool = False
+    agent_bridge_socket: str = "/run/serverfs-agent-bridge/bridge.sock"
+    agent_bridge_timeout_seconds: float = 30.0
+    agent_lock_dir: str = "/run/serverfs-agent-locks"
 
 
 def _get_int(env: Mapping[str, str], key: str, default: int) -> int:
@@ -92,4 +96,12 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         disable_default_deny=_get_bool(env, "SERVERFS_DISABLE_DEFAULT_DENY", False),
         max_write_bytes=_get_int(env, "SERVERFS_MAX_WRITE_BYTES", 1_048_576),
         max_edits_per_call=_get_int(env, "SERVERFS_MAX_EDITS_PER_CALL", 50),
+        agent_bridge_enabled=_get_bool(env, "SERVERFS_AGENT_BRIDGE_ENABLED", False),
+        agent_bridge_socket=env.get(
+            "SERVERFS_AGENT_BRIDGE_SOCKET", "/run/serverfs-agent-bridge/bridge.sock"
+        ).strip()
+        or "/run/serverfs-agent-bridge/bridge.sock",
+        agent_bridge_timeout_seconds=_get_float(env, "SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS", 30.0),
+        agent_lock_dir=env.get("SERVERFS_AGENT_LOCK_DIR", "/run/serverfs-agent-locks").strip()
+        or "/run/serverfs-agent-locks",
     )
