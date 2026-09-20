@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import signal
 from pathlib import Path
 
 from .adapters import ClaudeAdapter, CodexAdapter, FakeAdapter
@@ -14,7 +15,11 @@ from .service import BridgeService
 from .store import TaskStore
 
 
-async def _serve(config: BridgeConfig) -> None:
+async def _serve(
+    config: BridgeConfig,
+    *,
+    shutdown_event: asyncio.Event | None = None,
+) -> None:
     adapters = {}
     if config.enable_fake_runtime:
         fake = FakeAdapter()
@@ -42,9 +47,35 @@ async def _serve(config: BridgeConfig) -> None:
         allowed_peer_gid=config.allowed_peer_gid,
     )
     await server.start()
+
+    own_shutdown_event = shutdown_event is None
+    stop = shutdown_event or asyncio.Event()
+    loop = asyncio.get_running_loop()
+    installed_signals: list[signal.Signals] = []
+    if own_shutdown_event:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                loop.add_signal_handler(sig, stop.set)
+            except (NotImplementedError, RuntimeError):
+                continue
+            installed_signals.append(sig)
+
+    serve_task = asyncio.create_task(server.serve_forever())
+    stop_task = asyncio.create_task(stop.wait())
     try:
-        await server.serve_forever()
+        done, _ = await asyncio.wait(
+            {serve_task, stop_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if serve_task in done:
+            await serve_task
     finally:
+        for task in (stop_task, serve_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(stop_task, serve_task, return_exceptions=True)
+        for sig in installed_signals:
+            loop.remove_signal_handler(sig)
         await server.close()
         await service.close()
 

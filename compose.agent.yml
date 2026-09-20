@@ -1,0 +1,66 @@
+# Optional Phase E overlay for Agent Bridge deployments.
+#
+# Use only after the host-side Agent Bridge is installed, configured and
+# running:
+#
+#   docker compose --env-file .env \
+#     -f compose.yml -f compose.agent.yml up -d
+#
+# The base compose.yml intentionally remains Agent-unaware so existing v0.2
+# deployments retain the 11-tool surface and have no host runtime-dir
+# prerequisites.
+
+services:
+  serverfs-mcp:
+    environment:
+      SERVERFS_AGENT_BRIDGE_ENABLED: ${SERVERFS_AGENT_BRIDGE_ENABLED:-true}
+      SERVERFS_AGENT_BRIDGE_SOCKET: /run/serverfs-agent-bridge/bridge.sock
+      SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS: ${SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS:-30}
+      SERVERFS_AGENT_LOCK_DIR: /run/serverfs-agent-locks
+
+      WORKDIR_01_AGENT_MODE: ${WORKDIR_01_AGENT_MODE:-disabled}
+      WORKDIR_01_AGENT_RUNTIMES: ${WORKDIR_01_AGENT_RUNTIMES:-}
+      WORKDIR_02_AGENT_MODE: ${WORKDIR_02_AGENT_MODE:-disabled}
+      WORKDIR_02_AGENT_RUNTIMES: ${WORKDIR_02_AGENT_RUNTIMES:-}
+      WORKDIR_03_AGENT_MODE: ${WORKDIR_03_AGENT_MODE:-disabled}
+      WORKDIR_03_AGENT_RUNTIMES: ${WORKDIR_03_AGENT_RUNTIMES:-}
+      WORKDIR_04_AGENT_MODE: ${WORKDIR_04_AGENT_MODE:-disabled}
+      WORKDIR_04_AGENT_RUNTIMES: ${WORKDIR_04_AGENT_RUNTIMES:-}
+      WORKDIR_05_AGENT_MODE: ${WORKDIR_05_AGENT_MODE:-disabled}
+      WORKDIR_05_AGENT_RUNTIMES: ${WORKDIR_05_AGENT_RUNTIMES:-}
+      WORKDIR_06_AGENT_MODE: ${WORKDIR_06_AGENT_MODE:-disabled}
+      WORKDIR_06_AGENT_RUNTIMES: ${WORKDIR_06_AGENT_RUNTIMES:-}
+      WORKDIR_07_AGENT_MODE: ${WORKDIR_07_AGENT_MODE:-disabled}
+      WORKDIR_07_AGENT_RUNTIMES: ${WORKDIR_07_AGENT_RUNTIMES:-}
+      WORKDIR_08_AGENT_MODE: ${WORKDIR_08_AGENT_MODE:-disabled}
+      WORKDIR_08_AGENT_RUNTIMES: ${WORKDIR_08_AGENT_RUNTIMES:-}
+      WORKDIR_09_AGENT_MODE: ${WORKDIR_09_AGENT_MODE:-disabled}
+      WORKDIR_09_AGENT_RUNTIMES: ${WORKDIR_09_AGENT_RUNTIMES:-}
+      WORKDIR_10_AGENT_MODE: ${WORKDIR_10_AGENT_MODE:-disabled}
+      WORKDIR_10_AGENT_RUNTIMES: ${WORKDIR_10_AGENT_RUNTIMES:-}
+      WORKDIR_11_AGENT_MODE: ${WORKDIR_11_AGENT_MODE:-disabled}
+      WORKDIR_11_AGENT_RUNTIMES: ${WORKDIR_11_AGENT_RUNTIMES:-}
+      WORKDIR_12_AGENT_MODE: ${WORKDIR_12_AGENT_MODE:-disabled}
+      WORKDIR_12_AGENT_RUNTIMES: ${WORKDIR_12_AGENT_RUNTIMES:-}
+      WORKDIR_13_AGENT_MODE: ${WORKDIR_13_AGENT_MODE:-disabled}
+      WORKDIR_13_AGENT_RUNTIMES: ${WORKDIR_13_AGENT_RUNTIMES:-}
+      WORKDIR_14_AGENT_MODE: ${WORKDIR_14_AGENT_MODE:-disabled}
+      WORKDIR_14_AGENT_RUNTIMES: ${WORKDIR_14_AGENT_RUNTIMES:-}
+      WORKDIR_15_AGENT_MODE: ${WORKDIR_15_AGENT_MODE:-disabled}
+      WORKDIR_15_AGENT_RUNTIMES: ${WORKDIR_15_AGENT_RUNTIMES:-}
+      WORKDIR_16_AGENT_MODE: ${WORKDIR_16_AGENT_MODE:-disabled}
+      WORKDIR_16_AGENT_RUNTIMES: ${WORKDIR_16_AGENT_RUNTIMES:-}
+
+    volumes:
+      - type: bind
+        source: ${SERVERFS_AGENT_BRIDGE_HOST_SOCKET_DIR}
+        target: /run/serverfs-agent-bridge
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SERVERFS_AGENT_LOCK_HOST_DIR}
+        target: /run/serverfs-agent-locks
+        read_only: true
+        bind:
+          create_host_path: false

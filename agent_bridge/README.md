@@ -179,7 +179,7 @@ failure by changing the user's native permission configuration.
 
 ## Security
 
-- The Bridge is intended to run as a dedicated non-root host user.
+- The Bridge runs non-root. Phase E production deployment uses the same normal login user whose native Codex/Claude environment it delegates to; it does not create a dedicated system account.
 - The socket is local-only; there is no TCP listener.
 - `workspace-write` must be explicitly enabled per workdir for Codex native mode.
 - A Codex task holds the exclusive workdir lease for its active turn.

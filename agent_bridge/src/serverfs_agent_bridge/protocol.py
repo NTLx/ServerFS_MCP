@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import os
 import socket
@@ -49,8 +50,7 @@ class BridgeProtocolServer:
 
     async def start(self) -> None:
         self._prepare_socket_parent()
-        if self.socket_path.exists() or self.socket_path.is_symlink():
-            raise BridgeError("SOCKET_PATH_IN_USE", "configured socket path already exists")
+        await self._prepare_socket_path()
         self._server = await asyncio.start_unix_server(
             self._handle_client,
             path=str(self.socket_path),
@@ -69,6 +69,55 @@ class BridgeProtocolServer:
                     "socket group cannot be set to the authorized peer gid",
                 ) from exc
         os.chmod(self.socket_path, socket_mode)
+
+    async def _prepare_socket_path(self) -> None:
+        try:
+            existing = self.socket_path.lstat()
+        except FileNotFoundError:
+            return
+        if stat.S_ISLNK(existing.st_mode) or not stat.S_ISSOCK(existing.st_mode):
+            raise BridgeError("SOCKET_PATH_IN_USE", "configured socket path already exists")
+        if existing.st_uid != os.getuid():
+            raise BridgeError("SOCKET_PATH_IN_USE", "configured socket path has another owner")
+
+        identity = (existing.st_dev, existing.st_ino)
+        try:
+            _reader, writer = await asyncio.wait_for(
+                asyncio.open_unix_connection(path=str(self.socket_path)),
+                timeout=0.5,
+            )
+        except FileNotFoundError:
+            return
+        except TimeoutError as exc:
+            raise BridgeError(
+                "SOCKET_PATH_IN_USE",
+                "configured socket path did not become connectable or stale in time",
+            ) from exc
+        except OSError as exc:
+            if exc.errno not in {errno.ECONNREFUSED, errno.ENOENT}:
+                raise BridgeError(
+                    "SOCKET_PATH_IN_USE",
+                    "configured socket path cannot be safely recovered",
+                ) from exc
+        else:
+            writer.close()
+            await writer.wait_closed()
+            raise BridgeError("SOCKET_PATH_IN_USE", "configured socket path is active")
+
+        try:
+            current = self.socket_path.lstat()
+        except FileNotFoundError:
+            return
+        if (
+            not stat.S_ISSOCK(current.st_mode)
+            or current.st_uid != os.getuid()
+            or (current.st_dev, current.st_ino) != identity
+        ):
+            raise BridgeError(
+                "SOCKET_PATH_IN_USE",
+                "configured socket path changed during stale-socket recovery",
+            )
+        self.socket_path.unlink()
 
     def _prepare_socket_parent(self) -> None:
         parent = self.socket_path.parent

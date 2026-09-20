@@ -50,7 +50,7 @@ class CodexAdapter(AgentAdapter):
         self,
         settings: CodexSettings,
         *,
-        client_version: str = "0.3.0.dev0",
+        client_version: str = "0.3.0",
     ) -> None:
         self.settings = settings
         self.client_version = client_version

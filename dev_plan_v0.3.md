@@ -1,8 +1,8 @@
 # ServerFS MCP v0.3.0 Design Baseline — Agent Bridge
 
-> Status: **design baseline for the next version, not shipped behavior**.
+> Status: **v0.3.0 COMPLETE/FROZEN** after Phase E acceptance.
 >
-> Current released behavior remains v0.2.x as documented in `README.md`.
+> Acceptance evidence: [`docs/phase-e-acceptance-2026-09-20.md`](docs/phase-e-acceptance-2026-09-20.md).
 > This document freezes the intended v0.3 architecture before implementation.
 
 ## 1. Goal
@@ -176,42 +176,50 @@ official runtime.
 
 Use a Unix-domain socket only.
 
-Recommended host path:
+Recommended host path is a persistent directory owned by the current user:
 
 ```text
-/run/serverfs-agent-bridge/bridge.sock
+~/.local/share/serverfs-agent-bridge/runtime/socket/bridge.sock
 ```
 
-or an administrator-configured equivalent.
-
-The socket directory is bind-mounted read-only into `serverfs-mcp`, for example:
+The user-owned socket directory is bind-mounted read-only into `serverfs-mcp` at the
+stable container path:
 
 ```text
-host /run/serverfs-agent-bridge
+host ~/.local/share/serverfs-agent-bridge/runtime/socket
   -> container /run/serverfs-agent-bridge
 ```
 
-Production identity model for the default deployment:
+Phase E deployment is **user-scoped by design**. The project must not require sudo/root,
+system users/groups or writes to `/etc`, `/opt` or `/var/lib`.
+
+Default identity contract:
 
 ```text
-serverfs-mcp process UID:GID       10001:10001
-host Agent Bridge process UID      the existing server user that owns Codex/Claude auth
-shared ServerFS group GID          10001
-Bridge allowed_peer_uid            10001
-Bridge allowed_peer_gid            10001
+host Bridge UID:GID                current login user's id -u / id -g
+serverfs-mcp requested UID:GID     same current user UID/GID
+Bridge allowed_peer_uid/gid        same current user UID/GID
 
-/run/serverfs-agent-bridge         owner=Bridge user, group=10001, mode 0750
-bridge.sock                        owner=Bridge user, group=10001, mode 0660
+~/.local/share/serverfs-agent-bridge/runtime/socket
+  owner=current user, mode 0750
+bridge.sock
+  owner=current user, mode 0660
+~/.local/share/serverfs-agent-bridge/runtime/locks
+  owner=current user, mode 0750
+01.lock .. 16.lock
+  owner=current user, mode 0640
 ```
 
-The Bridge user must be allowed to chgrp its dedicated runtime directories/files to the
-shared group. Running the Bridge with its normal user UID preserves access to that user's
-Codex/Claude authentication and settings; the shared group exists only for local UDS and
-lease-file access.
+The group on these files is simply the user's existing primary group; no dedicated
+system group is created.
 
-If Docker user namespaces, rootless Docker or userns-remap changes the credentials seen by
-the host kernel, do **not** assume 10001. Phase E must measure the actual host-side
-`SO_PEERCRED` UID/GID and configure `allowed_peer_uid/gid` accordingly.
+Phase E still measures the real host-side `SO_PEERCRED` values. The expected equality with
+`id -u` / `id -g` is a validation result, not an input assumption: deployment must not
+pre-populate `SERVERFS_AGENT_PEER_UID/GID` from the login user's IDs before the real
+container peer has been measured. If Docker rootless mode, userns-remap or another mapping
+causes the peer UID/GID to differ from the current login user, the default user-scoped
+deployment is considered incompatible and MUST fail closed. Do not recommend privileged
+ownership changes as a workaround.
 
 No TCP listener and no host-published port are introduced.
 
@@ -1108,12 +1116,14 @@ Recommended implementation:
 using Linux `flock`.
 
 The Bridge pre-creates all 16 lock files before serving requests. In private development
-mode the directory/files remain `0700/0600`. When a shared peer GID is configured, use:
+mode the directory/files remain `0700/0600`. The Phase D implementation also supports an
+explicit peer GID, in which case the runtime assets become group-readable `0750/0640`.
+That is a protocol/lease capability, not a requirement to create a system group.
 
-```text
-/run/serverfs-agent-locks          owner=Bridge user, group=<shared GID>, mode 0750
-01.lock .. 16.lock                 owner=Bridge user, group=<shared GID>, mode 0640
-```
+Phase E's default user-scoped deployment sets the explicit peer GID to the **current
+user's existing primary GID** and keeps the host lock directory under that user's
+`~/.local/share/serverfs-agent-bridge/runtime/locks`. No project-managed group is
+created.
 
 Phase E bind-mounts this directory **read-only** into `serverfs-mcp`. The MCP container
 opens the already-existing lock file `O_RDONLY|O_NOFOLLOW` and takes `flock(LOCK_EX)`;
@@ -1491,12 +1501,18 @@ Phase D — MCP (frozen):
 - shared cross-process mutation lease consumption
 - **no production Compose/systemd wiring yet**
 
-Phase E — deployment (next):
-- host service
-- UDS permissions
-- Compose socket/lock mounts
-- documentation
-- ChatGPT E2E
+Phase E — deployment (**COMPLETE/FROZEN**; see [`docs/phase-e-acceptance-2026-09-20.md`](docs/phase-e-acceptance-2026-09-20.md)):
+- opt-in `compose.agent.yml` overlay; keep base `compose.yml` backward-compatible
+- systemd user-service lifecycle and graceful Bridge SIGTERM/SIGINT shutdown
+- real SO_PEERCRED UID/GID measurement; never infer under rootless/userns-remap
+- current-user UID/GID parity and SO_PEERCRED validation; no system group creation
+- socket/lock runtime permissions and read-only container bind mounts
+- deterministic Bridge config rendering from the single repository-root `.env`; no second Agent env/override layer
+- explicit provider environment parity checks without sourcing shell startup files
+- container-to-Bridge RPC and real provider discovery
+- ChatGPT -> Tunnel -> MCP -> Bridge -> Codex/Claude E2E
+- rollback to the base 11-tool deployment (live drill waived by maintainer for this release)
+- release documentation and v0.3 release gate
 
 ## 32. Release gate for v0.3
 
