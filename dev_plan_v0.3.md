@@ -1482,7 +1482,7 @@ Phase C — Claude:
 - session resume/cancel
 - real integration tests
 
-Phase D — MCP (active):
+Phase D — MCP (frozen):
 - eight public Agent tools
 - stdlib UDS Bridge client
 - fail-closed global + per-workdir Agent settings
@@ -1491,7 +1491,7 @@ Phase D — MCP (active):
 - shared cross-process mutation lease consumption
 - **no production Compose/systemd wiring yet**
 
-Phase E — deployment:
+Phase E — deployment (next):
 - host service
 - UDS permissions
 - Compose socket/lock mounts

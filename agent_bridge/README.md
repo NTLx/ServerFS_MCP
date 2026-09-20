@@ -39,7 +39,7 @@ Phase C is frozen and provides **Claude Code native-mode delegation**:
 - `interrupt()` cancellation
 - live steer disabled until real installed-SDK behavior proves the intended semantics
 
-Phase D is now implementing the ServerFS MCP client/tool surface and shared writer-lease integration. Production Compose/systemd wiring and ChatGPT end-to-end deployment remain Phase E.
+Phase D is complete and frozen. It provides the ServerFS MCP client/tool surface and the shared writer-lease integration. Production Compose/systemd wiring and ChatGPT end-to-end deployment remain Phase E.
 
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
 paths must already be real directories, aliases and slots are validated, and unknown
@@ -99,7 +99,7 @@ cp config.example.json /tmp/serverfs-agent-bridge.json
 uv run serverfs-agent-bridge --config /tmp/serverfs-agent-bridge.json
 ```
 
-The protocol is newline-delimited JSON over the configured Unix socket. Phase D adds the thin ServerFS MCP client and eight provider-neutral Agent tools, but production socket/lock bind mounts remain Phase E.
+The protocol is newline-delimited JSON over the configured Unix socket. Phase D provides the thin ServerFS MCP client and eight provider-neutral Agent tools, but production socket/lock bind mounts remain Phase E.
 
 ## Phase B Codex live smoke
 
