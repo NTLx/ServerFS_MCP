@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import socket
 from pathlib import Path
 
 import pytest
@@ -430,4 +431,34 @@ async def test_uds_peer_credentials_and_socket_path_safety(
         await occupied_server.start()
     assert exc.value.code == "SOCKET_PATH_IN_USE"
     assert occupied.read_text(encoding="utf-8") == "not a socket"
+
+    stale = parent / "stale.sock"
+    stale_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    stale_socket.bind(str(stale))
+    stale_socket.close()
+    assert stale.exists()
+    stale_server = BridgeProtocolServer(service=service, socket_path=stale)
+    await stale_server.start()
+    reader, writer = await asyncio.open_unix_connection(str(stale))
+    response = await rpc(reader, writer, "stale_recovered", "runtime.list", {})
+    assert response["ok"] is True
+    writer.close()
+    await writer.wait_closed()
+    await stale_server.close()
+
+    active = parent / "active.sock"
+    active_listener = await asyncio.start_unix_server(
+        lambda _r, writer: writer.close(), path=str(active)
+    )
+    active_server = BridgeProtocolServer(service=service, socket_path=active)
+    try:
+        with pytest.raises(BridgeError) as exc:
+            await active_server.start()
+        assert exc.value.code == "SOCKET_PATH_IN_USE"
+        assert active.exists()
+    finally:
+        active_listener.close()
+        await active_listener.wait_closed()
+        active.unlink()
+
     await service.close()

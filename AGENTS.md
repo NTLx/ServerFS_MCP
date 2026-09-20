@@ -26,14 +26,46 @@ v0.2 surface unless the administrator explicitly enables Agent delegation. Agent
 talk only to the Bridge RPC contract; they never import provider adapters or provider
 SDKs into `serverfs-mcp`.
 
-Phase E is the next active development phase.
+**Phase E deployment contracts are frozen after acceptance.** It may add only the production deployment layer around the frozen
+A–D contracts: an opt-in Compose overlay, host-side systemd lifecycle, measured
+SO_PEERCRED identity, shared runtime-directory permissions, deployment config rendering,
+provider-environment documentation, container-to-Bridge verification, ChatGPT/Tunnel E2E
+and rollback/release documentation. After v0.3.0 acceptance, do not redesign the MCP tool surface, Bridge RPC,
+provider adapters or lease semantics unless a real Phase E deployment test demonstrates
+a defect.
 
-Phase D's Bridge changes were limited to the socket/lock ownership mechanics the future
-container-to-host local trust boundary needs. The target deployment is a dedicated shared
-group: socket dir 0750/socket 0660 and pre-created lock dir 0750/lock files 0640. The MCP
-container is to consume both directories through read-only bind mounts and must never
-create host lock files. Production Compose/systemd wiring, host group creation, real
-peer-ID measurement and ChatGPT E2E remain **Phase E** and are absent from Phase D.
+Phase E deployment is **user-scoped only**. Do not require sudo/root, create system
+users/groups, write to /etc, /opt or /var/lib, or install a system-level service. The
+Bridge runs as the current login user whose native Codex/Claude environment is reused;
+lifecycle uses `systemctl --user`. Application/config/state live below
+`~/.local/share`, `~/.config` and `~/.local/state`; the bind-mounted socket/lock
+runtime directories are persistent user-owned paths below
+`~/.local/share/serverfs-agent-bridge/runtime` so their inode identity survives Bridge restarts.
+
+Agent-enabled deployment requires the `serverfs-mcp` container to request the same
+UID/GID as the current login user. The Bridge still measures the real host-kernel
+SO_PEERCRED identity. That equality is a post-measurement assertion, never a shortcut:
+do not synthesize `SERVERFS_AGENT_PEER_UID/GID` from `id -u` / `id -g`; leave them unset
+until the real container peer probe measures them. If rootless Docker/userns-remap makes
+the actual peer differ from that user, fail closed and report that the default user-scoped
+deployment is incompatible; do not propose privileged ownership/group changes as a
+workaround.
+
+Socket dir 0750/socket 0660 and pre-created lock dir 0750/lock files 0640 use the user's
+existing primary group only. The MCP container consumes both directories through read-only
+bind mounts and must never create host lock files. Keep base `compose.yml` Agent-unaware;
+Phase E uses explicit `compose.agent.yml`.
+
+The repository-root `.env` is the single deployment configuration source for both base
+ServerFS and Phase E. Do not reintroduce `.env.agent`, a second env-file precedence layer,
+or installer-generated deployment env files. `.env.example` documents the complete
+non-secret configuration surface. Provider secrets/shell-only variables remain outside
+the repository in `~/.config/serverfs-agent-bridge/provider.env`.
+
+systemd user mode is a lifecycle manager only: do not add provider sandbox/hardening that
+changes the native provider capability model frozen in Phases B/C. Do not auto-enable
+login lingering; whether the user's systemd manager persists after logout is an
+environment/administrator policy outside this project.
 
 Do not add a generic shell/argv/env MCP tool. Do not replace the eight tools with the MCP
 Tasks extension yet: as of 2026-09-20 the official Python SDK still lists
@@ -58,12 +90,19 @@ Every fix lands with a regression test, exercised through the MCP surface where 
 bug was observable — a test that calls an internal helper proves less than one that
 calls the tool.
 
-Before declaring anything done, the full gate in `README.md` → Development passes:
+Before declaring anything done, the full root gate in `README.md` → Development passes:
 `uv sync --frozen`, `ruff check`, `ruff format --check`, `pytest`,
 `docker compose config`, `SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`.
 All six, actually executed. The scratch tag is not decoration: `image` doubles as
 the tag Compose builds to, so an untagged build repoints whatever `SERVERFS_IMAGE`
 names — see Traps.
+
+The root pytest configuration collects only `tests/`; it does **not** collect
+`agent_bridge/tests/`. Whenever a change touches `agent_bridge/`, also execute its
+independent gate from that directory: `uv sync --frozen`, `uv run ruff check .`,
+`uv run ruff format --check .`, and `uv run pytest`. Whenever Phase E shell scripts
+change, run `bash -n deployment/agent-bridge/*.sh` from the repository root as an
+additional syntax gate. A green root suite never substitutes for either of these.
 
 Then report: files changed, how each issue was fixed, regression tests added, pytest
 counts, and residual limitations. Anything not executed is `Not verified` — never
@@ -230,9 +269,9 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   reports the running `server_version`, which is the cheapest proof of what the
   deployment actually serves.
 - `docker compose build` tags the result `SERVERFS_IMAGE`, which in a production
-  `.env` is a pinned release (`ghcr.io/ntlx/serverfs_mcp:0.1.1`). A bare build
+  `.env` is a pinned release (`ghcr.io/ntlx/serverfs_mcp:0.3.0`). A bare build
   therefore shadows that release locally: the running container is unaffected,
-  but the next `up -d` starts v0.2 code under a v0.1.1 tag. Always build under a
+  but the next `up -d` starts local code under a release tag. Always build under a
   scratch tag (`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`). Upgrading
   a deployment is `pull` + `up -d`, never `build`.
 

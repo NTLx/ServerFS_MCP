@@ -29,11 +29,20 @@ Linux filesystem
    → ServerFS MCP (streamable-http on :8000, internal network only)
         read tools:  list / find / search / read / stat
         mutation tools: create / edit / delete (read-write workdirs only)
+        optional Agent path: eight Agent tools → host Agent Bridge → Codex/Claude
    → OpenAI Secure MCP Tunnel (official tunnel-client container, outbound-only)
    → ChatGPT
 ```
 
 The MCP server container has **no Internet egress** and no published ports. Only the tunnel container can reach it, over a Docker-internal network. The container root filesystem stays read-only regardless of any workdir setting.
+
+The default `compose.yml` exposes the original 11 filesystem tools. When the
+administrator explicitly configures Agent policy and uses `compose.agent.yml`,
+the overlay adds `list_agent_runtimes`, `submit_agent_task`, `get_agent_task`,
+`read_agent_task_events`, `respond_agent_approval`, `answer_agent_question`,
+`send_agent_message`, and `cancel_agent_task`. They broker structured tasks
+through the host-side Bridge; they are not a shell, argv, or generic command
+executor.
 
 ## Prerequisites
 
@@ -58,6 +67,10 @@ docker compose ps       # serverfs-mcp should become (healthy)
 docker compose logs -f openai-tunnel
 ```
 
+The default Quick Start remains the base 11-tool deployment. For the optional
+Agent deployment, see [the Phase E guide](deployment/agent-bridge/README.md)
+and [compose.agent.yml](compose.agent.yml); it is an explicit overlay.
+
 Building from source instead of pulling — build under a scratch tag, never under the tag a production `.env` pins:
 
 ```bash
@@ -74,8 +87,8 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.2.0` | `v0.2.0` |
-| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.2` | newest `v0.2.x` |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.3.0` | `v0.3.0` |
+| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.3` | newest `v0.3.x` |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
 Every image is multi-arch: `linux/amd64` and `linux/arm64`.
@@ -87,7 +100,7 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-For example `v0.2.0` publishes `0.2.0`, `0.2` and `latest`. `latest` always points at the newest stable release; `main` never updates it (only `edge`).
+For example `v0.3.0` publishes `0.3.0`, `0.3` and `latest`. `latest` always points at the newest stable release; `main` never updates it (only `edge`).
 
 ## Workdir Configuration
 
@@ -260,7 +273,7 @@ Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the 
 For **production**, pin `SERVERFS_IMAGE` to an exact release instead of `latest`:
 
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.2.0
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.3.0
 ```
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
