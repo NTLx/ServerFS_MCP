@@ -14,8 +14,7 @@ defines the intended new contract unless the maintainer explicitly revises it.
 The `agent_bridge/` directory is **v0.3 development code**, not released behavior and
 not wired into production Compose/systemd. Phases A (provider-neutral core), B (Codex
 native-mode adapter), C (Claude Code native-mode adapter) and D (Agent MCP surface) are
-frozen. Phases A–C are merged into `main`; Phase D is committed on its own branch and
-awaits merge.
+frozen and merged into `main`.
 
 **Phase D is frozen.** It added the eight provider-neutral Agent MCP tools, a thin
 stdlib Unix-socket Bridge client, fail-closed global/per-workdir Agent configuration,
@@ -27,7 +26,7 @@ v0.2 surface unless the administrator explicitly enables Agent delegation. Agent
 talk only to the Bridge RPC contract; they never import provider adapters or provider
 SDKs into `serverfs-mcp`.
 
-Phase E is the next active development phase after Phase D is merged.
+Phase E is the next active development phase.
 
 Phase D's Bridge changes were limited to the socket/lock ownership mechanics the future
 container-to-host local trust boundary needs. The target deployment is a dedicated shared
