@@ -12,27 +12,28 @@ and implementation win; where new v0.3 work is being implemented, `dev_plan_v0.3
 defines the intended new contract unless the maintainer explicitly revises it.
 
 The `agent_bridge/` directory is **v0.3 development code**, not released behavior and
-not wired into `compose.yml`. Phase A (provider-neutral core + FakeAdapter) and Phase B
-(Codex native-mode adapter) are frozen. Phase C is now active and may implement **Claude
-Code only** through the official Python Claude Agent SDK / `ClaudeSDKClient`.
+not wired into production Compose/systemd. Phases A (provider-neutral core), B (Codex
+native-mode adapter) and C (Claude Code native-mode adapter) are frozen and merged.
 
-Claude Phase C follows the same native-environment principle as Codex: choose the starting
-workdir and hold its writer lease, but do not invent a ServerFS sandbox, permission mode,
-tool allow/deny list or replacement MCP environment. Because the Agent SDK deliberately
-isolates filesystem settings and the Claude Code system prompt by default, native mode
-MUST explicitly use the existing system Claude executable, load
-`setting_sources=["user", "project", "local"]`, and request the `claude_code` system
-prompt preset. Existing Claude authentication, settings, CLAUDE.md files, skills, MCP
-servers and permission rules remain authoritative. Claude native mode currently requires
-the provider-neutral `workspace-write` profile only so the Bridge holds the workdir
-lease; do not pretend `review` makes native Claude read-only. Relay only permission
-requests that Claude itself sends through `can_use_tool`; never persist permission
-changes unless Claude supplied a session-scoped suggestion. A real
-`AskUserQuestion` round-trip against the installed Claude/SDK is a Phase C completion
-gate. Keep live steer disabled until real behavior proves the desired semantics.
+**Phase D is active.** It may add the eight provider-neutral Agent MCP tools, a thin
+stdlib Unix-socket Bridge client, fail-closed global/per-workdir Agent configuration,
+audit records, and the shared cross-process writer lease consumed by existing mutation
+tools. Phase D MUST keep `SERVERFS_AGENT_BRIDGE_ENABLED=false` as the default so an
+upgrade retains the current 11-tool v0.2 surface unless the administrator explicitly
+enables Agent delegation. Agent tools talk only to the Bridge RPC contract; they never
+import provider adapters or provider SDKs into `serverfs-mcp`.
 
-Do not add Agent MCP public tools, production Compose/systemd wiring, or change the
-released v0.2 MCP surface in Phase C.
+Phase D may adjust the Bridge's socket/lock ownership mechanics only as needed for the
+future container-to-host local trust boundary. The target deployment is a dedicated shared
+group: socket dir 0750/socket 0660 and pre-created lock dir 0750/lock files 0640. The MCP
+container consumes both directories through read-only bind mounts and must never create
+host lock files. Production Compose/systemd wiring, host group creation, real peer-ID
+measurement and ChatGPT E2E remain **Phase E** and must not be added in Phase D.
+
+Do not add a generic shell/argv/env MCP tool. Do not replace the eight tools with the MCP
+Tasks extension yet: as of 2026-09-20 the official Python SDK still lists
+`io.modelcontextprotocol/tasks` as not implemented. Keep the backend compatible with a
+future Tasks adapter instead.
 `SERVERFS_DISABLE_DEFAULT_DENY` is one rule this project deliberately reversed, and v0.1's
 "read-only is a product property, not an option" was superseded by v0.2's per-workdir
 opt-in. This file carries what none of them does: the reasons behind the design, the traps

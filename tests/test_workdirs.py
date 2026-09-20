@@ -9,10 +9,14 @@ import pytest
 from serverfs_mcp.workdirs import (
     ACCESS_READ_ONLY,
     ACCESS_READ_WRITE,
+    AGENT_MODE_DISABLED,
+    AGENT_MODE_WORKSPACE_WRITE,
     DISABLED_SENTINEL,
     SLOT_COUNT,
     WorkdirError,
     build_registry,
+    parse_agent_mode,
+    parse_agent_runtimes,
     parse_read_only,
 )
 
@@ -250,6 +254,113 @@ class TestReadOnlyDefaults:
         )
         reported = {w.alias: w.access for w in reg.list_result().workdirs}
         assert reported == {"projects": ACCESS_READ_ONLY, "logs": ACCESS_READ_WRITE}
+
+
+class TestAgentConfig:
+    def test_defaults_are_disabled(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        reg = build_registry(*envs("projects"), workdir_root=root)
+        wd = reg.get("projects")
+        assert wd.agent_mode == AGENT_MODE_DISABLED
+        assert wd.agent_runtimes == frozenset()
+
+    @pytest.mark.parametrize("raw", ["", "disabled", "review", "workspace-write"])
+    def test_agent_mode_parser(self, raw: str) -> None:
+        expected = raw or AGENT_MODE_DISABLED
+        assert parse_agent_mode(1, raw) == expected
+
+    def test_invalid_agent_mode_fails(self) -> None:
+        with pytest.raises(WorkdirError, match="AGENT_MODE"):
+            parse_agent_mode(2, "write-all")
+
+    def test_agent_runtime_parser(self) -> None:
+        assert parse_agent_runtimes(1, " codex,claude ") == frozenset({"codex", "claude"})
+
+    def test_unknown_agent_runtime_fails(self) -> None:
+        with pytest.raises(WorkdirError, match="unknown"):
+            parse_agent_runtimes(1, "codex,shell")
+
+    def test_duplicate_agent_runtime_fails(self) -> None:
+        with pytest.raises(WorkdirError, match="duplicate"):
+            parse_agent_runtimes(1, "codex,codex")
+
+    def test_workspace_write_requires_read_write_workdir(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        aliases, descriptions = envs("projects")
+        with pytest.raises(WorkdirError, match="READ_ONLY=false"):
+            build_registry(
+                aliases,
+                descriptions,
+                read_only_env({1: "true"}),
+                {1: "workspace-write"},
+                {1: "codex"},
+                workdir_root=root,
+            )
+
+    def test_native_runtime_requires_workspace_write(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        aliases, descriptions = envs("projects")
+        with pytest.raises(WorkdirError, match="native mode"):
+            build_registry(
+                aliases,
+                descriptions,
+                read_only_env({1: "false"}),
+                {1: "review"},
+                {1: "claude"},
+                workdir_root=root,
+            )
+
+    def test_enabled_agent_policy_round_trip(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        aliases, descriptions = envs("projects")
+        reg = build_registry(
+            aliases,
+            descriptions,
+            read_only_env({1: "false"}),
+            {1: "workspace-write"},
+            {1: "codex,claude"},
+            workdir_root=root,
+        )
+        wd = reg.get("projects")
+        assert wd.agent_mode == AGENT_MODE_WORKSPACE_WRITE
+        assert wd.agent_runtimes == frozenset({"codex", "claude"})
+
+    def test_enabled_agent_mode_requires_runtimes(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        aliases, descriptions = envs("projects")
+        with pytest.raises(WorkdirError, match="enabled Agent mode requires"):
+            build_registry(
+                aliases,
+                descriptions,
+                read_only_env({1: "false"}),
+                {1: "workspace-write"},
+                {},
+                workdir_root=root,
+            )
+
+    def test_agent_runtimes_require_enabled_mode(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        aliases, descriptions = envs("projects")
+        with pytest.raises(WorkdirError, match="requires an enabled"):
+            build_registry(
+                aliases,
+                descriptions,
+                read_only_env(),
+                {},
+                {1: "codex"},
+                workdir_root=root,
+            )
+
+    def test_disabled_slot_cannot_enable_agent(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path)
+        with pytest.raises(WorkdirError, match="disabled slot cannot enable Agent"):
+            build_registry(
+                *envs(),
+                read_only_env(),
+                {3: "workspace-write"},
+                {3: "codex"},
+                workdir_root=root,
+            )
 
 
 class TestDisabledSlotConsistency:

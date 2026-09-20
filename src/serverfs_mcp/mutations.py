@@ -187,15 +187,17 @@ def compute_revision(st: os.stat_result) -> str:
 # ---- process-local serialization ----
 
 
-_MUTATION_LOCK = threading.Lock()
+_MUTATION_LOCK = threading.RLock()
 
 
 @contextlib.contextmanager
 def mutation_lock() -> Iterator[None]:
     """Serialize every mutation in this process.
 
-    Reads deliberately do not take this lock. One lock, not a per-path
-    table: mutation traffic is low, and correctness here beats throughput.
+    Reads deliberately do not take this lock. One re-entrant lock, not a
+    per-path table: Phase D takes it once in the MCP tool layer before the
+    shared Agent lease, while the existing mutation implementation re-enters
+    it internally. Cross-thread serialization remains unchanged.
     """
     with _MUTATION_LOCK:
         yield

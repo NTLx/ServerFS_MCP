@@ -105,6 +105,8 @@ async def test_runtime_list_over_unix_socket(tmp_path: Path) -> None:
     socket_path = tmp_path / "run" / "bridge.sock"
     server = BridgeProtocolServer(service=service, socket_path=socket_path)
     await server.start()
+    assert socket_path.parent.stat().st_mode & 0o777 == 0o700
+    assert socket_path.stat().st_mode & 0o777 == 0o600
     try:
         reader, writer = await asyncio.open_unix_connection(str(socket_path))
         request = {
@@ -318,7 +320,9 @@ async def test_task_lifecycle_and_fake_interactions_over_uds(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
-async def test_uds_peer_credentials_and_socket_path_safety(tmp_path: Path) -> None:
+async def test_uds_peer_credentials_and_socket_path_safety(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     service = make_protocol_service(tmp_path)
     await service.start()
     parent = tmp_path / "existing"
@@ -332,7 +336,10 @@ async def test_uds_peer_credentials_and_socket_path_safety(tmp_path: Path) -> No
         allowed_peer_gid=os.getgid(),
     )
     await server.start()
-    assert parent.stat().st_mode & 0o777 == 0o755
+    assert parent.stat().st_mode & 0o777 == 0o750
+    assert parent.stat().st_gid == os.getgid()
+    assert socket_path.stat().st_mode & 0o777 == 0o660
+    assert socket_path.stat().st_gid == os.getgid()
     reader, writer = await asyncio.open_unix_connection(str(socket_path))
     response = await rpc(reader, writer, "peer_ok", "runtime.list", {})
     assert response["ok"] is True
@@ -365,6 +372,14 @@ async def test_uds_peer_credentials_and_socket_path_safety(tmp_path: Path) -> No
     await writer.wait_closed()
     await wrong_uid_server.close()
 
+    real_chown = os.chown
+
+    def preserve_test_group(path, uid, gid):
+        if gid == os.getgid() + 1:
+            return None
+        return real_chown(path, uid, gid)
+
+    monkeypatch.setattr(os, "chown", preserve_test_group)
     wrong_gid_server = BridgeProtocolServer(
         service=service,
         socket_path=socket_path,
@@ -389,6 +404,7 @@ async def test_uds_peer_credentials_and_socket_path_safety(tmp_path: Path) -> No
     writer.close()
     await writer.wait_closed()
     await wrong_gid_server.close()
+    monkeypatch.setattr(os, "chown", real_chown)
 
     malformed_server = BridgeProtocolServer(service=service, socket_path=socket_path)
     await malformed_server.start()

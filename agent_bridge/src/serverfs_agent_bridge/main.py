@@ -31,7 +31,7 @@ async def _serve(config: BridgeConfig) -> None:
         store=store,
         policies=config.policies,
         adapters=adapters,
-        lease_manager=LeaseManager(config.lock_dir),
+        lease_manager=LeaseManager(config.lock_dir, shared_gid=config.allowed_peer_gid),
     )
     await service.start()
 

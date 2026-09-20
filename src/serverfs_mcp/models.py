@@ -184,6 +184,17 @@ class CreateDirectoryResult(BaseModel):
     revision: str = Field(description="Revision of the created directory")
 
 
+class AgentQuestionAnswer(BaseModel):
+    """One normalized answer to a pending Agent question."""
+
+    question_id: str = Field(description="Question identifier from the pending request")
+    selected_option_ids: list[str] = Field(
+        default_factory=list,
+        description="Selected option identifiers; empty when using free text only",
+    )
+    text: str | None = Field(default=None, description="Optional free-text answer")
+
+
 class DeleteDirectoryResult(BaseModel):
     """Result of delete_directory."""
 
