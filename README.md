@@ -87,7 +87,7 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.3.0` | `v0.3.0` |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.3.1` | `v0.3.1` |
 | Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.3` | newest `v0.3.x` |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
@@ -273,7 +273,7 @@ Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the 
 For **production**, pin `SERVERFS_IMAGE` to an exact release instead of `latest`:
 
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.3.0
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.3.1
 ```
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
