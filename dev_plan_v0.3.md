@@ -886,50 +886,83 @@ bootstrap/install logic.
 
 ## 18. Claude mapping
 
-Use `ClaudeSDKClient`, not a private `claude agents` daemon protocol.
+Use the official Python `ClaudeSDKClient`, not a private `claude agents` daemon
+protocol.
+
+Phase C follows the same product principle already frozen for Codex: **preserve the
+server user's native Claude Code environment instead of synthesizing a second ServerFS
+permission/sandbox policy**.
+
+The Claude Agent SDK intentionally isolates SDK applications from filesystem settings
+and the Claude Code system prompt by default. That default is useful for generic SDK
+applications, but it is the wrong behavior for ServerFS native mode. The adapter MUST
+explicitly restore normal Claude Code context:
+
+- `cli_path` points to the administrator-selected, already-installed system `claude`
+  executable;
+- `setting_sources=["user", "project", "local"]`;
+- `system_prompt={"type": "preset", "preset": "claude_code"}`;
+- no ServerFS-supplied `permission_mode`;
+- no ServerFS `allowed_tools` / `disallowed_tools`;
+- no ServerFS replacement MCP list;
+- no ServerFS sandbox/environment override.
+
+Existing Claude authentication, settings, CLAUDE.md files, skills, MCP servers, hooks and
+permission rules remain authoritative.
+
+As with Codex native mode, Phase C only exposes Claude on a
+`workspace-write` Agent workdir. This is a **writer-lease accounting rule**, not a
+request to force Claude into any particular permission mode. Native Claude may modify
+files, so ServerFS must hold the selected workdir's exclusive lease for the active task.
 
 ### Start a new task
 
-Create a client with:
+Create `ClaudeSDKClient(ClaudeAgentOptions(...))` with:
 
-- host workdir cwd
-- provider permission mode derived from ServerFS profile
-- `can_use_tool` callback
-- explicit settings sources according to deployment policy
+- the selected host workdir as `cwd`;
+- the existing system Claude CLI via `cli_path`;
+- native setting sources and Claude Code system-prompt preset as described above;
+- a `can_use_tool` callback for native permission decisions that reach Claude's
+  `ask` path.
 
-Persist the native Claude session ID once known.
+Do not force a tool into the callback merely to make ServerFS display an approval.
+Tools already allowed/denied by the user's native Claude settings should retain that
+behavior.
+
+Persist the native Claude session ID from the result.
 
 ### Continue a prior task
 
-Use the documented session resume mechanism (for example `ClaudeAgentOptions.resume`
-with the recorded session ID) and create a new ServerFS task ID.
+Use `ClaudeAgentOptions.resume` with the recorded native session ID and create a new
+ServerFS task ID.
 
-Do not rely on `continue_conversation=True` as the only persistence mechanism; use the
-explicit session ID.
+Do not use "continue the most recent conversation" as the persistence primitive; explicit
+session IDs are required.
 
 ### Progress
 
-Normalize:
+Normalize useful provider events such as:
 
-- assistant completed messages
-- tool use/result
-- task progress/notification messages where useful
-- result/error messages
+- assistant text;
+- Bash/tool starts;
+- file-edit tool starts;
+- result/error information.
 
 Do not mirror the entire raw provider transcript into the ServerFS SQLite database.
 
 ### Steer
 
-While a `ClaudeSDKClient` for the active task is connected:
+`ClaudeSDKClient` is bidirectional, but Phase C MUST NOT advertise live steer merely
+because `client.query(...)` exists. First prove against the installed SDK/CLI that a
+query submitted during an in-flight response has the intended steer semantics rather
+than queuing a second turn.
+
+Until that proof exists:
 
 ```text
-send_agent_message
-  -> client.query(...)
+live_steer = false
+send_agent_message -> explicit provider error
 ```
-
-The implementation must test provider behavior for steering while a response is already
-in progress. If the SDK cannot safely accept such input in the tested version, expose
-`live_steer=false` from `list_agent_runtimes` and reject rather than emulate badly.
 
 ### Cancel
 
@@ -938,38 +971,60 @@ cancel_agent_task
   -> ClaudeSDKClient.interrupt()
 ```
 
-After interrupt, drain the provider's remaining buffered response before reusing the
-client, matching the official SDK contract.
+User cancellation remains authoritative in the Bridge even if the provider interrupt
+itself fails.
 
 ### Permission approval
 
-Use `can_use_tool`.
+Use `can_use_tool` only for native Claude permission decisions that reach the
+`ask` path.
 
-The callback MUST first apply ServerFS profile policy.
+For a request that reaches the callback:
 
-If the request may be shown to the user:
+1. normalize it into a durable ServerFS approval;
+2. transition the task to `waiting_for_approval`;
+3. await ChatGPT/user resolution;
+4. `approve_once` returns `PermissionResultAllow(updated_input=...)`;
+5. `deny` returns `PermissionResultDeny`;
+6. `cancel_task` denies with `interrupt=True`;
+7. expose `approve_session` only if Claude itself supplies a
+   `PermissionUpdate(destination="session")` suggestion, and echo only those
+   session-scoped suggestions back via `updated_permissions`.
 
-1. create a durable pending approval record
-2. transition task to `waiting_for_approval`
-3. await an in-process future/event while the bridge remains alive
-4. on `respond_agent_approval`, resolve the future with
-   `PermissionResultAllow` or `PermissionResultDeny`
-5. return task to `running`
+Never turn a Claude suggestion targeting `userSettings`, `projectSettings` or
+`localSettings` into a persistent approval. ServerFS must not silently modify the
+user's Claude permission configuration.
 
-Do not also place gated tools in Claude `allowed_tools`, because allow rules can approve
-before `can_use_tool` is called.
+Do not set `allowed_tools` merely to avoid callbacks: provider rules that already allow
+a tool are intentionally outside the remote approval path.
 
 ### AskUserQuestion
 
 When `tool_name == "AskUserQuestion"`:
 
-1. normalize the questions
-2. persist `waiting_for_question`
-3. await `answer_agent_question`
-4. return `PermissionResultAllow(updated_input=...)` containing the original question
-   input plus normalized answers
+1. normalize the Claude questions into the provider-neutral question model;
+2. persist `waiting_for_question`;
+3. await `answer_agent_question`;
+4. return `PermissionResultAllow(updated_input=...)` containing the original input plus
+   Claude's expected `answers` mapping.
 
 Treat this as a user question, not an approval card.
+
+A historical Agent SDK / Claude Code bug has allowed `AskUserQuestion` to resolve with
+empty answers before an asynchronous `can_use_tool` callback completes. Therefore
+**a real installed-CLI AskUserQuestion round-trip is a mandatory Phase C release gate**.
+Mock coverage alone is insufficient.
+
+### Human-wait idle timeout
+
+Waiting for ChatGPT/user input is not provider idleness. If an optional provider event
+idle timeout is configured, the adapter must keep the same pending SDK receive operation
+alive while a permission/question callback is waiting for user input.
+
+### Recovery
+
+Initial Claude recovery capability is `session-resume`. Do not claim transparent
+in-flight recovery of a live SDK subprocess/callback after Bridge restart.
 
 ## 19. Waiting for input and restart semantics
 

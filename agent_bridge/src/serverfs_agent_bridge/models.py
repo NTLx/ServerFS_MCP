@@ -41,8 +41,7 @@ class AgentMode(StrEnum):
 
 
 # The v0.3 configuration validates provider names centrally. Phase A supplies
-# the deterministic ``fake`` runtime; Phase B adds Codex; Claude remains a
-# future Phase C runtime.
+# the deterministic ``fake`` runtime; Phase B adds Codex and Phase C adds Claude.
 KNOWN_RUNTIME_NAMES = frozenset({"fake", "codex", "claude"})
 
 

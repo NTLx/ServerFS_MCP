@@ -15,7 +15,7 @@ Phase A is frozen and provides the provider-neutral infrastructure:
 - cross-process `flock` write leases
 - deterministic `FakeAdapter` integration tests
 
-Phase B is currently implementing **Codex only**:
+Phase B is frozen and provides **Codex native-mode delegation**:
 
 - official managed Codex App Server daemon reuse
 - WebSocket-over-UDS App Server transport
@@ -23,17 +23,32 @@ Phase B is currently implementing **Codex only**:
 - normalized Codex events
 - command/file/permission approval brokerage
 - `requestUserInput` brokerage through the provider-neutral question model
-- **native Codex execution semantics**: the Bridge selects the starting workdir but does
-  not override the user's Codex sandbox, approval policy, MCPs, skills/plugins, web
-  features or shell environment
+- native Codex execution semantics: the Bridge selects the starting workdir but does not
+  override the user's Codex sandbox, approval policy, MCPs, skills/plugins, web features
+  or shell environment
 
-Claude, MCP Agent tools and production deployment remain out of scope for this phase.
+Phase C is now implementing **Claude Code native-mode delegation**:
+
+- official Python Claude Agent SDK / `ClaudeSDKClient`
+- existing system-installed `claude` executable through `cli_path`
+- explicit `user/project/local` setting sources and the Claude Code system-prompt preset
+  so SDK execution matches the user's normal Claude Code environment
+- explicit native session-ID continuation
+- native `can_use_tool` approval brokerage
+- `AskUserQuestion` brokerage through the provider-neutral question model
+- `interrupt()` cancellation
+- live steer disabled until real installed-SDK behavior proves the intended semantics
+
+Agent MCP public tools and production deployment remain out of scope for Phase C.
 
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
 paths must already be real directories, aliases and slots are validated, and unknown
-runtime names are rejected. The development `fake` runtime remains test-only; Codex is
-available only when the explicit `codex.enabled` setting and workdir allowlist both permit
-it. If both peer credential fields are `null`, the UDS accepts only the bridge
+runtime names are rejected. The development `fake` runtime remains test-only; Codex and
+Claude are available only when their explicit provider enable setting and workdir
+allowlist both permit them. Native provider modes currently require
+`agent_mode=workspace-write` so the Bridge holds the writer lease; this does not impose
+a provider permission mode. If both peer credential fields are `null`, the UDS accepts
+only the bridge
 process's own UID/GID; production configuration should set the expected ServerFS
 identity explicitly.
 
@@ -107,6 +122,35 @@ the bridge user and not be group/world writable. Existing files at the socket pa
 never removed. State and lease directories are likewise required to be private (`0700`),
 and SQLite database/WAL/SHM files are kept at `0600`.
 
+## Phase C Claude live smoke
+
+The normal pytest suite must use a deterministic SDK test double, but Phase C is not
+complete until the actual server-installed Claude Code CLI passes a disposable live
+smoke.
+
+Prepare a development-only Bridge config that:
+
+- sets `claude.enabled=true`;
+- sets `claude.claude_bin` to the existing system Claude executable or command name;
+- allowlists `claude` on a disposable/read-write workdir;
+- leaves the user's native Claude settings and authentication untouched.
+
+Then, from `agent_bridge/`:
+
+```bash
+uv sync --frozen
+uv run python scripts/claude_live_smoke.py \
+  --config /path/to/development-agent-bridge.json \
+  --workdir ServerFS \
+  --timeout 300
+```
+
+The live smoke must prove a new session, explicit session continuation, a real
+`AskUserQuestion` round-trip through `waiting_for_question`, a real file write and
+cleanup. If the installed Claude/Agent SDK auto-resolves `AskUserQuestion` without
+waiting for the Bridge, Phase C is blocked on that provider behavior; do not hide the
+failure by changing the user's native permission configuration.
+
 ## Security
 
 - The Bridge is intended to run as a dedicated non-root host user.
@@ -122,6 +166,11 @@ and SQLite database/WAL/SHM files are kept at `0600`.
 - Codex authentication remains owned by the existing official Codex installation; the Bridge does not copy credentials.
 - Optional Codex autostart may invoke only the official idempotent `codex app-server daemon start` lifecycle command.
 - Existing Codex MCP servers remain enabled, but Phase B does not yet bridge MCP-originated `mcpServer/elicitation/request`; unsupported server requests fail promptly rather than hanging the turn.
+- Claude uses the existing system CLI, authentication, settings, CLAUDE.md files, skills,
+  MCP servers and native permission rules. The Bridge explicitly opts into
+  `user/project/local` setting sources because the Agent SDK otherwise isolates them.
+- Claude `approve_session` may echo only provider-supplied session-scoped permission
+  suggestions; the Bridge must not persist user/project/local permission changes.
 - Do not add generic shell/argv/environment RPC methods.
 - Do not place provider credentials in the existing ServerFS MCP container.
 

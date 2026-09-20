@@ -156,6 +156,65 @@ def test_codex_config_is_strict_and_fail_closed(tmp_path: Path) -> None:
         BridgeConfig.load(path)
 
 
+def test_claude_config_is_strict_and_fail_closed(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    path = write_config(
+        tmp_path,
+        repo,
+        claude={
+            "enabled": True,
+            "claude_bin": "claude",
+            "probe_timeout_seconds": 5,
+            "event_idle_timeout_seconds": 60,
+        },
+    )
+    config = BridgeConfig.load(path)
+    assert config.claude.enabled is True
+    assert config.claude.claude_bin == "claude"
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["claude"]["enabled"] = "true"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON boolean"):
+        BridgeConfig.load(path)
+
+    data["claude"]["enabled"] = True
+    data["claude"]["claude_bin"] = "claude\n--danger"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid character"):
+        BridgeConfig.load(path)
+
+    data["claude"]["claude_bin"] = "claude"
+    data["claude"]["unexpected"] = True
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown claude field"):
+        BridgeConfig.load(path)
+
+
+def test_claude_allowlist_requires_enabled_runtime_and_workspace_write(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    path = write_config(tmp_path, repo, enable_fake_runtime=False)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["workdirs"][0]["agent_runtimes"] = ["claude"]
+    data["workdirs"][0]["agent_mode"] = "review"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="claude.enabled is false"):
+        BridgeConfig.load(path)
+
+    data["claude"] = {"enabled": True}
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="requires agent_mode=workspace-write"):
+        BridgeConfig.load(path)
+
+    data["workdirs"][0]["agent_mode"] = "workspace-write"
+    data["workdirs"][0]["read_only"] = False
+    path.write_text(json.dumps(data), encoding="utf-8")
+    config = BridgeConfig.load(path)
+    assert config.policies.get("repo").mode is AgentMode.WORKSPACE_WRITE
+
+
 def test_codex_allowlist_requires_enabled_runtime_and_workspace_write(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
