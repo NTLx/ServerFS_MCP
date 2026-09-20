@@ -4,6 +4,7 @@ version = "0.3.0.dev0"
 description = "Host-side Agent Bridge for ServerFS MCP."
 requires-python = ">=3.12"
 dependencies = [
+    "claude-agent-sdk==0.2.156",
     "websockets==17.1",
 ]
 

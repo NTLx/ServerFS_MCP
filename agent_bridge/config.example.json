@@ -14,6 +14,12 @@
     "event_idle_timeout_seconds": null,
     "max_message_bytes": 134217728
   },
+  "claude": {
+    "enabled": false,
+    "claude_bin": "claude",
+    "probe_timeout_seconds": 5,
+    "event_idle_timeout_seconds": null
+  },
   "workdirs": [
     {
       "slot": 1,

@@ -21,11 +21,20 @@ _CONFIG_KEYS = frozenset(
         "allowed_peer_gid",
         "enable_fake_runtime",
         "codex",
+        "claude",
         "workdirs",
     }
 )
 _WORKDIR_KEYS = frozenset(
     {"slot", "alias", "host_path", "read_only", "agent_mode", "agent_runtimes"}
+)
+_CLAUDE_KEYS = frozenset(
+    {
+        "enabled",
+        "claude_bin",
+        "probe_timeout_seconds",
+        "event_idle_timeout_seconds",
+    }
 )
 _CODEX_KEYS = frozenset(
     {
@@ -65,6 +74,14 @@ class CodexSettings:
 
 
 @dataclass(frozen=True)
+class ClaudeSettings:
+    enabled: bool = False
+    claude_bin: str = "claude"
+    probe_timeout_seconds: float = 5.0
+    event_idle_timeout_seconds: float | None = None
+
+
+@dataclass(frozen=True)
 class BridgeConfig:
     socket_path: Path
     state_dir: Path
@@ -73,6 +90,7 @@ class BridgeConfig:
     allowed_peer_gid: int | None
     enable_fake_runtime: bool
     codex: CodexSettings
+    claude: ClaudeSettings
     policies: PolicyRegistry
 
     @classmethod
@@ -144,12 +162,22 @@ class BridgeConfig:
             raise ValueError("fake runtime is allowlisted but enable_fake_runtime is false")
 
         codex = _load_codex_settings(data.get("codex"))
+        claude = _load_claude_settings(data.get("claude"))
         codex_policies = [policy for policy in policies if "codex" in policy.runtimes]
         if not codex.enabled and codex_policies:
             raise ValueError("codex runtime is allowlisted but codex.enabled is false")
         if any(policy.mode is not AgentMode.WORKSPACE_WRITE for policy in codex_policies):
             raise ValueError(
                 "codex native mode requires agent_mode=workspace-write "
+                "for every allowlisted workdir"
+            )
+
+        claude_policies = [policy for policy in policies if "claude" in policy.runtimes]
+        if not claude.enabled and claude_policies:
+            raise ValueError("claude runtime is allowlisted but claude.enabled is false")
+        if any(policy.mode is not AgentMode.WORKSPACE_WRITE for policy in claude_policies):
+            raise ValueError(
+                "claude native mode requires agent_mode=workspace-write "
                 "for every allowlisted workdir"
             )
 
@@ -168,8 +196,41 @@ class BridgeConfig:
             allowed_peer_gid=_optional_int(data.get("allowed_peer_gid")),
             enable_fake_runtime=enable_fake_runtime,
             codex=codex,
+            claude=claude,
             policies=PolicyRegistry(policies),
         )
+
+
+def _load_claude_settings(value: Any) -> ClaudeSettings:
+    if value is None:
+        return ClaudeSettings()
+    if not isinstance(value, dict):
+        raise ValueError("claude must be an object")
+    _reject_unknown_keys(value, _CLAUDE_KEYS, "claude")
+
+    enabled = _strict_bool(value.get("enabled", False), "claude.enabled")
+    claude_bin = _strict_string(value.get("claude_bin", "claude"), "claude.claude_bin")
+    if any(char in claude_bin for char in ("\x00", "\n", "\r")):
+        raise ValueError("claude.claude_bin contains an invalid character")
+    probe_timeout = _strict_positive_number(
+        value.get("probe_timeout_seconds", 5.0),
+        "claude.probe_timeout_seconds",
+    )
+    event_idle_timeout_value = value.get("event_idle_timeout_seconds")
+    event_idle_timeout = (
+        None
+        if event_idle_timeout_value is None
+        else _strict_positive_number(
+            event_idle_timeout_value,
+            "claude.event_idle_timeout_seconds",
+        )
+    )
+    return ClaudeSettings(
+        enabled=enabled,
+        claude_bin=claude_bin,
+        probe_timeout_seconds=probe_timeout,
+        event_idle_timeout_seconds=event_idle_timeout,
+    )
 
 
 def _load_codex_settings(value: Any) -> CodexSettings:

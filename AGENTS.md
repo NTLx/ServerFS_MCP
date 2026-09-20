@@ -12,17 +12,27 @@ and implementation win; where new v0.3 work is being implemented, `dev_plan_v0.3
 defines the intended new contract unless the maintainer explicitly revises it.
 
 The `agent_bridge/` directory is **v0.3 development code**, not released behavior and
-not wired into `compose.yml`. Phase A (provider-neutral core + FakeAdapter) is frozen.
-Phase B is now active and may implement **Codex only**, using the official managed Codex
-App Server daemon behind the adapter boundary. Codex Phase B uses **native server-side
-Codex semantics**: choose the starting workdir, but do not inject sandbox, approval-policy,
-MCP/skill/plugin, web-feature or shell-environment overrides. Preserve the user's existing
-Codex configuration and relay native approval/question requests through the Bridge. Codex
-native mode currently requires the provider-neutral `workspace-write` profile only so
-the Bridge holds the workdir lease; do not pretend the Phase A `review` profile makes
-native Codex read-only. Do not add Claude integration, Agent MCP tools, production
-Compose/systemd wiring, or change the released v0.2 MCP surface in Phase B. Real provider
-behavior must be proven against an installed Codex daemon before Phase B is complete.
+not wired into `compose.yml`. Phase A (provider-neutral core + FakeAdapter) and Phase B
+(Codex native-mode adapter) are frozen. Phase C is now active and may implement **Claude
+Code only** through the official Python Claude Agent SDK / `ClaudeSDKClient`.
+
+Claude Phase C follows the same native-environment principle as Codex: choose the starting
+workdir and hold its writer lease, but do not invent a ServerFS sandbox, permission mode,
+tool allow/deny list or replacement MCP environment. Because the Agent SDK deliberately
+isolates filesystem settings and the Claude Code system prompt by default, native mode
+MUST explicitly use the existing system Claude executable, load
+`setting_sources=["user", "project", "local"]`, and request the `claude_code` system
+prompt preset. Existing Claude authentication, settings, CLAUDE.md files, skills, MCP
+servers and permission rules remain authoritative. Claude native mode currently requires
+the provider-neutral `workspace-write` profile only so the Bridge holds the workdir
+lease; do not pretend `review` makes native Claude read-only. Relay only permission
+requests that Claude itself sends through `can_use_tool`; never persist permission
+changes unless Claude supplied a session-scoped suggestion. A real
+`AskUserQuestion` round-trip against the installed Claude/SDK is a Phase C completion
+gate. Keep live steer disabled until real behavior proves the desired semantics.
+
+Do not add Agent MCP public tools, production Compose/systemd wiring, or change the
+released v0.2 MCP surface in Phase C.
 `SERVERFS_DISABLE_DEFAULT_DENY` is one rule this project deliberately reversed, and v0.1's
 "read-only is a product property, not an option" was superseded by v0.2's per-workdir
 opt-in. This file carries what none of them does: the reasons behind the design, the traps
