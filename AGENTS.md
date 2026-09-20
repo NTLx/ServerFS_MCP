@@ -13,22 +13,28 @@ defines the intended new contract unless the maintainer explicitly revises it.
 
 The `agent_bridge/` directory is **v0.3 development code**, not released behavior and
 not wired into production Compose/systemd. Phases A (provider-neutral core), B (Codex
-native-mode adapter) and C (Claude Code native-mode adapter) are frozen and merged.
+native-mode adapter), C (Claude Code native-mode adapter) and D (Agent MCP surface) are
+frozen. Phases A–C are merged into `main`; Phase D is committed on its own branch and
+awaits merge.
 
-**Phase D is active.** It may add the eight provider-neutral Agent MCP tools, a thin
+**Phase D is frozen.** It added the eight provider-neutral Agent MCP tools, a thin
 stdlib Unix-socket Bridge client, fail-closed global/per-workdir Agent configuration,
 audit records, and the shared cross-process writer lease consumed by existing mutation
-tools. Phase D MUST keep `SERVERFS_AGENT_BRIDGE_ENABLED=false` as the default so an
-upgrade retains the current 11-tool v0.2 surface unless the administrator explicitly
-enables Agent delegation. Agent tools talk only to the Bridge RPC contract; they never
-import provider adapters or provider SDKs into `serverfs-mcp`.
+tools. Do not modify its MCP public surface, UDS protocol, local authorization model or
+shared writer-lease contract except to fix a demonstrated defect. Phase D kept
+`SERVERFS_AGENT_BRIDGE_ENABLED=false` as the default, so an upgrade retains the 11-tool
+v0.2 surface unless the administrator explicitly enables Agent delegation. Agent tools
+talk only to the Bridge RPC contract; they never import provider adapters or provider
+SDKs into `serverfs-mcp`.
 
-Phase D may adjust the Bridge's socket/lock ownership mechanics only as needed for the
-future container-to-host local trust boundary. The target deployment is a dedicated shared
+Phase E is the next active development phase after Phase D is merged.
+
+Phase D's Bridge changes were limited to the socket/lock ownership mechanics the future
+container-to-host local trust boundary needs. The target deployment is a dedicated shared
 group: socket dir 0750/socket 0660 and pre-created lock dir 0750/lock files 0640. The MCP
-container consumes both directories through read-only bind mounts and must never create
-host lock files. Production Compose/systemd wiring, host group creation, real peer-ID
-measurement and ChatGPT E2E remain **Phase E** and must not be added in Phase D.
+container is to consume both directories through read-only bind mounts and must never
+create host lock files. Production Compose/systemd wiring, host group creation, real
+peer-ID measurement and ChatGPT E2E remain **Phase E** and are absent from Phase D.
 
 Do not add a generic shell/argv/env MCP tool. Do not replace the eight tools with the MCP
 Tasks extension yet: as of 2026-09-20 the official Python SDK still lists
