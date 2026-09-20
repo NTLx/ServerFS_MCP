@@ -38,3 +38,37 @@ closeout and is not a failure or blocker. Rollback implementation and recovery
 tests remain covered and the emergency rollback documentation remains in place.
 
 The production deployment was not redeployed during release closeout.
+
+## Final closeout revalidation — 2026-09-21
+
+A non-disruptive final revalidation confirmed that the accepted v0.3.0 state remains
+intact. No production restart, recreate, daemon update or live rollback/re-cutover was
+performed.
+
+- Repository gate: **PASS** — `673 passed`, Ruff check/format clean, scratch-tag Docker
+  build and Compose validation succeeded.
+- Agent Bridge gate: **PASS** — `83 passed`, Ruff check/format clean.
+- Two-process MCP E2E harness: **PASS** — `46/46` checks.
+- Live deployment: **PASS** — one healthy `serverfs-mcp` instance created from
+  `compose.yml` + `compose.agent.yml`; the sole Tunnel targets that instance and reports
+  ready.
+- Live ChatGPT surface: **PASS** — 19 tools are exposed: 11 filesystem tools plus eight
+  provider-neutral Agent tools.
+- Live HITL/lease behavior: **PASS** — Claude `AskUserQuestion`, `approve_once`,
+  `WORKDIR_BUSY` while the Agent writer lease is held, and lease release after terminal
+  task state were all reverified.
+- Live Codex behavior: **PASS** — native session continuation, live steer and cancellation
+  were reverified through the production MCP/Bridge path.
+- Provider parity: **PASS** — Codex direct CLI, managed daemon and app-server all report
+  `0.155.1`; Claude Code reports `2.1.278`.
+- Credential isolation: **PASS** — provider credentials remain host-side and are not
+  mounted or injected into the MCP container.
+- Internet isolation: **PASS** — in addition to the internal-only Docker topology, an
+  active container probe could not resolve a public hostname and TCP connects to
+  `1.1.1.1:443` and `8.8.8.8:443` both failed with `Network unreachable`.
+- User lifecycle: `loginctl` reports linger enabled. The delegated non-interactive shell
+  used for this revalidation could not attach to the user systemd bus; the live Bridge,
+  socket/RPC checks and previously accepted lifecycle/recovery tests remained healthy, so
+  this observation does not reopen the Phase E lifecycle gate.
+
+The v0.3.0 implementation, deployment and release gate therefore remain **COMPLETE/FROZEN**.

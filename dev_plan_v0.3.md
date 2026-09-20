@@ -1516,32 +1516,35 @@ Phase E — deployment (**COMPLETE/FROZEN**; see [`docs/phase-e-acceptance-2026-
 
 ## 32. Release gate for v0.3
 
-Do not release until all of the following are true:
+**CLOSED for v0.3.0.** All release-gate items below passed acceptance. The authoritative
+acceptance record is [`docs/phase-e-acceptance-2026-09-20.md`](docs/phase-e-acceptance-2026-09-20.md).
+The live base 11-tool rollback/re-cutover drill was separately waived by the maintainer
+for v0.3.0 and is documented there; the implementation and recovery tests remain green.
 
 ```text
-[ ] v0.2 filesystem behavior remains fully green
-[ ] agent execution defaults disabled on every workdir
-[ ] no generic shell MCP tool exists
-[ ] serverfs-mcp container still has no Internet egress
-[ ] MCP container does not contain provider credentials
-[ ] Codex uses official App Server protocol
-[ ] Claude uses official Agent SDK API
-[ ] provider-native IDs stay behind the Bridge
-[ ] long task submit returns immediately
-[ ] task polling survives separate MCP calls
-[ ] approval round-trip works through ChatGPT
-[ ] question round-trip works through ChatGPT
-[ ] ServerFS injects no Codex sandbox/approval/config override in native mode
-[ ] Codex-native approval/question requests are faithfully bridged when App Server emits them
-[ ] ServerFS exposes no separate bypass/unrestricted Agent profile of its own
-[ ] cancel is tested
-[ ] continuation by prior task is tested
-[ ] Agent tools are absent when SERVERFS_AGENT_BRIDGE_ENABLED=false
-[ ] Agent tools are present only under explicit global + per-workdir enablement
-[ ] ServerFS mutations return WORKDIR_BUSY while a workspace-write Agent holds the slot lease
-[ ] workdir write lease is tested
-[ ] Bridge restart semantics are tested and documented per provider
-[ ] real ChatGPT -> Tunnel -> Agent E2E passes
+[x] v0.2 filesystem behavior remains fully green
+[x] agent execution defaults disabled on every workdir
+[x] no generic shell MCP tool exists
+[x] serverfs-mcp container still has no Internet egress
+[x] MCP container does not contain provider credentials
+[x] Codex uses official App Server protocol
+[x] Claude uses official Agent SDK API
+[x] provider-native IDs stay behind the Bridge
+[x] long task submit returns immediately
+[x] task polling survives separate MCP calls
+[x] approval round-trip works through ChatGPT
+[x] question round-trip works through ChatGPT
+[x] ServerFS injects no Codex sandbox/approval/config override in native mode
+[x] Codex-native approval/question requests are faithfully bridged when App Server emits them
+[x] ServerFS exposes no separate bypass/unrestricted Agent profile of its own
+[x] cancel is tested
+[x] continuation by prior task is tested
+[x] Agent tools are absent when SERVERFS_AGENT_BRIDGE_ENABLED=false
+[x] Agent tools are present only under explicit global + per-workdir enablement
+[x] ServerFS mutations return WORKDIR_BUSY while a workspace-write Agent holds the slot lease
+[x] workdir write lease is tested
+[x] Bridge restart semantics are tested and documented per provider
+[x] real ChatGPT -> Tunnel -> Agent E2E passes
 ```
 
 ## 33. Current known provider limitations

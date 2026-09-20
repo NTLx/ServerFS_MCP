@@ -1,20 +1,20 @@
 # AGENTS.md
 
-Read `README.md` for the currently released behaviour, security model, deployment and
-release contract. Read `dev_plan_v0.3.md` for the next-version design baseline: the
-optional Agent Bridge, provider-neutral long-running task model, Codex App Server mapping,
-Claude Agent SDK mapping, human approvals/questions and cross-process workdir leases.
-`dev_plan_v0.3.md` is design intent, not shipped behaviour: do not rewrite README or
-existing v0.2 code as though Agent Bridge features already exist. Read `dev_plan_v0.2.md`
-for the released v0.2 filesystem-mutation baseline, and `dev_plan.md` for the original
-v0.1 baseline. Where current behaviour disagrees with a historical plan, README, tests
-and implementation win; where new v0.3 work is being implemented, `dev_plan_v0.3.md`
-defines the intended new contract unless the maintainer explicitly revises it.
+Read `README.md` for the currently released v0.3 behaviour, security model, deployment
+and release contract. Read `dev_plan_v0.3.md` for the frozen v0.3 design and release
+contract: the optional Agent Bridge, provider-neutral long-running task model, Codex App
+Server mapping, Claude Agent SDK mapping, human approvals/questions, cross-process
+workdir leases and Phase E deployment. The final Phase E acceptance evidence is recorded
+in `docs/phase-e-acceptance-2026-09-20.md`. Read `dev_plan_v0.2.md` for the historical
+v0.2 filesystem-mutation baseline, and `dev_plan.md` for the original v0.1 baseline.
+Where current behaviour disagrees with a historical plan, README, tests, implementation
+and the accepted v0.3 contracts win.
 
-The `agent_bridge/` directory is **v0.3 development code**, not released behavior and
-not wired into production Compose/systemd. Phases A (provider-neutral core), B (Codex
-native-mode adapter), C (Claude Code native-mode adapter) and D (Agent MCP surface) are
-frozen and merged into `main`.
+The `agent_bridge/` directory contains the **released/frozen v0.3 host-side Agent Bridge**.
+Phases A (provider-neutral core), B (Codex native-mode adapter), C (Claude Code native-mode
+adapter), D (Agent MCP surface) and E (production deployment) are complete and frozen on
+`main`. Production Agent delegation remains opt-in through `compose.agent.yml`; the base
+`compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
 **Phase D is frozen.** It added the eight provider-neutral Agent MCP tools, a thin
 stdlib Unix-socket Bridge client, fail-closed global/per-workdir Agent configuration,
@@ -26,13 +26,13 @@ v0.2 surface unless the administrator explicitly enables Agent delegation. Agent
 talk only to the Bridge RPC contract; they never import provider adapters or provider
 SDKs into `serverfs-mcp`.
 
-**Phase E deployment contracts are frozen after acceptance.** It may add only the production deployment layer around the frozen
-A–D contracts: an opt-in Compose overlay, host-side systemd lifecycle, measured
-SO_PEERCRED identity, shared runtime-directory permissions, deployment config rendering,
-provider-environment documentation, container-to-Bridge verification, ChatGPT/Tunnel E2E
-and rollback/release documentation. After v0.3.0 acceptance, do not redesign the MCP tool surface, Bridge RPC,
-provider adapters or lease semantics unless a real Phase E deployment test demonstrates
-a defect.
+**Phase E deployment contracts are frozen after acceptance.** They define the production
+deployment layer around the frozen A–D contracts: an opt-in Compose overlay, host-side
+systemd lifecycle, measured SO_PEERCRED identity, shared runtime-directory permissions,
+deployment config rendering, provider-environment documentation, container-to-Bridge
+verification, ChatGPT/Tunnel E2E and rollback/release documentation. After v0.3.0
+acceptance, do not redesign the MCP tool surface, Bridge RPC, provider adapters or lease
+semantics unless a real deployment test demonstrates a defect.
 
 Phase E deployment is **user-scoped only**. Do not require sudo/root, create system
 users/groups, write to /etc, /opt or /var/lib, or install a system-level service. The

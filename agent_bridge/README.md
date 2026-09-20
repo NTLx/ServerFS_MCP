@@ -1,9 +1,10 @@
-# ServerFS Agent Bridge — v0.3 development
+# ServerFS Agent Bridge — v0.3
 
-This directory contains the **host-side** Agent Bridge planned for ServerFS v0.3.
+This directory contains the **host-side** Agent Bridge released with ServerFS v0.3.
 
-It is deliberately separate from the released `serverfs-mcp` package and is not wired
-into the production Compose stack yet.
+The Bridge remains a separate host process from the `serverfs-mcp` package. Production
+Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
+while the base `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
 Phase A is frozen and provides the provider-neutral infrastructure:
 
@@ -39,7 +40,10 @@ Phase C is frozen and provides **Claude Code native-mode delegation**:
 - `interrupt()` cancellation
 - live steer disabled until real installed-SDK behavior proves the intended semantics
 
-Phase D is complete and frozen. It provides the ServerFS MCP client/tool surface and the shared writer-lease integration. Production Compose/systemd wiring and ChatGPT end-to-end deployment remain Phase E.
+Phase D is complete and frozen. It provides the ServerFS MCP client/tool surface and the
+shared writer-lease integration. Phase E is also complete and frozen: production
+Compose/systemd wiring, runtime permissions and ChatGPT end-to-end deployment were
+accepted for v0.3.0; see `../docs/phase-e-acceptance-2026-09-20.md`.
 
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
 paths must already be real directories, aliases and slots are validated, and unknown
@@ -99,7 +103,10 @@ cp config.example.json /tmp/serverfs-agent-bridge.json
 uv run serverfs-agent-bridge --config /tmp/serverfs-agent-bridge.json
 ```
 
-The protocol is newline-delimited JSON over the configured Unix socket. Phase D provides the thin ServerFS MCP client and eight provider-neutral Agent tools, but production socket/lock bind mounts remain Phase E.
+The protocol is newline-delimited JSON over the configured Unix socket. Phase D provides
+the thin ServerFS MCP client and eight provider-neutral Agent tools. The accepted Phase E
+production deployment exposes the Bridge socket and shared lock directory to the MCP
+container through read-only bind mounts defined by `../compose.agent.yml`.
 
 ## Phase B Codex live smoke
 
