@@ -55,6 +55,7 @@ from .models import (
     DeleteFileResult,
     EditTextFileResult,
     TextEdit,
+    UploadBinaryFileResult,
 )
 from .paths import ResolvedPath
 
@@ -405,6 +406,29 @@ def create_text_file(
         path=resolved.rel_path,
         created=True,
         bytes_written=len(data),
+        revision=revision,
+    )
+
+
+def create_binary_file(
+    resolved: ResolvedPath, data: bytes, *, max_binary_bytes: int
+) -> UploadBinaryFileResult:
+    """Create one new regular file from exact raw bytes; never overwrite."""
+    if len(data) > max_binary_bytes:
+        raise WriteTooLargeError(f"binary payload exceeds {max_binary_bytes} bytes")
+    with mutation_lock(), _root_fd(resolved) as root_fd:
+        with contextlib.ExitStack() as stack:
+            try:
+                parent_fd, name = stack.enter_context(_parent_of(root_fd, resolved.rel_parts))
+            except FileNotFoundError:
+                raise ParentNotFoundError() from None
+            revision = _publish_new_file(parent_fd, name, data)
+    return UploadBinaryFileResult(
+        workdir=resolved.workdir.alias,
+        path=resolved.rel_path,
+        created=True,
+        bytes_written=len(data),
+        sha256=hashlib.sha256(data).hexdigest(),
         revision=revision,
     )
 

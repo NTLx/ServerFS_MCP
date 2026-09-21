@@ -759,6 +759,19 @@ Add:
 
 ### Phase C — Binary Upload Create
 
+> Status: **COMPLETE / FROZEN** on `v0.4-dev`.
+>
+> `upload_binary_file` is registered only with the binary capability surface, defaults
+> to `overwrite=false`, strictly decodes provider-neutral base64 under the effective
+> workdir size limit, and reuses the existing same-directory temp + `linkat` create
+> primitive. `overwrite=true` is explicitly rejected until Phase D adds the
+> revision-guarded replacement contract.
+>
+> Validation at freeze: 25 Phase C tests and 742 root tests passed; targeted Ruff check
+> and format check passed; the 13-tool filesystem+binary surface, schema default,
+> exact bytes/SHA-256/revision, read-only/capability/path-policy gates, symlink-parent
+> rejection, Agent writer lease and no-temp-debris failure paths were verified.
+
 Add:
 
 - strict provider-neutral payload decoding;
@@ -935,26 +948,26 @@ Do not release until all are true:
 [x] legacy .env behavior is preserved
 [x] Agent policy supports global default + workdir override
 [x] binary transfer defaults disabled
-[ ] binary tools are absent when disabled everywhere
-[ ] binary tools appear when at least one workdir enables binary
+[x] binary tools are absent when disabled everywhere
+[x] binary tools appear when at least one workdir enables binary
 [x] list_workdirs reports binary and Agent capabilities
 [x] binary download returns exact bytes
 [x] binary download detects concurrent changes
 [x] binary download enforces effective size limit
-[ ] binary upload accepts arbitrary bytes including NUL
-[ ] malformed/oversized payloads fail closed
-[ ] upload create is atomic and never overwrites
+[x] binary upload accepts arbitrary bytes including NUL
+[x] malformed/oversized payloads fail closed
+[x] upload create is atomic and never overwrites
 [ ] overwrite is explicit
 [ ] overwrite requires expected_revision
 [ ] overwrite stale revision fails
 [ ] overwrite preserves metadata
 [ ] overwrite retains hard-link restriction
 [x] binary reads obey hidden/deny/reserved policy
-[ ] binary writes obey hidden/deny/reserved policy
-[ ] binary writes obey READ_ONLY authorization
-[ ] binary writes obey shared Agent writer lease
-[ ] symlinks are never followed
-[ ] failed binary mutations leave no published partial file/temp debris
+[x] binary writes obey hidden/deny/reserved policy
+[x] binary writes obey READ_ONLY authorization
+[x] binary writes obey shared Agent writer lease
+[x] symlinks are never followed
+[x] failed binary mutations leave no published partial file/temp debris
 [ ] MCP container still has no Internet egress
 [ ] provider credentials remain host-side
 [ ] no generic executor exists

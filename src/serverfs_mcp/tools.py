@@ -37,7 +37,7 @@ from pydantic import Field
 
 from . import logging as jsonlog
 from .agent_leases import AgentLeaseError, WorkdirBusyError, mutation_agent_lease
-from .binary import BinaryTransferError
+from .binary import BinaryTransferError, decode_base64_payload
 from .binary import read_binary_file as read_binary_file_impl
 from .config import Settings
 from .fdio import open_directory_fd, open_file_fd, root_fd
@@ -59,9 +59,11 @@ from .models import (
     SearchTextResult,
     StatFileResult,
     TextEdit,
+    UploadBinaryFileResult,
 )
 from .mutations import MutationError, mutation_lock
 from .mutations import compute_revision as revision_of
+from .mutations import create_binary_file as create_binary_file_impl
 from .mutations import create_directory as create_directory_impl
 from .mutations import create_text_file as create_text_file_impl
 from .mutations import delete_directory as delete_directory_impl
@@ -159,6 +161,30 @@ def _resolve_binary_read(
     return _resolve(registry, workdir, path, settings)
 
 
+def _resolve_binary_mutable(
+    registry: WorkdirRegistry, workdir: str, path: str, settings: Settings
+) -> ResolvedPath:
+    """Authorize a binary mutation before applying the shared path policy."""
+    wd = registry.get(workdir)
+    if wd is None:
+        raise ToolError(f"WORKDIR_NOT_FOUND: {workdir!r} is not a configured workdir")
+    if wd.read_only:
+        raise ToolError(
+            f"WORKDIR_READ_ONLY: {workdir} is configured read-only. "
+            "Only workdirs reported as read-write accept mutations."
+        )
+    if not wd.policy.binary_transfer_enabled:
+        raise ToolError(
+            f"BINARY_TRANSFER_DISABLED: binary transfer is disabled for workdir {workdir}"
+        )
+    resolved = _resolve(registry, workdir, path, settings)
+    if not resolved.rel_parts:
+        raise ToolError(
+            f"ROOT_MUTATION_NOT_ALLOWED: the root of {workdir} cannot be created or replaced"
+        )
+    return resolved
+
+
 def _binary_resource_uri(workdir: str, path: str) -> str:
     """Stable agent-visible URI for one binary content block."""
     return f"serverfs://{workdir}/{quote(path, safe='/')}"
@@ -238,6 +264,8 @@ def _mutation_tool_error(exc: Exception, workdir: str, path: str) -> ToolError:
         return exc
     if isinstance(exc, WorkdirBusyError):
         return ToolError(f"WORKDIR_BUSY: {workdir} has an active Agent writer")
+    if isinstance(exc, BinaryTransferError):
+        return ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
     if isinstance(exc, AgentLeaseError):
         return ToolError(f"AGENT_LOCK_UNAVAILABLE: shared Agent lease for {workdir} is unavailable")
     if isinstance(exc, MutationError):
@@ -860,6 +888,74 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
                 content=[resource],
                 structured_content=metadata.model_dump(),
             )
+
+        @mcp.tool(annotations=CREATE_FILE_ANNOTATIONS)
+        def upload_binary_file(
+            workdir: WorkdirArg,
+            path: Annotated[
+                str, Field(description="Path of the new file, relative to the workdir root")
+            ],
+            data_base64: Annotated[
+                str,
+                Field(
+                    description=(
+                        "Complete file payload as strict RFC 4648 base64; "
+                        "the target must not already exist"
+                    )
+                ),
+            ],
+            overwrite: Annotated[
+                bool,
+                Field(
+                    default=False,
+                    description=(
+                        "Must remain false for create-only upload; controlled overwrite "
+                        "requires the separate revision-guarded overwrite contract"
+                    ),
+                ),
+            ] = False,
+        ) -> UploadBinaryFileResult:
+            """Upload one NEW regular file from exact raw bytes; never overwrite.
+
+            Binary transfer must be enabled for the selected workdir, which
+            must also be read-write. The payload is strictly base64-decoded
+            under the workdir's binary transfer limit before the same atomic
+            create primitive used by create_text_file publishes it. overwrite
+            defaults to false and true is rejected in this create-only phase.
+            If any target already exists, the call fails with PATH_ALREADY_EXISTS.
+            """
+            t0 = time.monotonic()
+
+            def body():
+                resolved = _resolve_binary_mutable(registry, workdir, path, settings)
+                if overwrite:
+                    raise ToolError(
+                        "OVERWRITE_NOT_ALLOWED: upload_binary_file is create-only; "
+                        "overwrite requires the revision-guarded overwrite contract"
+                    )
+                data = decode_base64_payload(
+                    data_base64,
+                    max_bytes=resolved.workdir.policy.max_binary_transfer_bytes,
+                )
+                with (
+                    mutation_lock(),
+                    mutation_agent_lease(
+                        Path(settings.agent_lock_dir),
+                        resolved.workdir.slot,
+                        enabled=settings.agent_bridge_enabled,
+                    ),
+                ):
+                    result = create_binary_file_impl(
+                        resolved,
+                        data,
+                        max_binary_bytes=resolved.workdir.policy.max_binary_transfer_bytes,
+                    )
+                return result, {
+                    "bytes_written": result.bytes_written,
+                    "revision": result.revision,
+                }
+
+            return _run_mutation("upload_binary_file", workdir, path, t0, body)
 
     @mcp.tool(annotations=CREATE_FILE_ANNOTATIONS)
     def create_text_file(
