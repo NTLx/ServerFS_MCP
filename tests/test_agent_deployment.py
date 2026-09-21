@@ -250,9 +250,13 @@ def test_agent_overlay_uses_user_host_dirs_and_read_only_container_mounts() -> N
 
 def test_env_example_has_single_agent_policy_pair_for_all_slots() -> None:
     text = (_REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert text.count("SERVERFS_AGENT_MODE=disabled") == 1
+    assert text.count("SERVERFS_AGENT_RUNTIMES=") == 1
+    assert text.count("SERVERFS_BINARY_TRANSFER_ENABLED=false") == 1
+    assert text.count("SERVERFS_MAX_BINARY_TRANSFER_BYTES=8388608") == 1
     for slot in range(1, 17):
         prefix = f"WORKDIR_{slot:02d}"
-        assert text.count(f"{prefix}_AGENT_MODE=disabled") == 1
+        assert text.count(f"{prefix}_AGENT_MODE=") == 1
         assert text.count(f"{prefix}_AGENT_RUNTIMES=") == 1
 
 

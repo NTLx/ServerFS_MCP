@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from serverfs_mcp.config import Settings, settings_from_env
 
 
@@ -17,13 +19,18 @@ class TestDefaults:
 
 
 class TestRobustParsing:
-    def test_invalid_int_falls_back(self) -> None:
-        s = settings_from_env({"SERVERFS_MAX_READ_BYTES": "not-a-number"})
-        assert s.max_read_bytes == Settings().max_read_bytes
+    def test_invalid_policy_int_fails_closed(self) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env({"SERVERFS_MAX_READ_BYTES": "not-a-number"})
 
-    def test_nonpositive_int_falls_back(self) -> None:
-        s = settings_from_env({"SERVERFS_MAX_READ_LINES": "0"})
-        assert s.max_read_lines == Settings().max_read_lines
+    def test_nonpositive_policy_int_fails_closed(self) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env({"SERVERFS_MAX_READ_LINES": "0"})
+
+    @pytest.mark.parametrize("key", ["SERVERFS_ALLOW_HIDDEN", "SERVERFS_DISABLE_DEFAULT_DENY"])
+    def test_invalid_policy_bool_fails_closed(self, key: str) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env({key: "maybe"})
 
     def test_bool_variants(self) -> None:
         assert settings_from_env({"SERVERFS_ALLOW_HIDDEN": "1"}).allow_hidden is True
@@ -44,6 +51,17 @@ class TestAgentBridgeConfig:
         assert s.agent_bridge_socket == "/run/serverfs-agent-bridge/bridge.sock"
         assert s.agent_bridge_timeout_seconds == 30.0
         assert s.agent_lock_dir == "/run/serverfs-agent-locks"
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            {"SERVERFS_AGENT_MODE": "disabled", "SERVERFS_AGENT_RUNTIMES": "codex"},
+            {"SERVERFS_AGENT_MODE": "review", "SERVERFS_AGENT_RUNTIMES": ""},
+        ],
+    )
+    def test_invalid_global_agent_pair_fails_closed(self, env: dict[str, str]) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env(env)
 
     def test_explicit_agent_bridge_settings(self) -> None:
         s = settings_from_env(

@@ -22,7 +22,7 @@ from .config import Settings
 from .fdio import open_directory_fd, root_fd
 from .models import AgentQuestionAnswer
 from .paths import PathSecurityError, resolve_workdir_path
-from .tools import deny_policy_from_settings
+from .tools import deny_policy_from_workdir
 from .workdirs import (
     AGENT_MODE_DISABLED,
     AGENT_MODE_REVIEW,
@@ -379,8 +379,8 @@ def _validate_agent_cwd(wd: Workdir, path: str, settings: Settings) -> str:
         resolved = resolve_workdir_path(
             wd,
             path,
-            allow_hidden=settings.allow_hidden,
-            deny_policy=deny_policy_from_settings(settings),
+            allow_hidden=wd.policy.allow_hidden,
+            deny_policy=deny_policy_from_workdir(wd),
         )
         with contextlib.ExitStack() as stack:
             root = stack.enter_context(root_fd(str(wd.container_path)))

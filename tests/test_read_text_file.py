@@ -2,13 +2,34 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from serverfs_mcp.config import Settings
 from serverfs_mcp.tools import READ_IMPL
+from serverfs_mcp.workdirs import EffectiveWorkdirPolicy, WorkdirRegistry
 
 
 def read(registry, settings, path, start=1, max_lines=200, workdir="test"):
+    selected = registry.get(workdir)
+    if selected is not None:
+        selected = dataclasses.replace(
+            selected,
+            policy=EffectiveWorkdirPolicy(
+                allow_hidden=settings.allow_hidden,
+                disable_default_deny=settings.disable_default_deny,
+                extra_deny_globs=settings.extra_deny_globs,
+                max_read_bytes=settings.max_read_bytes,
+                max_read_lines=settings.max_read_lines,
+                max_write_bytes=settings.max_write_bytes,
+                binary_transfer_enabled=settings.binary_transfer_enabled,
+                max_binary_transfer_bytes=settings.max_binary_transfer_bytes,
+                agent_mode=selected.policy.agent_mode,
+                agent_runtimes=selected.policy.agent_runtimes,
+            ),
+        )
+        registry = WorkdirRegistry([selected])
     return READ_IMPL(registry, settings, workdir, path, start, max_lines)
 
 

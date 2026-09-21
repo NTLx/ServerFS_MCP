@@ -314,7 +314,11 @@ def test_submit_rejects_unknown_workdir_before_rpc(tmp_path: Path) -> None:
 
 def test_submit_rejects_runtime_not_allowlisted_on_workdir(tmp_path: Path) -> None:
     client = FakeAgentClient()
-    wd = dataclasses.replace(agent_workdir(tmp_path), agent_runtimes=frozenset({"claude"}))
+    original = agent_workdir(tmp_path)
+    wd = dataclasses.replace(
+        original,
+        policy=dataclasses.replace(original.policy, agent_runtimes=frozenset({"claude"})),
+    )
     server = server_with_client(tmp_path, client, workdirs=[wd])
     message = call_error(
         server,
@@ -385,6 +389,28 @@ def test_agent_starting_cwd_uses_normal_serverfs_path_policy(tmp_path: Path) -> 
     )
     assert error_code(message) == "HIDDEN_PATH_NOT_ALLOWED"
     assert client.calls == []
+
+
+def test_agent_starting_cwd_uses_selected_workdir_policy(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    wd = agent_workdir(tmp_path)
+    (wd.container_path / ".hidden").mkdir()
+    wd = dataclasses.replace(wd, policy=dataclasses.replace(wd.policy, allow_hidden=True))
+    server = server_with_client(tmp_path, client, workdirs=[wd])
+    result = call_success(
+        server,
+        "submit_agent_task",
+        {
+            "runtime": "codex",
+            "workdir": "repo",
+            "path": ".hidden",
+            "profile": "workspace-write",
+            "prompt": "Do work",
+        },
+    )
+    assert result["task_id"] == "agt_test"
+    assert client.calls[-1][0] == "task.submit"
+    assert client.calls[-1][1]["path"] == ".hidden"
 
 
 def test_read_and_interaction_tools_map_to_expected_rpc_methods(tmp_path: Path) -> None:

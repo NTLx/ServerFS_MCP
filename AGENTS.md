@@ -1,14 +1,16 @@
 # AGENTS.md
 
 Read `README.md` for the currently released v0.3 behaviour, security model, deployment
-and release contract. Read `dev_plan_v0.3.md` for the frozen v0.3 design and release
-contract: the optional Agent Bridge, provider-neutral long-running task model, Codex App
-Server mapping, Claude Agent SDK mapping, human approvals/questions, cross-process
-workdir leases and Phase E deployment. The final Phase E acceptance evidence is recorded
-in `docs/phase-e-acceptance-2026-09-20.md`. Read `dev_plan_v0.2.md` for the historical
-v0.2 filesystem-mutation baseline, and `dev_plan.md` for the original v0.1 baseline.
-Where current behaviour disagrees with a historical plan, README, tests, implementation
-and the accepted v0.3 contracts win.
+and release contract. **For active v0.4 development, read `dev_plan_v0.4.md` first:** it
+is the frozen design baseline for hierarchical workdir policy and binary file transfer.
+Read `dev_plan_v0.3.md` for the frozen v0.3 Agent Bridge contract: provider-neutral
+long-running tasks, Codex App Server mapping, Claude Agent SDK mapping, human
+approvals/questions, cross-process workdir leases and Phase E deployment. The final v0.3
+acceptance evidence is recorded in `docs/phase-e-acceptance-2026-09-20.md`. Read
+`dev_plan_v0.2.md` for the historical v0.2 filesystem-mutation baseline, and `dev_plan.md`
+for the original v0.1 baseline. Where v0.4 explicitly extends an older rule,
+`dev_plan_v0.4.md` wins for v0.4 work; otherwise README, tests, implementation and the
+accepted v0.3 contracts remain authoritative.
 
 The `agent_bridge/` directory contains the **released/frozen v0.3 host-side Agent Bridge**.
 Phases A (provider-neutral core), B (Codex native-mode adapter), C (Claude Code native-mode
@@ -61,6 +63,17 @@ ServerFS and Phase E. Do not reintroduce `.env.agent`, a second env-file precede
 or installer-generated deployment env files. `.env.example` documents the complete
 non-secret configuration surface. Provider secrets/shell-only variables remain outside
 the repository in `~/.config/serverfs-agent-bridge/provider.env`.
+
+**Streamable HTTP transport security is a v0.4 security invariant (GitHub #10).** The
+production endpoint remains `http://serverfs-mcp:8000/mcp`; `MCPServer.run()` must receive
+an explicit `TransportSecuritySettings` with DNS-rebinding protection enabled, exact
+`allowed_hosts=["serverfs-mcp:8000"]`, and no allowed non-empty Origins. In
+`mcp==2.2.0`, absent Origin is accepted; invalid/missing Host fails with HTTP 421 and a
+non-empty disallowed Origin fails with HTTP 403 before MCP dispatch. Do not broaden the
+Host/Origin allowlist, make it wildcard-configurable, or remove the startup wiring merely
+to accommodate a different development topology. Any legitimate topology change must be
+measured and regression-tested first. Evidence is in
+`docs/transport-security-audit-2026-09-21.md`.
 
 systemd user mode is a lifecycle manager only: do not add provider sandbox/hardening that
 changes the native provider capability model frozen in Phases B/C. Do not auto-enable
@@ -134,13 +147,18 @@ Tracing a deny bypass means following the *full* workdir-relative path on every
 channel. A policy decision made against a search root's own relative path is a
 partial path, and partial paths are how bypasses ship.
 
-## Mutation contract (v0.2)
+## Mutation contract (v0.2 baseline, extended by v0.4 binary transfer)
 
-Five tools, no general-purpose write. `create_text_file` and `create_directory` require
-the target to be absent; `edit_text_file` requires it to exist and to be a UTF-8 regular
-file; `delete_file` takes any regular file; `delete_directory` takes an empty directory.
-No `force`, `recursive` or `overwrite` flag exists anywhere, and none may be added: the
-agent-facing contract is "the precondition is the error message".
+Five v0.2 tools remain narrow, with no general-purpose write. `create_text_file` and
+`create_directory` require the target to be absent; `edit_text_file` requires it to exist
+and to be a UTF-8 regular file; `delete_file` takes any regular file;
+`delete_directory` takes an empty directory. Their public contracts remain unchanged.
+
+v0.4 adds one deliberate exception to the historical "no overwrite" rule:
+`upload_binary_file` may use `overwrite=true` **only** for an existing regular file and
+**only** with a required `expected_revision`. It is revision-guarded replacement, not a
+`force` operation and not create-or-replace. There is still no recursive mutation and no
+unguarded overwrite path. See `dev_plan_v0.4.md` sections 9 and 19.
 
 The mutation pipeline in `mutations.py` is `authorize (workdir read-write) → resolve
 (policy) → root/parent FD walk → act on the final NAME with dir_fd=parent_fd`. Every
@@ -208,9 +226,11 @@ most.
 
 `SERVERFS_ALLOW_HIDDEN`, `SERVERFS_DISABLE_DEFAULT_DENY` and
 `SERVERFS_EXTRA_DENY_GLOBS` are product features, not oversights: safe by default,
-explicitly releasable by the administrator. `EXTRA_DENY_GLOBS` applies
-unconditionally and survives `DISABLE_DEFAULT_DENY=true` by design — and so does the
-reserved temp namespace.
+explicitly releasable by the administrator. In v0.4 they become global policy defaults
+with per-workdir overrides. Scalar workdir policy wins over the global default, while
+`EXTRA_DENY_GLOBS` is intentionally additive: global deny globs remain a security floor
+and workdir globs can only add restrictions. Reserved internal paths remain
+non-configurable and denied everywhere.
 
 `WORKDIR_XX_READ_ONLY` (default `true`) is the v0.2 write switch, and it is one variable
 driving two layers on purpose: ServerFS's own authorization and the Compose bind-mount
