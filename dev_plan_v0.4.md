@@ -783,6 +783,18 @@ Add:
 
 ### Phase D — Controlled Binary Overwrite
 
+> Status: **COMPLETE / FROZEN** on `v0.4-dev`.
+>
+> `upload_binary_file(overwrite=true)` now requires `expected_revision` and reuses the
+> existing `_replace_at()` atomic replacement primitive. Replacement preserves mode,
+> ownership and xattrs, rejects multiple hard links, fails on stale/missing revisions,
+> and never publishes a partial file. `overwrite=false` remains create-only and rejects
+> an irrelevant `expected_revision` to keep the call contract unambiguous.
+>
+> Validation at freeze: 12 Phase D overwrite tests, 25 upload regression tests and
+> 754 root tests passed with 0 skips; targeted Ruff/format checks passed; schema/default
+> and error contracts were independently verified.
+
 Add:
 
 - `overwrite=true`;
@@ -957,11 +969,11 @@ Do not release until all are true:
 [x] binary upload accepts arbitrary bytes including NUL
 [x] malformed/oversized payloads fail closed
 [x] upload create is atomic and never overwrites
-[ ] overwrite is explicit
-[ ] overwrite requires expected_revision
-[ ] overwrite stale revision fails
-[ ] overwrite preserves metadata
-[ ] overwrite retains hard-link restriction
+[x] overwrite is explicit
+[x] overwrite requires expected_revision
+[x] overwrite stale revision fails
+[x] overwrite preserves metadata
+[x] overwrite retains hard-link restriction
 [x] binary reads obey hidden/deny/reserved policy
 [x] binary writes obey hidden/deny/reserved policy
 [x] binary writes obey READ_ONLY authorization

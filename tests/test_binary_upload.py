@@ -64,9 +64,17 @@ class TestBinaryUploadRegistration:
 
     def test_upload_schema_exposes_create_only_overwrite_default(self, workdir) -> None:
         schema = _tool_schema(_server(workdir), "upload_binary_file")
-        assert set(schema["properties"]) == {"workdir", "path", "data_base64", "overwrite"}
+        assert set(schema["properties"]) == {
+            "workdir",
+            "path",
+            "data_base64",
+            "overwrite",
+            "expected_revision",
+        }
         assert schema["properties"]["overwrite"]["default"] is False
+        assert schema["properties"]["expected_revision"]["default"] is None
         assert "overwrite" not in schema.get("required", [])
+        assert "expected_revision" not in schema.get("required", [])
 
     def test_binary_disabled_surface_has_neither_binary_tool(self, workdir) -> None:
         server = create_server(Settings(), registry_for(workdir))
@@ -137,7 +145,7 @@ class TestBinaryUploadCreate:
         assert error_code(msg) == "BINARY_PAYLOAD_TOO_LARGE"
         assert not (workdir.container_path / "big.bin").exists()
 
-    def test_overwrite_true_fails_closed_without_touching_target(self, workdir) -> None:
+    def test_overwrite_true_without_revision_fails_closed(self, workdir) -> None:
         target = workdir.container_path / "keep.bin"
         target.write_bytes(b"OLD")
         server = _server(workdir)
@@ -152,7 +160,7 @@ class TestBinaryUploadCreate:
                 "overwrite": True,
             },
         )
-        assert error_code(msg) == "OVERWRITE_NOT_ALLOWED"
+        assert error_code(msg) == "EXPECTED_REVISION_REQUIRED"
         assert target.read_bytes() == b"OLD"
         assert not list(workdir.container_path.glob(".serverfs-tmp-*"))
 
