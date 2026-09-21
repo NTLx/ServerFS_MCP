@@ -20,7 +20,9 @@ from serverfs_mcp.config import Settings
 from serverfs_mcp.main import create_server
 from serverfs_mcp.workdirs import EffectiveWorkdirPolicy, Workdir, WorkdirRegistry
 
-_CODE_RE = re.compile(r"\b([A-Z][A-Z_]{2,}):")
+# Error codes start with an uppercase letter and may contain uppercase
+# letters, digits and underscores (for example INVALID_BASE64).
+_CODE_RE = re.compile(r"\b([A-Z][A-Z0-9_]{2,}):")
 
 
 def registry_for(*workdirs: Workdir) -> WorkdirRegistry:

@@ -150,6 +150,17 @@ class DownloadBinaryFileMetadata(BaseModel):
     revision: str = Field(description="Opaque revision of the unchanged file that was read")
 
 
+class UploadBinaryFileResult(BaseModel):
+    """Result of create-only binary upload."""
+
+    workdir: str
+    path: str
+    created: bool
+    bytes_written: int
+    sha256: str = Field(description="SHA-256 hex digest of the uploaded raw bytes")
+    revision: str = Field(description="Revision of the published file")
+
+
 class TextEdit(BaseModel):
     """One exact-match edit within edit_text_file."""
 
