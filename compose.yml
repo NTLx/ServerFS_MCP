@@ -3,7 +3,7 @@ services:
     build:
       context: .
     # `image` doubles as the tag `docker compose build` writes to, so a bare
-    # build under a pinned production .env (SERVERFS_IMAGE=...:0.1.1) would
+    # build under a pinned production .env (SERVERFS_IMAGE=...:<release>) would
     # point that release tag at locally built code. Build under a scratch tag
     # instead: `SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`.
     image: ${SERVERFS_IMAGE:-ghcr.io/ntlx/serverfs_mcp:latest}

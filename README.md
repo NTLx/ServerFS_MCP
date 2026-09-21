@@ -98,6 +98,7 @@ tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
 For example `v0.4.0` publishes `0.4.0`, `0.4` and `latest`. `latest` always points at the newest stable release; `main` never updates it (only `edge`).
+The published release record is [ServerFS MCP v0.4.0 on GitHub](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.4.0).
 
 ## Workdir Configuration
 

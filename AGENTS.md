@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Read `README.md` for the current v0.4 release-candidate behaviour, security model,
+Read `README.md` for the current released/frozen v0.4.0 behaviour, security model,
 deployment and release contract. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
 acceptance baseline for hierarchical workdir policy, binary file transfer and the Issue #10
 transport-security fix.

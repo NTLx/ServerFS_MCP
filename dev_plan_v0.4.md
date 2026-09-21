@@ -1,6 +1,6 @@
 # ServerFS MCP v0.4.0 Design Baseline — Binary Transfer & Hierarchical Workdir Policy
 
-> Status: **RELEASE-CANDIDATE SOURCE FROZEN** — final refreshed-connector binary calls pending after `edge` deployment; no further code change is expected unless that live acceptance exposes a defect.
+> Status: **RELEASED / FROZEN v0.4.0** — the tag, GitHub Release and release workflow completed successfully; post-release connector verification is recorded in [`docs/phase-f-v0.4-release-candidate-2026-09-21.md`](docs/phase-f-v0.4-release-candidate-2026-09-21.md).
 >
 > Base release: **v0.3.1**.
 >
@@ -119,7 +119,7 @@ container. That would break the v0.3 network boundary.
 
 ### 3.5 Streamable HTTP transport security (Issue #10)
 
-v0.4.0 MUST close GitHub Issue #10 before release. Docker `internal: true` networking and
+v0.4.0 closed GitHub Issue #10 before release. Docker `internal: true` networking and
 an unpublished port remain defense-in-depth layers, but they must not be the only Host /
 Origin / DNS-rebinding boundary for the MCP HTTP transport.
 
@@ -677,12 +677,11 @@ Prefer not to log SHA-256 unless it has a concrete operational use.
 
 ### Security Track S — Streamable HTTP transport protection (Issue #10)
 
-> Status: **IMPLEMENTED / VERIFIED** on the v0.4 working tree. Evidence:
+> Status: **IMPLEMENTED / VERIFIED** in the released v0.4.0 source. Evidence:
 > [`docs/transport-security-audit-2026-09-21.md`](docs/transport-security-audit-2026-09-21.md).
 >
-> GitHub Issue #10 remains a release-tracking item until the fix is committed/merged in
-> the release line; the technical implementation and real Tunnel compatibility gate are
-> complete.
+> GitHub Issue #10 was fixed, merged and closed for the v0.4.0 release line; the
+> technical implementation and real Tunnel compatibility gate are complete.
 
 This track is release-blocking and is executed immediately after Phase A1's policy parser
 foundation, before further capability expansion.
@@ -806,11 +805,12 @@ Add:
 
 ### Phase E — Real MCP / ChatGPT E2E
 
-> Status: **SERVER/TUNNEL ACCEPTED / FROZEN** on `v0.4-dev`; refreshed-client binary calls pending after final edge deployment.
+> Status: **SERVER/TUNNEL ACCEPTED / FROZEN** in v0.4.0; refreshed-client binary calls
+> and download output-schema exposure were verified after plugin refresh.
 >
 > Disposable real-MCP acceptance verified 11 / 13 / 19 / 21 tool surfaces, PNG and ZIP exact-byte upload/download round trips, revision-guarded overwrite, and both directions of global/workdir binary precedence. A separate 21-tool v0.4 stack connected through the real OpenAI Secure MCP Tunnel and received four real ChatGPT `list_workdirs` dispatches with HTTP 200 and no 421/403/Host/Origin/DNS-rebinding/session errors. See `docs/phase-e-v0.4-acceptance-2026-09-21.md`.
 >
-> The current ChatGPT conversation retained its previously discovered 19-tool schema and therefore could not directly invoke the two newly added binary tools. That measured client discovery cache is intentionally re-tested after the final `edge` image is deployed and the plugin is refreshed; it does not require another code change.
+> The pre-release ChatGPT conversation retained its previously discovered 19-tool schema; after the plugin refresh, direct binary upload/download calls were verified and the download `outputSchema` was exposed. That measured client-discovery limitation is historical evidence, not a remaining release gate.
 
 Validate through the real chain:
 
@@ -833,9 +833,9 @@ The ChatGPT attachment input shape must be measured, not assumed.
 
 ### Phase F — Security & Release Regression
 
-> Status: **COMPLETE / FROZEN** for the release-candidate source.
+> Status: **COMPLETE / FROZEN** for the released v0.4.0 source.
 >
-> Final gate: root `754 passed`; Agent Bridge `83 passed`; root/bridge sync, lock, Ruff and format gates all passed; base and Agent Compose renders passed; tracked deployment shell syntax passed; scratch image build passed; no-Internet-egress / no-provider-credentials / no-published-port / internal-network boundaries passed; transport-security targeted suite `47 passed`; migration/surface suite `242 passed`; full capability surface remained exactly 21 tools with no generic executor. Production identity/start/restart/health was unchanged throughout. See `docs/phase-f-v0.4-release-candidate-2026-09-21.md`.
+> Final gate: root `754 passed`; Agent Bridge `83 passed`; root/bridge sync, lock, Ruff and format gates all passed; base and Agent Compose renders passed; tracked deployment shell syntax passed; scratch image build passed; no-Internet-egress / no-provider-credentials / no-published-port / internal-network boundaries passed; transport-security targeted suite `47 passed`; migration/surface suite `242 passed`; full capability surface remained exactly 21 tools with no generic executor. Production identity/start/restart/health was unchanged throughout. The v0.4.0 tag/release workflow and refreshed ChatGPT connector binary upload/download verification also passed; the download `outputSchema` was exposed. See `docs/phase-f-v0.4-release-candidate-2026-09-21.md`.
 
 Reverify:
 
@@ -954,11 +954,11 @@ Using an unchanged v0.3.1 deployment configuration with v0.4 code MUST:
 
 ## 19. Release gate for v0.4.0
 
-Do not release until all are true:
+The v0.4.0 release gate completed as follows:
 
 ```text
 [x] GitHub Issue #10 technical fix is implemented with explicit transport-security regressions
-[ ] GitHub Issue #10 is closed when the fix reaches the v0.4 release line
+[x] GitHub Issue #10 is closed when the fix reaches the v0.4 release line
 [x] actual OpenAI Tunnel Host and Origin behavior is measured and documented
 [x] legitimate measured Host is accepted
 [x] unexpected Host is rejected at the MCP transport layer
@@ -994,8 +994,8 @@ Do not release until all are true:
 [x] provider credentials remain host-side
 [x] no generic executor exists
 [x] 11/13/19/21 tool-surface matrix passes
-[ ] refreshed ChatGPT connector directly invokes binary upload after final edge deployment
-[ ] refreshed ChatGPT connector directly invokes binary download after final edge deployment
+[x] refreshed ChatGPT connector directly invokes binary upload after final edge deployment
+[x] refreshed ChatGPT connector directly invokes binary download after final edge deployment
 [x] current ChatGPT client tool-discovery cache limitation is measured and documented
 [x] root release gate passes
 [x] Agent Bridge independent gate passes when touched
@@ -1015,4 +1015,5 @@ Work phase-by-phase. Each implementation task should be atomic and must:
 
 The maintainer performs architecture review between phases.
 
-No tag/release is created until Phase F closes the release gate.
+The v0.4.0 tag and release were created after Phase F closed the release gate; the
+published acceptance record remains the historical evidence for that decision.

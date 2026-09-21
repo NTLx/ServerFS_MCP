@@ -455,14 +455,14 @@ the Bridge proves there is no active listener and the socket inode/owner did
 not change during the check. Active sockets, symlinks, ordinary files and
 other-user sockets remain fail-closed.
 
-## Phase E release gate
+## Post-release verification and rollback
 
 Before host acceptance, run both independent code gates: the repository-root gate from
 `AGENTS.md`, the complete `agent_bridge/` uv/ruff/pytest gate, and
 `bash -n deployment/agent-bridge/*.sh` for deployment shell syntax. Root `pytest`
 collects only `tests/` and does not validate `agent_bridge/tests/`.
 
-Do not release v0.3 until the target host proves:
+For the released v0.4.0 package, verify the target host proves:
 
 - install/update/rollback require no sudo/root;
 - real peer UID/GID equal the current login user;
@@ -473,12 +473,13 @@ Do not release v0.3 until the target host proves:
 - provider environment parity holds;
 - Codex managed-daemon version matches the selected direct CLI after upgrades;
 - Codex and Claude runtime discovery works;
-- ChatGPT sees the 19-tool surface;
+- Agent mode exposes 19 tools without binary transfer and 21 tools with binary transfer;
 - real submit/poll/HITL/cancel works;
 - shared writer lease works across host/container;
 - rollback implementation and recovery tests remain green; the live base
-  11-tool rollback/re-cutover drill is **WAIVED BY MAINTAINER for v0.3.0**
-  (2026-09-20) and is not a release blocker;
+  11-tool rollback/re-cutover drill was **WAIVED BY MAINTAINER for v0.3.0**
+  (2026-09-20) as a historical release decision and is not a v0.4.0 verification
+  requirement;
 - no provider credentials enter the MCP container;
 - MCP container still has no Internet egress;
 - unattended deployments either have user linger enabled or explicitly
@@ -488,3 +489,7 @@ Without `compose.agent.yml`, Agent env/mounts disappear and ServerFS returns
 to the default 11-tool surface. Workdir `AGENT_MODE/RUNTIMES` values in
 `.env` are inert because the base Compose does not pass them into the
 container.
+
+If post-release verification fails, use the documented rollback script to restore the
+previous user-scoped Bridge release, configuration and unit state; do not move or
+recreate the published `v0.4.0` tag.

@@ -1,15 +1,15 @@
-# v0.4 Phase F release-candidate acceptance — 2026-09-21
+# v0.4.0 Phase F release acceptance record — 2026-09-21
+
+This is historical evidence for the published v0.4.0 release, not a changelog.
 
 ## Result
 
-**PASS** for the code, container, security and migration release-candidate gates.
+**PASS** for the code, container, security, migration and post-release connector gates.
 
-The only intentionally deferred acceptance is the direct invocation of the two newly
-added binary tools from a refreshed ChatGPT connector. The current conversation retained
-its previously discovered 19-tool schema even while real connector requests were
-successfully routed to a temporary 21-tool v0.4 service. That client discovery boundary
-is tested after the final edge image is deployed and the plugin is refreshed; it is not a
-code or container gate.
+The v0.4.0 tag and GitHub Release were created, and the release workflow succeeded.
+After the ChatGPT connector plugin was refreshed, direct binary upload/download calls
+were verified successfully; the connector now exposes the binary download `outputSchema`.
+Issue #10 was fixed and closed in v0.4.0.
 
 ## Root package
 
@@ -33,11 +33,11 @@ code or container gate.
 - base + Agent overlay config: PASS
 - `bash -n deployment/agent-bridge/install.sh`: PASS
 - `bash -n deployment/agent-bridge/rollback_app.sh`: PASS
-- scratch image build from the release-candidate source: PASS
+- scratch image build from the release source: PASS
 
 ## Security boundary
 
-A disposable isolated Compose project using the release-candidate image verified:
+A disposable isolated Compose project using the release image verified:
 
 - MCP container healthy;
 - no published host port;
@@ -91,10 +91,8 @@ At the start and end of the gate:
 Disposable Phase F containers, network, workdir and scratch image were cleaned up after
 validation.
 
-## Release-candidate conclusion
+## Release conclusion
 
-The v0.4 code and deployment model are ready to be frozen into the final `0.4.0`
-release-candidate commit. After that commit reaches `main`, the corresponding `edge`
-image is used for the production refresh. A refreshed ChatGPT plugin then performs the
-final direct `upload_binary_file` / `download_binary_file` connector acceptance before
-the maintainer creates the `v0.4.0` tag.
+The v0.4.0 code and deployment model were accepted and frozen in the published release.
+The final refreshed-connector acceptance completed after plugin refresh, including direct
+`upload_binary_file` / `download_binary_file` calls and the exposed download output schema.

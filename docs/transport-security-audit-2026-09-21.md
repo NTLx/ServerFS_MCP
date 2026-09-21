@@ -5,8 +5,9 @@ Release gate: ServerFS MCP v0.4.0
 
 ## Scope
 
-This audit establishes the transport-security inputs before ServerFS enables
-`mcp==2.2.0` DNS-rebinding protection for its Streamable HTTP endpoint.
+This document records the pre-release transport-security audit and the v0.4.0
+verification of the resulting hardening. It is historical evidence for the released
+configuration, not a still-pending hardening plan.
 
 No production service was restarted, recreated, reconfigured or proxied during S1.
 
@@ -75,9 +76,9 @@ Installed project version: `mcp==2.2.0`.
 - `allowed_hosts=[]`
 - `allowed_origins=[]`
 
-The released v0.3.1 baseline runs Streamable HTTP at `host="0.0.0.0"` with
+The released v0.3.1 baseline ran Streamable HTTP at `host="0.0.0.0"` with
 `transport_security=None`. For non-loopback bind hosts that leaves Host/Origin
-validation disabled. The v0.4 working tree explicitly supplies the policy described
+validation disabled. The released v0.4.0 source explicitly supplies the policy described
 below.
 
 When protection is enabled:
@@ -98,8 +99,8 @@ The smallest production policy is:
 - allowed Host: exactly `serverfs-mcp:8000`;
 - allowed non-empty Origins: none.
 
-No configurable wildcard allowlist is introduced for v0.4.0 unless real deployment
-evidence proves an additional legitimate authority/origin is required.
+No configurable wildcard allowlist was introduced for v0.4.0; the real deployment
+evidence confirmed that no additional legitimate authority/origin was required.
 
 Regression tests exercise the real ASGI Streamable HTTP layer in
 `tests/test_security.py`, plus the production startup wiring in `tests/test_main.py`:
@@ -111,7 +112,7 @@ Regression tests exercise the real ASGI Streamable HTTP layer in
 5. `main()` passes the explicit transport-security object to `MCPServer.run()`;
 6. existing MCP transport behavior remains green.
 
-S2 validation on the v0.4 working tree:
+S2 validation on the v0.4.0 release source:
 
 - targeted `tests/test_security.py tests/test_main.py`: **47 passed**;
 - Ruff check: pass;
