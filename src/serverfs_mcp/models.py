@@ -151,13 +151,17 @@ class DownloadBinaryFileMetadata(BaseModel):
 
 
 class UploadBinaryFileResult(BaseModel):
-    """Result of create-only binary upload."""
+    """Result of binary create or revision-guarded replacement."""
 
     workdir: str
     path: str
     created: bool
+    replaced: bool = False
     bytes_written: int
     sha256: str = Field(description="SHA-256 hex digest of the uploaded raw bytes")
+    revision_before: str | None = Field(
+        default=None, description="Previous revision when an existing file was replaced"
+    )
     revision: str = Field(description="Revision of the published file")
 
 

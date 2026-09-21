@@ -69,6 +69,7 @@ from .mutations import create_text_file as create_text_file_impl
 from .mutations import delete_directory as delete_directory_impl
 from .mutations import delete_file as delete_file_impl
 from .mutations import edit_text_file as edit_text_file_impl
+from .mutations import replace_binary_file as replace_binary_file_impl
 from .paths import DenyPolicy, PathSecurityError, ResolvedPath, resolve_workdir_path
 from .search import SearchTimeout, run_search
 from .workdirs import WorkdirRegistry
@@ -909,29 +910,42 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
                 Field(
                     default=False,
                     description=(
-                        "Must remain false for create-only upload; controlled overwrite "
-                        "requires the separate revision-guarded overwrite contract"
+                        "False creates a new file; true replaces one existing regular file "
+                        "and requires expected_revision"
                     ),
                 ),
             ] = False,
+            expected_revision: Annotated[
+                str | None,
+                Field(
+                    default=None,
+                    description=(
+                        "Required only when overwrite=true; current revision from stat_file "
+                        "or download_binary_file"
+                    ),
+                ),
+            ] = None,
         ) -> UploadBinaryFileResult:
-            """Upload one NEW regular file from exact raw bytes; never overwrite.
+            """Create or revision-guardedly replace one regular file from raw bytes.
 
-            Binary transfer must be enabled for the selected workdir, which
-            must also be read-write. The payload is strictly base64-decoded
-            under the workdir's binary transfer limit before the same atomic
-            create primitive used by create_text_file publishes it. overwrite
-            defaults to false and true is rejected in this create-only phase.
-            If any target already exists, the call fails with PATH_ALREADY_EXISTS.
+            Binary transfer must be enabled for the selected read-write
+            workdir. overwrite=false is create-only and never replaces an
+            existing path. overwrite=true requires expected_revision and
+            atomically replaces exactly the regular file at that revision,
+            preserving metadata and rejecting multiple hard links.
             """
             t0 = time.monotonic()
 
             def body():
                 resolved = _resolve_binary_mutable(registry, workdir, path, settings)
-                if overwrite:
+                if overwrite and expected_revision is None:
                     raise ToolError(
-                        "OVERWRITE_NOT_ALLOWED: upload_binary_file is create-only; "
-                        "overwrite requires the revision-guarded overwrite contract"
+                        "EXPECTED_REVISION_REQUIRED: overwrite=true requires expected_revision"
+                    )
+                if not overwrite and expected_revision is not None:
+                    raise ToolError(
+                        "EXPECTED_REVISION_NOT_ALLOWED: expected_revision is only valid "
+                        "when overwrite=true"
                     )
                 data = decode_base64_payload(
                     data_base64,
@@ -945,11 +959,19 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
                         enabled=settings.agent_bridge_enabled,
                     ),
                 ):
-                    result = create_binary_file_impl(
-                        resolved,
-                        data,
-                        max_binary_bytes=resolved.workdir.policy.max_binary_transfer_bytes,
-                    )
+                    if overwrite:
+                        result = replace_binary_file_impl(
+                            resolved,
+                            data,
+                            expected_revision,
+                            max_binary_bytes=resolved.workdir.policy.max_binary_transfer_bytes,
+                        )
+                    else:
+                        result = create_binary_file_impl(
+                            resolved,
+                            data,
+                            max_binary_bytes=resolved.workdir.policy.max_binary_transfer_bytes,
+                        )
                 return result, {
                     "bytes_written": result.bytes_written,
                     "revision": result.revision,

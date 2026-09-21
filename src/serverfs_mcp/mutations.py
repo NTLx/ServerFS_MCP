@@ -427,8 +427,49 @@ def create_binary_file(
         workdir=resolved.workdir.alias,
         path=resolved.rel_path,
         created=True,
+        replaced=False,
         bytes_written=len(data),
         sha256=hashlib.sha256(data).hexdigest(),
+        revision_before=None,
+        revision=revision,
+    )
+
+
+def replace_binary_file(
+    resolved: ResolvedPath,
+    data: bytes,
+    expected_revision: str,
+    *,
+    max_binary_bytes: int,
+) -> UploadBinaryFileResult:
+    """Atomically replace one regular file after an exact revision check."""
+    if len(data) > max_binary_bytes:
+        raise WriteTooLargeError(f"binary payload exceeds {max_binary_bytes} bytes")
+    with mutation_lock(), _root_fd(resolved) as root_fd:
+        with _parent_of(root_fd, resolved.rel_parts) as (parent_fd, name):
+            with _open_regular(parent_fd, name) as fd:
+                before = os.fstat(fd)
+                revision_before = compute_revision(before)
+                if revision_before != expected_revision:
+                    raise RevisionConflictError()
+                if before.st_nlink > 1:
+                    raise MultipleHardlinksError()
+                revision = _replace_at(
+                    parent_fd,
+                    name,
+                    data,
+                    fd,
+                    before,
+                    expected_revision,
+                )
+    return UploadBinaryFileResult(
+        workdir=resolved.workdir.alias,
+        path=resolved.rel_path,
+        created=False,
+        replaced=True,
+        bytes_written=len(data),
+        sha256=hashlib.sha256(data).hexdigest(),
+        revision_before=revision_before,
         revision=revision,
     )
 
