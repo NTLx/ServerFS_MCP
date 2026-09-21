@@ -137,7 +137,14 @@ class WorkdirRegistry:
     def list_result(self) -> ListWorkdirsResult:
         return ListWorkdirsResult(
             workdirs=[
-                WorkdirInfo(alias=w.alias, description=w.description, access=w.access)
+                WorkdirInfo(
+                    alias=w.alias,
+                    description=w.description,
+                    access=w.access,
+                    binary_transfer=w.policy.binary_transfer_enabled,
+                    agent_mode=w.policy.agent_mode,
+                    agent_runtimes=sorted(w.policy.agent_runtimes),
+                )
                 for w in self._all
             ]
         )
