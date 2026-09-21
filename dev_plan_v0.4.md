@@ -1,6 +1,6 @@
 # ServerFS MCP v0.4.0 Design Baseline — Binary Transfer & Hierarchical Workdir Policy
 
-> Status: **DESIGN FROZEN / IMPLEMENTATION IN PROGRESS**.
+> Status: **RELEASE-CANDIDATE SOURCE FROZEN** — final refreshed-connector binary calls pending after `edge` deployment; no further code change is expected unless that live acceptance exposes a defect.
 >
 > Base release: **v0.3.1**.
 >
@@ -806,6 +806,12 @@ Add:
 
 ### Phase E — Real MCP / ChatGPT E2E
 
+> Status: **SERVER/TUNNEL ACCEPTED / FROZEN** on `v0.4-dev`; refreshed-client binary calls pending after final edge deployment.
+>
+> Disposable real-MCP acceptance verified 11 / 13 / 19 / 21 tool surfaces, PNG and ZIP exact-byte upload/download round trips, revision-guarded overwrite, and both directions of global/workdir binary precedence. A separate 21-tool v0.4 stack connected through the real OpenAI Secure MCP Tunnel and received four real ChatGPT `list_workdirs` dispatches with HTTP 200 and no 421/403/Host/Origin/DNS-rebinding/session errors. See `docs/phase-e-v0.4-acceptance-2026-09-21.md`.
+>
+> The current ChatGPT conversation retained its previously discovered 19-tool schema and therefore could not directly invoke the two newly added binary tools. That measured client discovery cache is intentionally re-tested after the final `edge` image is deployed and the plugin is refreshed; it does not require another code change.
+
 Validate through the real chain:
 
 ```text
@@ -826,6 +832,10 @@ Required matrix:
 The ChatGPT attachment input shape must be measured, not assumed.
 
 ### Phase F — Security & Release Regression
+
+> Status: **COMPLETE / FROZEN** for the release-candidate source.
+>
+> Final gate: root `754 passed`; Agent Bridge `83 passed`; root/bridge sync, lock, Ruff and format gates all passed; base and Agent Compose renders passed; tracked deployment shell syntax passed; scratch image build passed; no-Internet-egress / no-provider-credentials / no-published-port / internal-network boundaries passed; transport-security targeted suite `47 passed`; migration/surface suite `242 passed`; full capability surface remained exactly 21 tools with no generic executor. Production identity/start/restart/health was unchanged throughout. See `docs/phase-f-v0.4-release-candidate-2026-09-21.md`.
 
 Reverify:
 
@@ -980,15 +990,16 @@ Do not release until all are true:
 [x] binary writes obey shared Agent writer lease
 [x] symlinks are never followed
 [x] failed binary mutations leave no published partial file/temp debris
-[ ] MCP container still has no Internet egress
-[ ] provider credentials remain host-side
-[ ] no generic executor exists
-[ ] 11/13/19/21 tool-surface matrix passes
-[ ] real ChatGPT binary upload E2E passes or platform limitation is measured and explicitly resolved
-[ ] real ChatGPT binary download E2E passes
-[ ] root release gate passes
-[ ] Agent Bridge independent gate passes when touched
-[ ] deployment shell syntax gate passes when touched
+[x] MCP container still has no Internet egress
+[x] provider credentials remain host-side
+[x] no generic executor exists
+[x] 11/13/19/21 tool-surface matrix passes
+[ ] refreshed ChatGPT connector directly invokes binary upload after final edge deployment
+[ ] refreshed ChatGPT connector directly invokes binary download after final edge deployment
+[x] current ChatGPT client tool-discovery cache limitation is measured and documented
+[x] root release gate passes
+[x] Agent Bridge independent gate passes when touched
+[x] deployment shell syntax gate passes when touched
 ```
 
 ## 20. Development discipline

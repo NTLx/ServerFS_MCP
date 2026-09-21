@@ -2,7 +2,7 @@
 
 > ServerFS MCP is a secure MCP server that exposes explicitly configured Linux directories as controlled workdirs to AI agents, **read-only by default** with opt-in per-workdir file mutation.
 
-Agents reach your directories through the **OpenAI Secure MCP Tunnel**. They can list, find, search, read and stat files anywhere you mount — and, in workdirs you explicitly mark read-write, create, edit and delete files through five narrow, revision-guarded tools. Nothing else: no shell, no command execution, no overwrite, no recursive delete, no escape from the directories you configure.
+Agents reach your directories through the **OpenAI Secure MCP Tunnel**. They can list, find, search, read and stat files anywhere you mount; optionally transfer bounded whole binary files; and, in workdirs you explicitly mark read-write, create, edit, delete or revision-guarded replace files through narrow tools. Nothing else: no shell, no command execution, no unguarded overwrite, no recursive delete, no escape from the directories you configure.
 
 ```text
 服务器上有哪些 workdir？        → list_workdirs
@@ -10,6 +10,8 @@ Agents reach your directories through the **OpenAI Secure MCP Tunnel**. They can
 找所有 docker compose 配置     → find_files
 搜索哪里配置了 DATABASE_URL    → search_text
 打开对应配置文件               → read_text_file / stat_file
+下载 PNG / ZIP 等原始字节       → download_binary_file（可选）
+上传或受控替换二进制文件         → upload_binary_file（可选）
 新建一个 Markdown 设计文档      → create_text_file
 把端口 8080 改成 8081          → edit_text_file
 删掉过期的构建产物              → delete_file
@@ -29,6 +31,7 @@ Linux filesystem
    → ServerFS MCP (streamable-http on :8000, internal network only)
         read tools:  list / find / search / read / stat
         mutation tools: create / edit / delete (read-write workdirs only)
+        optional binary path: download / upload / revision-guarded replace
         optional Agent path: eight Agent tools → host Agent Bridge → Codex/Claude
    → OpenAI Secure MCP Tunnel (official tunnel-client container, outbound-only)
    → ChatGPT
@@ -36,13 +39,7 @@ Linux filesystem
 
 The MCP server container has **no Internet egress** and no published ports. Only the tunnel container can reach it, over a Docker-internal network. The container root filesystem stays read-only regardless of any workdir setting.
 
-The default `compose.yml` exposes the original 11 filesystem tools. When the
-administrator explicitly configures Agent policy and uses `compose.agent.yml`,
-the overlay adds `list_agent_runtimes`, `submit_agent_task`, `get_agent_task`,
-`read_agent_task_events`, `respond_agent_approval`, `answer_agent_question`,
-`send_agent_message`, and `cancel_agent_task`. They broker structured tasks
-through the host-side Bridge; they are not a shell, argv, or generic command
-executor.
+The default `compose.yml` exposes the original 11 filesystem tools. Binary transfer is opt-in: when at least one workdir enables it, `download_binary_file` and `upload_binary_file` are added, producing a 13-tool filesystem surface. When the administrator also configures Agent policy and uses `compose.agent.yml`, the overlay adds eight structured Agent tools. The four supported surfaces are therefore 11 / 13 / 19 / 21 tools for filesystem-only / filesystem+binary / filesystem+Agent / filesystem+binary+Agent. Agent tools broker structured tasks through the host-side Bridge; they are not a shell, argv, or generic command executor.
 
 ## Prerequisites
 
@@ -87,8 +84,8 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.3.1` | `v0.3.1` |
-| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.3` | newest `v0.3.x` |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.4.0` | `v0.4.0` |
+| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.4` | newest `v0.4.x` |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
 Every image is multi-arch: `linux/amd64` and `linux/arm64`.
@@ -100,7 +97,7 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-For example `v0.3.0` publishes `0.3.0`, `0.3` and `latest`. `latest` always points at the newest stable release; `main` never updates it (only `edge`).
+For example `v0.4.0` publishes `0.4.0`, `0.4` and `latest`. `latest` always points at the newest stable release; `main` never updates it (only `edge`).
 
 ## Workdir Configuration
 
@@ -125,6 +122,14 @@ Rules:
 - `READ_ONLY`: `true` (default) or `false`. Write it as `true`/`false` — the value feeds both ServerFS's own authorization and the Docker bind mount flag, and Docker Compose rejects `1`/`0` for the latter. Any unrecognised value stops the container at startup (`CONFIGURATION_ERROR`) instead of guessing. **A typo can never grant write access.**
 - Leave both `ALIAS` and `PATH` empty to disable a slot.
 - Host paths are never sent to the MCP container (only aliases are); the mapping exists only in Docker bind mounts.
+
+### Global defaults and workdir overrides
+
+v0.4 resolves one immutable effective policy for every enabled workdir at startup. Global `SERVERFS_*` values are defaults; an explicit `WORKDIR_XX_*` scalar override wins for that slot, while an empty workdir value inherits the global default. This applies to hidden-file policy, read/write limits, binary transfer, and Agent policy. `EXTRA_DENY_GLOBS` is intentionally stricter: global and workdir deny globs are **unioned**, so a workdir can add restrictions but cannot remove the global deny floor.
+
+Binary transfer is disabled by default. Enable it globally with `SERVERFS_BINARY_TRANSFER_ENABLED=true` or for one slot with `WORKDIR_XX_BINARY_TRANSFER_ENABLED=true`. `SERVERFS_MAX_BINARY_TRANSFER_BYTES` / `WORKDIR_XX_MAX_BINARY_TRANSFER_BYTES` bound both upload and download; the default is 8 MiB. Enabling binary transfer does not release write authorization: uploads still require `WORKDIR_XX_READ_ONLY=false`.
+
+Agent policy follows the same inheritance model via `SERVERFS_AGENT_MODE` / `SERVERFS_AGENT_RUNTIMES` and the workdir overrides. `SERVERFS_AGENT_BRIDGE_ENABLED` remains the separate infrastructure master gate.
 
 ### Read-only by default, and after upgrades
 
@@ -187,7 +192,7 @@ Defense in depth — each layer is independent:
 | Exact-match edits | Edits replace literal text (never regex, never fuzzy), must match `expected_count` occurrences exactly, and apply in order as an all-or-nothing transaction. No edit touches the disk until every edit has been validated. |
 | Atomic publication | `create_text_file` writes a reserved same-directory temp file and publishes it with `linkat(2)`, which cannot overwrite. `edit_text_file` writes a temp file and publishes with `renameat(2)`. A concurrent reader sees either the complete old or the complete new content — never a partial file, and never a truncated-then-rewritten file. |
 | Metadata preservation | Editing replaces an inode, so ServerFS copies ownership, mode and extended attributes onto the replacement *before* the rename — in that order, because `chown(2)` clears setuid/setgid bits and can disturb `security.*` metadata — and fails with `METADATA_PRESERVATION_FAILED` if any of them cannot be reproduced. A file with multiple hard links is refused outright (`MULTIPLE_HARDLINKS_NOT_SUPPORTED` rather than silently splitting the link). |
-| No recursive delete, no force | `delete_directory` removes an empty directory only; anything inside it — hidden, denied or a leftover temp file — yields `DIRECTORY_NOT_EMPTY` and the interior is never named in the error. `create_directory` is not recursive. No tool takes a `force`, `recursive` or `overwrite` argument. |
+| No recursive delete, no unguarded force | `delete_directory` removes an empty directory only; anything inside it — hidden, denied or a leftover temp file — yields `DIRECTORY_NOT_EMPTY` and the interior is never named in the error. `create_directory` is not recursive. There is no `force` or `recursive` mode. The only overwrite path is `upload_binary_file(overwrite=true)`, and it requires the caller's `expected_revision` for one existing regular file. |
 | Workdir root is immutable | The workdir root itself can never be created, edited or deleted (`ROOT_MUTATION_NOT_ALLOWED`). |
 | Reserved names | Two internal names are hard-reserved: `.serverfs-tmp-*` (atomic-publication temp files) and `.serverfs-disabled` (the workdir registry's disabled-slot marker, which startup reads — an agent able to create it would break the next start). Neither is listable, findable, searchable, readable, stat-able or mutable, in every configuration: `SERVERFS_ALLOW_HIDDEN` and `SERVERFS_DISABLE_DEFAULT_DENY` do not release them, and ripgrep is told to skip those names outright. |
 | Tool annotations | Read tools advertise `readOnlyHint=true`; mutation tools advertise `read_only=false`; `create_*` are non-destructive while `edit`/`delete_*` are destructive. `create_directory`, `edit_text_file` and `delete_*` advertise `idempotentHint=true`; `create_text_file` deliberately advertises `idempotentHint=false` because a failed repeat still creates and cleans up a same-directory temp entry, which can change parent-directory metadata/revision even though the target file is unchanged. All tools advertise `openWorldHint=false`. (Hints, not a security mechanism.) |
@@ -227,6 +232,13 @@ Read tools (work in every workdir):
 | `read_text_file` | UTF-8 reading with line pagination, byte caps and a `revision` for later edits |
 | `stat_file` | type (`file`/`directory`/`symlink`/`other`) / size / mtime (RFC 3339 UTC) / best-effort MIME / `revision` |
 
+Optional binary tools (registered only when at least one workdir enables binary transfer):
+
+| Tool | Contract |
+|---|---|
+| `download_binary_file` | Return exact raw bytes as an MCP `BlobResourceContents`, plus size / MIME / SHA-256 / revision metadata. Enforces the effective binary size limit and rejects files that change during the read. |
+| `upload_binary_file` | Strict-base64 whole-file upload. Default `overwrite=false` creates only. `overwrite=true` requires `expected_revision`, replaces one existing regular file atomically, preserves metadata, and rejects stale revisions or multi-hardlink targets. |
+
 Mutation tools (read-write workdirs only; all require the path's parent to exist):
 
 | Tool | Contract |
@@ -239,7 +251,7 @@ Mutation tools (read-write workdirs only; all require the path's parent to exist
 
 A `serverfs://{workdir}/{path}` resource template is also exposed; it goes through the exact same validation as `read_text_file` and is **read-only** — mutations are available as tools only. Resources are all-or-nothing: a file that exceeds the read budget returns `RESOURCE_TOO_LARGE` instead of a silently truncated body — use `read_text_file` for paginated access.
 
-Common error codes: `WORKDIR_READ_ONLY`, `PATH_ALREADY_EXISTS`, `PARENT_NOT_FOUND`, `ROOT_MUTATION_NOT_ALLOWED`, `REVISION_CONFLICT`, `EDIT_CONFLICT`, `TOO_MANY_EDITS`, `WRITE_TOO_LARGE`, `BINARY_CONTENT_NOT_ALLOWED`, `BINARY_FILE`, `DIRECTORY_NOT_EMPTY`, `MULTIPLE_HARDLINKS_NOT_SUPPORTED`, `METADATA_PRESERVATION_FAILED`, `RESERVED_PATH`, plus the read-channel codes (`PATH_NOT_FOUND`, `SYMLINK_NOT_ALLOWED`, `DENIED_PATH`, `HIDDEN_PATH_NOT_ALLOWED`, `UNSUPPORTED_FILE_TYPE`, …).
+Common error codes: `WORKDIR_READ_ONLY`, `BINARY_TRANSFER_DISABLED`, `BINARY_FILE_TOO_LARGE`, `BINARY_PAYLOAD_TOO_LARGE`, `INVALID_BASE64`, `PATH_ALREADY_EXISTS`, `PARENT_NOT_FOUND`, `ROOT_MUTATION_NOT_ALLOWED`, `REVISION_REQUIRED`, `REVISION_CONFLICT`, `EDIT_CONFLICT`, `TOO_MANY_EDITS`, `WRITE_TOO_LARGE`, `BINARY_CONTENT_NOT_ALLOWED`, `BINARY_FILE`, `DIRECTORY_NOT_EMPTY`, `MULTIPLE_HARDLINKS_NOT_SUPPORTED`, `METADATA_PRESERVATION_FAILED`, `RESERVED_PATH`, plus the read-channel codes (`PATH_NOT_FOUND`, `SYMLINK_NOT_ALLOWED`, `DENIED_PATH`, `HIDDEN_PATH_NOT_ALLOWED`, `UNSUPPORTED_FILE_TYPE`, …).
 
 ## Operations
 
@@ -273,7 +285,7 @@ Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the 
 For **production**, pin `SERVERFS_IMAGE` to an exact release instead of `latest`:
 
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.3.1
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.4.0
 ```
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
@@ -295,6 +307,6 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 
 The scratch tag on the last line matters: `image` doubles as the tag Compose builds to, so an untagged build with a pinned production `.env` present would repoint that release tag at your working tree.
 
-## Not in v0.2 (by design)
+## Still not in v0.4 (by design)
 
-No rename/move/copy, no recursive mkdir or delete, no binary or non-UTF-8 file editing, no chmod/chown, no symlink or hardlink creation, no file upload, no shell or command execution, no Git operations, no automatic backup or trash, no database/index/RAG, no ACL management, no cross-workdir move, no OAuth/SSO, no web UI, no file watching, no client support beyond the OpenAI tunnel.
+No rename/move/copy, no recursive mkdir or delete, no in-place binary editing API, no chmod/chown tools, no symlink or hardlink creation, no chunked/resumable transfer sessions, no shell or command execution, no Git operations, no automatic backup or trash, no database/index/RAG, no ACL management, no cross-workdir move, no OAuth/SSO, no web UI, and no file watching. Binary transfer is deliberately bounded whole-file transfer over MCP, not a general file-transfer service.
