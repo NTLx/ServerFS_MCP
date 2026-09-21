@@ -120,27 +120,34 @@ S2 validation on the v0.4 working tree:
 
 ## S3 real Tunnel verification
 
-For this live revalidation, the retained log boundary was
-`2026-09-21T04:52:07Z UTC`. Logs from the temporary project
-`serverfs_issue10_live` show six visible successful `list_workdirs` tool-call records,
-each with `returned: 5`, after the boundary. The same logs show temporary-MCP
-Streamable HTTP traffic with 50 `POST /mcp` responses of HTTP 200 and one HTTP 400
-session/setup response. The temporary tunnel log shows dispatcher traffic forwarding
-commands to the MCP server. S3 is therefore **PASS** (visible successful
-`list_workdirs` count: 6; at least one successful real probe was required).
+The final continuous live-verification window used the independent Compose project
+`serverfs_issue10_s3_final`, current `.env`, `compose.yml` plus `compose.agent.yml`,
+and scratch image `serverfs-mcp:issue10-s3-final` built from the current working tree.
+The temporary MCP became healthy, the temporary Tunnel `/readyz` returned `ready`, and
+`mcp session initialized` was observed before the retained boundary
+`2026-09-21T05:28:56.309Z UTC`.
+
+The boundary listener ran for approximately one second and then stopped immediately
+on the first real connector success. Post-boundary logs show one successful
+`list_workdirs` tool-call record with `returned: 5`, one MCP `POST /mcp` response with
+HTTP 200, and a Tunnel `dispatcher forwarded command to MCP server` record. S3 is
+therefore **PASS** (successful `list_workdirs` count: 1; at least one successful real
+probe was required).
 
 No HTTP 421 or HTTP 403 response was observed after the boundary. No invalid Host,
 invalid Origin, DNS-rebinding rejection, or MCP session/protocol error was observed in
-the focused temporary MCP/tunnel logs. This records only the observed post-boundary
+the focused temporary MCP/Tunnel logs. This records only the observed post-boundary
 runtime evidence; it does not infer headers that were not logged.
 
-Before cleanup, the production containers were unchanged and healthy:
+Before cleanup, the production containers were unchanged:
 
 - MCP `b9535a41661c5ca5b4b2ecc614472088b5ae4ea64ac73fc7db1b59b30560e040`,
   StartedAt `2026-09-21T00:09:41.184115023Z`, RestartCount `0`, health `healthy`;
 - Tunnel `a2ab2de7ecf9148734bbd68df964999807900b4aedae7a0825ff7086afadb7d2`,
-  StartedAt `2026-09-21T00:09:47.026184697Z`, RestartCount `0`.
+  StartedAt `2026-09-21T00:09:47.026184697Z`, RestartCount `0`, health not configured.
 
-The temporary project was then removed with the prescribed Compose command. Final
-verification found zero containers for `serverfs_issue10_live`; production remained
-running, and the production MCP health was `healthy` with `FailingStreak 0`.
+The prescribed temporary project cleanup was executed after the evidence was recorded.
+Final verification found zero containers for `serverfs_issue10_s3_final`; the scratch
+image was retained. Production remained running with the same container IDs,
+StartedAt values and restart counts, and the production MCP health remained `healthy`
+with `FailingStreak 0`.
