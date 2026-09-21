@@ -20,6 +20,18 @@ class WorkdirInfo(BaseModel):
         default="read-only",
         description='"read-only" or "read-write"; mutation tools only work in read-write',
     )
+    binary_transfer: bool = Field(
+        default=False,
+        description="Whether binary download/upload tools are authorized for this workdir",
+    )
+    agent_mode: str = Field(
+        default="disabled",
+        description='Effective Agent policy: "disabled", "review" or "workspace-write"',
+    )
+    agent_runtimes: list[str] = Field(
+        default_factory=list,
+        description="Effective native Agent runtimes allowlisted for this workdir",
+    )
 
 
 class ListWorkdirsResult(BaseModel):

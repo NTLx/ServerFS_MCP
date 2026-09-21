@@ -20,7 +20,7 @@ from helpers import (
 )
 from serverfs_mcp.config import Settings
 from serverfs_mcp.main import create_server
-from serverfs_mcp.workdirs import Workdir
+from serverfs_mcp.workdirs import EffectiveWorkdirPolicy, Workdir
 
 MUTATION_TOOLS = [
     "create_text_file",
@@ -97,6 +97,31 @@ class TestListWorkdirsAccess:
         data = call_success(srv, "list_workdirs", {})
         access = {w["alias"]: w["access"] for w in data["workdirs"]}
         assert access == {"test": "read-only", "logs": "read-write"}
+
+    def test_reports_effective_binary_and_agent_capabilities(self, workdir) -> None:
+        capable = Workdir(
+            slot=2,
+            alias="capable",
+            container_path=workdir.container_path.parent / "02",
+            description="effective policy probe",
+            read_only=False,
+            policy=EffectiveWorkdirPolicy(
+                binary_transfer_enabled=True,
+                agent_mode="workspace-write",
+                agent_runtimes=frozenset({"claude", "codex"}),
+            ),
+        )
+        (workdir.container_path.parent / "02").mkdir(exist_ok=True)
+        srv = create_server(Settings(), registry_for(workdir, capable))
+        data = call_success(srv, "list_workdirs", {})
+        by_alias = {item["alias"]: item for item in data["workdirs"]}
+
+        assert by_alias["test"]["binary_transfer"] is False
+        assert by_alias["test"]["agent_mode"] == "disabled"
+        assert by_alias["test"]["agent_runtimes"] == []
+        assert by_alias["capable"]["binary_transfer"] is True
+        assert by_alias["capable"]["agent_mode"] == "workspace-write"
+        assert by_alias["capable"]["agent_runtimes"] == ["claude", "codex"]
 
 
 class TestWorkdirAuthorization:
