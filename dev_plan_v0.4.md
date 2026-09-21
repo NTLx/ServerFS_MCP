@@ -715,6 +715,12 @@ Cover at least:
 
 ### Phase A — Hierarchical Workdir Policy
 
+> Status: **COMPLETE / FROZEN** on `v0.4-dev`.
+>
+> The effective policy is resolved once at startup, consumed by filesystem/Agent paths,
+> and exposed through `list_workdirs` for client capability discovery. Phase B and later
+> must reuse this policy object rather than re-read environment variables.
+
 Implement policy inheritance first, without binary tools.
 
 Required outcomes:
@@ -911,13 +917,13 @@ Do not release until all are true:
 [x] legitimate measured Host is accepted
 [x] unexpected Host is rejected at the MCP transport layer
 [x] Origin validation is covered without breaking legitimate Tunnel traffic
-[ ] v0.3.1 filesystem and Agent regression suites remain green
-[ ] effective workdir policy is resolved once at startup
-[ ] scalar global -> workdir precedence is fully tested
-[ ] additive deny union is fully tested
-[ ] legacy .env behavior is preserved
-[ ] Agent policy supports global default + workdir override
-[ ] binary transfer defaults disabled
+[x] v0.3.1 filesystem and Agent regression suites remain green
+[x] effective workdir policy is resolved once at startup
+[x] scalar global -> workdir precedence is fully tested
+[x] additive deny union is fully tested
+[x] legacy .env behavior is preserved
+[x] Agent policy supports global default + workdir override
+[x] binary transfer defaults disabled
 [ ] binary tools are absent when disabled everywhere
 [ ] binary tools appear when at least one workdir enables binary
 [ ] list_workdirs reports binary and Agent capabilities
