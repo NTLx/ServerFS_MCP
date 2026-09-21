@@ -47,7 +47,6 @@ from collections.abc import Iterator
 
 from . import fdio
 from . import logging as jsonlog
-from .config import Settings
 from .fdio import stat_at, unlink_at, walk_parent_dirs
 from .models import (
     CreateDirectoryResult,
@@ -342,15 +341,15 @@ def _copy_xattrs(src_fd: int, dst_fd: int) -> None:
 # ---- create ----
 
 
-def _encode_new_content(content: str, settings: Settings) -> bytes:
+def _encode_new_content(content: str, max_write_bytes: int) -> bytes:
     if "\x00" in content:
         raise BinaryContentError()
     try:
         data = content.encode("utf-8")
     except UnicodeEncodeError:
         raise BinaryContentError("text is not valid UTF-8") from None
-    if len(data) > settings.max_write_bytes:
-        raise WriteTooLargeError(f"content exceeds {settings.max_write_bytes} bytes")
+    if len(data) > max_write_bytes:
+        raise WriteTooLargeError(f"content exceeds {max_write_bytes} bytes")
     return data
 
 
@@ -390,10 +389,10 @@ def _publish_new_file(parent_fd: int, name: str, data: bytes) -> str:
 
 
 def create_text_file(
-    resolved: ResolvedPath, content: str, settings: Settings
+    resolved: ResolvedPath, content: str, *, max_write_bytes: int
 ) -> CreateTextFileResult:
     """Create a new UTF-8 text file; the target must not exist."""
-    data = _encode_new_content(content, settings)
+    data = _encode_new_content(content, max_write_bytes)
     with mutation_lock(), _root_fd(resolved) as root_fd:
         with contextlib.ExitStack() as stack:
             try:
@@ -453,11 +452,13 @@ def _apply_edits(text: str, edits: list[TextEdit]) -> str:
     return text
 
 
-def _validate_edits(edits: list[TextEdit], settings: Settings) -> None:
+def _validate_edits(
+    edits: list[TextEdit], *, max_write_bytes: int, max_edits_per_call: int
+) -> None:
     if not edits:
         raise EditConflictError("no edits supplied")
-    if len(edits) > settings.max_edits_per_call:
-        raise TooManyEditsError(f"at most {settings.max_edits_per_call} edits per call")
+    if len(edits) > max_edits_per_call:
+        raise TooManyEditsError(f"at most {max_edits_per_call} edits per call")
     for edit in edits:
         # The source file is verified NUL-free, so a request that carries no
         # NUL cannot produce a binary result — and edit must not become the
@@ -465,8 +466,8 @@ def _validate_edits(edits: list[TextEdit], settings: Settings) -> None:
         if "\x00" in edit.old_text or "\x00" in edit.new_text:
             raise BinaryContentError()
     total = sum(_utf8_size(e.old_text) + _utf8_size(e.new_text) for e in edits)
-    if total > settings.max_write_bytes:
-        raise WriteTooLargeError(f"edits exceed {settings.max_write_bytes} bytes")
+    if total > max_write_bytes:
+        raise WriteTooLargeError(f"edits exceed {max_write_bytes} bytes")
 
 
 def _replace_at(
@@ -502,10 +503,16 @@ def edit_text_file(
     resolved: ResolvedPath,
     expected_revision: str,
     edits: list[TextEdit],
-    settings: Settings,
+    *,
+    max_write_bytes: int,
+    max_edits_per_call: int,
 ) -> EditTextFileResult:
     """Replace exact text in an existing UTF-8 file; never creates one."""
-    _validate_edits(edits, settings)
+    _validate_edits(
+        edits,
+        max_write_bytes=max_write_bytes,
+        max_edits_per_call=max_edits_per_call,
+    )
     with mutation_lock(), _root_fd(resolved) as root_fd:
         with _parent_of(root_fd, resolved.rel_parts) as (parent_fd, name):
             with _open_regular(parent_fd, name) as fd:
@@ -515,17 +522,17 @@ def edit_text_file(
                     raise RevisionConflictError()
                 if before.st_nlink > 1:
                     raise MultipleHardlinksError()
-                if before.st_size > settings.max_write_bytes:
-                    raise WriteTooLargeError(f"file exceeds {settings.max_write_bytes} bytes")
-                data = _read_all(fd, settings.max_write_bytes)
+                if before.st_size > max_write_bytes:
+                    raise WriteTooLargeError(f"file exceeds {max_write_bytes} bytes")
+                data = _read_all(fd, max_write_bytes)
                 if compute_revision(os.fstat(fd)) != expected_revision:
                     raise FileChangedDuringReadError()
                 text, has_bom = _decode_text(data)
                 edited_text = _apply_edits(text, edits)
                 body = edited_text.encode("utf-8")
                 payload = (_UTF8_BOM + body) if has_bom else body
-                if len(payload) > settings.max_write_bytes:
-                    raise WriteTooLargeError(f"result exceeds {settings.max_write_bytes} bytes")
+                if len(payload) > max_write_bytes:
+                    raise WriteTooLargeError(f"result exceeds {max_write_bytes} bytes")
                 revision = _replace_at(parent_fd, name, payload, fd, before, expected_revision)
     return EditTextFileResult(
         workdir=resolved.workdir.alias,

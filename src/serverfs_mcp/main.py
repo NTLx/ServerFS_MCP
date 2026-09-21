@@ -8,6 +8,7 @@ from pathlib import Path
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
+from mcp.server.transport_security import TransportSecuritySettings
 
 from . import SERVER_VERSION
 from . import logging as jsonlog
@@ -15,7 +16,12 @@ from .agent_client import AgentBridgeClient
 from .agent_tools import register_agent_tools
 from .config import Settings, settings_from_env
 from .tools import READ_IMPL, register_tools
-from .workdirs import ACCESS_READ_WRITE, SLOT_COUNT, WorkdirError, build_registry
+from .workdirs import (
+    ACCESS_READ_WRITE,
+    EffectiveWorkdirPolicy,
+    WorkdirError,
+    build_registry_from_env,
+)
 
 INSTRUCTIONS = """\
 ServerFS exposes explicitly configured Linux server workdirs to the agent. \
@@ -34,6 +40,17 @@ enabled by the administrator, Agent tools may delegate a task to configured \
 native Codex or Claude runtimes through the local Agent Bridge. Delegation \
 is separately authorized per workdir and is disabled by default.\
 """
+
+# The OpenAI tunnel reaches this service only through the fixed Compose-internal
+# authority below. Keep this narrow: widening it to user-controlled Host/Origin
+# values would weaken the DNS-rebinding boundary that protects the HTTP transport.
+# No Origin is required on the tunnel-to-MCP hop; mcp==2.2.0 accepts an absent
+# Origin while rejecting every non-empty Origin when allowed_origins is empty.
+STREAMABLE_HTTP_TRANSPORT_SECURITY = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=["serverfs-mcp:8000"],
+    allowed_origins=[],
+)
 
 
 def create_server(
@@ -67,8 +84,16 @@ def register_resource_template(mcp: MCPServer, registry, settings: Settings) -> 
     )
     def read_serverfs_resource(workdir: str, path: str) -> str:
         try:
+            selected = registry.get(workdir)
+            if selected is None:
+                raise ToolError(f"WORKDIR_NOT_FOUND: {workdir!r} is not a configured workdir")
             result = READ_IMPL(
-                registry, settings, workdir, path, start_line=1, max_lines=settings.max_read_lines
+                registry,
+                settings,
+                workdir,
+                path,
+                start_line=1,
+                max_lines=selected.policy.max_read_lines,
             )
         except ToolError as exc:
             raise ResourceError(str(exc)) from exc
@@ -86,36 +111,10 @@ def register_resource_template(mcp: MCPServer, registry, settings: Settings) -> 
 
 
 def main() -> int:
-    settings = settings_from_env()
-    jsonlog.set_level(settings.log_level)
-
-    env_alias = {
-        slot: os.environ.get(f"WORKDIR_{slot:02d}_ALIAS", "") for slot in range(1, SLOT_COUNT + 1)
-    }
-    env_description = {
-        slot: os.environ.get(f"WORKDIR_{slot:02d}_DESCRIPTION", "")
-        for slot in range(1, SLOT_COUNT + 1)
-    }
-    env_read_only = {
-        slot: os.environ.get(f"WORKDIR_{slot:02d}_READ_ONLY", "")
-        for slot in range(1, SLOT_COUNT + 1)
-    }
-    env_agent_mode = {
-        slot: os.environ.get(f"WORKDIR_{slot:02d}_AGENT_MODE", "")
-        for slot in range(1, SLOT_COUNT + 1)
-    }
-    env_agent_runtimes = {
-        slot: os.environ.get(f"WORKDIR_{slot:02d}_AGENT_RUNTIMES", "")
-        for slot in range(1, SLOT_COUNT + 1)
-    }
     try:
-        registry = build_registry(
-            env_alias,
-            env_description,
-            env_read_only,
-            env_agent_mode,
-            env_agent_runtimes,
-        )
+        settings = settings_from_env(os.environ)
+        jsonlog.set_level(settings.log_level)
+        registry = build_registry_from_env(os.environ, settings)
         agent_enabled_workdirs = [w for w in registry.all_workdirs() if w.agent_mode != "disabled"]
         if agent_enabled_workdirs and not settings.agent_bridge_enabled:
             raise WorkdirError(
@@ -139,7 +138,13 @@ def main() -> int:
 
     log_startup(settings, registry)
     mcp = create_server(settings, registry, agent_client)
-    mcp.run("streamable-http", host="0.0.0.0", port=8000, streamable_http_path="/mcp")
+    mcp.run(
+        "streamable-http",
+        host="0.0.0.0",
+        port=8000,
+        streamable_http_path="/mcp",
+        transport_security=STREAMABLE_HTTP_TRANSPORT_SECURITY,
+    )
     return 0
 
 
@@ -152,14 +157,29 @@ def log_startup(settings: Settings, registry) -> None:
     many of them are writable).
     """
     workdirs = registry.list_result().workdirs
+    global_policy = EffectiveWorkdirPolicy(
+        allow_hidden=settings.allow_hidden,
+        disable_default_deny=settings.disable_default_deny,
+        extra_deny_globs=settings.extra_deny_globs,
+        max_read_bytes=settings.max_read_bytes,
+        max_read_lines=settings.max_read_lines,
+        max_write_bytes=settings.max_write_bytes,
+        binary_transfer_enabled=settings.binary_transfer_enabled,
+        max_binary_transfer_bytes=settings.max_binary_transfer_bytes,
+        agent_mode=settings.agent_mode,
+        agent_runtimes=settings.agent_runtimes,
+    )
     jsonlog.info(
         "startup",
         workdirs=len(workdirs),
         read_write_workdirs=sum(1 for w in workdirs if w.access == ACCESS_READ_WRITE),
         log_level=settings.log_level,
-        allow_hidden=settings.allow_hidden,
-        default_deny_enabled=not settings.disable_default_deny,
-        extra_deny_rule_count=len(settings.extra_deny_globs),
+        global_allow_hidden=settings.allow_hidden,
+        global_default_deny_enabled=not settings.disable_default_deny,
+        global_extra_deny_rule_count=len(settings.extra_deny_globs),
+        workdirs_with_policy_overrides=sum(
+            1 for workdir in registry.all_workdirs() if workdir.policy != global_policy
+        ),
         agent_bridge_enabled=settings.agent_bridge_enabled,
         agent_enabled_workdirs=sum(
             1 for w in registry.all_workdirs() if w.agent_mode != "disabled"

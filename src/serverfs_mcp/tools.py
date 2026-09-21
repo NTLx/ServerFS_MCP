@@ -103,11 +103,11 @@ list_limit_arg = Annotated[int, Field(default=100, ge=1, description="Maximum en
 search_limit_arg = Annotated[int, Field(default=50, ge=1, description="Maximum matches")]
 
 
-def deny_policy_from_settings(settings: Settings) -> DenyPolicy:
-    """Build the DenyPolicy a request runs under from runtime settings."""
+def deny_policy_from_workdir(workdir) -> DenyPolicy:
+    """Build the DenyPolicy from one workdir's resolved effective policy."""
     return DenyPolicy(
-        extra_globs=tuple(settings.extra_deny_globs),
-        default_deny_enabled=not settings.disable_default_deny,
+        extra_globs=workdir.policy.extra_deny_globs,
+        default_deny_enabled=not workdir.policy.disable_default_deny,
     )
 
 
@@ -127,8 +127,8 @@ def _resolve(
         return resolve_workdir_path(
             wd,
             path,
-            allow_hidden=settings.allow_hidden,
-            deny_policy=deny_policy_from_settings(settings),
+            allow_hidden=wd.policy.allow_hidden,
+            deny_policy=deny_policy_from_workdir(wd),
         )
     except PathSecurityError as exc:
         code = getattr(exc, "code", "ACCESS_DENIED")
@@ -260,6 +260,8 @@ def _read_text_file_impl(
     max_lines: int,
 ) -> ReadTextFileResult:
     resolved = _resolve(registry, workdir, path, settings)
+    policy = resolved.workdir.policy
+    max_lines = min(max_lines, policy.max_read_lines)
 
     with contextlib.ExitStack() as stack:
         root = stack.enter_context(_root_fd(resolved))
@@ -299,15 +301,15 @@ def _read_text_file_impl(
                     raw = raw[3:]
                 if line_no < start_line:
                     continue
-                if len(raw) > settings.max_read_bytes:
+                if len(raw) > policy.max_read_bytes:
                     raise ToolError(
                         f"LINE_TOO_LARGE: {workdir}:{path} line {line_no} exceeds "
-                        f"{settings.max_read_bytes} bytes"
+                        f"{policy.max_read_bytes} bytes"
                     )
                 if len(lines) >= max_lines:
                     has_more = True
                     break
-                if bytes_returned + len(raw) > settings.max_read_bytes:
+                if bytes_returned + len(raw) > policy.max_read_bytes:
                     has_more = True
                     break
                 lines.append(raw)
@@ -629,7 +631,6 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
         Use next_start_line to continue reading.
         """
         t0 = time.monotonic()
-        max_lines = min(max_lines, settings.max_read_lines)
         try:
             result = _read_text_file_impl(registry, settings, workdir, path, start_line, max_lines)
         except ToolError as exc:
@@ -742,7 +743,11 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
                     enabled=settings.agent_bridge_enabled,
                 ),
             ):
-                result = create_text_file_impl(resolved, content, settings)
+                result = create_text_file_impl(
+                    resolved,
+                    content,
+                    max_write_bytes=resolved.workdir.policy.max_write_bytes,
+                )
             return result, {"bytes_written": result.bytes_written, "revision": result.revision}
 
         return _run_mutation("create_text_file", workdir, path, t0, body)
@@ -794,7 +799,13 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
                     enabled=settings.agent_bridge_enabled,
                 ),
             ):
-                result = edit_text_file_impl(resolved, expected_revision, edits, settings)
+                result = edit_text_file_impl(
+                    resolved,
+                    expected_revision,
+                    edits,
+                    max_write_bytes=resolved.workdir.policy.max_write_bytes,
+                    max_edits_per_call=settings.max_edits_per_call,
+                )
             return result, {
                 "edit_count": result.edits_applied,
                 "bytes_before": result.bytes_before,

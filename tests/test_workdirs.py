@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from serverfs_mcp.config import Settings
 from serverfs_mcp.workdirs import (
     ACCESS_READ_ONLY,
     ACCESS_READ_WRITE,
@@ -13,8 +14,10 @@ from serverfs_mcp.workdirs import (
     AGENT_MODE_WORKSPACE_WRITE,
     DISABLED_SENTINEL,
     SLOT_COUNT,
+    EffectiveWorkdirPolicy,
     WorkdirError,
     build_registry,
+    build_registry_from_env,
     parse_agent_mode,
     parse_agent_runtimes,
     parse_read_only,
@@ -361,6 +364,93 @@ class TestAgentConfig:
                 {3: "codex"},
                 workdir_root=root,
             )
+
+    def test_empty_agent_mode_inherits_global_pair(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        env = {"WORKDIR_01_ALIAS": "projects", "WORKDIR_01_READ_ONLY": "false"}
+        settings = Settings(
+            agent_mode=AGENT_MODE_WORKSPACE_WRITE, agent_runtimes=frozenset({"codex"})
+        )
+        wd = build_registry_from_env(env, settings, workdir_root=root).get("projects")
+        assert wd.policy.agent_mode == AGENT_MODE_WORKSPACE_WRITE
+        assert wd.policy.agent_runtimes == frozenset({"codex"})
+
+    def test_explicit_disabled_agent_clears_inherited_runtimes(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        env = {
+            "WORKDIR_01_ALIAS": "projects",
+            "WORKDIR_01_AGENT_MODE": "disabled",
+        }
+        settings = Settings(
+            agent_mode=AGENT_MODE_WORKSPACE_WRITE, agent_runtimes=frozenset({"codex"})
+        )
+        wd = build_registry_from_env(env, settings, workdir_root=root).get("projects")
+        assert wd.policy.agent_mode == AGENT_MODE_DISABLED
+        assert wd.policy.agent_runtimes == frozenset()
+
+    def test_global_agent_and_binary_defaults_do_not_apply_to_disabled_slots(
+        self, tmp_path: Path
+    ) -> None:
+        root = make_root(tmp_path)
+        settings = Settings(
+            agent_mode=AGENT_MODE_WORKSPACE_WRITE,
+            agent_runtimes=frozenset({"codex"}),
+            binary_transfer_enabled=True,
+        )
+        assert len(build_registry_from_env({}, settings, workdir_root=root)) == 0
+
+    def test_disabled_slot_explicit_binary_enable_fails(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path)
+        with pytest.raises(WorkdirError, match="binary transfer"):
+            build_registry_from_env(
+                {"WORKDIR_02_BINARY_TRANSFER_ENABLED": "true"},
+                Settings(),
+                workdir_root=root,
+            )
+
+
+class TestPolicyInheritance:
+    def test_global_and_workdir_deny_globs_are_additive(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        env = {
+            "WORKDIR_01_ALIAS": "projects",
+            "WORKDIR_01_EXTRA_DENY_GLOBS": "local_*, , *.tmp",
+        }
+        settings = Settings(extra_deny_globs=("global_*", "*.tmp"))
+        wd = build_registry_from_env(env, settings, workdir_root=root).get("projects")
+        assert wd.policy.extra_deny_globs == ("global_*", "*.tmp", "local_*")
+
+    def test_binary_defaults_and_override(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True, 2: True})
+        env = {
+            "WORKDIR_01_ALIAS": "inherited",
+            "WORKDIR_02_ALIAS": "override",
+            "WORKDIR_02_BINARY_TRANSFER_ENABLED": "true",
+            "WORKDIR_02_MAX_BINARY_TRANSFER_BYTES": "1234",
+        }
+        settings = Settings(binary_transfer_enabled=False, max_binary_transfer_bytes=99)
+        registry = build_registry_from_env(env, settings, workdir_root=root)
+        assert registry.get("inherited").policy.binary_transfer_enabled is False
+        assert registry.get("inherited").policy.max_binary_transfer_bytes == 99
+        assert registry.get("override").policy.binary_transfer_enabled is True
+        assert registry.get("override").policy.max_binary_transfer_bytes == 1234
+
+    def test_invalid_workdir_policy_overrides_fail_closed(self, tmp_path: Path) -> None:
+        root = make_root(tmp_path, {1: True})
+        base = {"WORKDIR_01_ALIAS": "projects"}
+        with pytest.raises(WorkdirError):
+            build_registry_from_env(
+                {**base, "WORKDIR_01_ALLOW_HIDDEN": "maybe"}, Settings(), workdir_root=root
+            )
+        with pytest.raises(WorkdirError):
+            build_registry_from_env(
+                {**base, "WORKDIR_01_MAX_READ_LINES": "0"}, Settings(), workdir_root=root
+            )
+
+    def test_effective_policy_is_frozen(self) -> None:
+        policy = EffectiveWorkdirPolicy()
+        with pytest.raises((AttributeError, TypeError)):
+            policy.allow_hidden = True  # type: ignore[misc]
 
 
 class TestDisabledSlotConsistency:

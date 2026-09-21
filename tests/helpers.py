@@ -18,7 +18,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from serverfs_mcp.config import Settings
 from serverfs_mcp.main import create_server
-from serverfs_mcp.workdirs import Workdir, WorkdirRegistry
+from serverfs_mcp.workdirs import EffectiveWorkdirPolicy, Workdir, WorkdirRegistry
 
 _CODE_RE = re.compile(r"\b([A-Z][A-Z_]{2,}):")
 
@@ -35,7 +35,23 @@ def read_write(workdir: Workdir) -> Workdir:
 def make_server(workdir: Workdir, *, read_write_access: bool = False, **settings_kw) -> MCPServer:
     """A server over one workdir, read-only unless asked otherwise."""
     wd = read_write(workdir) if read_write_access else workdir
-    return create_server(Settings(**settings_kw), registry_for(wd))
+    settings = Settings(**settings_kw)
+    wd = dataclasses.replace(
+        wd,
+        policy=EffectiveWorkdirPolicy(
+            allow_hidden=settings.allow_hidden,
+            disable_default_deny=settings.disable_default_deny,
+            extra_deny_globs=settings.extra_deny_globs,
+            max_read_bytes=settings.max_read_bytes,
+            max_read_lines=settings.max_read_lines,
+            max_write_bytes=settings.max_write_bytes,
+            binary_transfer_enabled=settings.binary_transfer_enabled,
+            max_binary_transfer_bytes=settings.max_binary_transfer_bytes,
+            agent_mode=wd.policy.agent_mode,
+            agent_runtimes=wd.policy.agent_runtimes,
+        ),
+    )
+    return create_server(settings, registry_for(wd))
 
 
 def call_success(server: MCPServer, name: str, args: dict[str, Any]) -> dict[str, Any]:

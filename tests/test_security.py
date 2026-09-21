@@ -16,8 +16,10 @@ import socket
 import pytest
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 
+from helpers import make_server
 from serverfs_mcp.config import Settings
-from serverfs_mcp.main import create_server
+from serverfs_mcp.main import STREAMABLE_HTTP_TRANSPORT_SECURITY, create_server
+from serverfs_mcp.workdirs import EffectiveWorkdirPolicy, Workdir, WorkdirRegistry
 
 
 @pytest.fixture()
@@ -77,10 +79,99 @@ def _registry_for(workdir):
 
 
 def _make_server(workdir, **settings_kw):
-    return create_server(Settings(**settings_kw), _registry_for(workdir))
+    return make_server(workdir, **settings_kw)
+
+
+def _streamable_http_request(server, headers: list[tuple[bytes, bytes]]) -> int:
+    """Send an initialize request through the real Streamable HTTP ASGI app."""
+
+    async def _request() -> int:
+        app = server.streamable_http_app(
+            streamable_http_path="/mcp",
+            json_response=True,
+            stateless_http=True,
+            transport_security=STREAMABLE_HTTP_TRANSPORT_SECURITY,
+            host="0.0.0.0",
+        )
+        body = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "security-test", "version": "1"},
+                },
+            }
+        ).encode()
+        messages: list[dict] = []
+        request_sent = False
+
+        async def receive() -> dict:
+            nonlocal request_sent
+            if not request_sent:
+                request_sent = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return {"type": "http.disconnect"}
+
+        async def send(message: dict) -> None:
+            messages.append(message)
+
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/mcp",
+            "raw_path": b"/mcp",
+            "query_string": b"",
+            "headers": [*headers, (b"accept", b"application/json, text/event-stream")],
+            "client": ("security-test", 1),
+            "server": ("serverfs-mcp", 8000),
+        }
+        async with app.router.lifespan_context(app):
+            await app(scope, receive, send)
+        response = next(message for message in messages if message["type"] == "http.response.start")
+        return int(response["status"])
+
+    return asyncio.run(_request())
 
 
 SENSITIVE = ".env"
+
+
+class TestStreamableHTTPTransportSecurity:
+    def test_measured_host_without_origin_reaches_mcp_transport(self, server) -> None:
+        status = _streamable_http_request(
+            server,
+            [(b"host", b"serverfs-mcp:8000"), (b"content-type", b"application/json")],
+        )
+        assert status == 200
+
+    @pytest.mark.parametrize("host", [b"unexpected.example:8000", b"serverfs-mcp:9999"])
+    def test_unexpected_host_is_rejected(self, server, host) -> None:
+        status = _streamable_http_request(
+            server,
+            [(b"host", host), (b"content-type", b"application/json")],
+        )
+        assert status == 421
+
+    def test_missing_host_is_rejected(self, server) -> None:
+        status = _streamable_http_request(server, [(b"content-type", b"application/json")])
+        assert status == 421
+
+    def test_nonempty_origin_is_rejected(self, server) -> None:
+        status = _streamable_http_request(
+            server,
+            [
+                (b"host", b"serverfs-mcp:8000"),
+                (b"origin", b"https://unexpected.example"),
+                (b"content-type", b"application/json"),
+            ],
+        )
+        assert status == 403
 
 
 class TestToolErrors:
@@ -104,7 +195,7 @@ class TestToolErrors:
     def test_denied_read_blocked_even_with_allow_hidden(self, workdir) -> None:
         (workdir.container_path / "id_rsa").write_text("KEY")
         settings = Settings(allow_hidden=True)
-        srv = create_server(settings, _registry_for(workdir))
+        srv = make_server(workdir, allow_hidden=settings.allow_hidden)
         msg = call_error(srv, "read_text_file", {"workdir": "test", "path": "id_rsa"})
         assert "DENIED_PATH" in msg
 
@@ -380,6 +471,47 @@ class TestSpecialFilesViaTool:
         assert "UNSUPPORTED_FILE_TYPE" in msg
 
 
+def test_effective_policy_is_selected_per_workdir_for_tools_and_resources(tmp_path) -> None:
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    (first_root / ".hidden.txt").write_text("one\ntwo\n")
+    (second_root / ".hidden.txt").write_text("one\ntwo\n")
+    (first_root / "large.txt").write_text("123456789\n")
+    (second_root / "large.txt").write_text("123456789\n")
+    first = Workdir(
+        1,
+        "first",
+        first_root,
+        None,
+        policy=EffectiveWorkdirPolicy(allow_hidden=True, max_read_bytes=20, max_read_lines=1),
+    )
+    second = Workdir(
+        2,
+        "second",
+        second_root,
+        None,
+        policy=EffectiveWorkdirPolicy(max_read_bytes=5, max_read_lines=2),
+    )
+    server = create_server(Settings(), WorkdirRegistry([first, second]))
+
+    first_read = call_success(
+        server, "read_text_file", {"workdir": "first", "path": ".hidden.txt", "max_lines": 10}
+    )
+    assert first_read["content"] == "one\n"
+    assert "HIDDEN_PATH_NOT_ALLOWED" in call_error(
+        server, "read_text_file", {"workdir": "second", "path": ".hidden.txt"}
+    )
+    assert "LINE_TOO_LARGE" in call_error(
+        server, "read_text_file", {"workdir": "second", "path": "large.txt"}
+    )
+    with pytest.raises(ResourceError, match="RESOURCE_TOO_LARGE"):
+        read_resource_ok(server, "serverfs://first/.hidden.txt")
+    with pytest.raises(ResourceError, match="LINE_TOO_LARGE"):
+        read_resource_ok(server, "serverfs://second/large.txt")
+
+
 class TestAuditLogging:
     """§58: every call emits a structured tool_call event with no secrets."""
 
@@ -448,9 +580,9 @@ class TestAuditLogging:
 
         log_startup(Settings(allow_hidden=True, extra_deny_globs=("*.x",)), registry)
         ev = next(e for e in events if e["event"] == "startup")
-        assert ev["allow_hidden"] is True
-        assert ev["default_deny_enabled"] is True
-        assert ev["extra_deny_rule_count"] == 1
+        assert ev["global_allow_hidden"] is True
+        assert ev["global_default_deny_enabled"] is True
+        assert ev["global_extra_deny_rule_count"] == 1
         assert "*.x" not in json.dumps(ev)  # rule content stays out of logs
 
 
