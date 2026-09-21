@@ -1,6 +1,6 @@
 [project]
 name = "serverfs-agent-bridge"
-version = "0.3.1"
+version = "0.4.0"
 description = "Host-side Agent Bridge for ServerFS MCP."
 requires-python = ">=3.12"
 dependencies = [

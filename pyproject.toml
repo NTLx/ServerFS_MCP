@@ -1,6 +1,6 @@
 [project]
 name = "serverfs-mcp"
-version = "0.3.1"
+version = "0.4.0"
 description = "A secure MCP server that exposes explicitly configured Linux directories as controlled workdirs to AI agents, read-only by default with opt-in per-workdir file mutation."
 readme = "README.md"
 license = "MIT"
