@@ -778,7 +778,7 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
         def download_binary_file(
             workdir: WorkdirArg,
             path: Annotated[str, Field(description="File path relative to the workdir root")],
-        ) -> CallToolResult:
+        ) -> Annotated[CallToolResult, DownloadBinaryFileMetadata]:
             """Download one regular file through the optional raw-byte channel.
 
             The selected workdir must explicitly enable binary transfer. The

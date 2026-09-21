@@ -15,6 +15,7 @@ from helpers import call_error, call_success, error_code, registry_for
 from serverfs_mcp import binary as binary_module
 from serverfs_mcp.config import Settings
 from serverfs_mcp.main import create_server
+from serverfs_mcp.models import DownloadBinaryFileMetadata
 
 
 def _binary_workdir(workdir, *, enabled: bool = True, max_bytes: int = 8_388_608):
@@ -38,6 +39,17 @@ def _tool_names(server) -> set[str]:
         return {tool.name for tool in await server.list_tools()}
 
     return asyncio.run(_list())
+
+
+def _tool_output_schema(server, name: str) -> dict:
+    async def _get() -> dict:
+        for tool in await server.list_tools():
+            if tool.name == name:
+                assert tool.output_schema is not None
+                return tool.output_schema
+        raise AssertionError(f"{name} not registered")
+
+    return asyncio.run(_get())
 
 
 def _download(server, *, workdir: str = "test", path: str):
@@ -67,6 +79,26 @@ class TestBinaryToolRegistration:
     def test_tool_present_when_any_workdir_enables_binary(self, workdir) -> None:
         server = _binary_server(workdir)
         assert "download_binary_file" in _tool_names(server)
+
+    def test_download_output_schema_is_exact_metadata_schema(self, workdir) -> None:
+        schema = _tool_output_schema(_binary_server(workdir), "download_binary_file")
+        assert schema == DownloadBinaryFileMetadata.model_json_schema()
+        assert set(schema["properties"]) == {
+            "workdir",
+            "path",
+            "size",
+            "mime_type",
+            "sha256",
+            "revision",
+        }
+        assert set(schema["required"]) == {
+            "workdir",
+            "path",
+            "size",
+            "mime_type",
+            "sha256",
+            "revision",
+        }
 
     def test_disabled_selected_workdir_fails_even_when_tool_is_registered(self, workdir) -> None:
         disabled = dataclasses.replace(workdir, alias="disabled")
