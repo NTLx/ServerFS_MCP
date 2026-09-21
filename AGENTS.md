@@ -191,6 +191,24 @@ from the whole tuple (size, mtime_ns, ctime_ns, nlink) so metadata changes are v
 revision. `edit`/`delete` verify `expected_revision` inside the lock *and* immediately
 before the commit.
 
+## Streamable HTTP transport security (v0.4)
+
+GitHub Issue #10 established that Docker `internal: true` networking and an unpublished
+port are not sufficient as the only DNS-rebinding boundary. The v0.4 Streamable HTTP
+entry point therefore MUST pass an explicit `TransportSecuritySettings` to the pinned
+`mcp==2.2.0` server runtime. The accepted production policy is intentionally narrow:
+DNS-rebinding protection enabled, `allowed_hosts=["serverfs-mcp:8000"]`, and no allowed
+non-empty Origin. In this SDK, an absent Origin is accepted as same-origin; unexpected or
+missing Host is rejected with HTTP 421 and a non-empty unapproved Origin with HTTP 403,
+before MCP dispatch.
+
+Do not replace the exact Host with a wildcard, add a configurable broad allowlist, or
+remove `transport_security=` from the production `mcp.run("streamable-http", ...)` call
+without new measured deployment evidence. Keep both regression layers: the real ASGI
+Host/Origin tests in `tests/test_security.py` and the startup-wiring assertion in
+`tests/test_main.py`. Real Tunnel compatibility evidence is recorded in
+`docs/transport-security-audit-2026-09-21.md`.
+
 ## Filesystem access
 
 Request-derived traversal is FD-based: each component is opened relative to an
