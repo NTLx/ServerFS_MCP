@@ -1,4 +1,4 @@
-"""MCP tool registration: six read tools and five controlled mutation tools.
+"""MCP tool registration: core filesystem tools plus optional capabilities.
 
 Tools use flat parameter signatures: the SDK turns each function parameter
 into a top-level input-schema property, so agents call e.g.
@@ -17,19 +17,28 @@ are independent layers.
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import os
 import time
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from mcp.types import ToolAnnotations
+from mcp.types import (
+    BlobResourceContents,
+    CallToolResult,
+    EmbeddedResource,
+    ToolAnnotations,
+)
 from pydantic import Field
 
 from . import logging as jsonlog
 from .agent_leases import AgentLeaseError, WorkdirBusyError, mutation_agent_lease
+from .binary import BinaryTransferError
+from .binary import read_binary_file as read_binary_file_impl
 from .config import Settings
 from .fdio import open_directory_fd, open_file_fd, root_fd
 from .filesystem import find_files as find_files_impl
@@ -40,6 +49,7 @@ from .models import (
     CreateTextFileResult,
     DeleteDirectoryResult,
     DeleteFileResult,
+    DownloadBinaryFileMetadata,
     EditTextFileResult,
     FileMatch,
     FindFilesResult,
@@ -133,6 +143,25 @@ def _resolve(
     except PathSecurityError as exc:
         code = getattr(exc, "code", "ACCESS_DENIED")
         raise ToolError(f"{code}: {workdir}:{path} — {exc.message}") from exc
+
+
+def _resolve_binary_read(
+    registry: WorkdirRegistry, workdir: str, path: str, settings: Settings
+) -> ResolvedPath:
+    """Authorize the optional binary channel, then reuse the shared path gate."""
+    wd = registry.get(workdir)
+    if wd is None:
+        raise ToolError(f"WORKDIR_NOT_FOUND: {workdir!r} is not a configured workdir")
+    if not wd.policy.binary_transfer_enabled:
+        raise ToolError(
+            f"BINARY_TRANSFER_DISABLED: binary transfer is disabled for workdir {workdir}"
+        )
+    return _resolve(registry, workdir, path, settings)
+
+
+def _binary_resource_uri(workdir: str, path: str) -> str:
+    """Stable agent-visible URI for one binary content block."""
+    return f"serverfs://{workdir}/{quote(path, safe='/')}"
 
 
 def _resolve_mutable(
@@ -349,7 +378,7 @@ def _read_text_file_impl(
 
 
 def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings) -> None:
-    """Register the six read tools and the five mutation tools."""
+    """Register core filesystem tools and optional binary transfer tools."""
     global default_list_limit, default_search_limit, list_limit_arg, search_limit_arg
     default_list_limit = min(settings.default_list_limit, settings.max_list_entries)
     default_search_limit = min(settings.default_search_results, settings.max_search_results)
@@ -713,6 +742,124 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
             type=result.type,
         )
         return result
+
+    if any(w.policy.binary_transfer_enabled for w in registry.all_workdirs()):
+
+        @mcp.tool(annotations=ANNOTATIONS)
+        def download_binary_file(
+            workdir: WorkdirArg,
+            path: Annotated[str, Field(description="File path relative to the workdir root")],
+        ) -> CallToolResult:
+            """Download one regular file through the optional raw-byte channel.
+
+            The selected workdir must explicitly enable binary transfer. The
+            file is read from one held descriptor, bounded by that workdir's
+            binary transfer limit, and rejected if it changes while being
+            read. The MCP result contains a standard binary resource block
+            plus structured size/MIME/SHA-256/revision metadata.
+            """
+            t0 = time.monotonic()
+            try:
+                resolved = _resolve_binary_read(registry, workdir, path, settings)
+                binary = read_binary_file_impl(
+                    resolved,
+                    max_bytes=resolved.workdir.policy.max_binary_transfer_bytes,
+                )
+            except ToolError as exc:
+                _audit(
+                    "download_binary_file",
+                    t0,
+                    success=False,
+                    workdir=workdir,
+                    path=path,
+                    error_code=_error_code(exc),
+                )
+                raise
+            except BinaryTransferError as exc:
+                err = ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
+                _audit(
+                    "download_binary_file",
+                    t0,
+                    success=False,
+                    workdir=workdir,
+                    path=path,
+                    error_code=exc.code,
+                )
+                raise err from exc
+            except PathSecurityError as exc:
+                err = ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
+                _audit(
+                    "download_binary_file",
+                    t0,
+                    success=False,
+                    workdir=workdir,
+                    path=path,
+                    error_code=exc.code,
+                )
+                raise err from exc
+            except FileNotFoundError as exc:
+                err = ToolError(f"PATH_NOT_FOUND: {workdir}:{path} does not exist")
+                _audit(
+                    "download_binary_file",
+                    t0,
+                    success=False,
+                    workdir=workdir,
+                    path=path,
+                    error_code="PATH_NOT_FOUND",
+                )
+                raise err from exc
+            except (NotADirectoryError, IsADirectoryError) as exc:
+                err = ToolError(f"NOT_A_FILE: {workdir}:{path} is not a regular file")
+                _audit(
+                    "download_binary_file",
+                    t0,
+                    success=False,
+                    workdir=workdir,
+                    path=path,
+                    error_code="NOT_A_FILE",
+                )
+                raise err from exc
+            except OSError as exc:
+                err = _fs_error(exc, workdir, path)
+                _audit(
+                    "download_binary_file",
+                    t0,
+                    success=False,
+                    workdir=workdir,
+                    path=path,
+                    error_code=_error_code(err),
+                )
+                raise err from exc
+
+            metadata = DownloadBinaryFileMetadata(
+                workdir=workdir,
+                path=path,
+                size=binary.size,
+                mime_type=binary.mime_type,
+                sha256=binary.sha256,
+                revision=binary.revision,
+            )
+            resource = EmbeddedResource(
+                resource=BlobResourceContents(
+                    uri=_binary_resource_uri(workdir, path),
+                    mime_type=binary.mime_type,
+                    blob=base64.b64encode(binary.data).decode("ascii"),
+                )
+            )
+            _audit(
+                "download_binary_file",
+                t0,
+                success=True,
+                workdir=workdir,
+                path=path,
+                bytes_returned=binary.size,
+                mime_type=binary.mime_type,
+                revision=binary.revision,
+            )
+            return CallToolResult(
+                content=[resource],
+                structured_content=metadata.model_dump(),
+            )
 
     @mcp.tool(annotations=CREATE_FILE_ANNOTATIONS)
     def create_text_file(

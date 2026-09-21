@@ -737,6 +737,17 @@ Phase A MUST NOT change the 11/19 tool surface.
 
 ### Phase B — Binary Download
 
+> Status: **COMPLETE / FROZEN** on `v0.4-dev`.
+>
+> `download_binary_file` is capability-gated, reuses the shared path/FD security
+> boundary, returns one MCP `EmbeddedResource/BlobResourceContents` plus structured
+> metadata, and was verified against the pinned `mcp==2.2.0` wire shape. Phase C must
+> reuse the same effective binary policy rather than widen the download contract.
+>
+> Validation at freeze: 19 Phase B tests and 717 root tests passed; targeted Ruff check
+> and format check passed; exact base64 round-trip and structured metadata were verified
+> through an in-memory MCP tool call.
+
 Add:
 
 - binary capability gate;
@@ -926,10 +937,10 @@ Do not release until all are true:
 [x] binary transfer defaults disabled
 [ ] binary tools are absent when disabled everywhere
 [ ] binary tools appear when at least one workdir enables binary
-[ ] list_workdirs reports binary and Agent capabilities
-[ ] binary download returns exact bytes
-[ ] binary download detects concurrent changes
-[ ] binary download enforces effective size limit
+[x] list_workdirs reports binary and Agent capabilities
+[x] binary download returns exact bytes
+[x] binary download detects concurrent changes
+[x] binary download enforces effective size limit
 [ ] binary upload accepts arbitrary bytes including NUL
 [ ] malformed/oversized payloads fail closed
 [ ] upload create is atomic and never overwrites
@@ -938,7 +949,7 @@ Do not release until all are true:
 [ ] overwrite stale revision fails
 [ ] overwrite preserves metadata
 [ ] overwrite retains hard-link restriction
-[ ] binary reads obey hidden/deny/reserved policy
+[x] binary reads obey hidden/deny/reserved policy
 [ ] binary writes obey hidden/deny/reserved policy
 [ ] binary writes obey READ_ONLY authorization
 [ ] binary writes obey shared Agent writer lease

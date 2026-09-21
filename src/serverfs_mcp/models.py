@@ -139,6 +139,17 @@ class StatFileResult(BaseModel):
     )
 
 
+class DownloadBinaryFileMetadata(BaseModel):
+    """Structured metadata returned alongside a binary MCP content block."""
+
+    workdir: str
+    path: str
+    size: int = Field(description="Exact number of raw bytes returned")
+    mime_type: str = Field(description="Best-effort MIME type")
+    sha256: str = Field(description="SHA-256 hex digest of the raw bytes")
+    revision: str = Field(description="Opaque revision of the unchanged file that was read")
+
+
 class TextEdit(BaseModel):
     """One exact-match edit within edit_text_file."""
 
