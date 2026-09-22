@@ -73,8 +73,15 @@ class JevTaskPreflight:
                     "multiple independent objectives bundled together?"
                 ),
                 "criteria": {
-                    "true": "One bounded objective that can be completed and verified as one task.",
-                    "false": "Two or more independent objectives or an open-ended bundle of work.",
+                    "true": (
+                        "One bounded outcome that can be completed and verified as one task. "
+                        "Multiple ordered commands or steps still count as one objective when they "
+                        "jointly complete or verify that same outcome."
+                    ),
+                    "false": (
+                        "Two or more independent outcomes, or an open-ended exploratory, planning, "
+                        "or prioritization request without one bounded deliverable."
+                    ),
                 },
             },
             "mutation_boundary_explicit": {
@@ -171,8 +178,11 @@ class JevTaskPreflight:
                     ),
                     "human_review": (
                         "Do not choose an automated execution route yet. Choose this when the task "
-                        "requires a human authorization or business judgment, or is too ambiguous "
-                        "or underspecified to route responsibly."
+                        "requires human authorization or business judgment, is too ambiguous or "
+                        "underspecified to route responsibly, or asks for open-ended "
+                        "prioritization "
+                        "such as broadly reviewing a repository to decide what should be done next "
+                        "without explicit decision criteria."
                     ),
                 },
             },
