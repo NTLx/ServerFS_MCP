@@ -1,10 +1,10 @@
 # ServerFS MCP v0.5.0 development plan
 
-Status: **IN PROGRESS**
+Status: **COMPLETE / RELEASE-READY**
 
-Branch: `v0.5-dev`
+Final branch: `main`
 
-Baseline: `main@fcb5cc97455bab795dfe0f07e461531114edc7d3`
+Development baseline: `main@fcb5cc97455bab795dfe0f07e461531114edc7d3`
 
 ## 1. Goal
 
@@ -311,13 +311,13 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase F — Release closure
 
-> Status: **IMPLEMENTATION AND ACCEPTANCE COMPLETE / GIT CLOSEOUT IN PROGRESS**. Runtime
-> docs/config examples, root regression, Compose renders, scratch image build,
-> container-isolation E2E, explicit >4-MiB HTTP compatibility, site build, independent
-> Agent Bridge regression, refreshed-plugin discovery and live ChatGPT file-parameter E2E
-> are all green. Remaining work is repository closeout only: final docs-only gate, commit,
-> linear merge to `main`, and preparation of the release point. The `v0.5.0` tag remains
-> intentionally uncreated until the maintainer explicitly requests it.
+> Status: **COMPLETE / RELEASE-READY**. Runtime docs/config examples, root regression,
+> Compose renders, scratch image build, container-isolation E2E, explicit >4-MiB HTTP
+> compatibility, site build, independent Agent Bridge regression, refreshed-plugin
+> discovery and live ChatGPT file-parameter E2E are all green. The development history was
+> fast-forwarded into `main`, development branches were removed, and the release-candidate
+> evidence is frozen in `docs/phase-f-v0.5-release-candidate-2026-09-22.md`. The
+> `v0.5.0` tag remains intentionally uncreated until the maintainer explicitly requests it.
 
 - update README/site docs/config examples;
 - document migration and rollback;
