@@ -87,7 +87,11 @@ const layers = [
           </a>
 
           <p class="eyebrow">SECURE MCP FOR LINUX WORKDIRS</p>
-          <h1>Your filesystem.<br /><span>Safely exposed to AI.</span></h1>
+          <h1>
+            <span class="headline-line">Your filesystem.</span>
+            <span class="headline-line headline-muted">Safely exposed</span>
+            <span class="headline-line headline-muted">to AI.</span>
+          </h1>
           <p class="hero-lede">
             ServerFS gives ChatGPT and AI agents precise access to the Linux directories you
             choose — read-only by default, with opt-in mutations, binary transfer, and a
@@ -116,69 +120,80 @@ const layers = [
 
         <div class="hero-system" aria-label="ServerFS architecture overview">
           <div class="system-grid" aria-hidden="true"></div>
-          <div class="system-label top-label">AI CLIENT</div>
+          <div class="system-label top-label">CONTROLLED DATA PATH</div>
 
-          <div class="node node-chatgpt">
-            <span class="node-icon">✦</span>
-            <div>
-              <strong>ChatGPT</strong>
-              <small>MCP client</small>
+          <div class="system-diagram">
+            <div class="node">
+              <span class="node-icon">✦</span>
+              <div>
+                <strong>ChatGPT</strong>
+                <small>MCP client</small>
+              </div>
             </div>
-          </div>
 
-          <div class="beam beam-one" aria-hidden="true"><span></span></div>
+            <div class="flow-line" aria-hidden="true"><span></span></div>
 
-          <div class="node node-tunnel">
-            <span class="node-icon">⇅</span>
-            <div>
-              <strong>Secure MCP Tunnel</strong>
-              <small>outbound only</small>
+            <div class="node">
+              <span class="node-icon">⇅</span>
+              <div>
+                <strong>Secure MCP Tunnel</strong>
+                <small>outbound only</small>
+              </div>
             </div>
-          </div>
 
-          <div class="beam beam-two" aria-hidden="true"><span></span></div>
+            <div class="flow-line" aria-hidden="true"><span></span></div>
 
-          <div class="server-card">
-            <div class="server-head">
-              <span class="server-led"></span>
-              <strong>ServerFS MCP</strong>
-              <code>v0.4.0</code>
+            <div class="server-card">
+              <div class="server-head">
+                <span class="server-led"></span>
+                <strong>ServerFS MCP</strong>
+                <code>v0.4.0</code>
+              </div>
+              <div class="server-row">
+                <span>FILESYSTEM</span>
+                <em>scoped workdirs</em>
+              </div>
+              <div class="server-row">
+                <span>MUTATIONS</span>
+                <em>revision guarded</em>
+              </div>
+              <div class="server-row">
+                <span>BINARY I/O</span>
+                <em>bounded · optional</em>
+              </div>
+              <div class="server-row">
+                <span>AGENT BRIDGE</span>
+                <em>structured · optional</em>
+              </div>
             </div>
-            <div class="server-row">
-              <span>filesystem</span>
-              <em>scoped</em>
-            </div>
-            <div class="server-row">
-              <span>mutations</span>
-              <em>revision guarded</em>
-            </div>
-            <div class="server-row">
-              <span>binary I/O</span>
-              <em>bounded</em>
-            </div>
-            <div class="server-row">
-              <span>Agent Bridge</span>
-              <em>optional</em>
-            </div>
-          </div>
 
-          <div class="side-path side-left">
-            <div class="micro-node">
-              <strong>Workdirs</strong>
-              <small>/srv/projects</small>
-            </div>
-          </div>
+            <div class="branch-grid" aria-label="ServerFS capability boundaries">
+              <div class="branch-card workdir-card">
+                <div class="branch-title">
+                  <span class="branch-icon">↳</span>
+                  <strong>Scoped Workdirs</strong>
+                </div>
+                <code>/srv/projects</code>
+                <small>read-only by default</small>
+              </div>
 
-          <div class="side-path side-right">
-            <div class="micro-node">
-              <strong>Agent Bridge</strong>
-              <small>Codex · Claude</small>
+              <div class="branch-card agent-card">
+                <div class="branch-title">
+                  <span class="branch-icon">◇</span>
+                  <strong>Agent Bridge</strong>
+                </div>
+                <code>user-owned socket</code>
+                <div class="branch-runtimes">
+                  <span><i></i> Codex</span>
+                  <span><i></i> Claude</span>
+                </div>
+              </div>
             </div>
-          </div>
 
-          <div class="system-footer">
-            <span><i class="ok"></i> internal network</span>
-            <span><i class="ok"></i> no published ports</span>
+            <div class="system-footer">
+              <span><i class="ok"></i> internal network</span>
+              <span><i class="ok"></i> no published ports</span>
+            </div>
           </div>
         </div>
       </section>
