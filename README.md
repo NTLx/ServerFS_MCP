@@ -85,8 +85,8 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| v0.5.0 release target | `ghcr.io/ntlx/serverfs_mcp:0.5.0` | created by tag `v0.5.0` |
-| v0.5 minor channel | `ghcr.io/ntlx/serverfs_mcp:0.5` | newest published `v0.5.x` tag |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.5.0` | `v0.5.0` |
+| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.5` | newest `v0.5.x` tag |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
 Every image is multi-arch: `linux/amd64` and `linux/arm64`.
@@ -98,7 +98,7 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-The `v0.5.0` tag is the publication trigger for `0.5.0`, `0.5` and `latest`; until that tag is pushed, release-candidate testing uses `edge`. `latest` always points at the newest published stable release; `main` never updates it. See [GitHub Releases](https://github.com/NTLx/ServerFS_MCP/releases) for published release records.
+`v0.5.0` is published: the tag produced `0.5.0`, `0.5` and `latest`. `latest` always points at the newest published stable release; `main` never updates it. See [ServerFS MCP v0.5.0 on GitHub](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.5.0).
 
 ## Workdir Configuration
 
@@ -298,7 +298,7 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose up -d
 
 Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins and rebuilding along the source path. Avoid `latest`.
 
-For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. For v0.5.0, use this after the release tag has published the image:
+For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`:
 
 ```env
 SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.5.0

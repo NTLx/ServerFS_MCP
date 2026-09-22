@@ -241,6 +241,9 @@ rewrite is required.
 
 ## Release point
 
-No `v0.5.0` tag existed when this release-candidate record was finalized. The tag target
-must be the final clean `main` commit after the release-documentation closeout, and the tag
-must remain uncreated until the maintainer explicitly requests publication.
+No `v0.5.0` tag existed when the release-candidate portion of this record was finalized.
+Maintainer publication authorization was subsequently given on 2026-09-22. Annotated tag
+`v0.5.0` was created at commit `be374443f96ef497e5696f8e27be339a186f5c6c`; Container
+workflow run `35712341234` completed successfully; multi-arch GHCR tags `0.5.0`, `0.5`,
+and `latest` were published; and the normal GitHub Release `ServerFS MCP v0.5.0` was
+published. The release tag is now frozen and must not be moved or recreated.

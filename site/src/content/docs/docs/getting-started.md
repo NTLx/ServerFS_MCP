@@ -66,9 +66,9 @@ docker compose --profile file-ingress -f compose.yml -f compose.agent.yml up -d
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](./binary-transfer/) and [Security Model](./security/) for the v0.5.0 host policy and network boundary.
 
-## Release image tags
+## Published images
 
-The `v0.5.0` tag is the publication trigger for these GHCR release tags; before the tag exists, use `edge` for release-candidate testing:
+ServerFS MCP v0.5.0 is published to GHCR under these stable tags:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
@@ -76,4 +76,4 @@ ghcr.io/ntlx/serverfs_mcp:0.5
 ghcr.io/ntlx/serverfs_mcp:0.5.0
 ```
 
-After publication, use the pinned `0.5.0` tag for production deployments rather than `latest` or `edge`.
+Use the pinned `0.5.0` tag for production deployments rather than `latest` or `edge`.

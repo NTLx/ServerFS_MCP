@@ -66,9 +66,9 @@ docker compose --profile file-ingress -f compose.yml -f compose.agent.yml up -d
 
 Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 的主机策略与网络边界详见[二进制传输](./binary-transfer/)和[安全模型](./security/)。
 
-## Release 镜像标签
+## 已发布镜像
 
-`v0.5.0` tag 是以下 GHCR release 标签的发布触发器；在 tag 创建之前，请使用 `edge` 进行 release-candidate 验证：
+ServerFS MCP v0.5.0 已发布到 GHCR，稳定标签如下：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
@@ -76,4 +76,4 @@ ghcr.io/ntlx/serverfs_mcp:0.5
 ghcr.io/ntlx/serverfs_mcp:0.5.0
 ```
 
-发布完成后，生产环境建议固定使用 `0.5.0`，不要长期跟随 `latest` 或 `edge`。
+生产环境建议固定使用 `0.5.0`，不要长期跟随 `latest` 或 `edge`。

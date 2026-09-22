@@ -1,6 +1,6 @@
 # ServerFS MCP v0.5.0 development plan
 
-Status: **COMPLETE / RELEASE-READY**
+Status: **RELEASED / FROZEN v0.5.0**
 
 Final branch: `main`
 
@@ -318,7 +318,7 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase F — Release closure
 
-> Status: **RELEASE AUTHORIZED / TAG TARGET READY**. The corrected implementation tree passed its
+> Status: **RELEASED / FROZEN v0.5.0**. The corrected implementation tree passed its
 > full gate with root 800 passed, Agent Bridge 83 passed, Ruff lint/format, site build
 > (17 pages), four Compose renders, `git diff --check`, and final scratch image
 > build/package-version checks. A later main-only Agent-delegation guidance change added two
@@ -331,15 +331,18 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 > code-language warnings, generated-static-output checks for both locales, and stale-version
 > scans. Browser visual rendering was not available and remains explicitly Not verified.
 > Explicit maintainer authorization to publish `v0.5.0` was given on 2026-09-22. The
-> annotated release tag must target the final clean `main` commit produced by this release
-> closure and must not be moved or recreated after publication.
+> annotated tag `v0.5.0` was published at `be374443f96ef497e5696f8e27be339a186f5c6c`,
+> the tag-triggered Container workflow succeeded, the `0.5.0` / `0.5` / `latest` GHCR
+> images were published for linux/amd64 and linux/arm64, and the normal GitHub Release
+> `ServerFS MCP v0.5.0` was published. The release tag is frozen and must not be moved or
+> recreated.
 
 - update README/site docs/config examples;
 - document migration and rollback;
 - full root + Agent Bridge regression;
 - Compose render/build/security checks;
 - merge to main with linear history;
-- create the annotated `v0.5.0` tag only after explicit maintainer authorization; authorization was granted on 2026-09-22.
+- annotated `v0.5.0` tag and GitHub Release published on 2026-09-22; release line frozen.
 
 ## 13. Acceptance criteria
 
