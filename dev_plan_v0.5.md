@@ -318,7 +318,7 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase F — Release closure
 
-> Status: **RELEASE-READY / TAG PENDING**. The corrected implementation tree passed its
+> Status: **RELEASE AUTHORIZED / TAG TARGET READY**. The corrected implementation tree passed its
 > full gate with root 800 passed, Agent Bridge 83 passed, Ruff lint/format, site build
 > (17 pages), four Compose renders, `git diff --check`, and final scratch image
 > build/package-version checks. A later main-only Agent-delegation guidance change added two
@@ -330,14 +330,16 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 > documentation closeout passed `git diff --check`, a 17-page site build with no Markdown
 > code-language warnings, generated-static-output checks for both locales, and stale-version
 > scans. Browser visual rendering was not available and remains explicitly Not verified.
-> No `v0.5.0` tag exists; creating that tag remains an explicit maintainer action.
+> Explicit maintainer authorization to publish `v0.5.0` was given on 2026-09-22. The
+> annotated release tag must target the final clean `main` commit produced by this release
+> closure and must not be moved or recreated after publication.
 
 - update README/site docs/config examples;
 - document migration and rollback;
 - full root + Agent Bridge regression;
 - Compose render/build/security checks;
 - merge to main with linear history;
-- prepare, but do not create, `v0.5.0` tag until explicitly requested.
+- create the annotated `v0.5.0` tag only after explicit maintainer authorization; authorization was granted on 2026-09-22.
 
 ## 13. Acceptance criteria
 
