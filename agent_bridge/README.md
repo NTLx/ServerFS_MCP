@@ -1,15 +1,15 @@
-# ServerFS Agent Bridge — frozen 0.4.0 contract
+# ServerFS Agent Bridge — v0.6.0
 
-This directory contains the **host-side** Agent Bridge shipped unchanged with ServerFS
-v0.5.0. The provider-neutral contract originated in v0.3 and remains frozen forward; the
-Bridge package itself intentionally remains version 0.4.0 because v0.5.0 changes the MCP
-file-ingress path rather than the host-side Agent contract.
+This directory contains the **host-side** Agent Bridge shipped with ServerFS v0.6.0. The
+provider-neutral execution/approval contract originated in v0.3 and remains compatible;
+v0.6.0 advances the Bridge package to 0.6.0 because it adds the optional Jev advisory suite
+(Task Preflight, Runtime Router, Approval Advisor, and task-local identical-approval caching).
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
 while the base `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
-> Experimental mainline note: `main` includes an optional Jev-backed advisory task-quality
+> v0.6.0 includes an optional Jev-backed advisory task-quality
 > Preflight, Runtime Router, and Approval Advisor on top of this frozen provider-neutral
 > baseline. These capabilities do not
 > change the MCP tool surface, Bridge RPC, runtime allowlist, writer lease, provider adapters,

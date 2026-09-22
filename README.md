@@ -43,7 +43,7 @@ The MCP server container has **no Internet egress** and no published ports. The 
 
 The default `compose.yml` exposes the original 11 filesystem tools. Binary transfer is opt-in: when at least one workdir enables it, `download_binary_file` and `upload_binary_file` are added, producing a 13-tool filesystem surface. When the administrator also configures Agent policy and uses `compose.agent.yml`, the overlay adds eight structured Agent tools. The four supported surfaces are therefore 11 / 13 / 19 / 21 tools for filesystem-only / filesystem+binary / filesystem+Agent / filesystem+binary+Agent. Agent tools broker structured tasks through the host-side Bridge; they are not a shell, argv, or generic command executor. Delegated tasks should therefore stay objective-level and capability-bounded: one authorized goal, explicit mutation scope/stop conditions, and only the context/evidence needed for that goal. This improves clarity and reduces accidental ambiguity; it is not intended to bypass provider safety checks.
 
-`main` includes an optional **advisory-only** Jev task advisor inside the host Agent Bridge. It does not add an MCP tool, runtime, permission, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and task submission follows the existing path unchanged. When configured, one pinned `jev-1.13.0` task-submission request evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a four-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, or `human_review`. If a native provider later creates an approval request, the same Jev client may make one additional approval-specific request that scores necessity, scope, destructive/irreversible risk, sensitive access and external side effects, then returns an advisory recommendation; identical approvals within the same task reuse task-local advice instead of calling Jev again. Ordinary turns and question prompts do not create that extra request. No Jev result blocks, rewrites, reroutes, approves, denies, or expands a task; the explicit runtime and approval contracts remain authoritative. The feature remains opt-in and experimental on `main` and was merged after the v0.5.0 release tag. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository [Preflight note](docs/jev-agent-preflight-experiment.md), [Runtime Router note](docs/jev-runtime-router-experiment.md), and [Approval Advisor note](docs/jev-approval-advisor-experiment.md).
+`main` includes an optional **advisory-only** Jev task advisor inside the host Agent Bridge. It does not add an MCP tool, runtime, permission, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and task submission follows the existing path unchanged. When configured, one pinned `jev-1.13.0` task-submission request evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a four-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, or `human_review`. If a native provider later creates an approval request, the same Jev client may make one additional approval-specific request that scores necessity, scope, destructive/irreversible risk, sensitive access and external side effects, then returns an advisory recommendation; identical approvals within the same task reuse task-local advice instead of calling Jev again. Ordinary turns and question prompts do not create that extra request. No Jev result blocks, rewrites, reroutes, approves, denies, or expands a task; the explicit runtime and approval contracts remain authoritative. The feature ships in v0.6.0 as an opt-in experimental capability. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository [Preflight note](docs/jev-agent-preflight-experiment.md), [Runtime Router note](docs/jev-runtime-router-experiment.md), and [Approval Advisor note](docs/jev-approval-advisor-experiment.md).
 
 ## Prerequisites
 
@@ -88,8 +88,8 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.5.0` | `v0.5.0` |
-| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.5` | newest `v0.5.x` tag |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.6.0` | `v0.6.0` |
+| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.6` | newest `v0.6.x` tag |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
 Every image is multi-arch: `linux/amd64` and `linux/arm64`.
@@ -101,7 +101,7 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-`v0.5.0` is published: the tag produced `0.5.0`, `0.5` and `latest`. `latest` always points at the newest published stable release; `main` never updates it. See [ServerFS MCP v0.5.0 on GitHub](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.5.0).
+`v0.6.0` is the current stable release: the tag publishes `0.6.0`, `0.6` and `latest`. `latest` always points at the newest published stable release; `main` never updates it. See [ServerFS MCP v0.6.0 on GitHub](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.6.0).
 
 ## Workdir Configuration
 
@@ -304,14 +304,22 @@ Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the 
 For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`:
 
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.5.0
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.6.0
 ```
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
 
+### Upgrading to v0.6.0
+
+v0.6.0 adds the optional Jev advisory suite to the host-side Agent Bridge and advances both the ServerFS MCP package and Agent Bridge package versions to 0.6.0. The MCP public tool schema is unchanged, so existing ChatGPT/plugin registrations do not require a refresh solely for this upgrade.
+
+The upgrade remains backward-compatible when `SERVERFS_JEV_API_KEY` is empty: no TypeSafe client is constructed, no Jev request is made, and Agent tasks/approvals follow the existing deterministic path. To enable Jev after updating the Bridge, set `SERVERFS_JEV_API_KEY` in the existing untracked repository `.env`, run the normal user-scoped Agent Bridge installer/update flow, and restart only after confirming no active writer-lease tasks.
+
+Production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.6.0`. The Jev integration itself runs in the host Bridge and does not add Internet egress to the main MCP container.
+
 ### Upgrading to v0.5.0
 
-The upgrade is backward-compatible by default: `SERVERFS_FILE_INGRESS_ENABLED=false`, `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=false`, the ingress sidecar is not started unless the `file-ingress` profile is selected, and existing Base64 binary transfer continues to work. For current ChatGPT fileParams, set both booleans to `true` and add `--profile file-ingress` to the same Compose command you already use. Exact additional hosts can still be supplied through `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
+The v0.5.0 upgrade is backward-compatible by default: `SERVERFS_FILE_INGRESS_ENABLED=false`, `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=false`, the ingress sidecar is not started unless the `file-ingress` profile is selected, and existing Base64 binary transfer continues to work. For current ChatGPT fileParams, set both booleans to `true` and add `--profile file-ingress` to the same Compose command you already use. Exact additional hosts can still be supplied through `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
 
 Rollback is equally narrow: set `SERVERFS_FILE_INGRESS_ENABLED=false`, stop/remove the optional `serverfs-file-ingress` profile service if it was running, pin `SERVERFS_IMAGE` back to the previous release, then `pull` + `up -d` using the same base/Agent overlay shape as before and restart `openai-tunnel`. No workdir data migration is involved.
 
@@ -332,6 +340,6 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 
 The scratch tag on the last line matters: `image` doubles as the tag Compose builds to, so an untagged build with a pinned production `.env` present would repoint that release tag at your working tree.
 
-## Still not in v0.5.0 (by design)
+## Still not in v0.6.0 (by design)
 
 No generic URL downloader, no rename/move/copy, no recursive mkdir or delete, no in-place binary editing API, no chmod/chown tools, no symlink or hardlink creation, no chunked/resumable transfer sessions, no shell or command execution, no Git operations, no automatic backup or trash, no database/index/RAG, no ACL management, no cross-workdir move, no OAuth/SSO, no web UI, and no file watching. Binary transfer remains bounded whole-file transfer; the optional ChatGPT file-ingress sidecar is a narrow, policy-checked HTTPS ingress capability that accepts only exact administrator hosts or the explicit constrained OpenAI Blob family rather than acting as a general proxy.

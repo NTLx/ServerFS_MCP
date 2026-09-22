@@ -9,7 +9,7 @@ Jev is a System One model: instead of generating prose, it evaluates typed quest
 
 The integration is **opt-in, advisory-only, and fail-open**. Jev is not an Agent runtime, authorization source, or security boundary.
 
-> **Status:** this is a mainline experimental capability merged after the v0.5.0 release tag. It changes the host Agent Bridge only and does not change the MCP public tool schema; the website's v0.5.0 badge still refers to the latest stable release.
+> **Status:** this opt-in experimental capability ships in v0.6.0. It changes the host Agent Bridge only and does not change the MCP public tool schema.
 
 ## Enable it
 
