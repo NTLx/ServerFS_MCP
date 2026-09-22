@@ -196,6 +196,7 @@ class BridgeService:
             )
 
         preflight_result: dict[str, Any] | None = None
+        routing_advice: dict[str, Any] | None = None
         if self.preflight is not None:
             try:
                 preflight_result = await self.preflight.evaluate(
@@ -208,6 +209,10 @@ class BridgeService:
                 )
             except Exception:
                 preflight_result = {"status": "unavailable"}
+            routing_advice = _routing_advice_from_preflight(
+                preflight_result,
+                requested_runtime=runtime,
+            )
 
         async with self._submit_lock:
             lease: WorkdirLease | None = None
@@ -230,6 +235,8 @@ class BridgeService:
                     self._leases[task_id] = lease
                 if preflight_result is not None:
                     self._try_append_event(task_id, "task.preflight", preflight_result)
+                if routing_advice is not None:
+                    self._try_append_event(task_id, "task.routing_advice", routing_advice)
                 background = asyncio.create_task(
                     self._run_task(
                         task_id=task_id,
@@ -259,6 +266,8 @@ class BridgeService:
             result: dict[str, Any] = {"task_id": task.task_id, "status": task.status}
             if preflight_result is not None:
                 result["preflight"] = preflight_result
+            if routing_advice is not None:
+                result["routing_advice"] = routing_advice
             return result
 
     def _background_done(self, task_id: str, task: asyncio.Task[None]) -> None:
@@ -761,6 +770,36 @@ class BridgeService:
             return await waiter
         finally:
             self._pending_waiters.pop(request_id, None)
+
+
+def _routing_advice_from_preflight(
+    preflight: dict[str, Any],
+    *,
+    requested_runtime: str,
+) -> dict[str, Any]:
+    status = preflight.get("status")
+    if status != "completed":
+        return {"status": status or "unavailable"}
+
+    answers = preflight.get("answers")
+    if not isinstance(answers, dict):
+        return {"status": "unavailable"}
+    recommendation = answers.get("route_recommendation")
+    if not isinstance(recommendation, dict):
+        return {"status": "unavailable"}
+
+    choice = recommendation.get("choice")
+    if not isinstance(choice, str):
+        return {"status": "unavailable"}
+
+    return {
+        "status": "completed",
+        "model": preflight.get("model"),
+        "requested_runtime": requested_runtime,
+        "recommendation": recommendation,
+        "matches_requested_runtime": choice == requested_runtime,
+        "automatic": False,
+    }
 
 
 def _redact_embedded_workdir(root: Path, value: str) -> str:

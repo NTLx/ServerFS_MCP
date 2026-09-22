@@ -62,7 +62,19 @@ class FakePreflight:
         return {
             "status": "completed",
             "model": "jev-1.13.0",
-            "answers": {"single_objective": 0.9},
+            "answers": {
+                "single_objective": 0.9,
+                "route_recommendation": {
+                    "choice": "codex",
+                    "confidence": 0.8,
+                    "probabilities": {
+                        "direct_serverfs_tool": 0.05,
+                        "codex": 0.8,
+                        "claude": 0.1,
+                        "human_review": 0.05,
+                    },
+                },
+            },
         }
 
     async def close(self) -> None:
@@ -114,6 +126,23 @@ async def test_optional_preflight_is_advisory_and_recorded(tmp_path: Path) -> No
     )
 
     assert submitted["preflight"]["status"] == "completed"
+    assert submitted["routing_advice"] == {
+        "status": "completed",
+        "model": "jev-1.13.0",
+        "requested_runtime": "fake",
+        "recommendation": {
+            "choice": "codex",
+            "confidence": 0.8,
+            "probabilities": {
+                "direct_serverfs_tool": 0.05,
+                "codex": 0.8,
+                "claude": 0.1,
+                "human_review": 0.05,
+            },
+        },
+        "matches_requested_runtime": False,
+        "automatic": False,
+    }
     assert preflight.calls == [
         {
             "runtime": "fake",
@@ -126,6 +155,7 @@ async def test_optional_preflight_is_advisory_and_recorded(tmp_path: Path) -> No
     ]
     events = service.read_events(submitted["task_id"], limit=20)["events"]
     assert any(event["event_type"] == "task.preflight" for event in events)
+    assert any(event["event_type"] == "task.routing_advice" for event in events)
     task = await wait_for_status(service, submitted["task_id"], "succeeded")
     assert task["final_response"] == "hello"
 
@@ -148,6 +178,7 @@ async def test_preflight_failure_fails_open(tmp_path: Path) -> None:
     )
 
     assert submitted["preflight"] == {"status": "unavailable"}
+    assert submitted["routing_advice"] == {"status": "unavailable"}
     task = await wait_for_status(service, submitted["task_id"], "succeeded")
     assert task["final_response"] == "still-runs"
     await service.close()

@@ -30,6 +30,16 @@ class FakeClient:
                         "unclear": 0.05,
                     },
                 ),
+                "route_recommendation": SimpleNamespace(
+                    choice="codex",
+                    confidence=0.8,
+                    probabilities={
+                        "direct_serverfs_tool": 0.05,
+                        "codex": 0.8,
+                        "claude": 0.1,
+                        "human_review": 0.05,
+                    },
+                ),
             },
             usage=SimpleNamespace(input_tokens=321),
         )
@@ -69,6 +79,16 @@ async def test_jev_preflight_returns_normalized_advisory_result() -> None:
                     "unclear": 0.05,
                 },
             },
+            "route_recommendation": {
+                "choice": "codex",
+                "confidence": 0.8,
+                "probabilities": {
+                    "direct_serverfs_tool": 0.05,
+                    "codex": 0.8,
+                    "claude": 0.1,
+                    "human_review": 0.05,
+                },
+            },
         },
         "usage": {"input_tokens": 321},
     }
@@ -90,6 +110,7 @@ async def test_jev_preflight_returns_normalized_advisory_result() -> None:
         "stop_condition_explicit",
         "verification_evidence_explicit",
         "execution_fit",
+        "route_recommendation",
     }
 
     await preflight.close()
@@ -115,3 +136,22 @@ def test_choice_value_rejects_unknown_choice() -> None:
                 },
             )
         )
+
+
+def test_choice_value_supports_runtime_route_choices() -> None:
+    result = _choice_value(
+        SimpleNamespace(
+            choice="claude",
+            confidence=0.7,
+            probabilities={
+                "direct_serverfs_tool": 0.05,
+                "codex": 0.15,
+                "claude": 0.7,
+                "human_review": 0.1,
+            },
+        ),
+        allowed_choices=("direct_serverfs_tool", "codex", "claude", "human_review"),
+        label="route_recommendation",
+    )
+    assert result["choice"] == "claude"
+    assert result["probabilities"]["human_review"] == 0.1

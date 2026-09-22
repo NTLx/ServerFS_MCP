@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 JEV_MODEL = "jev-1.13.0"
+_EXECUTION_FIT_CHOICES = ("structured_serverfs", "native_agent", "unclear")
+_ROUTE_CHOICES = ("direct_serverfs_tool", "codex", "claude", "human_review")
 
 
 class TaskPreflight(Protocol):
@@ -127,8 +129,7 @@ class JevTaskPreflight:
                         "The task can be completed entirely with bounded ServerFS filesystem "
                         "primitives such as list, find, search, read, stat, create, edit, delete, "
                         "upload, or download, without shell commands, builds/tests, Git, "
-                        "deployment, "
-                        "network research, or broad coding-agent reasoning."
+                        "deployment, network research, or broad coding-agent reasoning."
                     ),
                     "native_agent": (
                         "The task requires coding-agent capabilities such as shell commands, "
@@ -138,6 +139,40 @@ class JevTaskPreflight:
                     "unclear": (
                         "The task is underspecified, mixes incompatible execution needs, or lacks "
                         "enough information to choose confidently."
+                    ),
+                },
+            },
+            "route_recommendation": {
+                "type": "choice",
+                "instructions": (
+                    "Recommend the best ServerFS execution route for this task independently of "
+                    "the already requested runtime. This is advisory only. Choose the route that "
+                    "best matches the task's required capabilities and explicit provider intent."
+                ),
+                "criteria": {
+                    "direct_serverfs_tool": (
+                        "Use bounded ServerFS filesystem primitives directly. Choose this when "
+                        "list/find/search/read/stat/create/edit/delete/upload/download are "
+                        "sufficient and no shell, Git, test runner, build, deployment, "
+                        "provider-native session, "
+                        "or broad coding-agent reasoning is required."
+                    ),
+                    "codex": (
+                        "Use the Codex native Agent route. Choose this for shell commands, Git, "
+                        "tests, builds, deployment, general coding-agent work, or when the task "
+                        "explicitly requests Codex or requires live steering, unless it explicitly "
+                        "requires Claude-specific state or tooling."
+                    ),
+                    "claude": (
+                        "Use the Claude Code native Agent route. Choose this when the task "
+                        "explicitly requests Claude/Claude Code or requires Claude-specific "
+                        "sessions, settings, "
+                        "skills, or provider-native behavior."
+                    ),
+                    "human_review": (
+                        "Do not choose an automated execution route yet. Choose this when the task "
+                        "requires a human authorization or business judgment, or is too ambiguous "
+                        "or underspecified to route responsibly."
                     ),
                 },
             },
@@ -160,7 +195,16 @@ class JevTaskPreflight:
                 "verification_evidence_explicit": _noul_value(
                     answers["verification_evidence_explicit"]
                 ),
-                "execution_fit": _choice_value(answers["execution_fit"]),
+                "execution_fit": _choice_value(
+                    answers["execution_fit"],
+                    allowed_choices=_EXECUTION_FIT_CHOICES,
+                    label="execution_fit",
+                ),
+                "route_recommendation": _choice_value(
+                    answers["route_recommendation"],
+                    allowed_choices=_ROUTE_CHOICES,
+                    label="route_recommendation",
+                ),
             },
         }
         usage = getattr(response, "usage", None)
@@ -180,12 +224,17 @@ def _noul_value(answer: Any) -> float:
     return number
 
 
-def _choice_value(answer: Any) -> dict[str, Any]:
+def _choice_value(
+    answer: Any,
+    *,
+    allowed_choices: tuple[str, ...] = _EXECUTION_FIT_CHOICES,
+    label: str = "execution_fit",
+) -> dict[str, Any]:
     choice = getattr(answer, "choice", None)
     confidence = getattr(answer, "confidence", None)
     probabilities = getattr(answer, "probabilities", None)
-    if choice not in {"structured_serverfs", "native_agent", "unclear"}:
-        raise ValueError("Jev returned an unknown execution_fit choice")
+    if choice not in allowed_choices:
+        raise ValueError(f"Jev returned an unknown {label} choice")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
         raise ValueError("Jev returned an invalid Choice confidence")
     confidence_number = float(confidence)
@@ -195,7 +244,7 @@ def _choice_value(answer: Any) -> dict[str, Any]:
         raise ValueError("Jev returned invalid Choice probabilities")
 
     normalized_probabilities: dict[str, float] = {}
-    for key in ("structured_serverfs", "native_agent", "unclear"):
+    for key in allowed_choices:
         value = probabilities.get(key)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError("Jev returned invalid Choice probabilities")

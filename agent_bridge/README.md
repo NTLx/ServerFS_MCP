@@ -10,7 +10,8 @@ Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the h
 while the base `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
 > Experimental branch note: `experiment/jev-agent-preflight` layers an optional Jev-backed
-> advisory preflight on top of this frozen provider-neutral baseline. The experiment does not
+> advisory task-quality preflight and Runtime Router on top of this frozen provider-neutral
+> baseline. The experiment does not
 > change the MCP tool surface, Bridge RPC, runtime allowlist, writer lease, provider adapters,
 > approval/question semantics, or task authorization. It is disabled unless
 > `SERVERFS_JEV_API_KEY` is non-empty.
@@ -61,12 +62,15 @@ steering should stay within that objective; distinct work belongs in a new task.
 least-authority and clarity rule, not an instruction-obfuscation layer: the Bridge must
 never encode, disguise, split or rewrite prompts in order to evade provider safety checks.
 
-On the Jev experiment branch, a configured preflight evaluates those properties before the
-writer lease is acquired. It is deliberately advisory and fail-open: successful evaluations
-are returned with task submission and persisted as `task.preflight`; an unavailable Jev
-evaluation is reported as `{"status": "unavailable"}` and the authorized task still runs.
-The preflight cannot approve permissions, change runtime/workdir/profile, mutate files, or
-rewrite the prompt. The current experiment pins `jev-1.13.0` for reproducible evaluation.
+On the Jev experiment branch, one configured advisory call evaluates those properties before
+the writer lease is acquired and also produces a Runtime Router recommendation among
+`direct_serverfs_tool`, `codex`, `claude`, and `human_review`. Successful quality results are
+persisted as `task.preflight`; the derived router object is persisted as `task.routing_advice`.
+Both are deliberately fail-open: an unavailable Jev evaluation is reported as
+`{"status": "unavailable"}` and the authorized task still runs on the explicitly requested
+runtime. Neither advisor can approve permissions, change runtime/workdir/profile, mutate
+files, or rewrite the prompt. The current experiment pins `jev-1.13.0` for reproducible
+evaluation.
 
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
 paths must already be real directories, aliases and slots are validated, and unknown
