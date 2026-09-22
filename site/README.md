@@ -6,6 +6,7 @@ The project website is a fully static Astro + Starlight site intended for GitHub
 
 - Astro 7
 - Starlight
+- self-hosted Noto Sans SC Variable for deterministic Simplified Chinese glyphs
 - plain CSS for the landing-page visual system and motion
 - GitHub Pages via `.github/workflows/pages.yml`
 
