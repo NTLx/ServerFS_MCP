@@ -31,6 +31,8 @@ class Settings:
     max_write_bytes: int = 1_048_576
     binary_transfer_enabled: bool = False
     max_binary_transfer_bytes: int = 8_388_608
+    file_ingress_enabled: bool = False
+    file_ingress_timeout_seconds: float = 30.0
     agent_mode: str = "disabled"
     agent_runtimes: frozenset[str] = frozenset()
     max_edits_per_call: int = 50
@@ -156,6 +158,8 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         max_binary_transfer_bytes=_get_positive_int_strict(
             env, "SERVERFS_MAX_BINARY_TRANSFER_BYTES", 8_388_608
         ),
+        file_ingress_enabled=_get_strict_bool(env, "SERVERFS_FILE_INGRESS_ENABLED", False),
+        file_ingress_timeout_seconds=_get_float(env, "SERVERFS_FILE_INGRESS_TIMEOUT_SECONDS", 30.0),
         agent_mode=agent_mode,
         agent_runtimes=agent_runtimes,
         max_edits_per_call=_get_int(env, "SERVERFS_MAX_EDITS_PER_CALL", 50),

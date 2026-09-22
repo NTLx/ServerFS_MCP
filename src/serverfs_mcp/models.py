@@ -6,7 +6,7 @@ the SDK generates JSON schema from these models automatically.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorkdirInfo(BaseModel):
@@ -148,6 +148,17 @@ class DownloadBinaryFileMetadata(BaseModel):
     mime_type: str = Field(description="Best-effort MIME type")
     sha256: str = Field(description="SHA-256 hex digest of the raw bytes")
     revision: str = Field(description="Opaque revision of the unchanged file that was read")
+
+
+class OpenAIFileInput(BaseModel):
+    """OpenAI/ChatGPT file parameter resolved by the client platform."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    download_url: str = Field(description="Temporary HTTPS download URL supplied by ChatGPT")
+    file_id: str = Field(description="Opaque ChatGPT/OpenAI file identifier")
+    mime_type: str = Field(default=None, description="Optional client-reported MIME type")
+    file_name: str = Field(default=None, description="Optional client-reported file name")
 
 
 class UploadBinaryFileResult(BaseModel):

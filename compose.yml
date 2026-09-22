@@ -40,6 +40,8 @@ services:
 
       SERVERFS_BINARY_TRANSFER_ENABLED: ${SERVERFS_BINARY_TRANSFER_ENABLED:-false}
       SERVERFS_MAX_BINARY_TRANSFER_BYTES: ${SERVERFS_MAX_BINARY_TRANSFER_BYTES:-8388608}
+      SERVERFS_FILE_INGRESS_ENABLED: ${SERVERFS_FILE_INGRESS_ENABLED:-false}
+      SERVERFS_FILE_INGRESS_TIMEOUT_SECONDS: ${SERVERFS_FILE_INGRESS_TIMEOUT_SECONDS:-30}
 
       WORKDIR_01_ALIAS: ${WORKDIR_01_ALIAS:-}
       WORKDIR_01_DESCRIPTION: ${WORKDIR_01_DESCRIPTION:-}
@@ -321,6 +323,7 @@ services:
 
     networks:
       - serverfs_internal
+      - serverfs_file_ingress
 
     read_only: true
 
@@ -340,6 +343,54 @@ services:
           ".venv/bin/python",
           "-c",
           "import socket; socket.create_connection(('127.0.0.1', 8000), timeout=2).close()",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  serverfs-file-ingress:
+    profiles: ["file-ingress"]
+    image: ${SERVERFS_IMAGE:-ghcr.io/ntlx/serverfs_mcp:latest}
+    command: ["python", "-m", "serverfs_mcp.file_ingress"]
+
+    restart: unless-stopped
+
+    user: "${SERVERFS_UID:-10001}:${SERVERFS_GID:-10001}"
+
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      SERVERFS_FILE_INGRESS_ALLOWED_HOSTS: ${SERVERFS_FILE_INGRESS_ALLOWED_HOSTS:-}
+      SERVERFS_FILE_INGRESS_MAX_BYTES: ${SERVERFS_FILE_INGRESS_MAX_BYTES:-8388608}
+      SERVERFS_FILE_INGRESS_FETCH_TIMEOUT_SECONDS: ${SERVERFS_FILE_INGRESS_FETCH_TIMEOUT_SECONDS:-30}
+      SERVERFS_FILE_INGRESS_MAX_REDIRECTS: ${SERVERFS_FILE_INGRESS_MAX_REDIRECTS:-3}
+      SERVERFS_FILE_INGRESS_PORT: 8081
+
+    expose:
+      - "8081"
+
+    networks:
+      - serverfs_file_ingress
+      - file_ingress_egress
+
+    read_only: true
+
+    tmpfs:
+      - /tmp
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          ".venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=2).read()",
         ]
       interval: 10s
       timeout: 3s
@@ -388,4 +439,9 @@ networks:
   serverfs_internal:
     internal: true
 
+  serverfs_file_ingress:
+    internal: true
+
   tunnel_egress:
+
+  file_ingress_egress:

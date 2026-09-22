@@ -28,9 +28,20 @@ def _binary_workdir(workdir, *, read_only: bool = False, max_bytes: int = 8_388_
     )
 
 
-def _server(workdir, *, read_only: bool = False, max_bytes: int = 8_388_608, settings=None):
+def _server(
+    workdir,
+    *,
+    read_only: bool = False,
+    max_bytes: int = 8_388_608,
+    settings=None,
+    file_ingress_client=None,
+):
     wd = _binary_workdir(workdir, read_only=read_only, max_bytes=max_bytes)
-    return create_server(settings or Settings(), registry_for(wd))
+    return create_server(
+        settings or Settings(),
+        registry_for(wd),
+        file_ingress_client=file_ingress_client,
+    )
 
 
 def _b64(data: bytes) -> str:
@@ -44,14 +55,32 @@ def _tool_names(server) -> set[str]:
     return asyncio.run(_list())
 
 
-def _tool_schema(server, name: str) -> dict:
-    async def _get() -> dict:
+def _tool(server, name: str):
+    async def _get():
         for tool in await server.list_tools():
             if tool.name == name:
-                return tool.input_schema
+                return tool
         raise AssertionError(f"{name} not registered")
 
     return asyncio.run(_get())
+
+
+def _tool_schema(server, name: str) -> dict:
+    return _tool(server, name).input_schema
+
+
+def _tool_meta(server, name: str):
+    return _tool(server, name).meta
+
+
+class _FakeIngress:
+    def __init__(self, payload: bytes):
+        self.payload = payload
+        self.calls = []
+
+    def fetch(self, download_url: str, *, max_bytes: int) -> bytes:
+        self.calls.append((download_url, max_bytes))
+        return self.payload
 
 
 class TestBinaryUploadRegistration:
@@ -68,13 +97,46 @@ class TestBinaryUploadRegistration:
             "workdir",
             "path",
             "data_base64",
+            "file",
             "overwrite",
             "expected_revision",
         }
+        assert schema["properties"]["data_base64"]["default"] is None
+        assert schema["properties"]["file"]["default"] is None
+        assert "anyOf" not in schema["properties"]["file"]
+        assert "$ref" in schema["properties"]["file"]
         assert schema["properties"]["overwrite"]["default"] is False
         assert schema["properties"]["expected_revision"]["default"] is None
-        assert "overwrite" not in schema.get("required", [])
-        assert "expected_revision" not in schema.get("required", [])
+        assert set(schema.get("required", [])) == {"workdir", "path"}
+
+    def test_enabled_openai_file_schema_is_exact(self, workdir) -> None:
+        schema = _tool_schema(
+            _server(workdir, settings=Settings(file_ingress_enabled=True)),
+            "upload_binary_file",
+        )
+        file_schema = schema["$defs"]["OpenAIFileInput"]
+        assert file_schema["type"] == "object"
+        assert file_schema["additionalProperties"] is False
+        assert set(file_schema["properties"]) == {
+            "download_url",
+            "file_id",
+            "mime_type",
+            "file_name",
+        }
+        assert file_schema["required"] == ["download_url", "file_id"]
+        assert all(
+            file_schema["properties"][name]["type"] == "string"
+            for name in ("download_url", "file_id", "mime_type", "file_name")
+        )
+
+    def test_openai_file_param_metadata_only_when_ingress_enabled(self, workdir) -> None:
+        disabled = _tool_meta(_server(workdir), "upload_binary_file")
+        enabled = _tool_meta(
+            _server(workdir, settings=Settings(file_ingress_enabled=True)),
+            "upload_binary_file",
+        )
+        assert disabled is None
+        assert enabled == {"openai/fileParams": ["file"]}
 
     def test_binary_disabled_surface_has_neither_binary_tool(self, workdir) -> None:
         server = create_server(Settings(), registry_for(workdir))
@@ -85,6 +147,81 @@ class TestBinaryUploadRegistration:
 
 
 class TestBinaryUploadCreate:
+    def test_exactly_one_binary_source_is_required(self, workdir) -> None:
+        server = _server(workdir)
+        missing = call_error(
+            server,
+            "upload_binary_file",
+            {"workdir": "test", "path": "missing-source.bin"},
+        )
+        assert error_code(missing) == "BINARY_SOURCE_REQUIRED"
+
+        ingress = _FakeIngress(b"must-not-fetch")
+        conflict = call_error(
+            _server(
+                workdir,
+                settings=Settings(file_ingress_enabled=True),
+                file_ingress_client=ingress,
+            ),
+            "upload_binary_file",
+            {
+                "workdir": "test",
+                "path": "conflict.bin",
+                "data_base64": _b64(b"x"),
+                "file": {
+                    "download_url": "https://files.example/x",
+                    "file_id": "file_test",
+                },
+            },
+        )
+        assert error_code(conflict) == "BINARY_SOURCE_CONFLICT"
+        assert ingress.calls == []
+        assert not (workdir.container_path / "conflict.bin").exists()
+
+    def test_file_source_requires_enabled_ingress(self, workdir) -> None:
+        server = _server(workdir)
+        msg = call_error(
+            server,
+            "upload_binary_file",
+            {
+                "workdir": "test",
+                "path": "file.bin",
+                "file": {
+                    "download_url": "https://files.example/x",
+                    "file_id": "file_test",
+                },
+            },
+        )
+        assert error_code(msg) == "FILE_INGRESS_DISABLED"
+        assert not (workdir.container_path / "file.bin").exists()
+
+    def test_file_source_uses_ingress_bytes_and_explicit_destination(self, workdir) -> None:
+        raw = b"\x89PNG\r\n\x1a\nserverfs-v05"
+        ingress = _FakeIngress(raw)
+        server = _server(
+            workdir,
+            settings=Settings(file_ingress_enabled=True),
+            file_ingress_client=ingress,
+        )
+        result = call_success(
+            server,
+            "upload_binary_file",
+            {
+                "workdir": "test",
+                "path": "chosen-by-caller.png",
+                "file": {
+                    "download_url": "https://files.example/signed?token=opaque",
+                    "file_id": "file_test",
+                    "mime_type": "image/png",
+                    "file_name": "../../must-not-be-used.png",
+                },
+            },
+        )
+        assert ingress.calls == [("https://files.example/signed?token=opaque", 8_388_608)]
+        assert (workdir.container_path / "chosen-by-caller.png").read_bytes() == raw
+        assert not (workdir.container_path / "must-not-be-used.png").exists()
+        assert result["sha256"] == hashlib.sha256(raw).hexdigest()
+
     def test_exact_bytes_sha_and_revision(self, workdir) -> None:
         raw = b"\x00\x01payload\xff\n"
         server = _server(workdir)

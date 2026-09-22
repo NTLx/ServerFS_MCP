@@ -41,6 +41,7 @@ from .binary import BinaryTransferError, decode_base64_payload
 from .binary import read_binary_file as read_binary_file_impl
 from .config import Settings
 from .fdio import open_directory_fd, open_file_fd, root_fd
+from .file_ingress_client import FileIngressClient
 from .filesystem import find_files as find_files_impl
 from .filesystem import list_directory as list_directory_impl
 from .filesystem import stat_file as stat_file_impl
@@ -55,6 +56,7 @@ from .models import (
     FindFilesResult,
     ListDirectoryResult,
     ListWorkdirsResult,
+    OpenAIFileInput,
     ReadTextFileResult,
     SearchTextResult,
     StatFileResult,
@@ -406,7 +408,12 @@ def _read_text_file_impl(
 # ---- registration ----
 
 
-def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings) -> None:
+def register_tools(
+    mcp: MCPServer,
+    registry: WorkdirRegistry,
+    settings: Settings,
+    file_ingress_client: FileIngressClient | None = None,
+) -> None:
     """Register core filesystem tools and optional binary transfer tools."""
     global default_list_limit, default_search_limit, list_limit_arg, search_limit_arg
     default_list_limit = min(settings.default_list_limit, settings.max_list_entries)
@@ -890,21 +897,34 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
                 structured_content=metadata.model_dump(),
             )
 
-        @mcp.tool(annotations=CREATE_FILE_ANNOTATIONS)
+        upload_meta = {"openai/fileParams": ["file"]} if settings.file_ingress_enabled else None
+
+        @mcp.tool(annotations=CREATE_FILE_ANNOTATIONS, meta=upload_meta)
         def upload_binary_file(
             workdir: WorkdirArg,
             path: Annotated[
                 str, Field(description="Path of the new file, relative to the workdir root")
             ],
             data_base64: Annotated[
-                str,
+                str | None,
                 Field(
+                    default=None,
                     description=(
-                        "Complete file payload as strict RFC 4648 base64; "
-                        "the target must not already exist"
-                    )
+                        "Optional complete file payload as strict RFC 4648 base64; "
+                        "provide exactly one of data_base64 or file"
+                    ),
                 ),
-            ],
+            ] = None,
+            file: Annotated[
+                OpenAIFileInput,
+                Field(
+                    default=None,
+                    description=(
+                        "Optional ChatGPT/OpenAI file parameter; provide exactly one of "
+                        "data_base64 or file"
+                    ),
+                ),
+            ] = None,
             overwrite: Annotated[
                 bool,
                 Field(
@@ -947,10 +967,24 @@ def register_tools(mcp: MCPServer, registry: WorkdirRegistry, settings: Settings
                         "EXPECTED_REVISION_NOT_ALLOWED: expected_revision is only valid "
                         "when overwrite=true"
                     )
-                data = decode_base64_payload(
-                    data_base64,
-                    max_bytes=resolved.workdir.policy.max_binary_transfer_bytes,
-                )
+                if data_base64 is None and file is None:
+                    raise ToolError(
+                        "BINARY_SOURCE_REQUIRED: provide exactly one of data_base64 or file"
+                    )
+                if data_base64 is not None and file is not None:
+                    raise ToolError(
+                        "BINARY_SOURCE_CONFLICT: provide exactly one of data_base64 or file"
+                    )
+                max_bytes = resolved.workdir.policy.max_binary_transfer_bytes
+                if file is not None:
+                    if not settings.file_ingress_enabled or file_ingress_client is None:
+                        raise ToolError(
+                            "FILE_INGRESS_DISABLED: ChatGPT file ingress is not enabled"
+                        )
+                    data = file_ingress_client.fetch(file.download_url, max_bytes=max_bytes)
+                else:
+                    assert data_base64 is not None
+                    data = decode_base64_payload(data_base64, max_bytes=max_bytes)
                 with (
                     mutation_lock(),
                     mutation_agent_lease(

@@ -44,6 +44,27 @@ class TestRobustParsing:
         assert settings_from_env({"SERVERFS_LOG_LEVEL": "bogus"}).log_level == "INFO"
 
 
+class TestFileIngressConfig:
+    def test_defaults_are_disabled(self) -> None:
+        s = settings_from_env({})
+        assert s.file_ingress_enabled is False
+        assert s.file_ingress_timeout_seconds == 30.0
+
+    def test_explicit_settings(self) -> None:
+        s = settings_from_env(
+            {
+                "SERVERFS_FILE_INGRESS_ENABLED": "true",
+                "SERVERFS_FILE_INGRESS_TIMEOUT_SECONDS": "7.5",
+            }
+        )
+        assert s.file_ingress_enabled is True
+        assert s.file_ingress_timeout_seconds == 7.5
+
+    def test_invalid_enable_value_fails_closed(self) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env({"SERVERFS_FILE_INGRESS_ENABLED": "maybe"})
+
+
 class TestAgentBridgeConfig:
     def test_defaults_are_disabled(self) -> None:
         s = settings_from_env({})

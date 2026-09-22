@@ -21,7 +21,25 @@ OpenAI Secure MCP Tunnel
 ChatGPT
 ```
 
-The MCP container has no published ports and no Internet egress. The OpenAI tunnel container is the only component that bridges outward.
+The MCP container has no published ports and no Internet egress. The OpenAI tunnel has a separate outbound network for control-plane traffic.
+
+## Optional ChatGPT file-ingress path
+
+```text
+ChatGPT file parameter
+   │
+   │ temporary HTTPS URL
+   ▼
+ServerFS MCP
+   │ dedicated internal network only
+   ▼
+serverfs-file-ingress
+   │ exact-host HTTPS egress only
+   ▼
+Temporary file host
+```
+
+The sidecar is opt-in. It has no workdir mounts, OpenAI/tunnel credentials, or published port. The main MCP container never receives Internet egress; it sends only the temporary URL and byte ceiling to the sidecar. The sidecar validates the exact configured hostname, resolved IP addresses, TLS hostname, redirects, timeouts, and byte limit before returning raw bytes.
 
 ## Optional Agent path
 
@@ -45,6 +63,7 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - filesystem read tools
 - guarded file mutations
 - bounded whole-file binary transfer
+- optional isolated ChatGPT file ingress
 - structured Agent task RPC
 
 Every optional capability is separately gated.

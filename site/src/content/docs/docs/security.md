@@ -19,7 +19,14 @@ ServerFS is designed around **narrow capabilities and independent enforcement la
 - Structured audit logging without file contents.
 - Read-only container root filesystem.
 - Non-root container user, dropped capabilities, and no-new-privileges.
-- Internal-only MCP network with no published ports.
+- Internal-only MCP networks with no published ports or Internet egress.
+- Optional ChatGPT file ingress is isolated in a separate sidecar with no workdir mounts or OpenAI credentials.
+
+## File-ingress boundary
+
+v0.5 keeps Internet egress out of the ServerFS MCP container. When explicitly enabled, `serverfs-file-ingress` receives a dedicated egress network and a separate internal network shared only with the MCP service. The tunnel is not attached to that ingress network.
+
+The MCP-to-sidecar endpoint is fixed to the internal Compose service and the MCP client does not follow redirects. The sidecar accepts HTTPS on port 443 only, requires an exact administrator-configured hostname allowlist, rejects any DNS answer that is not globally routable, pins the connection to the validated address while verifying TLS for the original hostname, revalidates every upstream redirect, and enforces independent byte and timeout ceilings. It is not a generic URL proxy.
 
 ## Transport hardening
 

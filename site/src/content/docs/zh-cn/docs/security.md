@@ -19,7 +19,14 @@ ServerFS 围绕**窄能力与独立执行层**设计。
 - 结构化审计日志，不记录文件内容。
 - 容器根文件系统只读。
 - 非 root 容器用户、drop capabilities、no-new-privileges。
-- MCP 仅在内部网络，无公开端口。
+- MCP 仅连接内部网络，无公开端口、无互联网出口。
+- 可选 ChatGPT 文件入口被隔离在独立 sidecar 中，不挂载 workdir，也不持有 OpenAI 凭据。
+
+## 文件入口边界
+
+v0.5 继续禁止 ServerFS MCP 主容器访问互联网。显式启用后，`serverfs-file-ingress` 使用独立出站网络，并通过只与 MCP 服务共享的专用内部网络接收请求；Tunnel 不连接该 ingress 网络。
+
+MCP 到 sidecar 的端点固定为内部 Compose 服务，MCP 客户端本身不会跟随重定向。Sidecar 只接受 443 端口上的 HTTPS，要求管理员配置精确主机名白名单，拒绝任何解析到非公网地址的 DNS 结果，在连接到已验证 IP 的同时仍按原始主机名校验 TLS，并对每次上游重定向重新执行校验，同时独立限制字节数和超时。它不是通用 URL 代理。
 
 ## 传输层加固
 

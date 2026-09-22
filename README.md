@@ -32,12 +32,13 @@ Linux filesystem
         read tools:  list / find / search / read / stat
         mutation tools: create / edit / delete (read-write workdirs only)
         optional binary path: download / upload / revision-guarded replace
+        optional ChatGPT file ingress → isolated sidecar → temporary HTTPS file URL
         optional Agent path: eight Agent tools → host Agent Bridge → Codex/Claude
    → OpenAI Secure MCP Tunnel (official tunnel-client container, outbound-only)
    → ChatGPT
 ```
 
-The MCP server container has **no Internet egress** and no published ports. Only the tunnel container can reach it, over a Docker-internal network. The container root filesystem stays read-only regardless of any workdir setting.
+The MCP server container has **no Internet egress** and no published ports. The tunnel reaches it over a Docker-internal network. v0.5 adds an optional, separately isolated `serverfs-file-ingress` sidecar for ChatGPT file parameters; only that sidecar receives file-download egress, it has no workdir mounts or OpenAI credentials, and the main MCP container remains internal-only. The container root filesystem stays read-only regardless of any workdir setting.
 
 The default `compose.yml` exposes the original 11 filesystem tools. Binary transfer is opt-in: when at least one workdir enables it, `download_binary_file` and `upload_binary_file` are added, producing a 13-tool filesystem surface. When the administrator also configures Agent policy and uses `compose.agent.yml`, the overlay adds eight structured Agent tools. The four supported surfaces are therefore 11 / 13 / 19 / 21 tools for filesystem-only / filesystem+binary / filesystem+Agent / filesystem+binary+Agent. Agent tools broker structured tasks through the host-side Bridge; they are not a shell, argv, or generic command executor.
 
@@ -130,6 +131,8 @@ v0.4 resolves one immutable effective policy for every enabled workdir at startu
 
 Binary transfer is disabled by default. Enable it globally with `SERVERFS_BINARY_TRANSFER_ENABLED=true` or for one slot with `WORKDIR_XX_BINARY_TRANSFER_ENABLED=true`. `SERVERFS_MAX_BINARY_TRANSFER_BYTES` / `WORKDIR_XX_MAX_BINARY_TRANSFER_BYTES` bound both upload and download; the default is 8 MiB. Enabling binary transfer does not release write authorization: uploads still require `WORKDIR_XX_READ_ONLY=false`.
 
+v0.5 optionally accepts a ChatGPT/OpenAI file parameter as the upload source. This path is separately disabled by default. To enable it, set `SERVERFS_FILE_INGRESS_ENABLED=true`, configure the measured exact temporary-download hostnames in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`, and start Compose with `--profile file-ingress`. `upload_binary_file` then advertises `_meta["openai/fileParams"] = ["file"]` and accepts exactly one of `data_base64` or `file`. The client-supplied `file_name`, `file_id` and temporary URL never select the ServerFS destination; the explicit `path` argument remains authoritative.
+
 Agent policy follows the same inheritance model via `SERVERFS_AGENT_MODE` / `SERVERFS_AGENT_RUNTIMES` and the workdir overrides. `SERVERFS_AGENT_BRIDGE_ENABLED` remains the separate infrastructure master gate.
 
 ### Read-only by default, and after upgrades
@@ -207,7 +210,7 @@ Defense in depth — each layer is independent:
 | Search limits | rg subprocess with argument-array invocation (no shell, no string concatenation), streamed `--json` output, wall-clock 15 s deadline (terminate → grace → kill, no orphan processes), 50 MiB per-file ceiling, and a true *global* result limit: rg is terminated as soon as `limit + 1` policy-valid matches exist, instead of scanning the whole tree. Result paths are re-checked against hidden/deny policy. |
 | Audit log | Every tool call emits a structured `tool_call` event (tool, workdir, relative path, duration, success, `error_code`, plus per-tool counts and the new revision). File contents, `old_text`/`new_text`, search queries and host/container paths are never logged. The `startup` event records the effective security mode (`allow_hidden`, `default_deny_enabled`, `extra_deny_rule_count`, `read_write_workdirs`). |
 | Docker | Read-only bind mounts by default (`create_host_path: false`), read-only container root filesystem, tmpfs `/tmp`, non-root UID 10001, `cap_drop: ALL`, `no-new-privileges`. `/workdirs/XX` becomes writable only when `WORKDIR_XX_READ_ONLY=false`; `/app`, the Python package and every system directory stay unwritable either way. |
-| Network | MCP container is on an `internal: true` network only — no Internet egress, no published ports. Only the tunnel container bridges to the outside. v0.4 additionally enables MCP Streamable HTTP DNS-rebinding protection: only the fixed internal authority `serverfs-mcp:8000` is accepted, no non-empty Origin is allowed, and invalid Host/Origin requests are rejected by the transport layer before MCP dispatch. |
+| Network | The MCP container remains on `internal: true` networks only — no Internet egress and no published ports. The tunnel has its own egress network. v0.5's optional file-ingress sidecar has a separate egress network but no workdir mounts or OpenAI credentials; MCP can reach it only over a dedicated internal network, and the tunnel is not attached to that network. The sidecar accepts HTTPS only, exact allowlisted hosts, port 443, globally routable resolved addresses, and revalidates every redirect. v0.4's Streamable HTTP DNS-rebinding protection remains unchanged: only `serverfs-mcp:8000` is accepted and no non-empty Origin is allowed. |
 | Secrets | `CONTROL_PLANE_*` never enters the MCP container (verified with `docker compose exec serverfs-mcp env`). |
 
 File contents are treated as **untrusted data** — ServerFS only returns them as text and never acts on anything inside them.
@@ -238,7 +241,7 @@ Optional binary tools (registered only when at least one workdir enables binary 
 | Tool | Contract |
 |---|---|
 | `download_binary_file` | Return exact raw bytes as an MCP `BlobResourceContents`, plus size / MIME / SHA-256 / revision metadata. Enforces the effective binary size limit and rejects files that change during the read. |
-| `upload_binary_file` | Strict-base64 whole-file upload. Default `overwrite=false` creates only. `overwrite=true` requires `expected_revision`, replaces one existing regular file atomically, preserves metadata, and rejects stale revisions or multi-hardlink targets. |
+| `upload_binary_file` | Whole-file upload from exactly one source: strict RFC 4648 `data_base64`, or (when optional file ingress is enabled) a ChatGPT/OpenAI `file` parameter. Default `overwrite=false` creates only. `overwrite=true` requires `expected_revision`, replaces one existing regular file atomically, preserves metadata, and rejects stale revisions or multi-hardlink targets. |
 
 Mutation tools (read-write workdirs only; all require the path's parent to exist):
 
@@ -252,7 +255,7 @@ Mutation tools (read-write workdirs only; all require the path's parent to exist
 
 A `serverfs://{workdir}/{path}` resource template is also exposed; it goes through the exact same validation as `read_text_file` and is **read-only** — mutations are available as tools only. Resources are all-or-nothing: a file that exceeds the read budget returns `RESOURCE_TOO_LARGE` instead of a silently truncated body — use `read_text_file` for paginated access.
 
-Common error codes: `WORKDIR_READ_ONLY`, `BINARY_TRANSFER_DISABLED`, `BINARY_FILE_TOO_LARGE`, `BINARY_PAYLOAD_TOO_LARGE`, `INVALID_BASE64`, `PATH_ALREADY_EXISTS`, `PARENT_NOT_FOUND`, `ROOT_MUTATION_NOT_ALLOWED`, `REVISION_REQUIRED`, `REVISION_CONFLICT`, `EDIT_CONFLICT`, `TOO_MANY_EDITS`, `WRITE_TOO_LARGE`, `BINARY_CONTENT_NOT_ALLOWED`, `BINARY_FILE`, `DIRECTORY_NOT_EMPTY`, `MULTIPLE_HARDLINKS_NOT_SUPPORTED`, `METADATA_PRESERVATION_FAILED`, `RESERVED_PATH`, plus the read-channel codes (`PATH_NOT_FOUND`, `SYMLINK_NOT_ALLOWED`, `DENIED_PATH`, `HIDDEN_PATH_NOT_ALLOWED`, `UNSUPPORTED_FILE_TYPE`, …).
+Common error codes: `WORKDIR_READ_ONLY`, `BINARY_TRANSFER_DISABLED`, `BINARY_FILE_TOO_LARGE`, `BINARY_PAYLOAD_TOO_LARGE`, `BINARY_SOURCE_REQUIRED`, `BINARY_SOURCE_CONFLICT`, `INVALID_BASE64`, `FILE_INGRESS_DISABLED`, `FILE_INGRESS_UNAVAILABLE`, `FILE_INGRESS_FAILED`, `FILE_INGRESS_URL_NOT_ALLOWED`, `FILE_INGRESS_HOST_NOT_ALLOWED`, `FILE_INGRESS_ADDRESS_NOT_ALLOWED`, `FILE_INGRESS_DNS_FAILED`, `FILE_INGRESS_TOO_MANY_REDIRECTS`, `FILE_INGRESS_UPSTREAM_FAILED`, `PATH_ALREADY_EXISTS`, `PARENT_NOT_FOUND`, `ROOT_MUTATION_NOT_ALLOWED`, `REVISION_REQUIRED`, `REVISION_CONFLICT`, `EDIT_CONFLICT`, `TOO_MANY_EDITS`, `WRITE_TOO_LARGE`, `BINARY_CONTENT_NOT_ALLOWED`, `BINARY_FILE`, `DIRECTORY_NOT_EMPTY`, `MULTIPLE_HARDLINKS_NOT_SUPPORTED`, `METADATA_PRESERVATION_FAILED`, `RESERVED_PATH`, plus the read-channel codes (`PATH_NOT_FOUND`, `SYMLINK_NOT_ALLOWED`, `DENIED_PATH`, `HIDDEN_PATH_NOT_ALLOWED`, `UNSUPPORTED_FILE_TYPE`, …).
 
 ## Operations
 
@@ -308,6 +311,6 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 
 The scratch tag on the last line matters: `image` doubles as the tag Compose builds to, so an untagged build with a pinned production `.env` present would repoint that release tag at your working tree.
 
-## Still not in v0.4 (by design)
+## Still not in v0.5 (by design)
 
-No rename/move/copy, no recursive mkdir or delete, no in-place binary editing API, no chmod/chown tools, no symlink or hardlink creation, no chunked/resumable transfer sessions, no shell or command execution, no Git operations, no automatic backup or trash, no database/index/RAG, no ACL management, no cross-workdir move, no OAuth/SSO, no web UI, and no file watching. Binary transfer is deliberately bounded whole-file transfer over MCP, not a general file-transfer service.
+No generic URL downloader, no rename/move/copy, no recursive mkdir or delete, no in-place binary editing API, no chmod/chown tools, no symlink or hardlink creation, no chunked/resumable transfer sessions, no shell or command execution, no Git operations, no automatic backup or trash, no database/index/RAG, no ACL management, no cross-workdir move, no OAuth/SSO, no web UI, and no file watching. Binary transfer remains bounded whole-file transfer; the optional ChatGPT file-ingress sidecar is a narrow, exact-host HTTPS ingress capability rather than a general proxy.

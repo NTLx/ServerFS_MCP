@@ -1,5 +1,7 @@
 # AGENTS.md
 
+Read `dev_plan_v0.5.md` first for active v0.5 development: ChatGPT/OpenAI file-parameter ingress, the isolated file-ingress sidecar, and MCP request-body sizing. For every v0.5 change, that plan plus executed tests and implementation are authoritative over older binary-transfer assumptions.
+
 Read `README.md` for the current released/frozen v0.4.0 behaviour, security model,
 deployment and release contract. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
 acceptance baseline for hierarchical workdir policy, binary file transfer and the Issue #10
@@ -77,6 +79,10 @@ Host/Origin allowlist, make it wildcard-configurable, or remove the startup wiri
 to accommodate a different development topology. Any legitimate topology change must be
 measured and regression-tested first. Evidence is in
 `docs/transport-security-audit-2026-09-21.md`.
+
+**ChatGPT file ingress is a v0.5 security boundary.** `serverfs-mcp` must retain no Internet egress. The optional `serverfs-file-ingress` sidecar has no workdir mounts, no tunnel/OpenAI credentials and no published port. It accepts only HTTPS on port 443 to exact administrator-configured hostnames, resolves and rejects any non-global address, pins the connection to a prevalidated address while verifying TLS for the original hostname, and revalidates every redirect. Never turn it into a generic URL fetcher, wildcard hostname proxy, workdir-aware service, or credential-bearing component. Network retrieval happens before the existing mutation lock/writer lease; publication still uses the frozen binary mutation primitives. See `dev_plan_v0.5.md`.
+
+OpenAI file-parameter schema is part of the public tool contract: `upload_binary_file` advertises `_meta["openai/fileParams"]=["file"]` only when ingress is enabled; the file object declares string properties `download_url`, `file_id`, `mime_type`, `file_name`, with only `download_url` and `file_id` required. The upload accepts exactly one payload source (`data_base64` XOR `file`). Never derive the destination path from `file_name` or log the URL/file ID.
 
 systemd user mode is a lifecycle manager only: do not add provider sandbox/hardening that
 changes the native provider capability model frozen in Phases B/C. Do not auto-enable

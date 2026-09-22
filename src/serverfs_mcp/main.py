@@ -8,13 +8,14 @@ from pathlib import Path
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
-from mcp.server.transport_security import TransportSecuritySettings
+from mcp.server.transport_security import DEFAULT_MAX_REQUEST_BODY_SIZE, TransportSecuritySettings
 
 from . import SERVER_VERSION
 from . import logging as jsonlog
 from .agent_client import AgentBridgeClient
 from .agent_tools import register_agent_tools
 from .config import Settings, settings_from_env
+from .file_ingress_client import FileIngressClient
 from .tools import READ_IMPL, register_tools
 from .workdirs import (
     ACCESS_READ_WRITE,
@@ -54,18 +55,37 @@ STREAMABLE_HTTP_TRANSPORT_SECURITY = TransportSecuritySettings(
     allowed_origins=[],
 )
 
+_MCP_REQUEST_JSON_OVERHEAD = 64 * 1024
+
+
+def streamable_http_max_request_body_size(registry) -> int:
+    """Return an HTTP body ceiling that can carry the largest valid base64 upload."""
+    max_raw = max(
+        (
+            workdir.policy.max_binary_transfer_bytes
+            for workdir in registry.all_workdirs()
+            if workdir.policy.binary_transfer_enabled
+        ),
+        default=0,
+    )
+    if max_raw <= 0:
+        return DEFAULT_MAX_REQUEST_BODY_SIZE
+    encoded = 4 * ((max_raw + 2) // 3)
+    return max(DEFAULT_MAX_REQUEST_BODY_SIZE, encoded + _MCP_REQUEST_JSON_OVERHEAD)
+
 
 def create_server(
     settings: Settings,
     registry,
     agent_client: AgentBridgeClient | None = None,
+    file_ingress_client: FileIngressClient | None = None,
 ) -> MCPServer:
     mcp = MCPServer(
         "ServerFS",
         instructions=INSTRUCTIONS,
         version=SERVER_VERSION,
     )
-    register_tools(mcp, registry, settings)
+    register_tools(mcp, registry, settings, file_ingress_client)
     agent_tools_enabled = settings.agent_bridge_enabled and any(
         workdir.agent_mode != "disabled" for workdir in registry.all_workdirs()
     )
@@ -133,18 +153,24 @@ def main() -> int:
             if settings.agent_bridge_enabled
             else None
         )
+        file_ingress_client = (
+            FileIngressClient(timeout_seconds=settings.file_ingress_timeout_seconds)
+            if settings.file_ingress_enabled
+            else None
+        )
     except (WorkdirError, ValueError) as exc:
         jsonlog.error("startup_failed", reason=str(exc))
         sys.stderr.write(f"ServerFS: configuration error: {exc}\n")
         return 2
 
     log_startup(settings, registry)
-    mcp = create_server(settings, registry, agent_client)
+    mcp = create_server(settings, registry, agent_client, file_ingress_client)
     mcp.run(
         "streamable-http",
         host="0.0.0.0",
         port=8000,
         streamable_http_path="/mcp",
+        max_request_body_size=streamable_http_max_request_body_size(registry),
         transport_security=STREAMABLE_HTTP_TRANSPORT_SECURITY,
     )
     return 0
@@ -183,6 +209,7 @@ def log_startup(settings: Settings, registry) -> None:
             1 for workdir in registry.all_workdirs() if workdir.policy != global_policy
         ),
         agent_bridge_enabled=settings.agent_bridge_enabled,
+        file_ingress_enabled=settings.file_ingress_enabled,
         agent_enabled_workdirs=sum(
             1 for w in registry.all_workdirs() if w.agent_mode != "disabled"
         ),
