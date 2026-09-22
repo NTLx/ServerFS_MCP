@@ -213,3 +213,17 @@ only identify dangerous requests; it must also avoid making routine, well-bounde
 look risky.
 
 Do not add automatic approval or denial thresholds during this experiment.
+
+## Identical-approval cache
+
+To reduce avoidable Jev traffic, completed Approval Advisor results are cached only within the
+lifetime of the current task. The cache key is a SHA-256 fingerprint of the normalized,
+redacted approval payload. If the provider emits the same approval payload again in that task,
+the Bridge reuses the prior completed advice, adds `cached=true`, and makes no second Jev
+request. Different approval payloads are evaluated independently. Failed/unavailable advice
+is not cached, and the entire task-local cache is discarded when the task terminates.
+
+This cache does not authorize or resolve an approval; it only reuses advisory context.
+
+The first real-provider validation is recorded in
+[`jev-approval-advisor-live-validation-2026-09-22.md`](jev-approval-advisor-live-validation-2026-09-22.md).
