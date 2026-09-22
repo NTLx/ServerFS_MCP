@@ -206,62 +206,117 @@ The full release gate was subsequently rerun on the exact post-hardening tree at
 Compose render variants passed, the scratch image built successfully, and the installed
 `serverfs-mcp` package reported version **0.5.0**. The worktree was clean.
 
-## Live ChatGPT file-parameter E2E
+## Live ChatGPT file-parameter E2E — corrected final evidence
 
-The final Phase E gate was completed through the refreshed ChatGPT plugin and the real
-OpenAI Secure MCP Tunnel.
+The refreshed ChatGPT plugin exposed the new `file` parameter and real conversation-held
+files reached the MCP file-ingress path.
 
-A deterministic 124-byte PNG held by the ChatGPT conversation was supplied to
-`upload_binary_file` through the OpenAI `file` parameter. A temporary no-egress probe
-first replaced the real sidecar solely to measure the normalized hostname carried in the
-platform-supplied `download_url`; the probe logged only the hostname and always rejected
-the request. The measured hostname was:
+The first acceptance attempt treated one measured Azure Blob hostname as if it were a
+stable deployment property. Later repeated probes disproved that assumption, so that
+single-host conclusion is superseded by the evidence below.
+
+Two different ChatGPT-held files produced different normalized storage hosts:
 
 ```text
+oaisdmntprindiasocentral.blob.core.windows.net
 oaisdmntprwestcentralus.blob.core.windows.net
 ```
 
-This hostname is **observed E2E evidence, not a product default**. It is not hard-coded in
-source, Compose or `.env.example`, because the actual temporary-file host can vary by
-platform deployment/region and must remain administrator policy.
+The older file was later diagnosed through a temporary egress probe and returned HTTP
+403 from its original host with no redirect. That later observation is evidence only that
+the old temporary URL was no longer usable at diagnosis time; no stronger cause is
+claimed.
 
-The real isolated sidecar was then restored with an exact one-host allowlist containing
-only that measured hostname. No additional redirect hostname was required: the same real
-ChatGPT-held PNG uploaded successfully through `upload_binary_file(file=...)`.
+A newly generated 1,745-byte PNG was then tested immediately. Standard HTTPS access from
+the diagnostic sidecar returned:
 
-Byte-integrity evidence:
+```text
+HTTP_STATUS=200
+FINAL_HOST=oaisdmntprwestcentralus.blob.core.windows.net
+CONTENT_LENGTH=1745
+READ_ONE=1
+```
 
-- source file size: **124 bytes**;
+There was no redirect. This proved that current ChatGPT fileParams can be valid while the
+Azure Blob account hostname varies across files/storage regions.
+
+### Host-policy correction
+
+v0.5 therefore retains exact administrator-configured hosts but no longer assumes that one
+measured exact host is sufficient for ChatGPT. A separate, default-off
+`SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS` switch admits only the measured OpenAI
+Azure Blob account-name family:
+
+- exact suffix `.blob.core.windows.net`;
+- storage account label must begin with `oaisdmntpr`;
+- at least one account-name character must follow the prefix;
+- lowercase ASCII letters/digits only;
+- total storage-account label length at most 24 characters.
+
+This is deliberately narrower than `*.blob.core.windows.net`; generic wildcard host
+configuration remains rejected. Every accepted hostname still goes through HTTPS/443
+enforcement, all-global DNS validation, IP-pinned connection, original-host TLS
+verification, redirect-by-redirect revalidation, and byte/time ceilings.
+
+Targeted host-policy regression passed **90 tests** with Ruff lint/format and
+`git diff --check` green. Scratch image
+`serverfs-mcp:v05-host-family` built successfully as package version **0.5.0**.
+
+### Fresh final byte-integrity round trip
+
+The real sidecar was started from that host-family image with:
+
+- exact-host allowlist empty;
+- constrained OpenAI Blob family enabled;
+- no workdir mounts;
+- no published ports;
+- one dedicated internal network plus its sidecar-only egress network.
+
+A newly generated ChatGPT-held PNG then completed the real:
+
+```text
+ChatGPT file -> Plugin fileParams -> MCP -> isolated sidecar -> workdir
+              -> download_binary_file
+```
+
+round trip.
+
+Final evidence:
+
+- source size: **2,066 bytes**;
 - source SHA-256:
-  `30efccdbf3648650a242e8ba64be465b574c075def9218a2185ad25ac9c3b1d3`;
+  `3dbdf9788a85abd4528439973842b1ea90c9466ee124fc5f2051fee5486c5eed`;
 - source PNG signature: `89504e470d0a1a0a`;
-- `upload_binary_file` bytes written: **124**;
+- `upload_binary_file` bytes written: **2,066**;
 - upload SHA-256: identical;
-- `download_binary_file` size: **124**;
+- `stat_file` size: **2,066**;
+- `stat_file` MIME: `image/png`;
+- `download_binary_file` size: **2,066**;
 - download MIME: `image/png`;
 - download SHA-256: identical;
-- source/upload/download byte identity therefore matched end to end.
+- downloaded first eight bytes: `89504e470d0a1a0a`.
 
-The MCP container was also re-verified after the v0.5 development deployment:
+The final E2E file was removed through revision-guarded `delete_file`. The earlier
+measurement/diagnostic target paths were also confirmed absent.
 
-- package/server version: **0.5.0**;
-- both Agent Bridge mounts remained present;
-- only Docker `internal=true` networks were attached to `serverfs-mcp`;
-- no host ports were published;
-- a direct HTTPS request from `serverfs-mcp` failed with
-  `socket.gaierror: Temporary failure in name resolution`, confirming no Internet egress;
-- the tunnel established a fresh MCP session reporting `server_version=0.5.0`.
-
-The real sidecar remained isolated: no workdir mounts, no published ports, no
-`CONTROL_PLANE`/`OPENAI`/`TUNNEL` credential variables, one dedicated internal network
-plus its egress network, and the exact measured hostname allowlist.
-
-All E2E workdir files were removed afterwards through revision-guarded `delete_file`.
+The MCP container boundary had already been re-verified on the v0.5 development
+deployment: version **0.5.0**, Agent Bridge mounts present, only Docker
+`internal=true` networks attached, no published host ports, direct HTTPS unavailable
+from the MCP container, and a fresh tunnel session reporting `server_version=0.5.0`.
+The host-family change is confined to the isolated sidecar and does not add MCP egress.
 
 ## Phase E disposition
 
-**COMPLETE.** The provider-neutral Base64 path, the isolated file-parameter path, the
-transport-size repair, real ChatGPT file discovery, live temporary-host measurement,
-exact-host policy, byte-integrity round trip, and main-container no-egress boundary have
-all been verified. No OpenAI temporary-file hostname is inferred or hard-coded into the
-product.
+**LIVE FILE-PARAMETER E2E COMPLETE.** The provider-neutral Base64 path, transport-size
+repair, refreshed ChatGPT file discovery, region-varying temporary-host behavior,
+constrained host-family policy, fresh byte-integrity round trip and main-container
+no-egress boundary are all verified.
+
+The final full repository gate was then rerun on the exact host-family-fix tree:
+root **800 passed**, Agent Bridge **83 passed**, Ruff lint/format passed, the site built
+**17 pages**, all four required Compose render variants passed, `git diff --check` passed,
+and scratch image `serverfs-mcp:v05-final-gate` reported package version **0.5.0**
+(image ID `sha256:a19604d43b38b998ef3626f5157127403f922fa3f232d4a609b6770e7f93c691`).
+
+Phase E and all technical release gates are complete. Only Git closeout remains; no
+`v0.5.0` tag exists yet.

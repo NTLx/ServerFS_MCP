@@ -10,15 +10,31 @@ import serverfs_mcp.file_ingress as ingress
 from serverfs_mcp.file_ingress import IngressError, IngressSettings
 
 
-def _settings(*hosts: str, max_bytes: int = 8_388_608) -> IngressSettings:
-    return IngressSettings(allowed_hosts=frozenset(hosts), max_bytes=max_bytes)
+def _settings(
+    *hosts: str,
+    max_bytes: int = 8_388_608,
+    allow_openai_blob_hosts: bool = False,
+) -> IngressSettings:
+    return IngressSettings(
+        allowed_hosts=frozenset(hosts),
+        allow_openai_blob_hosts=allow_openai_blob_hosts,
+        max_bytes=max_bytes,
+    )
 
 
-def test_settings_require_nonempty_exact_host_allowlist() -> None:
+def test_settings_require_a_narrow_host_policy() -> None:
     with pytest.raises(ValueError):
         ingress.settings_from_env({})
     with pytest.raises(ValueError):
         ingress.settings_from_env({"SERVERFS_FILE_INGRESS_ALLOWED_HOSTS": "*.example.com"})
+    with pytest.raises(ValueError):
+        ingress.settings_from_env({"SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS": "maybe"})
+
+
+def test_settings_allow_constrained_openai_blob_family_without_exact_hosts() -> None:
+    settings = ingress.settings_from_env({"SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS": "true"})
+    assert settings.allowed_hosts == frozenset()
+    assert settings.allow_openai_blob_hosts is True
 
 
 def test_settings_parse_exact_hosts_and_limits() -> None:
@@ -31,9 +47,46 @@ def test_settings_parse_exact_hosts_and_limits() -> None:
         }
     )
     assert settings.allowed_hosts == frozenset({"files.example.com", "cdn.example.com"})
+    assert settings.allow_openai_blob_hosts is False
     assert settings.max_bytes == 1234
     assert settings.timeout_seconds == 4.5
     assert settings.max_redirects == 2
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "oaisdmntprindiasocentral.blob.core.windows.net",
+        "oaisdmntprwestcentralus.blob.core.windows.net",
+        "OAISDMNTPRWESTCENTRALUS.BLOB.CORE.WINDOWS.NET",
+    ],
+)
+def test_validated_url_accepts_constrained_openai_blob_family(host: str) -> None:
+    settings = _settings(allow_openai_blob_hosts=True)
+    normalized, port, _target = ingress._validated_url(f"https://{host}/file?sig=x", settings)
+    assert ingress._is_openai_blob_host(normalized) is True
+    assert port == 443
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "oaisdmntpr.blob.core.windows.net",
+        "oaisdmntpr123456789012345.blob.core.windows.net",
+        "evil.blob.core.windows.net",
+        "oaisdmntprwestcentralus.blob.core.windows.net.evil.example",
+        "x.oaisdmntprwestcentralus.blob.core.windows.net",
+        "oaisdmntprwest-central-us.blob.core.windows.net",
+    ],
+)
+def test_openai_blob_family_rejects_broader_or_malformed_hosts(host: str) -> None:
+    assert ingress._is_openai_blob_host(host) is False
+    with pytest.raises(IngressError) as exc:
+        ingress._validated_url(
+            f"https://{host}/file",
+            _settings(allow_openai_blob_hosts=True),
+        )
+    assert exc.value.code == "FILE_INGRESS_HOST_NOT_ALLOWED"
 
 
 def test_validated_url_accepts_allowlisted_https_only() -> None:

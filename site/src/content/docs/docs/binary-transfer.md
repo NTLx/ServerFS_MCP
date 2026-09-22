@@ -35,9 +35,9 @@ The explicit ServerFS `path` always selects the destination. Client metadata suc
 
 ### ChatGPT file ingress
 
-File ingress is independently disabled by default. Set `SERVERFS_FILE_INGRESS_ENABLED=true`, configure exact measured hostnames in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`, and start Compose with `--profile file-ingress`.
+File ingress is independently disabled by default. Set `SERVERFS_FILE_INGRESS_ENABLED=true` and start Compose with `--profile file-ingress`. Exact hosts can be configured in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`. Real ChatGPT fileParams use region-varying OpenAI Azure Blob accounts, so `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` enables only the measured `oaisdmntpr<account-suffix>.blob.core.windows.net` family; generic host wildcards remain unsupported.
 
-When enabled, `upload_binary_file` advertises `_meta["openai/fileParams"] = ["file"]`. The MCP process calls only the fixed internal `serverfs-file-ingress:8081/fetch` endpoint and does not follow internal redirects. The isolated ingress sidecar fetches the temporary HTTPS URL; the main ServerFS MCP container keeps no Internet egress. The sidecar has no workdir mounts, no OpenAI credentials, no published port, and rejects non-allowlisted hosts or non-global resolved addresses while revalidating every upstream redirect.
+When enabled, `upload_binary_file` advertises `_meta["openai/fileParams"] = ["file"]`. The MCP process calls only the fixed internal `serverfs-file-ingress:8081/fetch` endpoint and does not follow internal redirects. The isolated ingress sidecar fetches the temporary HTTPS URL; the main ServerFS MCP container keeps no Internet egress. The sidecar has no workdir mounts, no OpenAI credentials or published port. It accepts exact hosts or the opt-in constrained OpenAI Blob family, then independently rejects non-global DNS answers, pins the connection to a validated IP while verifying TLS for the original hostname, and revalidates every upstream redirect.
 
 Binary transfer never bypasses workdir authorization. Upload still requires a read-write workdir.
 

@@ -14,6 +14,7 @@ def test_file_ingress_sidecar_is_opt_in_and_has_no_workdir_mounts() -> None:
     assert 'profiles: ["file-ingress"]' in ingress
     assert 'command: ["python", "-m", "serverfs_mcp.file_ingress"]' in ingress
     assert "SERVERFS_FILE_INGRESS_ALLOWED_HOSTS" in ingress
+    assert "SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS" in ingress
     assert "serverfs_file_ingress" in ingress
     assert "file_ingress_egress" in ingress
     assert "ports:" not in ingress
@@ -53,4 +54,5 @@ def test_env_example_keeps_file_ingress_disabled_by_default() -> None:
     text = (_REPO_ROOT / ".env.example").read_text(encoding="utf-8")
     assert text.count("SERVERFS_FILE_INGRESS_ENABLED=false") == 1
     assert text.count("SERVERFS_FILE_INGRESS_ALLOWED_HOSTS=") == 1
+    assert text.count("SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=false") == 1
     assert "SERVERFS_FILE_INGRESS_URL" not in text

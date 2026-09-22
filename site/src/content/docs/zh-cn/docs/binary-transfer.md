@@ -35,9 +35,9 @@ description: 有界整文件下载与基于 revision 的受保护上传。
 
 ### ChatGPT 文件入口
 
-文件入口独立且默认关闭。启用时设置 `SERVERFS_FILE_INGRESS_ENABLED=true`，在 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 中配置经过实际测量的精确主机名，并使用 `--profile file-ingress` 启动 Compose。
+文件入口独立且默认关闭。启用时设置 `SERVERFS_FILE_INGRESS_ENABLED=true`，并使用 `--profile file-ingress` 启动 Compose。`SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 仍可配置精确主机名。真实 ChatGPT fileParams 会使用随存储区域变化的 OpenAI Azure Blob 账户，因此可显式设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`，仅允许实测的 `oaisdmntpr<账户后缀>.blob.core.windows.net` 家族；仍不支持通用主机名通配符。
 
-启用后，`upload_binary_file` 会暴露 `_meta["openai/fileParams"] = ["file"]`。MCP 进程只调用固定的内部端点 `serverfs-file-ingress:8081/fetch`，并且不会跟随内部重定向。隔离的 ingress sidecar 负责获取临时 HTTPS URL；ServerFS MCP 主容器仍然没有互联网出口。Sidecar 不挂载任何 workdir、不持有 OpenAI 凭据、不发布端口，并拒绝未列入精确白名单的主机或解析到非公网地址的目标，同时重新校验每一次上游重定向。
+启用后，`upload_binary_file` 会暴露 `_meta["openai/fileParams"] = ["file"]`。MCP 进程只调用固定的内部端点 `serverfs-file-ingress:8081/fetch`，并且不会跟随内部重定向。隔离的 ingress sidecar 负责获取临时 HTTPS URL；ServerFS MCP 主容器仍然没有互联网出口。Sidecar 不挂载任何 workdir、不持有 OpenAI 凭据、不发布端口；只接受精确主机或显式开启的受限 OpenAI Blob 家族，并继续独立执行公网 DNS 校验、验证 IP 后连接、原主机名 TLS 校验以及每一次上游重定向复核。
 
 二进制传输不会绕过 workdir 授权。上传仍然要求目标 workdir 可写。
 

@@ -135,7 +135,7 @@ The sidecar is not a generic URL fetcher.
 It MUST:
 
 1. accept HTTPS only;
-2. accept exact administrator-configured hostnames only;
+2. accept only exact administrator-configured hostnames or the explicitly enabled, measured OpenAI Azure Blob account-name family;
 3. reject userinfo and fragments;
 4. allow only port 443 (implicit or explicit);
 5. resolve DNS itself and reject every non-global address;
@@ -148,9 +148,15 @@ It MUST:
 11. use bounded connect/read timeouts;
 12. never log URLs, query strings, file IDs, response bodies or workdir paths.
 
-The exact allowed hostnames are configuration, not source-code guesses. A real ChatGPT
-E2E probe MUST measure the current temporary-download hostname/redirect chain before
-production enables this path.
+Generic hostname wildcards are forbidden. Exact allowed hostnames remain configuration.
+Real ChatGPT E2E measurement found that OpenAI fileParams use region-varying Azure Blob
+storage accounts, including `oaisdmntprindiasocentral.blob.core.windows.net` and
+`oaisdmntprwestcentralus.blob.core.windows.net`; a single exact hostname therefore is not
+a stable product policy. The optional built-in family matcher is deliberately narrower
+than `*.blob.core.windows.net`: it requires the Azure storage account label to begin with
+`oaisdmntpr`, contain only lowercase ASCII letters/digits, fit Azure's 24-character
+storage-account limit, and use the exact `.blob.core.windows.net` suffix. All DNS/IP/TLS,
+redirect, timeout and byte-limit checks still apply independently.
 
 ## 8. Internal ingress protocol
 
@@ -225,6 +231,7 @@ New sidecar settings:
 
 ```text
 SERVERFS_FILE_INGRESS_ALLOWED_HOSTS=
+SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=false
 SERVERFS_FILE_INGRESS_MAX_BYTES=8388608
 SERVERFS_FILE_INGRESS_FETCH_TIMEOUT_SECONDS=30
 SERVERFS_FILE_INGRESS_MAX_REDIRECTS=3
@@ -262,12 +269,13 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase C — Isolated ingress sidecar
 
-> Status: **COMPLETE / CONTAINER VERIFIED**. A disposable Compose E2E proved the
-> dedicated network topology, public-HTTPS fetch, exact-host rejection, byte ceiling and
-> continued lack of Internet egress from the main MCP container. See
-> `docs/phase-e-v0.5-local-acceptance-2026-09-22.md`.
+> Status: **COMPLETE / LIVE REGIONAL-HOST VERIFIED**. The sidecar/network boundary is
+> container-verified, and repeated live ChatGPT probes demonstrated region-varying OpenAI
+> Azure Blob account hosts. The constrained host-family policy is implemented, targeted
+> regression passed 90 tests, and the real sidecar completed a fresh byte-integrity E2E
+> with the exact-host list empty and the constrained family enabled.
 
-- implement exact-host HTTPS fetcher;
+- implement narrow-host HTTPS fetcher: exact hosts plus optional constrained OpenAI Blob family;
 - DNS/IP validation;
 - TLS hostname verification with connection pinned to validated IP;
 - redirect validation;
@@ -289,13 +297,12 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase E — Integration and real ChatGPT E2E
 
-> Status: **COMPLETE / LIVE CHATGPT VERIFIED**. The exact post-hardening tree passed the
-> full root/Agent/site/Compose/image release gate. A refreshed ChatGPT plugin then supplied
-> a real conversation-held PNG through the OpenAI `file` parameter. The temporary download
-> hostname was measured with a no-egress reject probe, configured as the sole exact-host
-> allowlist entry, and the real sidecar completed an exact 124-byte PNG round trip with
-> matching SHA-256 and PNG signature. The MCP container remained without Internet egress.
-> See `docs/phase-e-v0.5-local-acceptance-2026-09-22.md`.
+> Status: **COMPLETE / LIVE CHATGPT VERIFIED**. The refreshed plugin and real `file`
+> parameter are confirmed. Two different OpenAI Blob accounts were measured across live
+> conversation-held files. A fresh diagnostic URL returned HTTP 200 with no redirect, and
+> the corrected real sidecar then completed a new 2,066-byte PNG round trip with exact
+> source/upload/download SHA-256 and PNG-signature equality. The previous single-exact-host
+> acceptance is explicitly superseded in the Phase E evidence record.
 
 - run unit/full regression gates;
 - build Compose image;
@@ -304,20 +311,18 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 - refresh ChatGPT plugin schema;
 - verify `upload_binary_file` exposes the file parameter;
 - measure the actual ChatGPT temporary URL hostname/redirect chain;
-- configure the narrow exact-host allowlist;
+- verify the narrow OpenAI Blob host-family policy against region-varying real fileParams;
 - upload a real generated PNG through ChatGPT;
 - verify size, SHA-256 and PNG signature from the ServerFS download path;
 - verify no Internet egress from `serverfs-mcp`.
 
 ### Phase F — Release closure
 
-> Status: **COMPLETE / RELEASE-READY**. Runtime docs/config examples, root regression,
-> Compose renders, scratch image build, container-isolation E2E, explicit >4-MiB HTTP
-> compatibility, site build, independent Agent Bridge regression, refreshed-plugin
-> discovery and live ChatGPT file-parameter E2E are all green. The development history was
-> fast-forwarded into `main`, development branches were removed, and the release-candidate
-> evidence is frozen in `docs/phase-f-v0.5-release-candidate-2026-09-22.md`. The
-> `v0.5.0` tag remains intentionally uncreated until the maintainer explicitly requests it.
+> Status: **TECHNICAL RELEASE GATES COMPLETE / GIT CLOSEOUT PENDING**. The corrected
+> tree passed the final full gate: root 800 passed, Agent Bridge 83 passed, Ruff lint/format,
+> site build (17 pages), four Compose renders, `git diff --check`, and final scratch image
+> build/package-version checks all passed. Live ChatGPT byte-integrity E2E is also complete.
+> No `v0.5.0` tag exists. Only focused commit/push and pure fast-forward Git closeout remain.
 
 - update README/site docs/config examples;
 - document migration and rollback;

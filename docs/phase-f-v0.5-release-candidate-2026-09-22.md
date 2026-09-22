@@ -2,23 +2,17 @@
 
 ## Disposition
 
-ServerFS MCP v0.5.0 is **release-ready**.
+ServerFS MCP v0.5.0 has **completed all technical release gates; Git closeout is the
+only remaining development step**.
 
-Implementation, regression, container/security validation, real Streamable HTTP validation,
-refreshed ChatGPT plugin discovery, live ChatGPT file-parameter transfer and repository
-closeout have completed. The release tag has intentionally **not** been created; tagging is
-a maintainer-controlled final publication action.
+The earlier release-candidate draft was written before repeated real ChatGPT file probes
+demonstrated region-varying Azure Blob account hostnames. Because no `v0.5.0` tag had
+been created, development was safely reopened on branch `v0.5-host-family-fix` from
+`main@ea939fee75a1f5f119a761e110b92d08bdf25533`.
 
-The development branch was fast-forwarded into `main`; local and remote `v0.5-dev`
-were removed. Before this final release-candidate record, `main` and `origin/main`
-were exactly:
-
-```text
-b7f881f3f8fb01330b9602343612426aa3b520be
-```
-
-This record itself is the final documentation-only release-candidate change after that
-merge.
+The corrected file-ingress policy, fresh live byte-integrity E2E, full regression,
+site/Compose gates and final scratch image build are all complete. Tagging remains a
+maintainer-controlled publication action and is not part of this development pass.
 
 ## Product change
 
@@ -44,7 +38,7 @@ Optional ChatGPT file ingress is isolated in `serverfs-file-ingress`:
 - no published ports;
 - one dedicated Docker-internal network shared with MCP;
 - one sidecar-only egress network;
-- exact administrator-configured host allowlist;
+- exact administrator-configured hosts and an optional constrained OpenAI Azure Blob account-name family; generic wildcards remain rejected;
 - HTTPS port 443 only;
 - DNS results must all be globally routable;
 - outbound connection pinned to a validated IP while TLS verifies the original hostname;
@@ -83,7 +77,7 @@ available.
 
 ## Regression and build gates
 
-The exact post-hardening source tree passed the complete local release gate:
+The pre-host-family post-hardening tree passed a complete local release gate:
 
 - `uv sync --frozen`: pass;
 - root Ruff lint: pass;
@@ -92,15 +86,26 @@ The exact post-hardening source tree passed the complete local release gate:
 - Agent Bridge frozen-contract gate: Ruff lint/format pass and **83 passed**;
 - site: build pass, **17 static pages**;
 - `git diff --check`: pass;
-- base Compose render: pass;
-- `file-ingress` profile render: pass;
-- Agent overlay render: pass;
-- Agent overlay + `file-ingress` profile render: pass;
+- all four required Compose render variants: pass;
 - scratch Docker image build: pass;
 - scratch image package version: **0.5.0**.
 
-The development image later served a real tunnel session reporting
-`server_version=0.5.0`.
+The host-family correction then passed its targeted gate: **90 passed**, Ruff lint/format
+green, `git diff --check` green, and scratch image
+`serverfs-mcp:v05-host-family` built successfully as package version **0.5.0**.
+
+The final full release gate on the exact corrected tree then passed:
+
+- root tests: **800 passed**;
+- root Ruff lint/format: pass;
+- Agent Bridge frozen-contract tests: **83 passed** with Ruff lint/format pass;
+- site build: **17 pages**;
+- `git diff --check`: pass;
+- all four required Compose render variants: pass;
+- final scratch image build: pass;
+- package version: **0.5.0**;
+- final scratch image ID:
+  `sha256:a19604d43b38b998ef3626f5157127403f922fa3f232d4a609b6770e7f93c691`.
 
 ## Transport-capacity repair
 
@@ -133,40 +138,53 @@ Before live ChatGPT testing, a disposable container stack verified:
 A real MCP file-parameter round trip through the isolated sidecar also succeeded against a
 controlled public HTTPS target, with exact upload/download size and SHA-256 equality.
 
-## Live ChatGPT file-parameter E2E
+## Live ChatGPT file-parameter E2E — corrected evidence
 
-The refreshed ChatGPT plugin exposed the new `file` parameter.
-
-A temporary no-egress measurement probe was inserted on the internal sidecar endpoint. It
-logged only the normalized hostname from the platform-supplied temporary `download_url`
-and always returned `FILE_INGRESS_HOST_NOT_ALLOWED`.
-
-A real ChatGPT-held file parameter reached that probe. The observed hostname was:
+The refreshed ChatGPT plugin exposed the new `file` parameter. Repeated real-file probes
+then found that the temporary Azure Blob account is not stable across files/storage
+regions. Two observed hosts were:
 
 ```text
+oaisdmntprindiasocentral.blob.core.windows.net
 oaisdmntprwestcentralus.blob.core.windows.net
 ```
 
-This is evidence from this specific ChatGPT session, **not a product default**. It is not
-hard-coded into source or configuration examples.
+The earlier release-candidate draft incorrectly treated one measured exact host as a
+stable production policy. That conclusion is superseded.
 
-The real sidecar was restored with exactly that one hostname allowlisted. No additional
-redirect hostname was required.
+A later diagnostic access to an older temporary URL returned HTTP 403 from its original
+host with no redirect. A newly generated 1,745-byte PNG tested immediately returned HTTP
+200, no redirect, `Content-Length: 1745`, and a readable first byte. This distinguishes
+temporary-URL lifetime from the host-policy problem and proves that a fresh ChatGPT file
+parameter is directly fetchable.
 
-A deterministic PNG then completed the real ChatGPT -> Plugin -> MCP -> isolated sidecar
--> ServerFS workdir -> MCP download path:
+The corrected policy retains exact host allowlists and adds a separate default-off
+`SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS` switch. When enabled, it accepts only the
+measured OpenAI Azure Blob account-name family: exact `.blob.core.windows.net` suffix,
+storage-account label beginning `oaisdmntpr`, lowercase ASCII alphanumeric account name,
+non-empty suffix after the prefix, and Azure's 24-character account-name maximum. Generic
+host wildcards remain rejected.
 
-- source size: **124 bytes**;
+The real sidecar was then run from scratch image `serverfs-mcp:v05-host-family` with the
+exact-host list empty and the constrained family enabled. A brand-new conversation-held
+PNG completed the real ChatGPT -> Plugin -> MCP -> isolated sidecar -> ServerFS workdir ->
+MCP download path:
+
+- source size: **2,066 bytes**;
 - source PNG signature: `89504e470d0a1a0a`;
 - source SHA-256:
-  `30efccdbf3648650a242e8ba64be465b574c075def9218a2185ad25ac9c3b1d3`;
-- upload bytes written: **124**;
+  `3dbdf9788a85abd4528439973842b1ea90c9466ee124fc5f2051fee5486c5eed`;
+- upload bytes written: **2,066**;
 - upload SHA-256: identical;
-- download size: **124**;
+- `stat_file` size: **2,066**;
+- `stat_file` MIME: `image/png`;
+- download size: **2,066**;
 - download MIME: `image/png`;
-- download SHA-256: identical.
+- download SHA-256: identical;
+- downloaded PNG signature: `89504e470d0a1a0a`.
 
-The E2E workdir files were removed afterwards through revision-guarded ServerFS deletion.
+The final test file was removed by revision-guarded `delete_file`, and all measurement
+and diagnostic target paths were confirmed absent.
 
 ## Live deployment boundary re-verification
 
@@ -189,22 +207,22 @@ preserves the overlay explicitly.
 
 ## Repository closeout
 
-The v0.5 development history was merged by pure fast-forward. No merge commit or rewritten
-history was introduced.
+The original `v0.5-dev` history was fast-forwarded into `main`, but that closeout was
+subsequently reopened before tagging when the region-varying host behavior was measured.
+The corrective work now lives on `v0.5-host-family-fix`, based directly on current
+`main`; no history rewrite is required.
 
-At merge verification:
+Final closeout requires:
 
-- local `main` == `origin/main`;
-- worktree was clean;
-- the local development branch was removed;
-- the remote development branch was already absent and its stale tracking reference was
-  pruned;
-- only `main` remained.
+- full corrected-tree release gate;
+- one focused commit for the host-family correction and corrected acceptance evidence;
+- push the fix branch;
+- pure fast-forward of `main`;
+- push and verify clean local/remote `main`;
+- remove the temporary fix branch.
 
 ## Release point
 
-After this release-candidate documentation is committed and pushed, the resulting `main`
-HEAD is the intended source commit for the future `v0.5.0` tag.
-
-Do **not** create, move or recreate the `v0.5.0` tag until the maintainer explicitly
+No `v0.5.0` tag exists. The tag target must be the final corrected `main` commit after
+the steps above, and the tag must remain uncreated until the maintainer explicitly
 requests publication.

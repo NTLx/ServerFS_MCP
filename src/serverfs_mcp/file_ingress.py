@@ -15,6 +15,9 @@ from urllib.parse import urljoin, urlsplit
 _READ_CHUNK = 64 * 1024
 _MAX_REQUEST_BODY = 64 * 1024
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_OPENAI_BLOB_ACCOUNT_PREFIX = "oaisdmntpr"
+_OPENAI_BLOB_SUFFIX = ".blob.core.windows.net"
+_AZURE_STORAGE_ACCOUNT_MAX_LENGTH = 24
 
 
 class IngressError(Exception):
@@ -29,6 +32,7 @@ class IngressError(Exception):
 @dataclass(frozen=True)
 class IngressSettings:
     allowed_hosts: frozenset[str]
+    allow_openai_blob_hosts: bool = False
     max_bytes: int = 8_388_608
     timeout_seconds: float = 30.0
     max_redirects: int = 3
@@ -60,6 +64,17 @@ def _positive_float(raw: str | None, default: float) -> float:
     return value
 
 
+def _strict_bool(raw: str | None, name: str, default: bool = False) -> bool:
+    if raw is None or not raw.strip():
+        return default
+    value = raw.strip().lower()
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise ValueError(f"{name} must be true or false")
+
+
 def _normalize_host(host: str) -> str:
     try:
         return host.encode("idna").decode("ascii").lower().rstrip(".")
@@ -74,12 +89,19 @@ def settings_from_env(env: dict[str, str] | os._Environ[str] | None = None) -> I
         for item in env.get("SERVERFS_FILE_INGRESS_ALLOWED_HOSTS", "").split(",")
         if item.strip()
     )
-    if not hosts:
-        raise ValueError("SERVERFS_FILE_INGRESS_ALLOWED_HOSTS must contain at least one exact host")
     if any("*" in host for host in hosts):
         raise ValueError("SERVERFS_FILE_INGRESS_ALLOWED_HOSTS does not support wildcards")
+    allow_openai_blob_hosts = _strict_bool(
+        env.get("SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS"),
+        "SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS",
+    )
+    if not hosts and not allow_openai_blob_hosts:
+        raise ValueError(
+            "file ingress requires exact allowed hosts or the constrained OpenAI Blob host family"
+        )
     return IngressSettings(
         allowed_hosts=hosts,
+        allow_openai_blob_hosts=allow_openai_blob_hosts,
         max_bytes=_positive_int(env.get("SERVERFS_FILE_INGRESS_MAX_BYTES"), 8_388_608),
         timeout_seconds=_positive_float(
             env.get("SERVERFS_FILE_INGRESS_FETCH_TIMEOUT_SECONDS"), 30.0
@@ -87,6 +109,26 @@ def settings_from_env(env: dict[str, str] | os._Environ[str] | None = None) -> I
         max_redirects=_positive_int(env.get("SERVERFS_FILE_INGRESS_MAX_REDIRECTS"), 3),
         listen_port=_positive_int(env.get("SERVERFS_FILE_INGRESS_PORT"), 8081),
     )
+
+
+def _is_openai_blob_host(host: str) -> bool:
+    """Match only the measured OpenAI-managed Azure Blob account-name family."""
+    if not host.endswith(_OPENAI_BLOB_SUFFIX):
+        return False
+    account = host[: -len(_OPENAI_BLOB_SUFFIX)]
+    if not account.startswith(_OPENAI_BLOB_ACCOUNT_PREFIX):
+        return False
+    if len(account) <= len(_OPENAI_BLOB_ACCOUNT_PREFIX):
+        return False
+    if len(account) > _AZURE_STORAGE_ACCOUNT_MAX_LENGTH:
+        return False
+    return account.isascii() and account.isalnum() and account == account.lower()
+
+
+def _host_allowed(host: str, settings: IngressSettings) -> bool:
+    if host in settings.allowed_hosts:
+        return True
+    return settings.allow_openai_blob_hosts and _is_openai_blob_host(host)
 
 
 def _validated_url(url: str, settings: IngressSettings) -> tuple[str, int, str]:
@@ -110,7 +152,7 @@ def _validated_url(url: str, settings: IngressSettings) -> tuple[str, int, str]:
         host = _normalize_host(parsed.hostname)
     except ValueError:
         raise IngressError("FILE_INGRESS_URL_NOT_ALLOWED", "invalid URL hostname") from None
-    if host not in settings.allowed_hosts:
+    if not _host_allowed(host, settings):
         raise IngressError("FILE_INGRESS_HOST_NOT_ALLOWED", "URL host is not allowlisted")
     target = parsed.path or "/"
     if parsed.query:
