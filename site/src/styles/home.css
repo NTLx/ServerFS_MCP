@@ -641,6 +641,16 @@ html[lang="zh-CN"] .hero-lede {
   font-size: 8px;
 }
 
+html[lang="zh-CN"] .hero-system .system-label,
+html[lang="zh-CN"] .hero-system .node small,
+html[lang="zh-CN"] .hero-system .server-row span,
+html[lang="zh-CN"] .hero-system .server-row em,
+html[lang="zh-CN"] .hero-system .branch-card small,
+html[lang="zh-CN"] .hero-system .agent-card code,
+html[lang="zh-CN"] .hero-system .system-footer {
+  font-family: var(--font-sans);
+}
+
 .ok {
   display: inline-block;
   width: 5px;
