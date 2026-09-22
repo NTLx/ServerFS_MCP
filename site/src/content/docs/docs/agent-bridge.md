@@ -41,3 +41,36 @@ Current deployments can expose:
 
 - 19 tools: filesystem + Agent
 - 21 tools: filesystem + binary + Agent
+
+## Delegation hygiene
+
+`submit_agent_task` is intentionally an objective-level interface, not a place to embed an
+entire operational transcript. For normal authorized engineering or operations, keep each
+delegation narrow and explicit:
+
+- state the user-owned workdir or existing deployment being operated on;
+- give one concrete objective;
+- state the allowed mutation scope and stop conditions;
+- ask for the minimum evidence needed to verify completion;
+- prefer existing structured ServerFS/project actions over unrelated shell, network or
+  security-analysis detail;
+- split implementation, validation, deployment and Git publication when they are genuinely
+  separate capability boundaries.
+
+A compact pattern is:
+
+```text
+Objective: <one thing to accomplish>
+Scope: <workdir/path or existing deployment component>
+Allowed changes: <exact mutation boundary>
+Stop if: <failure/ambiguity condition>
+Return: <specific evidence>
+```
+
+This is a clarity and least-authority rule, not a mechanism for evading provider safety
+checks. ServerFS forwards the submitted prompt as written; it does not automatically
+rewrite, encode or sanitize instructions to change provider safety outcomes. Do not encode,
+disguise, fragment or relocate instructions merely to bypass a classifier. If a legitimate
+task is blocked, narrow it at a real capability boundary or use a more structured existing
+ServerFS primitive without weakening authorization, audit, writer-lease or network-isolation
+controls.

@@ -148,6 +148,17 @@ finds a failure: stop at the declared boundary and return exact evidence to the
 orchestrator. Prefer atomic delegated tasks with one objective and an explicit
 allowed-mutation set.
 
+For normal authorized engineering and operations, write delegated prompts to minimize
+ambiguity rather than to defeat external safety checks. State the user-owned workdir or
+existing deployment being operated on, one concrete objective, the allowed mutation set,
+stop conditions, and the evidence to return. Include shell commands, network details,
+credentials terminology or security-analysis context only when they are actually required
+for that atomic objective; do not bundle unrelated implementation, deployment, probing and
+Git work into one task. Never encode, disguise, fragment or relocate instructions merely
+to evade a provider safety classifier. When a legitimate task is blocked, narrow the task
+at a real capability boundary or use an existing structured ServerFS primitive; do not
+weaken authorization, audit, writer-lease or network-isolation controls.
+
 Work in steps: modify, run the targeted test, then run every gate relevant to the changed
 boundary. Reaching the end of an edit is not a milestone; executed verification is.
 

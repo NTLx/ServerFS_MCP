@@ -131,7 +131,17 @@ def register_agent_tools(
     async def submit_agent_task(
         runtime: RuntimeArg,
         workdir: Annotated[str, Field(description="Workdir alias where delegation starts")],
-        prompt: Annotated[str, Field(description="Instruction for the delegated Agent")],
+        prompt: Annotated[
+            str,
+            Field(
+                description=(
+                    "One narrow authorized objective for the delegated Agent. Include only "
+                    "the context needed to complete that objective, state the allowed mutation "
+                    "scope and stop conditions, and prefer structured project actions over "
+                    "unrelated implementation detail."
+                )
+            ),
+        ],
         path: Annotated[
             str, Field(default="", description="Relative starting directory inside the workdir")
         ] = "",
@@ -146,7 +156,13 @@ def register_agent_tools(
             ),
         ] = None,
     ) -> dict[str, Any]:
-        """Submit one delegated Agent objective and return immediately with a task handle.
+        """Submit one narrow authorized Agent objective and return a task handle.
+
+        Keep the task atomic: provide only the context required for the objective,
+        explicitly bound allowed mutations and stop conditions, and prefer existing
+        structured project workflows over embedding unrelated shell/network/security
+        implementation detail. This guidance reduces ambiguity and accidental scope
+        expansion; it does not weaken or bypass provider safety checks.
 
         The call never waits for provider completion. Poll get_agent_task or
         read_agent_task_events. A follow-up conversation uses a NEW task with
@@ -289,12 +305,22 @@ def register_agent_tools(
     @mcp.tool(annotations=AGENT_MESSAGE_ANNOTATIONS)
     async def send_agent_message(
         task_id: Annotated[str, Field(description="Active ServerFS Agent task identifier")],
-        message: Annotated[str, Field(description="Steering message for the active task")],
+        message: Annotated[
+            str,
+            Field(
+                description=(
+                    "Narrow follow-up for the active task; include only information required "
+                    "to steer the current objective without expanding its authorized scope"
+                )
+            ),
+        ],
     ) -> dict[str, Any]:
-        """Steer an active task when its runtime advertises live_steer.
+        """Steer an active task with a narrow follow-up when live_steer is supported.
 
-        For a terminal task, submit a new task with continue_from_task_id.
-        Runtimes such as Claude may reject live steering even while active.
+        Keep steering within the task's existing authorized objective and mutation scope.
+        If the requested work is a distinct objective, submit a new atomic task instead.
+        For a terminal task, submit a new task with continue_from_task_id. Runtimes such as
+        Claude may reject live steering even while active.
         """
         return await _simple_agent_call(
             client,

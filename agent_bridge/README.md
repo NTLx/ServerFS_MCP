@@ -46,6 +46,13 @@ shared writer-lease integration. Phase E is also complete and frozen: production
 Compose/systemd wiring, runtime permissions and ChatGPT end-to-end deployment were
 accepted for v0.3.0; see `../docs/phase-e-acceptance-2026-09-20.md`.
 
+Agent delegation should remain objective-level and capability-bounded. A submitted task
+should carry one authorized objective, the minimum context needed for it, an explicit
+mutation boundary/stop condition, and the evidence required for verification. Follow-up
+steering should stay within that objective; distinct work belongs in a new task. This is a
+least-authority and clarity rule, not an instruction-obfuscation layer: the Bridge must
+never encode, disguise, split or rewrite prompts in order to evade provider safety checks.
+
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
 paths must already be real directories, aliases and slots are validated, and unknown
 runtime names are rejected. The development `fake` runtime remains test-only; Codex and

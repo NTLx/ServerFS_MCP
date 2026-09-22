@@ -194,6 +194,45 @@ def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
             assert tool.annotations.idempotent_hint is idempotent
 
 
+def test_submit_agent_task_guides_atomic_authorized_delegation(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    server = server_with_client(tmp_path, client)
+
+    async def _tool():
+        for tool in await server.list_tools():
+            if tool.name == "submit_agent_task":
+                return tool
+        raise AssertionError("submit_agent_task not registered")
+
+    tool = asyncio.run(_tool())
+    prompt_description = tool.input_schema["properties"]["prompt"]["description"]
+    assert "One narrow authorized objective" in prompt_description
+    assert "allowed mutation scope" in prompt_description
+    assert "structured project actions" in prompt_description
+    assert tool.description is not None
+    assert "Keep the task atomic" in tool.description
+    assert "does not weaken or bypass provider safety checks" in tool.description
+
+
+def test_send_agent_message_guides_narrow_follow_up(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    server = server_with_client(tmp_path, client)
+
+    async def _tool():
+        for tool in await server.list_tools():
+            if tool.name == "send_agent_message":
+                return tool
+        raise AssertionError("send_agent_message not registered")
+
+    tool = asyncio.run(_tool())
+    message_description = tool.input_schema["properties"]["message"]["description"]
+    assert "Narrow follow-up" in message_description
+    assert "without expanding its authorized scope" in message_description
+    assert tool.description is not None
+    assert "existing authorized objective" in tool.description
+    assert "submit a new atomic task instead" in tool.description
+
+
 def test_global_enable_without_agent_workdir_keeps_eleven_tool_surface(
     tmp_path: Path,
 ) -> None:
