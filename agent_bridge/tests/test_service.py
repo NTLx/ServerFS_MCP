@@ -235,6 +235,7 @@ async def test_approval_round_trip(tmp_path: Path) -> None:
     advice = request["payload"]["approval_advice"]
     assert advice["status"] == "completed"
     assert advice["automatic"] is False
+    assert advice["cached"] is False
     assert advice["answers"]["recommendation"]["choice"] == "approve_once"
     assert preflight.approval_calls == [
         {
@@ -270,6 +271,58 @@ async def test_approval_round_trip(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_identical_approval_advice_is_cached_per_task(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="approval-twice:pytest",
+    )
+    first = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+    first_request = first["pending_request"]
+    assert first_request["payload"]["approval_advice"]["cached"] is False
+
+    await service.respond_approval(
+        task_id=submitted["task_id"],
+        request_id=first_request["request_id"],
+        decision="approve_once",
+    )
+
+    second = None
+    for _ in range(500):
+        current = service.get_task(submitted["task_id"])
+        pending = current.get("pending_request")
+        if (
+            current["status"] == "waiting_for_approval"
+            and isinstance(pending, dict)
+            and pending["request_id"] != first_request["request_id"]
+        ):
+            second = current
+            break
+        await asyncio.sleep(0.01)
+    assert second is not None
+    second_request = second["pending_request"]
+    assert second_request["payload"]["approval_advice"]["cached"] is True
+    assert len(preflight.approval_calls) == 1
+
+    await service.respond_approval(
+        task_id=submitted["task_id"],
+        request_id=second_request["request_id"],
+        decision="approve_once",
+    )
+    finished = await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert finished["final_response"] == "approvals=approve_once,approve_once"
+    assert submitted["task_id"] not in service._approval_advice_cache
+    await service.close()
+
+
+@pytest.mark.asyncio
 async def test_approval_advisor_failure_fails_open(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     service.preflight = FakePreflight(fail_approval=True)
@@ -284,7 +337,11 @@ async def test_approval_advisor_failure_fails_open(tmp_path: Path) -> None:
 
     task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
     advice = task["pending_request"]["payload"]["approval_advice"]
-    assert advice == {"status": "unavailable", "automatic": False}
+    assert advice == {
+        "status": "unavailable",
+        "automatic": False,
+        "cached": False,
+    }
 
     await service.respond_approval(
         task_id=task["task_id"],

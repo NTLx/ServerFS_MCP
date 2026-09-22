@@ -35,7 +35,28 @@ class FakeAdapter(AgentAdapter):
         await context.emit_event("turn.started", {"runtime": self.name})
         self.messages.setdefault(context.task_id, [])
 
-        if context.prompt.startswith("approval:"):
+        if context.prompt.startswith("approval-twice:"):
+            command = context.prompt.removeprefix("approval-twice:").strip() or "echo test"
+            decisions: list[str] = []
+            approval_payload = {
+                "category": "command",
+                "title": "Fake command approval",
+                "command_display": command,
+                "available_decisions": [
+                    "approve_once",
+                    "approve_session",
+                    "deny",
+                    "cancel_task",
+                ],
+            }
+            for _ in range(2):
+                resolution = await context.request_approval(dict(approval_payload))
+                if resolution["decision"] == "cancel_task":
+                    raise asyncio.CancelledError
+                decisions.append(resolution["decision"])
+                await context.emit_event("approval.observed", resolution)
+            response = f"approvals={','.join(decisions)}"
+        elif context.prompt.startswith("approval:"):
             command = context.prompt.removeprefix("approval:").strip() or "echo test"
             resolution = await context.request_approval(
                 {

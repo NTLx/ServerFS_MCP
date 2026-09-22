@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -69,6 +70,7 @@ class BridgeService:
         self._background: dict[str, asyncio.Task[None]] = {}
         self._leases: dict[str, WorkdirLease] = {}
         self._pending_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._approval_advice_cache: dict[str, dict[str, dict[str, Any]]] = {}
         self._user_cancelled: set[str] = set()
         self._submit_lock = asyncio.Lock()
         self._cancel_lock = asyncio.Lock()
@@ -618,6 +620,7 @@ class BridgeService:
                 )
         finally:
             self._user_cancelled.discard(task_id)
+            self._approval_advice_cache.pop(task_id, None)
             self._release_lease(task_id)
             for request_id, waiter in list(self._pending_waiters.items()):
                 if not waiter.done():
@@ -749,18 +752,28 @@ class BridgeService:
             raise BridgeError("AGENT_PROVIDER_ERROR", "provider request payload is invalid")
         self._ensure_interaction_size(normalized_payload)
         if kind is RequestKind.APPROVAL and self.preflight is not None:
-            task = self.store.get_task(task_id)
-            try:
-                approval_advice = await self.preflight.advise_approval(
-                    runtime=task.runtime,
-                    workdir=task.workdir_alias,
-                    path=task.relative_cwd,
-                    profile=task.profile,
-                    prompt=task_prompt or "",
-                    approval=dict(normalized_payload),
-                )
-            except Exception:
-                approval_advice = {"status": "unavailable", "automatic": False}
+            cache_key = _approval_advice_fingerprint(normalized_payload)
+            task_cache = self._approval_advice_cache.setdefault(task_id, {})
+            cached_advice = task_cache.get(cache_key)
+            if cached_advice is not None:
+                approval_advice = dict(cached_advice)
+                approval_advice["cached"] = True
+            else:
+                task = self.store.get_task(task_id)
+                try:
+                    approval_advice = await self.preflight.advise_approval(
+                        runtime=task.runtime,
+                        workdir=task.workdir_alias,
+                        path=task.relative_cwd,
+                        profile=task.profile,
+                        prompt=task_prompt or "",
+                        approval=dict(normalized_payload),
+                    )
+                except Exception:
+                    approval_advice = {"status": "unavailable", "automatic": False}
+                approval_advice["cached"] = False
+                if approval_advice.get("status") == "completed":
+                    task_cache[cache_key] = dict(approval_advice)
             normalized_payload["approval_advice"] = approval_advice
             self._try_append_event(task_id, "approval.advice", approval_advice)
 
@@ -789,6 +802,17 @@ class BridgeService:
             return await waiter
         finally:
             self._pending_waiters.pop(request_id, None)
+
+
+def _approval_advice_fingerprint(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _routing_advice_from_preflight(
