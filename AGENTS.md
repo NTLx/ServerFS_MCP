@@ -92,6 +92,43 @@ future Tasks adapter instead.
 opt-in. This file carries what none of them does: the reasons behind the design, the traps
 that already cost debugging time here, and how work gets verified in this repository.
 
+## Website / GitHub Pages
+
+`site/` is a first-class but isolated static website. It is Astro + Starlight and MUST
+remain deployable as a pure GitHub Pages artifact: no SSR, database, serverless runtime
+or required third-party runtime CDN. The project-site base is `/ServerFS_MCP/`. Custom
+Astro pages build internal URLs from `import.meta.env.BASE_URL`; Starlight-owned asset
+options such as `favicon` stay base-relative (for example `/favicon.svg`) because
+Astro/Starlight applies the configured base. Hard-coding `/ServerFS_MCP/` into both
+layers creates a double-base URL.
+
+English is the root locale and Simplified Chinese is `/zh-cn/`. The custom landing page
+uses one shared `HomePage.astro` with locale-specific copy; do not fork the page layout
+per language. Translated Starlight docs mirror the English slugs under
+`src/content/docs/zh-cn/`, and `i18nLoader()` / `i18nSchema()` remain configured so
+locales are a real content contract rather than a suppressed warning. The Chinese landing
+page self-hosts Noto Sans SC Variable; keep Simplified-Chinese glyph rendering
+deterministic and locally served rather than depending on platform CJK fallback or an
+external font CDN.
+
+Let Starlight own its semantic light/dark palette. Brand accent overrides may be scoped
+to `data-theme="dark"` / `data-theme="light"`, but do not globally redefine
+Starlight's base white/gray/black variables or add an unconditional dark body background.
+Verify Auto, Light and Dark when Docs theme CSS changes.
+
+For semantic architecture/topology diagrams, prefer content-driven Grid/Flex layout over
+absolute coordinates. Localization and responsive widths make coordinate layouts brittle.
+A successful static build proves routes and syntax, not rendered geometry: visual changes
+need real browser evidence. If no browser is available, report the rendering check as
+`Not verified` and use maintainer screenshots rather than inferring visual correctness
+from source alone.
+
+A site-only change uses the site gate: `cd site && npm ci && npm run build`, then
+`git diff --check`. It does not require the Python/Docker root gate unless it crosses
+into runtime/deployment code. Pure `site/**` changes should trigger the Pages workflow
+only; preserve the Container workflow's site-path exclusions so website edits do not
+publish a new `:edge` image.
+
 ## Change protocol
 
 Start from a written problem statement — a task-book section, a review issue, an
@@ -99,19 +136,26 @@ observed misbehaviour. Restate the issue first, then make every changed line tra
 to it. This codebase has been hardened by successive review passes; unsolicited
 rewrites and drive-by cleanups discard decisions that are not visible from the code.
 
-Work in steps: modify, run the targeted test, then run the full suite. Reaching the
-end of an edit is not a milestone; a passing targeted test is.
+Delegated Agent tasks are capability-bounded. A verification-only, Git-only,
+deployment-only or metadata-only task does not acquire permission to edit source when it
+finds a failure: stop at the declared boundary and return exact evidence to the
+orchestrator. Prefer atomic delegated tasks with one objective and an explicit
+allowed-mutation set.
 
-Every fix lands with a regression test, exercised through the MCP surface where the
-bug was observable — a test that calls an internal helper proves less than one that
-calls the tool.
+Work in steps: modify, run the targeted test, then run every gate relevant to the changed
+boundary. Reaching the end of an edit is not a milestone; executed verification is.
 
-Before declaring anything done, the full root gate in `README.md` → Development passes:
-`uv sync --frozen`, `ruff check`, `ruff format --check`, `pytest`,
-`docker compose config`, `SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`.
-All six, actually executed. The scratch tag is not decoration: `image` doubles as
-the tag Compose builds to, so an untagged build repoints whatever `SERVERFS_IMAGE`
-names — see Traps.
+Backend/MCP behaviour fixes land with a regression test, exercised through the MCP
+surface where the bug was observable — a test that calls an internal helper proves less
+than one that calls the tool. Website-only visual/content fixes follow the independent
+site gate and rendered-evidence rule in Website / GitHub Pages.
+
+For runtime, filesystem, security or base deployment changes, the full root gate in
+`README.md` → Development passes: `uv sync --frozen`, `ruff check`,
+`ruff format --check`, `pytest`, `docker compose config`,
+`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`. All six, actually executed.
+The scratch tag is not decoration: `image` doubles as the tag Compose builds to, so an
+untagged build repoints whatever `SERVERFS_IMAGE` names — see Traps.
 
 The root pytest configuration collects only `tests/`; it does **not** collect
 `agent_bridge/tests/`. Whenever a change touches `agent_bridge/`, also execute its
@@ -119,6 +163,8 @@ independent gate from that directory: `uv sync --frozen`, `uv run ruff check .`,
 `uv run ruff format --check .`, and `uv run pytest`. Whenever Phase E shell scripts
 change, run `bash -n deployment/agent-bridge/*.sh` from the repository root as an
 additional syntax gate. A green root suite never substitutes for either of these.
+Cross-boundary changes run every applicable gate; a site-only change uses the site gate
+instead of the unrelated Python/Docker gate.
 
 Then report: files changed, how each issue was fixed, regression tests added, pytest
 counts, and residual limitations. Anything not executed is `Not verified` — never
@@ -149,6 +195,17 @@ the reserved-channel tests — not at a call site.
 Tracing a deny bypass means following the *full* workdir-relative path on every
 channel. A policy decision made against a search root's own relative path is a
 partial path, and partial paths are how bypasses ship.
+
+## MCP result schemas
+
+The public MCP schema is part of the tool contract, not decoration. A tool that returns
+structured metadata must expose a matching `outputSchema` so clients can understand the
+result without reverse-engineering prose. For mixed results such as
+`download_binary_file`, preserve the binary resource content block and
+`structuredContent`; expose the metadata model through the return annotation rather
+than flattening the response or dropping the resource block. Regression tests should
+assert the exposed schema against the model's JSON schema as well as testing the runtime
+payload.
 
 ## Mutation contract (v0.2 baseline, extended by v0.4 binary transfer)
 
@@ -283,6 +340,11 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   can keep owning and closing it. Do not "fix" the double-looking close.
 - `Path.read_text()` translates CRLF to LF. Any test asserting byte fidelity of created
   or edited content must compare `read_bytes()`, or it fails on correct output.
+- Do not diagnose localization from a screenshot alone. Compare source text, built HTML
+  and the raw live HTTP response before attributing a problem to content, deployment or
+  rendering. Different Unicode text is a content/transform issue; identical raw text with
+  different visual output is a client/font/rendering issue. Preserve this evidence order
+  before changing translations.
 - `docker compose config` refuses `1`/`0` for a boolean field
   (`failed to cast to expected type: invalid boolean: 1`) and merely warns on
   `yes/no/on/off` under YAML 1.2. `WORKDIR_XX_READ_ONLY` must be documented as
@@ -302,6 +364,11 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   a throwaway stack under a separate compose project name rather than against it.
 - Rebuilding the image is not deploying it: the running container keeps the old
   image until `docker compose up -d` recreates it.
+- On an Agent-enabled deployment, recreating `serverfs-mcp` with only the base
+  `compose.yml` silently drops the Agent overlay even if `.env` still contains valid
+  Agent configuration: the socket/lock mounts and Agent environment disappear and the
+  tool surface falls back to Agent-disabled. Every Agent-enabled recreate/upgrade must
+  use both `compose.yml` and `compose.agent.yml`.
 - Recreating `serverfs-mcp` strands the tunnel, and `/readyz` will not tell you:
   `docker compose up -d` recreates only the service whose image changed, so the
   tunnel keeps running with its MCP session and connections belonging to a container
@@ -329,6 +396,12 @@ the Git tag — never from a GitHub Release event. Workflows pin every Action to
 commit SHA and authenticate with `GITHUB_TOKEN` alone; pull-request builds never log
 in, never push, and never write the shared build cache. Production deployments pin
 `SERVERFS_IMAGE` to an exact version; `:edge` and `latest` are for trying things out.
+
+A published stable tag is immutable. Post-release documentation, website and repository
+metadata fixes land on `main`; never move or recreate the stable tag to absorb them.
+Current operational docs may be updated to reflect the released state, while historical
+plans, acceptance records and audits preserve what was true at the time unless correcting
+a factual error.
 
 End-to-end acceptance through ChatGPT belongs to the maintainer: an agent's reach
 ends at the container's MCP surface. Say so rather than implying it was verified.
