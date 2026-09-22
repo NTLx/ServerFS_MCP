@@ -34,12 +34,12 @@ ServerFS MCP
    │ 仅专用内部网络
    ▼
 serverfs-file-ingress
-   │ 仅允许精确主机的 HTTPS 出站
+   │ 仅允许经策略校验的 HTTPS/443 出站
    ▼
 临时文件主机
 ```
 
-该 sidecar 为显式可选能力。它不挂载 workdir、不持有 OpenAI/Tunnel 凭据，也不发布端口。MCP 主容器始终不获得互联网出口，只把临时 URL 和字节上限发送给 sidecar。Sidecar 会在返回原始字节前验证精确配置的主机名、解析得到的 IP、TLS 主机名、每次重定向、超时和文件大小上限。
+该 sidecar 为显式可选能力。它不挂载 workdir、不持有 OpenAI/Tunnel 凭据，也不发布端口。MCP 主容器始终不获得互联网出口，只把临时 URL 和字节上限发送给 sidecar。主机授权可以来自管理员配置的精确主机名，也可以来自单独开启、根据真实 ChatGPT 文件参数实测得到的受限 OpenAI Azure Blob 账户家族；通用通配符会被拒绝。随后 Sidecar 继续校验 DNS 结果必须全部可公网路由，将连接固定到已验证 IP 并按原始主机名校验 TLS，对每次重定向重新校验，并执行超时和字节上限后才返回原始字节。
 
 ## 可选 Agent 路径
 

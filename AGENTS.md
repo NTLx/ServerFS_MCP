@@ -1,8 +1,8 @@
 # AGENTS.md
 
-Read `dev_plan_v0.5.md` first for active v0.5 development: ChatGPT/OpenAI file-parameter ingress, the isolated file-ingress sidecar, and MCP request-body sizing. For every v0.5 change, that plan plus executed tests and implementation are authoritative over older binary-transfer assumptions.
+Read `dev_plan_v0.5.md` first for the release-ready v0.5.0 line: ChatGPT/OpenAI file-parameter ingress, the isolated file-ingress sidecar, MCP request-body sizing, and release closure. For every v0.5.0 change, that plan plus executed tests and implementation are authoritative over older binary-transfer assumptions.
 
-Read `README.md` for the current released/frozen v0.4.0 behaviour, security model,
+Read `README.md` for the current v0.5.0 behaviour, security model,
 deployment and release contract. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
 acceptance baseline for hierarchical workdir policy, binary file transfer and the Issue #10
 transport-security fix.
@@ -16,8 +16,8 @@ for the original v0.1 baseline. Where v0.4 explicitly extends an older rule,
 accepted v0.3 contracts remain authoritative.
 
 The `agent_bridge/` directory carries the **released/frozen v0.3 Agent Bridge contract**
-forward in the v0.4 package; v0.4 changes policy inheritance/versioning but does not redesign
-that provider-neutral host-side contract.
+forward unchanged into the v0.5.0 package. Its own package version remains independently
+frozen at 0.4.0; v0.5.0 does not redesign that provider-neutral host-side contract.
 Phases A (provider-neutral core), B (Codex native-mode adapter), C (Claude Code native-mode
 adapter), D (Agent MCP surface) and E (production deployment) are complete and frozen on
 `main`. Production Agent delegation remains opt-in through `compose.agent.yml`; the base
@@ -394,7 +394,7 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   reports the running `server_version`, which is the cheapest proof of what the
   deployment actually serves.
 - `docker compose build` tags the result `SERVERFS_IMAGE`, which in a production
-  `.env` is a pinned release (`ghcr.io/ntlx/serverfs_mcp:0.4.0`). A bare build
+  `.env` is a pinned release (`ghcr.io/ntlx/serverfs_mcp:0.5.0`). A bare build
   therefore shadows that release locally: the running container is unaffected,
   but the next `up -d` starts local code under a release tag. Always build under a
   scratch tag (`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`). Upgrading

@@ -42,6 +42,8 @@ Extra deny globs are stricter: global and workdir rules are **unioned**, so a wo
 
 - Workdirs are read-only by default.
 - Binary transfer is disabled by default.
+- ChatGPT file ingress is disabled by default and requires both `SERVERFS_FILE_INGRESS_ENABLED=true` and the `file-ingress` Compose profile.
+- The constrained OpenAI Blob host-family policy is separately disabled by default; enable it with `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` only when ChatGPT file parameters are required. Exact additional hosts belong in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
 - Agent policy is disabled unless explicitly configured.
 - Host paths are not exposed through MCP tool results.
 - A typo in a workdir path fails loudly instead of silently creating a directory.

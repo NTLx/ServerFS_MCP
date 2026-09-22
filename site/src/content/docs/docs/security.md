@@ -24,13 +24,13 @@ ServerFS is designed around **narrow capabilities and independent enforcement la
 
 ## File-ingress boundary
 
-v0.5 keeps Internet egress out of the ServerFS MCP container. When explicitly enabled, `serverfs-file-ingress` receives a dedicated egress network and a separate internal network shared only with the MCP service. The tunnel is not attached to that ingress network.
+v0.5.0 keeps Internet egress out of the ServerFS MCP container. When explicitly enabled, `serverfs-file-ingress` receives a dedicated egress network and a separate internal network shared only with the MCP service. The tunnel is not attached to that ingress network.
 
 The MCP-to-sidecar endpoint is fixed to the internal Compose service and the MCP client does not follow redirects. The sidecar accepts HTTPS on port 443 only. Host authorization is either an exact administrator-configured hostname or the explicit constrained OpenAI Azure Blob family measured from real ChatGPT fileParams (`oaisdmntpr` storage-account prefix, lowercase ASCII letters/digits only, Azure account-length limit, exact `.blob.core.windows.net` suffix). Generic host wildcards are rejected. After host authorization, the sidecar rejects any DNS answer that is not globally routable, pins the connection to the validated address while verifying TLS for the original hostname, revalidates every upstream redirect, and enforces independent byte and timeout ceilings. It is not a generic URL proxy.
 
 ## Transport hardening
 
-v0.4.0 enables MCP Streamable HTTP DNS-rebinding protection.
+v0.4.0 introduced MCP Streamable HTTP DNS-rebinding protection; v0.5.0 retains that transport boundary unchanged.
 
 The transport accepts only the fixed internal authority `serverfs-mcp:8000`, rejects unexpected or missing Host values, and rejects non-empty unapproved Origin values before MCP dispatch.
 

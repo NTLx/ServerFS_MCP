@@ -42,6 +42,8 @@ WORKDIR_02_READ_ONLY=false
 
 - Workdir 默认只读。
 - 二进制传输默认关闭。
+- ChatGPT 文件入口默认关闭，并且需要同时设置 `SERVERFS_FILE_INGRESS_ENABLED=true` 与启用 `file-ingress` Compose profile。
+- 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
 - Agent 策略只有在显式配置后才启用。
 - MCP 工具结果不会暴露宿主机路径。
 - Workdir 路径拼写错误会明确失败，而不是静默创建目录。

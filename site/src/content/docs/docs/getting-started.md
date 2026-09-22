@@ -40,14 +40,40 @@ docker compose -f compose.yml -f compose.agent.yml up -d
 
 Before enabling it, install and verify the host-side Agent Bridge as described in the repository's [Agent Bridge deployment guide](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md).
 
-## Published images
+## ChatGPT file-parameter ingress
 
-Stable releases are published to GHCR:
+v0.5.0 can accept a ChatGPT/OpenAI `file` parameter as the source for `upload_binary_file` without giving the main MCP container Internet egress. Binary transfer and file ingress are separate opt-ins. For the common ChatGPT path, set:
+
+```text
+SERVERFS_BINARY_TRANSFER_ENABLED=true
+SERVERFS_FILE_INGRESS_ENABLED=true
+SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true
+```
+
+Then start the isolated sidecar with the `file-ingress` profile:
+
+```bash
+docker compose --profile file-ingress pull
+docker compose --profile file-ingress up -d
+```
+
+If Agent Bridge is also enabled, keep both the Agent overlay and the file-ingress profile in the same invocation:
+
+```bash
+docker compose --profile file-ingress -f compose.yml -f compose.agent.yml pull
+docker compose --profile file-ingress -f compose.yml -f compose.agent.yml up -d
+```
+
+The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](./binary-transfer/) and [Security Model](./security/) for the v0.5.0 host policy and network boundary.
+
+## Release image tags
+
+The `v0.5.0` tag is the publication trigger for these GHCR release tags; before the tag exists, use `edge` for release-candidate testing:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.4
-ghcr.io/ntlx/serverfs_mcp:0.4.0
+ghcr.io/ntlx/serverfs_mcp:0.5
+ghcr.io/ntlx/serverfs_mcp:0.5.0
 ```
 
-Use a pinned release tag for production deployments.
+After publication, use the pinned `0.5.0` tag for production deployments rather than `latest` or `edge`.

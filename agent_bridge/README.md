@@ -1,7 +1,9 @@
-# ServerFS Agent Bridge — v0.4.0
+# ServerFS Agent Bridge — frozen 0.4.0 contract
 
-This directory contains the **host-side** Agent Bridge shipped in the ServerFS v0.4.0
-package. The provider-neutral contract originated in v0.3 and remains frozen forward.
+This directory contains the **host-side** Agent Bridge shipped unchanged with ServerFS
+v0.5.0. The provider-neutral contract originated in v0.3 and remains frozen forward; the
+Bridge package itself intentionally remains version 0.4.0 because v0.5.0 changes the MCP
+file-ingress path rather than the host-side Agent contract.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,

@@ -38,7 +38,7 @@ Linux filesystem
    → ChatGPT
 ```
 
-The MCP server container has **no Internet egress** and no published ports. The tunnel reaches it over a Docker-internal network. v0.5 adds an optional, separately isolated `serverfs-file-ingress` sidecar for ChatGPT file parameters; only that sidecar receives file-download egress, it has no workdir mounts or OpenAI credentials, and the main MCP container remains internal-only. The container root filesystem stays read-only regardless of any workdir setting.
+The MCP server container has **no Internet egress** and no published ports. The tunnel reaches it over a Docker-internal network. v0.5.0 adds an optional, separately isolated `serverfs-file-ingress` sidecar for ChatGPT file parameters; only that sidecar receives file-download egress, it has no workdir mounts or OpenAI credentials, and the main MCP container remains internal-only. The container root filesystem stays read-only regardless of any workdir setting.
 
 The default `compose.yml` exposes the original 11 filesystem tools. Binary transfer is opt-in: when at least one workdir enables it, `download_binary_file` and `upload_binary_file` are added, producing a 13-tool filesystem surface. When the administrator also configures Agent policy and uses `compose.agent.yml`, the overlay adds eight structured Agent tools. The four supported surfaces are therefore 11 / 13 / 19 / 21 tools for filesystem-only / filesystem+binary / filesystem+Agent / filesystem+binary+Agent. Agent tools broker structured tasks through the host-side Bridge; they are not a shell, argv, or generic command executor. Delegated tasks should therefore stay objective-level and capability-bounded: one authorized goal, explicit mutation scope/stop conditions, and only the context/evidence needed for that goal. This improves clarity and reduces accidental ambiguity; it is not intended to bypass provider safety checks.
 
@@ -85,8 +85,8 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.4.0` | `v0.4.0` |
-| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.4` | newest `v0.4.x` |
+| v0.5.0 release target | `ghcr.io/ntlx/serverfs_mcp:0.5.0` | created by tag `v0.5.0` |
+| v0.5 minor channel | `ghcr.io/ntlx/serverfs_mcp:0.5` | newest published `v0.5.x` tag |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
 Every image is multi-arch: `linux/amd64` and `linux/arm64`.
@@ -98,8 +98,7 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-For example `v0.4.0` publishes `0.4.0`, `0.4` and `latest`. `latest` always points at the newest stable release; `main` never updates it (only `edge`).
-The published release record is [ServerFS MCP v0.4.0 on GitHub](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.4.0).
+The `v0.5.0` tag is the publication trigger for `0.5.0`, `0.5` and `latest`; until that tag is pushed, release-candidate testing uses `edge`. `latest` always points at the newest published stable release; `main` never updates it. See [GitHub Releases](https://github.com/NTLx/ServerFS_MCP/releases) for published release records.
 
 ## Workdir Configuration
 
@@ -131,7 +130,7 @@ v0.4 resolves one immutable effective policy for every enabled workdir at startu
 
 Binary transfer is disabled by default. Enable it globally with `SERVERFS_BINARY_TRANSFER_ENABLED=true` or for one slot with `WORKDIR_XX_BINARY_TRANSFER_ENABLED=true`. `SERVERFS_MAX_BINARY_TRANSFER_BYTES` / `WORKDIR_XX_MAX_BINARY_TRANSFER_BYTES` bound both upload and download; the default is 8 MiB. Enabling binary transfer does not release write authorization: uploads still require `WORKDIR_XX_READ_ONLY=false`.
 
-v0.5 optionally accepts a ChatGPT/OpenAI file parameter as the upload source. This path is separately disabled by default. To enable it, set `SERVERFS_FILE_INGRESS_ENABLED=true` and start Compose with `--profile file-ingress`. The sidecar requires a narrow host policy: exact hosts may be listed in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; for real ChatGPT fileParams, set `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` to admit only the measured `oaisdmntpr<Azure-storage-account-suffix>.blob.core.windows.net` family. Generic `*.blob.core.windows.net` wildcards remain unsupported. `upload_binary_file` then advertises `_meta["openai/fileParams"] = ["file"]` and accepts exactly one of `data_base64` or `file`. The client-supplied `file_name`, `file_id` and temporary URL never select the ServerFS destination; the explicit `path` argument remains authoritative.
+v0.5.0 optionally accepts a ChatGPT/OpenAI file parameter as the upload source. This path is separately disabled by default. To enable it, set `SERVERFS_FILE_INGRESS_ENABLED=true` and start Compose with `--profile file-ingress`. The sidecar requires a narrow host policy: exact hosts may be listed in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; for real ChatGPT fileParams, set `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` to admit only the measured `oaisdmntpr<Azure-storage-account-suffix>.blob.core.windows.net` family. Generic `*.blob.core.windows.net` wildcards remain unsupported. `upload_binary_file` then advertises `_meta["openai/fileParams"] = ["file"]` and accepts exactly one of `data_base64` or `file`. The client-supplied `file_name`, `file_id` and temporary URL never select the ServerFS destination; the explicit `path` argument remains authoritative.
 
 Agent policy follows the same inheritance model via `SERVERFS_AGENT_MODE` / `SERVERFS_AGENT_RUNTIMES` and the workdir overrides. `SERVERFS_AGENT_BRIDGE_ENABLED` remains the separate infrastructure master gate.
 
@@ -210,7 +209,7 @@ Defense in depth — each layer is independent:
 | Search limits | rg subprocess with argument-array invocation (no shell, no string concatenation), streamed `--json` output, wall-clock 15 s deadline (terminate → grace → kill, no orphan processes), 50 MiB per-file ceiling, and a true *global* result limit: rg is terminated as soon as `limit + 1` policy-valid matches exist, instead of scanning the whole tree. Result paths are re-checked against hidden/deny policy. |
 | Audit log | Every tool call emits a structured `tool_call` event (tool, workdir, relative path, duration, success, `error_code`, plus per-tool counts and the new revision). File contents, `old_text`/`new_text`, search queries and host/container paths are never logged. The `startup` event records the effective security mode (`allow_hidden`, `default_deny_enabled`, `extra_deny_rule_count`, `read_write_workdirs`). |
 | Docker | Read-only bind mounts by default (`create_host_path: false`), read-only container root filesystem, tmpfs `/tmp`, non-root UID 10001, `cap_drop: ALL`, `no-new-privileges`. `/workdirs/XX` becomes writable only when `WORKDIR_XX_READ_ONLY=false`; `/app`, the Python package and every system directory stay unwritable either way. |
-| Network | The MCP container remains on `internal: true` networks only — no Internet egress and no published ports. The tunnel has its own egress network. v0.5's optional file-ingress sidecar has a separate egress network but no workdir mounts or OpenAI credentials; MCP can reach it only over a dedicated internal network, and the tunnel is not attached to that network. The sidecar accepts HTTPS/443 only, requires either exact allowlisted hosts or the explicit constrained OpenAI Azure-Blob account family (`oaisdmntpr` prefix, Azure account-name length/charset, fixed `.blob.core.windows.net` suffix), rejects non-global DNS answers, pins connections to validated IPs while verifying the original TLS hostname, and revalidates every redirect. Generic host wildcards remain unsupported. v0.4's Streamable HTTP DNS-rebinding protection remains unchanged: only `serverfs-mcp:8000` is accepted and no non-empty Origin is allowed. |
+| Network | The MCP container remains on `internal: true` networks only — no Internet egress and no published ports. The tunnel has its own egress network. v0.5.0's optional file-ingress sidecar has a separate egress network but no workdir mounts or OpenAI credentials; MCP can reach it only over a dedicated internal network, and the tunnel is not attached to that network. The sidecar accepts HTTPS/443 only, requires either exact allowlisted hosts or the explicit constrained OpenAI Azure-Blob account family (`oaisdmntpr` prefix, Azure account-name length/charset, fixed `.blob.core.windows.net` suffix), rejects non-global DNS answers, pins connections to validated IPs while verifying the original TLS hostname, and revalidates every redirect. Generic host wildcards remain unsupported. Streamable HTTP DNS-rebinding protection introduced in v0.4.0 remains unchanged in v0.5.0: only `serverfs-mcp:8000` is accepted and no non-empty Origin is allowed. |
 | Secrets | `CONTROL_PLANE_*` never enters the MCP container (verified with `docker compose exec serverfs-mcp env`). |
 
 File contents are treated as **untrusted data** — ServerFS only returns them as text and never acts on anything inside them.
@@ -288,7 +287,7 @@ docker compose -f compose.yml -f compose.agent.yml up -d
 docker compose -f compose.yml -f compose.agent.yml restart openai-tunnel
 ```
 
-If v0.5 ChatGPT file ingress is also enabled, add `--profile file-ingress` to the same Compose invocation; do not replace the Agent overlay with the profile. Recreating `serverfs-mcp` with only the base file removes the Agent socket/lock mounts and makes the runtime surface Agent-disabled even when the `.env` still contains valid Agent policy.
+If v0.5.0 ChatGPT file ingress is also enabled, add `--profile file-ingress` to the same Compose invocation; do not replace the Agent overlay with the profile. Recreating `serverfs-mcp` with only the base file removes the Agent socket/lock mounts and makes the runtime surface Agent-disabled even when the `.env` still contains valid Agent policy.
 
 Building the **source** yourself (dependency pins, local changes) uses a scratch tag, so a pinned release tag is never repointed at local code:
 
@@ -299,15 +298,15 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose up -d
 
 Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins and rebuilding along the source path. Avoid `latest`.
 
-For **production**, pin `SERVERFS_IMAGE` to an exact release instead of `latest`:
+For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. For v0.5.0, use this after the release tag has published the image:
 
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.4.0
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.5.0
 ```
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
 
-### Upgrading to v0.5
+### Upgrading to v0.5.0
 
 The upgrade is backward-compatible by default: `SERVERFS_FILE_INGRESS_ENABLED=false`, `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=false`, the ingress sidecar is not started unless the `file-ingress` profile is selected, and existing Base64 binary transfer continues to work. For current ChatGPT fileParams, set both booleans to `true` and add `--profile file-ingress` to the same Compose command you already use. Exact additional hosts can still be supplied through `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
 
@@ -330,6 +329,6 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 
 The scratch tag on the last line matters: `image` doubles as the tag Compose builds to, so an untagged build with a pinned production `.env` present would repoint that release tag at your working tree.
 
-## Still not in v0.5 (by design)
+## Still not in v0.5.0 (by design)
 
-No generic URL downloader, no rename/move/copy, no recursive mkdir or delete, no in-place binary editing API, no chmod/chown tools, no symlink or hardlink creation, no chunked/resumable transfer sessions, no shell or command execution, no Git operations, no automatic backup or trash, no database/index/RAG, no ACL management, no cross-workdir move, no OAuth/SSO, no web UI, and no file watching. Binary transfer remains bounded whole-file transfer; the optional ChatGPT file-ingress sidecar is a narrow, exact-host HTTPS ingress capability rather than a general proxy.
+No generic URL downloader, no rename/move/copy, no recursive mkdir or delete, no in-place binary editing API, no chmod/chown tools, no symlink or hardlink creation, no chunked/resumable transfer sessions, no shell or command execution, no Git operations, no automatic backup or trash, no database/index/RAG, no ACL management, no cross-workdir move, no OAuth/SSO, no web UI, and no file watching. Binary transfer remains bounded whole-file transfer; the optional ChatGPT file-ingress sidecar is a narrow, policy-checked HTTPS ingress capability that accepts only exact administrator hosts or the explicit constrained OpenAI Blob family rather than acting as a general proxy.

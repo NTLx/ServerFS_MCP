@@ -24,13 +24,13 @@ ServerFS 围绕**窄能力与独立执行层**设计。
 
 ## 文件入口边界
 
-v0.5 继续禁止 ServerFS MCP 主容器访问互联网。显式启用后，`serverfs-file-ingress` 使用独立出站网络，并通过只与 MCP 服务共享的专用内部网络接收请求；Tunnel 不连接该 ingress 网络。
+v0.5.0 继续禁止 ServerFS MCP 主容器访问互联网。显式启用后，`serverfs-file-ingress` 使用独立出站网络，并通过只与 MCP 服务共享的专用内部网络接收请求；Tunnel 不连接该 ingress 网络。
 
 MCP 到 sidecar 的端点固定为内部 Compose 服务，MCP 客户端本身不会跟随重定向。Sidecar 只接受 443 端口上的 HTTPS。主机授权可以是管理员配置的精确主机名，也可以显式开启根据真实 ChatGPT fileParams 实测得到的受限 OpenAI Azure Blob 家族：存储账户名以 `oaisdmntpr` 开头、仅含小写 ASCII 字母/数字、满足 Azure 账户长度上限，并使用精确的 `.blob.core.windows.net` 后缀；通用主机名通配符仍会被拒绝。主机授权之后仍会拒绝任何非公网 DNS 结果，将连接固定到已验证 IP，同时按原始主机名校验 TLS，对每次上游重定向重新校验，并独立限制字节数和超时。它不是通用 URL 代理。
 
 ## 传输层加固
 
-v0.4.0 为 MCP Streamable HTTP 启用了 DNS-rebinding protection。
+v0.4.0 引入了 MCP Streamable HTTP DNS-rebinding protection；v0.5.0 保持这一传输边界不变。
 
 传输层只接受固定内部 authority `serverfs-mcp:8000`；异常或缺失 Host 会被拒绝，非空且未允许的 Origin 也会在进入 MCP dispatch 前被拒绝。
 

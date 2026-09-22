@@ -318,13 +318,19 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase F — Release closure
 
-> Status: **RELEASE-READY / TAG PENDING**. The corrected tree passed the final full gate:
-> root 800 passed, Agent Bridge 83 passed, Ruff lint/format, site build (17 pages), four
-> Compose renders, `git diff --check`, and final scratch image build/package-version checks.
-> Live ChatGPT byte-integrity E2E is complete. Git closeout is also complete: the fixes were
-> fast-forwarded to `main`, `main` and `origin/main` both point to
-> `c44be2f017f1bf8136448029029c714b3791ab18`, and local/remote development refs have been
-> removed. No `v0.5.0` tag exists; creating that tag remains an explicit maintainer action.
+> Status: **RELEASE-READY / TAG PENDING**. The corrected implementation tree passed its
+> full gate with root 800 passed, Agent Bridge 83 passed, Ruff lint/format, site build
+> (17 pages), four Compose renders, `git diff --check`, and final scratch image
+> build/package-version checks. A later main-only Agent-delegation guidance change added two
+> schema/description regression tests and passed a fresh full gate with root 802 passed,
+> Agent Bridge 83 passed, site build 17 pages, four Compose renders, `git diff --check`, and
+> package version 0.5.0. Live ChatGPT byte-integrity E2E is complete. Git closeout is
+> complete, temporary development branches are removed, and release-facing README/site/
+> configuration/deployment documentation has been finalized directly on `main`. The final
+> documentation closeout passed `git diff --check`, a 17-page site build with no Markdown
+> code-language warnings, generated-static-output checks for both locales, and stale-version
+> scans. Browser visual rendering was not available and remains explicitly Not verified.
+> No `v0.5.0` tag exists; creating that tag remains an explicit maintainer action.
 
 - update README/site docs/config examples;
 - document migration and rollback;

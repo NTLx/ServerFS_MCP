@@ -318,5 +318,6 @@ root **800 passed**, Agent Bridge **83 passed**, Ruff lint/format passed, the si
 and scratch image `serverfs-mcp:v05-final-gate` reported package version **0.5.0**
 (image ID `sha256:a19604d43b38b998ef3626f5157127403f922fa3f232d4a609b6770e7f93c691`).
 
-Phase E and all technical release gates are complete. Only Git closeout remains; no
-`v0.5.0` tag exists yet.
+Phase E and all technical release gates were complete at this acceptance point. Git
+closeout was completed afterward in Phase F; no `v0.5.0` tag had been created at the time
+of this record.

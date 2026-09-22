@@ -2,8 +2,9 @@
 
 ## Disposition
 
-ServerFS MCP v0.5.0 has **completed all technical release gates; Git closeout is the
-only remaining development step**.
+ServerFS MCP v0.5.0 has **completed the technical release gates, Git closeout, live
+ChatGPT acceptance, and release-facing documentation alignment**. Creating and pushing
+the `v0.5.0` tag remains the only maintainer-controlled publication action.
 
 The earlier release-candidate draft was written before repeated real ChatGPT file probes
 demonstrated region-varying Azure Blob account hostnames. Because no `v0.5.0` tag had
@@ -11,7 +12,8 @@ been created, development was safely reopened on branch `v0.5-host-family-fix` f
 `main@ea939fee75a1f5f119a761e110b92d08bdf25533`.
 
 The corrected file-ingress policy, fresh live byte-integrity E2E, full regression,
-site/Compose gates and final scratch image build are all complete. Tagging remains a
+site/Compose gates, final scratch image build, main-only Git closeout, and the final
+README/site/config/deployment documentation sweep are complete. Tagging remains a
 maintainer-controlled publication action and is not part of this development pass.
 
 ## Product change
@@ -106,6 +108,28 @@ The final full release gate on the exact corrected tree then passed:
 - package version: **0.5.0**;
 - final scratch image ID:
   `sha256:a19604d43b38b998ef3626f5157127403f922fa3f232d4a609b6770e7f93c691`.
+
+A later main-only Agent-delegation guidance change added two public-tool description/schema
+regression tests and passed another complete gate before the release-documentation sweep:
+
+- root tests: **802 passed**;
+- root Ruff lint/format: pass;
+- Agent Bridge: **83 passed** with Ruff lint/format pass;
+- site build: **17 pages**;
+- all four Compose render variants: pass;
+- `git diff --check`: pass;
+- scratch image build: pass;
+- image package version: **0.5.0**.
+
+The final release-documentation closeout then passed:
+
+- `git diff --check`: pass;
+- site build: **17 pages** with no Markdown code-language warnings;
+- generated English/Chinese static output contains `v0.5.0`, the generic GitHub Releases
+  link, and the documented file-ingress + Agent-overlay Compose path;
+- current user-facing stale-version/release-string scan: zero findings;
+- browser-rendered visual inspection: **Not verified** because no browser runtime was
+  available without installing additional software.
 
 ## Transport-capacity repair
 
@@ -207,22 +231,16 @@ preserves the overlay explicitly.
 
 ## Repository closeout
 
-The original `v0.5-dev` history was fast-forwarded into `main`, but that closeout was
-subsequently reopened before tagging when the region-varying host behavior was measured.
-The corrective work now lives on `v0.5-host-family-fix`, based directly on current
-`main`; no history rewrite is required.
-
-Final closeout requires:
-
-- full corrected-tree release gate;
-- one focused commit for the host-family correction and corrected acceptance evidence;
-- push the fix branch;
-- pure fast-forward of `main`;
-- push and verify clean local/remote `main`;
-- remove the temporary fix branch.
+The original `v0.5-dev` history was fast-forwarded into `main`, then development was
+reopened before tagging when region-varying host behavior was measured. The focused
+`v0.5-host-family-fix` branch was completed, passed its corrected-tree gate, and was
+pure-fast-forwarded into `main`. The temporary development branches were then removed.
+Subsequent release-preparation work, including Agent-delegation guidance and the final
+release-facing documentation sweep, continued directly on `main` as requested. No history
+rewrite is required.
 
 ## Release point
 
-No `v0.5.0` tag exists. The tag target must be the final corrected `main` commit after
-the steps above, and the tag must remain uncreated until the maintainer explicitly
-requests publication.
+No `v0.5.0` tag existed when this release-candidate record was finalized. The tag target
+must be the final clean `main` commit after the release-documentation closeout, and the tag
+must remain uncreated until the maintainer explicitly requests publication.

@@ -18,11 +18,11 @@ const copy = {
     nav: { docs: 'Docs', architecture: 'Architecture', security: 'Security' },
     languageSwitch: '简中',
     languageLabel: '切换到简体中文',
-    release: 'v0.4.0 released',
+    release: 'v0.5.0',
     heroEyebrow: 'SECURE MCP FOR LINUX WORKDIRS',
     headline: ['Your filesystem.', 'Safely exposed', 'to AI.'],
     lede:
-      'ServerFS gives ChatGPT and AI agents precise access to the Linux directories you choose — read-only by default, with opt-in mutations, binary transfer, and a structured Codex / Claude Agent Bridge.',
+      'ServerFS gives ChatGPT and AI agents precise access to the Linux directories you choose — read-only by default, with opt-in mutations, bounded binary transfer, isolated ChatGPT file ingress, and a structured Codex / Claude Agent Bridge.',
     getStarted: 'Get started',
     viewSource: 'View source',
     guaranteesShort: ['No shell', 'No escape', 'Scoped writes', 'MIT licensed'],
@@ -88,7 +88,7 @@ const copy = {
     quickTitleLine1: 'One Compose stack.',
     quickTitleLine2: 'Your machine. Your policy.',
     quickBody:
-      'Start with the 11-tool filesystem surface. Add binary transfer or the Agent Bridge only when the deployment actually needs them.',
+      'Start with the 11-tool filesystem surface. Add binary transfer, isolated ChatGPT file ingress, or the Agent Bridge only when the deployment actually needs them.',
     readDeployment: 'Read the deployment guide',
     finalTitleLine1: 'Make your server legible to AI.',
     finalTitleLine2: 'Keep the boundary explicit.',
@@ -106,11 +106,11 @@ const copy = {
     nav: { docs: '文档', architecture: '架构', security: '安全' },
     languageSwitch: 'EN',
     languageLabel: 'Switch to English',
-    release: 'v0.4.0 已发布',
+    release: 'v0.5.0',
     heroEyebrow: '面向 LINUX WORKDIR 的安全 MCP',
     headline: ['你的文件系统。', '让 AI 安全访问。'],
     lede:
-      'ServerFS 让 ChatGPT 和 AI Agent 精确访问你指定的 Linux 目录——默认只读，并可按需启用受控写入、二进制传输，以及结构化的 Codex / Claude Agent Bridge。',
+      'ServerFS 让 ChatGPT 和 AI Agent 精确访问你指定的 Linux 目录——默认只读，并可按需启用受控写入、有界二进制传输、隔离的 ChatGPT 文件入口，以及结构化的 Codex / Claude Agent Bridge。',
     getStarted: '快速开始',
     viewSource: '查看源码',
     guaranteesShort: ['无 Shell', '无法越界', '受控写入', 'MIT 许可'],
@@ -175,7 +175,7 @@ const copy = {
     quickTitleLine1: '一套 Compose。',
     quickTitleLine2: '你的机器，你的策略。',
     quickBody:
-      '从 11 个文件系统工具开始，只在部署确实需要时再增加二进制传输或 Agent Bridge。',
+      '从 11 个文件系统工具开始，只在部署确实需要时再增加二进制传输、隔离的 ChatGPT 文件入口或 Agent Bridge。',
     readDeployment: '阅读部署指南',
     finalTitleLine1: '让 AI 理解你的服务器。',
     finalTitleLine2: '让边界始终清晰。',
@@ -248,7 +248,7 @@ const canonicalUrl = isZh
         <div class="hero-copy">
           <a
             class="release-pill"
-            href="https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.4.0"
+            href="https://github.com/NTLx/ServerFS_MCP/releases"
             target="_blank"
             rel="noreferrer"
           >
@@ -305,7 +305,7 @@ const canonicalUrl = isZh
               <div class="server-head">
                 <span class="server-led"></span>
                 <strong>ServerFS MCP</strong>
-                <code>v0.4.0</code>
+                <code>v0.5.0</code>
               </div>
               {c.serverRows.map(([label, detail]) => (
                 <div class="server-row"><span>{label}</span><em>{detail}</em></div>

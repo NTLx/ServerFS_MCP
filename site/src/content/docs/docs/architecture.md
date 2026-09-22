@@ -34,12 +34,12 @@ ServerFS MCP
    │ dedicated internal network only
    ▼
 serverfs-file-ingress
-   │ exact-host HTTPS egress only
+   │ policy-checked HTTPS/443 egress only
    ▼
 Temporary file host
 ```
 
-The sidecar is opt-in. It has no workdir mounts, OpenAI/tunnel credentials, or published port. The main MCP container never receives Internet egress; it sends only the temporary URL and byte ceiling to the sidecar. The sidecar validates the exact configured hostname, resolved IP addresses, TLS hostname, redirects, timeouts, and byte limit before returning raw bytes.
+The sidecar is opt-in. It has no workdir mounts, OpenAI/tunnel credentials, or published port. The main MCP container never receives Internet egress; it sends only the temporary URL and byte ceiling to the sidecar. Host authorization is either an exact administrator-configured hostname or the separately enabled constrained OpenAI Azure Blob account family measured from real ChatGPT file parameters. Generic wildcards are rejected. The sidecar then validates globally routable DNS answers, pins the connection to a validated IP while verifying TLS for the original hostname, revalidates every redirect, and enforces timeout and byte ceilings before returning raw bytes.
 
 ## Optional Agent path
 

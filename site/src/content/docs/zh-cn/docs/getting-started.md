@@ -40,14 +40,40 @@ docker compose -f compose.yml -f compose.agent.yml up -d
 
 启用之前，请先按照仓库中的 [Agent Bridge 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md) 安装并验证宿主机 Agent Bridge。
 
-## 已发布镜像
+## ChatGPT 文件参数入口
 
-稳定版本发布到 GHCR：
+v0.5.0 可以让 `upload_binary_file` 直接接收 ChatGPT/OpenAI `file` 参数，同时保持 MCP 主容器没有互联网出口。二进制传输与文件入口是两个独立 opt-in。常见 ChatGPT 场景可设置：
+
+```text
+SERVERFS_BINARY_TRANSFER_ENABLED=true
+SERVERFS_FILE_INGRESS_ENABLED=true
+SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true
+```
+
+然后通过 `file-ingress` profile 启动隔离 sidecar：
+
+```bash
+docker compose --profile file-ingress pull
+docker compose --profile file-ingress up -d
+```
+
+如果同时启用 Agent Bridge，必须在同一次 Compose 调用中同时保留 Agent overlay 与 file-ingress profile：
+
+```bash
+docker compose --profile file-ingress -f compose.yml -f compose.agent.yml pull
+docker compose --profile file-ingress -f compose.yml -f compose.agent.yml up -d
+```
+
+Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 的主机策略与网络边界详见[二进制传输](./binary-transfer/)和[安全模型](./security/)。
+
+## Release 镜像标签
+
+`v0.5.0` tag 是以下 GHCR release 标签的发布触发器；在 tag 创建之前，请使用 `edge` 进行 release-candidate 验证：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.4
-ghcr.io/ntlx/serverfs_mcp:0.4.0
+ghcr.io/ntlx/serverfs_mcp:0.5
+ghcr.io/ntlx/serverfs_mcp:0.5.0
 ```
 
-生产环境建议固定使用明确的 release tag。
+发布完成后，生产环境建议固定使用 `0.5.0`，不要长期跟随 `latest` 或 `edge`。
