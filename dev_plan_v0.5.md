@@ -289,13 +289,13 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase E — Integration and real ChatGPT E2E
 
-> Status: **LOCAL CONTAINER E2E COMPLETE / POST-HARDENING FULL RERUN + LIVE CHATGPT E2E
-> PENDING**. The recorded root regression, image build and real MCP -> isolated sidecar ->
-> public HTTPS -> workdir -> binary download round trip passed. A subsequent hardening
-> change narrowed the MCP-to-sidecar client to one fixed internal HTTP endpoint; its
-> targeted suite is green, but the full root/build gate must be rerun on that exact tree
-> before release. Live ChatGPT discovery and temporary-download host/redirect measurement
-> also remain. See `docs/phase-e-v0.5-local-acceptance-2026-09-22.md`.
+> Status: **COMPLETE / LIVE CHATGPT VERIFIED**. The exact post-hardening tree passed the
+> full root/Agent/site/Compose/image release gate. A refreshed ChatGPT plugin then supplied
+> a real conversation-held PNG through the OpenAI `file` parameter. The temporary download
+> hostname was measured with a no-egress reject probe, configured as the sole exact-host
+> allowlist entry, and the real sidecar completed an exact 124-byte PNG round trip with
+> matching SHA-256 and PNG signature. The MCP container remained without Internet egress.
+> See `docs/phase-e-v0.5-local-acceptance-2026-09-22.md`.
 
 - run unit/full regression gates;
 - build Compose image;
@@ -311,12 +311,13 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase F — Release closure
 
-> Status: **PREVIOUS LOCAL RELEASE GATE COMPLETE / CURRENT FULL RERUN + LIVE CHATGPT E2E
-> PENDING**. Runtime docs/config examples, root regression, Compose renders, scratch image
-> build, container-isolation E2E, explicit >4-MiB HTTP compatibility, site build and
-> independent Agent Bridge regression were green at the recorded acceptance baseline. The
-> post-acceptance internal-client hardening has its targeted gate green but requires one
-> full release-gate rerun before final Git/release closure.
+> Status: **IMPLEMENTATION AND ACCEPTANCE COMPLETE / GIT CLOSEOUT IN PROGRESS**. Runtime
+> docs/config examples, root regression, Compose renders, scratch image build,
+> container-isolation E2E, explicit >4-MiB HTTP compatibility, site build, independent
+> Agent Bridge regression, refreshed-plugin discovery and live ChatGPT file-parameter E2E
+> are all green. Remaining work is repository closeout only: final docs-only gate, commit,
+> linear merge to `main`, and preparation of the release point. The `v0.5.0` tag remains
+> intentionally uncreated until the maintainer explicitly requests it.
 
 - update README/site docs/config examples;
 - document migration and rollback;

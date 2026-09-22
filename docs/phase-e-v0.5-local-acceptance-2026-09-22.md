@@ -200,27 +200,68 @@ The targeted gate on this post-hardening tree passed with **80 tests**, Ruff lin
 Ruff format green, covering binary upload, ingress URL/DNS/redirect/size policy, the fixed
 internal endpoint, Compose isolation, configuration and MCP transport-body sizing.
 
-Because this source change happened after the full 790-test/build/site/Agent-Bridge gate
-recorded above, that full release gate must be rerun on the exact final tree before v0.5.0
-is considered release-ready. The earlier evidence remains valid for the container and
-transport behaviour it exercised, but is not a substitute for that final rerun.
+The full release gate was subsequently rerun on the exact post-hardening tree at
+`f1d6005d0f74d167c17dcba077ea0ed83eb7eb36`: root **790 passed**, Agent Bridge
+**83 passed**, Ruff lint/format passed, the site built **17 pages**, all four required
+Compose render variants passed, the scratch image built successfully, and the installed
+`serverfs-mcp` package reported version **0.5.0**. The worktree was clean.
 
-## Remaining Phase E gate
+## Live ChatGPT file-parameter E2E
 
-This acceptance proves the current ServerFS/container path using the OpenAI file-object
-shape and independently proves the repaired >4 MiB Base64 request path. It does **not**
-yet prove the hostname and redirect chain used by a real ChatGPT-generated or
-ChatGPT-held file.
+The final Phase E gate was completed through the refreshed ChatGPT plugin and the real
+OpenAI Secure MCP Tunnel.
 
-The remaining v0.5 Phase E gate is therefore:
+A deterministic 124-byte PNG held by the ChatGPT conversation was supplied to
+`upload_binary_file` through the OpenAI `file` parameter. A temporary no-egress probe
+first replaced the real sidecar solely to measure the normalized hostname carried in the
+platform-supplied `download_url`; the probe logged only the hostname and always rejected
+the request. The measured hostname was:
 
-1. deploy a v0.5 development image behind the OpenAI Secure MCP Tunnel;
-2. refresh/reconnect the ChatGPT plugin so the new tool descriptor is discovered;
-3. pass a real ChatGPT-generated or ChatGPT-held file parameter;
-4. measure the actual temporary-download hostname and every redirect hostname;
-5. configure only those exact hosts;
-6. upload a generated PNG and verify size, SHA-256 and PNG signature through
-   `download_binary_file`;
-7. re-confirm the production MCP container has no Internet egress.
+```text
+oaisdmntprwestcentralus.blob.core.windows.net
+```
 
-Do not infer or hard-code OpenAI temporary file hostnames before that measurement.
+This hostname is **observed E2E evidence, not a product default**. It is not hard-coded in
+source, Compose or `.env.example`, because the actual temporary-file host can vary by
+platform deployment/region and must remain administrator policy.
+
+The real isolated sidecar was then restored with an exact one-host allowlist containing
+only that measured hostname. No additional redirect hostname was required: the same real
+ChatGPT-held PNG uploaded successfully through `upload_binary_file(file=...)`.
+
+Byte-integrity evidence:
+
+- source file size: **124 bytes**;
+- source SHA-256:
+  `30efccdbf3648650a242e8ba64be465b574c075def9218a2185ad25ac9c3b1d3`;
+- source PNG signature: `89504e470d0a1a0a`;
+- `upload_binary_file` bytes written: **124**;
+- upload SHA-256: identical;
+- `download_binary_file` size: **124**;
+- download MIME: `image/png`;
+- download SHA-256: identical;
+- source/upload/download byte identity therefore matched end to end.
+
+The MCP container was also re-verified after the v0.5 development deployment:
+
+- package/server version: **0.5.0**;
+- both Agent Bridge mounts remained present;
+- only Docker `internal=true` networks were attached to `serverfs-mcp`;
+- no host ports were published;
+- a direct HTTPS request from `serverfs-mcp` failed with
+  `socket.gaierror: Temporary failure in name resolution`, confirming no Internet egress;
+- the tunnel established a fresh MCP session reporting `server_version=0.5.0`.
+
+The real sidecar remained isolated: no workdir mounts, no published ports, no
+`CONTROL_PLANE`/`OPENAI`/`TUNNEL` credential variables, one dedicated internal network
+plus its egress network, and the exact measured hostname allowlist.
+
+All E2E workdir files were removed afterwards through revision-guarded `delete_file`.
+
+## Phase E disposition
+
+**COMPLETE.** The provider-neutral Base64 path, the isolated file-parameter path, the
+transport-size repair, real ChatGPT file discovery, live temporary-host measurement,
+exact-host policy, byte-integrity round trip, and main-container no-egress boundary have
+all been verified. No OpenAI temporary-file hostname is inferred or hard-coded into the
+product.
