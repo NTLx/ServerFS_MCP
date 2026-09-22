@@ -135,3 +135,6 @@ ambiguity and poor verification criteria even when a route Choice is confident.
 
 Do not enable automatic routing until a larger labeled corpus demonstrates useful accuracy,
 stable behavior across languages, and acceptable false-routing cost.
+
+The first joint real-key evaluation is recorded in
+[`jev-runtime-router-live-validation-2026-09-22.md`](jev-runtime-router-live-validation-2026-09-22.md).
