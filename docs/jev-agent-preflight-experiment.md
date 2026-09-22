@@ -156,3 +156,6 @@ Do not put a real API key into tracked files.
 
 The first live test should verify only that the configured path works and that disabling the
 key restores the exact baseline behavior. It should not change production routing policy.
+
+The first real-key activation and sample results are recorded in
+[`jev-agent-preflight-live-validation-2026-09-22.md`](jev-agent-preflight-live-validation-2026-09-22.md).
