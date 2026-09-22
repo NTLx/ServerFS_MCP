@@ -24,14 +24,17 @@ adapter), D (Agent MCP surface) and E (production deployment) are complete and f
 `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
 The branch `experiment/jev-agent-preflight` is an explicitly isolated experiment over
-that frozen baseline. It may add optional advisory task-quality Preflight and Runtime Router
-results inside the host Bridge, but it must not change the MCP tool surface, Bridge RPC,
-runtime allowlists, provider adapters, authorization, approvals/questions, or writer-lease
-semantics. Jev is not an Agent runtime or a safety authority. With no
-`SERVERFS_JEV_API_KEY`, the experiment must construct no Jev client, make no Jev request,
-emit no advisor result, and preserve baseline task submission behavior. With a key, both
-Preflight and Runtime Router remain fail-open and advisory only. The router must not add
-`runtime=auto`, invoke a different runtime/tool, or override the explicitly requested runtime.
+that frozen baseline. It may add optional advisory task-quality Preflight, Runtime Router,
+and Approval Advisor results inside the host Bridge, but it must not change the MCP tool
+surface, Bridge RPC, runtime allowlists, provider adapters, authorization, approval/question
+decision semantics, or writer-lease semantics. Jev is not an Agent runtime or a safety
+authority. With no `SERVERFS_JEV_API_KEY`, the experiment must construct no Jev client, make
+no Jev request, emit no advisor result, and preserve baseline behavior. With a key, all Jev
+features remain fail-open and advisory only. The router must not add `runtime=auto`, invoke a
+different runtime/tool, or override the explicitly requested runtime. Approval Advisor may
+make one extra Jev request only after a provider creates an approval request; it must not
+auto-approve, auto-deny, alter available decisions, grant permission IDs, or bypass the
+existing `respond_agent_approval` validation path.
 
 **Phase D is frozen.** It added the eight provider-neutral Agent MCP tools, a thin
 stdlib Unix-socket Bridge client, fail-closed global/per-workdir Agent configuration,

@@ -160,6 +160,8 @@ key restores the exact baseline behavior. It should not change production routin
 The first real-key activation and sample results are recorded in
 [`jev-agent-preflight-live-validation-2026-09-22.md`](jev-agent-preflight-live-validation-2026-09-22.md).
 
-The same Jev request now also carries the second experiment, the advisory Runtime Router;
-see [`jev-runtime-router-experiment.md`](jev-runtime-router-experiment.md). The router adds
-no second network request and does not alter the explicit runtime contract.
+The same task-submission Jev request also carries the second experiment, the advisory Runtime
+Router; see [`jev-runtime-router-experiment.md`](jev-runtime-router-experiment.md). The router
+adds no second network request and does not alter the explicit runtime contract. A third
+experiment, [`jev-approval-advisor-experiment.md`](jev-approval-advisor-experiment.md), runs
+only when a native provider actually creates an approval request.

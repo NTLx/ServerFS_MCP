@@ -138,3 +138,6 @@ stable behavior across languages, and acceptable false-routing cost.
 
 The first joint real-key evaluation is recorded in
 [`jev-runtime-router-live-validation-2026-09-22.md`](jev-runtime-router-live-validation-2026-09-22.md).
+The third advisory capability is documented separately in
+[`jev-approval-advisor-experiment.md`](jev-approval-advisor-experiment.md); it runs only for
+actual provider approval requests and does not add a task-submission round trip.

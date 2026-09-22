@@ -136,9 +136,10 @@ Agent settings into the container, so these values remain inert without
 
 Provider secrets and shell-only environment are intentionally **not** stored in
 `.env`; they remain in the user-owned `provider.env` described in step 4. The experimental
-Jev task preflight is the one explicit exception on `experiment/jev-agent-preflight`:
-`SERVERFS_JEV_API_KEY` is its opt-in master gate. Leave it empty to disable all Jev
-functionality. When non-empty, the installer renders the key only into the user-owned
+Jev advisory features are the one explicit exception on `experiment/jev-agent-preflight`:
+`SERVERFS_JEV_API_KEY` is their opt-in master gate. Leave it empty to disable Preflight,
+Runtime Router, and Approval Advisor functionality. When non-empty, the installer renders
+the key only into the user-owned
 `0600` Bridge `config.json`; it is never passed into the MCP container.
 
 ## 2. Enable Agent policy for selected workdirs
@@ -218,8 +219,8 @@ SERVERFS_CLAUDE_BIN=/home/me/.local/bin/claude
 
 Provider authentication/settings remain the same user's native files. Jev is not an
 Agent runtime and does not inherit Codex/Claude credentials. For the experimental advisory
-preflight, put the TypeSafe key only in the repository `.env` as
-`SERVERFS_JEV_API_KEY=<key>`; an empty value means the preflight is absent.
+Jev features, put the TypeSafe key only in the repository `.env` as
+`SERVERFS_JEV_API_KEY=<key>`; an empty value means all Jev advisory features are absent.
 
 The user service deliberately does not source `.bashrc` or `.zshrc`.
 If the direct CLI depends on environment variables, put only the required

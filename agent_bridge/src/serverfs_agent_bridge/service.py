@@ -502,6 +502,7 @@ class BridgeService:
                     kind=RequestKind.APPROVAL,
                     payload=payload,
                     waiting_status=TaskStatus.WAITING_FOR_APPROVAL,
+                    task_prompt=prompt,
                 ),
                 ask_question=lambda payload: self._wait_for_request(
                     task_id,
@@ -740,11 +741,29 @@ class BridgeService:
         kind: RequestKind,
         payload: dict[str, Any],
         waiting_status: TaskStatus,
+        task_prompt: str | None = None,
     ) -> dict[str, Any]:
         request_id = new_id("req")
         normalized_payload = self._redact_value(task_id, payload)
         if not isinstance(normalized_payload, dict):
             raise BridgeError("AGENT_PROVIDER_ERROR", "provider request payload is invalid")
+        self._ensure_interaction_size(normalized_payload)
+        if kind is RequestKind.APPROVAL and self.preflight is not None:
+            task = self.store.get_task(task_id)
+            try:
+                approval_advice = await self.preflight.advise_approval(
+                    runtime=task.runtime,
+                    workdir=task.workdir_alias,
+                    path=task.relative_cwd,
+                    profile=task.profile,
+                    prompt=task_prompt or "",
+                    approval=dict(normalized_payload),
+                )
+            except Exception:
+                approval_advice = {"status": "unavailable", "automatic": False}
+            normalized_payload["approval_advice"] = approval_advice
+            self._try_append_event(task_id, "approval.advice", approval_advice)
+
         self._ensure_interaction_size(normalized_payload)
         self.store.create_pending_request(
             task_id=task_id,

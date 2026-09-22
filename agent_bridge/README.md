@@ -10,8 +10,8 @@ Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the h
 while the base `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
 > Experimental branch note: `experiment/jev-agent-preflight` layers an optional Jev-backed
-> advisory task-quality preflight and Runtime Router on top of this frozen provider-neutral
-> baseline. The experiment does not
+> advisory task-quality Preflight, Runtime Router, and Approval Advisor on top of this frozen
+> provider-neutral baseline. The experiment does not
 > change the MCP tool surface, Bridge RPC, runtime allowlist, writer lease, provider adapters,
 > approval/question semantics, or task authorization. It is disabled unless
 > `SERVERFS_JEV_API_KEY` is non-empty.
@@ -68,9 +68,12 @@ the writer lease is acquired and also produces a Runtime Router recommendation a
 persisted as `task.preflight`; the derived router object is persisted as `task.routing_advice`.
 Both are deliberately fail-open: an unavailable Jev evaluation is reported as
 `{"status": "unavailable"}` and the authorized task still runs on the explicitly requested
-runtime. Neither advisor can approve permissions, change runtime/workdir/profile, mutate
-files, or rewrite the prompt. The current experiment pins `jev-1.13.0` for reproducible
-evaluation.
+runtime. When a provider actually asks for approval, the same Jev client may issue one
+additional approval-specific request and attach its advisory result to the existing pending
+approval payload plus an `approval.advice` event. No additional request is made for ordinary
+turns or question prompts. None of the advisors can approve/deny permissions, change
+runtime/workdir/profile, mutate files, or rewrite the prompt. The current experiment pins
+`jev-1.13.0` for reproducible evaluation.
 
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
 paths must already be real directories, aliases and slots are validated, and unknown

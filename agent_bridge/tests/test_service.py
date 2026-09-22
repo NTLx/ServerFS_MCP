@@ -50,9 +50,11 @@ def make_service_with_limits(tmp_path: Path, limits: BridgeLimits) -> BridgeServ
 
 
 class FakePreflight:
-    def __init__(self, *, fail: bool = False) -> None:
+    def __init__(self, *, fail: bool = False, fail_approval: bool = False) -> None:
         self.fail = fail
+        self.fail_approval = fail_approval
         self.calls: list[dict] = []
+        self.approval_calls: list[dict] = []
         self.closed = False
 
     async def evaluate(self, **kwargs) -> dict:
@@ -75,6 +77,35 @@ class FakePreflight:
                     },
                 },
             },
+        }
+
+    async def advise_approval(self, **kwargs) -> dict:
+        self.approval_calls.append(kwargs)
+        if self.fail_approval:
+            raise RuntimeError("approval advisor unavailable")
+        return {
+            "status": "completed",
+            "model": "jev-1.13.0",
+            "answers": {
+                "necessary_for_objective": 0.9,
+                "scope_bounded": 0.85,
+                "destructive_or_irreversible": 0.1,
+                "sensitive_access": 0.05,
+                "external_side_effect": 0.05,
+                "recommendation": {
+                    "choice": "approve_once",
+                    "confidence": 0.9,
+                    "probabilities": {
+                        "approve_once": 0.9,
+                        "approve_session": 0.03,
+                        "deny": 0.02,
+                        "cancel_task": 0.01,
+                        "review_carefully": 0.04,
+                    },
+                },
+            },
+            "recommended_decision_available": True,
+            "automatic": False,
         }
 
     async def close(self) -> None:
@@ -156,6 +187,7 @@ async def test_optional_preflight_is_advisory_and_recorded(tmp_path: Path) -> No
     events = service.read_events(submitted["task_id"], limit=20)["events"]
     assert any(event["event_type"] == "task.preflight" for event in events)
     assert any(event["event_type"] == "task.routing_advice" for event in events)
+    assert preflight.approval_calls == []
     task = await wait_for_status(service, submitted["task_id"], "succeeded")
     assert task["final_response"] == "hello"
 
@@ -187,6 +219,8 @@ async def test_preflight_failure_fails_open(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_approval_round_trip(tmp_path: Path) -> None:
     service = make_service(tmp_path)
+    preflight = FakePreflight()
+    service.preflight = preflight
     await service.start()
     submitted = await service.submit_task(
         runtime="fake",
@@ -198,6 +232,32 @@ async def test_approval_round_trip(tmp_path: Path) -> None:
     task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
     request = task["pending_request"]
     assert request["kind"] == "approval"
+    advice = request["payload"]["approval_advice"]
+    assert advice["status"] == "completed"
+    assert advice["automatic"] is False
+    assert advice["answers"]["recommendation"]["choice"] == "approve_once"
+    assert preflight.approval_calls == [
+        {
+            "runtime": "fake",
+            "workdir": "repo",
+            "path": "",
+            "profile": "workspace-write",
+            "prompt": "approval:pytest",
+            "approval": {
+                "category": "command",
+                "title": "Fake command approval",
+                "command_display": "pytest",
+                "available_decisions": [
+                    "approve_once",
+                    "approve_session",
+                    "deny",
+                    "cancel_task",
+                ],
+            },
+        }
+    ]
+    events = service.read_events(submitted["task_id"], limit=30)["events"]
+    assert any(event["event_type"] == "approval.advice" for event in events)
 
     await service.respond_approval(
         task_id=task["task_id"],
@@ -206,6 +266,33 @@ async def test_approval_round_trip(tmp_path: Path) -> None:
     )
     finished = await wait_for_status(service, task["task_id"], "succeeded")
     assert finished["final_response"] == "approval=approve_once"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_approval_advisor_failure_fails_open(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.preflight = FakePreflight(fail_approval=True)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="approval:pytest",
+    )
+
+    task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+    advice = task["pending_request"]["payload"]["approval_advice"]
+    assert advice == {"status": "unavailable", "automatic": False}
+
+    await service.respond_approval(
+        task_id=task["task_id"],
+        request_id=task["pending_request"]["request_id"],
+        decision="deny",
+    )
+    finished = await wait_for_status(service, task["task_id"], "succeeded")
+    assert finished["final_response"] == "approval=deny"
     await service.close()
 
 

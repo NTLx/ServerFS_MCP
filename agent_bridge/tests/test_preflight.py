@@ -4,7 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from serverfs_agent_bridge.preflight import JevTaskPreflight, _choice_value, _noul_value
+from serverfs_agent_bridge.preflight import (
+    JevTaskPreflight,
+    _approval_state,
+    _choice_value,
+    _noul_value,
+    _sanitize_advisor_value,
+)
 
 
 class FakeClient:
@@ -14,9 +20,28 @@ class FakeClient:
 
     async def system_one(self, **kwargs):
         self.calls.append(kwargs)
-        return SimpleNamespace(
-            model="jev-1.13.0",
-            answers={
+        questions = kwargs["questions"]
+        if "necessary_for_objective" in questions:
+            answers = {
+                "necessary_for_objective": SimpleNamespace(noul=0.92),
+                "scope_bounded": SimpleNamespace(noul=0.88),
+                "destructive_or_irreversible": SimpleNamespace(noul=0.12),
+                "sensitive_access": SimpleNamespace(noul=0.08),
+                "external_side_effect": SimpleNamespace(noul=0.05),
+                "recommendation": SimpleNamespace(
+                    choice="approve_once",
+                    confidence=0.9,
+                    probabilities={
+                        "approve_once": 0.9,
+                        "approve_session": 0.04,
+                        "deny": 0.02,
+                        "cancel_task": 0.01,
+                        "review_carefully": 0.03,
+                    },
+                ),
+            }
+        else:
+            answers = {
                 "single_objective": SimpleNamespace(noul=0.95),
                 "mutation_boundary_explicit": SimpleNamespace(noul=0.9),
                 "stop_condition_explicit": SimpleNamespace(noul=0.8),
@@ -40,7 +65,10 @@ class FakeClient:
                         "human_review": 0.05,
                     },
                 ),
-            },
+            }
+        return SimpleNamespace(
+            model="jev-1.13.0",
+            answers=answers,
             usage=SimpleNamespace(input_tokens=321),
         )
 
@@ -115,6 +143,82 @@ async def test_jev_preflight_returns_normalized_advisory_result() -> None:
 
     await preflight.close()
     assert client.closed is True
+
+
+@pytest.mark.asyncio
+async def test_jev_approval_advisor_returns_normalized_advice() -> None:
+    client = FakeClient()
+    advisor = JevTaskPreflight(client)
+
+    result = await advisor.advise_approval(
+        runtime="codex",
+        workdir="ServerFS",
+        path="agent_bridge",
+        profile="workspace-write",
+        prompt="Run one bounded test command and report the result.",
+        approval={
+            "category": "command",
+            "title": "Codex command approval",
+            "command_display": "uv run pytest agent_bridge/tests/test_preflight.py -q",
+            "available_decisions": ["approve_once", "approve_session", "deny", "cancel_task"],
+        },
+    )
+
+    assert result["status"] == "completed"
+    assert result["automatic"] is False
+    assert result["recommended_decision_available"] is True
+    answers = result["answers"]
+    assert answers["necessary_for_objective"] == 0.92
+    assert answers["scope_bounded"] == 0.88
+    assert answers["destructive_or_irreversible"] == 0.12
+    assert answers["sensitive_access"] == 0.08
+    assert answers["external_side_effect"] == 0.05
+    assert answers["recommendation"]["choice"] == "approve_once"
+
+    call = client.calls[0]
+    assert call["state"]["task"]["prompt"] == (
+        "Run one bounded test command and report the result."
+    )
+    assert call["state"]["approval"]["category"] == "command"
+    assert set(call["questions"]) == {
+        "necessary_for_objective",
+        "scope_bounded",
+        "destructive_or_irreversible",
+        "sensitive_access",
+        "external_side_effect",
+        "recommendation",
+    }
+
+
+def test_approval_prompt_sanitizer_redacts_and_truncates() -> None:
+    prompt = "Run check with token=abc123 and Authorization: Bearer secret-token " + "x" * 5000
+    sanitized = _sanitize_advisor_value(prompt)
+    assert "abc123" not in sanitized
+    assert "secret-token" not in sanitized
+    assert "<redacted>" in sanitized
+    assert len(sanitized) <= 4097
+
+
+def test_approval_state_whitelists_and_redacts_sensitive_values() -> None:
+    state = _approval_state(
+        {
+            "category": "command",
+            "command_display": "curl -H 'Authorization: Bearer abc123' --token xyz",
+            "available_decisions": ["approve_once", "deny"],
+            "tool_input": {"file_path": "ignored", "content": "ignored"},
+            "additional_permissions": {
+                "api_key": "secret-value",
+                "nested": {"password": "hunter2", "mode": "network"},
+            },
+        }
+    )
+
+    assert "tool_input" not in state
+    assert "abc123" not in state["command_display"]
+    assert "xyz" not in state["command_display"]
+    assert state["additional_permissions"]["api_key"] == "<redacted>"
+    assert state["additional_permissions"]["nested"]["password"] == "<redacted>"
+    assert state["additional_permissions"]["nested"]["mode"] == "network"
 
 
 @pytest.mark.parametrize("value", [-0.1, 1.1, True, "0.5", None])
