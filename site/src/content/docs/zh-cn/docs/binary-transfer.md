@@ -37,7 +37,7 @@ description: 有界整文件下载与基于 revision 的受保护上传。
 
 文件入口独立且默认关闭。启用时设置 `SERVERFS_FILE_INGRESS_ENABLED=true`，在 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 中配置经过实际测量的精确主机名，并使用 `--profile file-ingress` 启动 Compose。
 
-启用后，`upload_binary_file` 会暴露 `_meta["openai/fileParams"] = ["file"]`。隔离的 ingress sidecar 负责获取临时 HTTPS URL；ServerFS MCP 主容器仍然没有互联网出口。Sidecar 不挂载任何 workdir、不持有 OpenAI 凭据、不发布端口，并拒绝未列入精确白名单的主机或解析到非公网地址的目标。
+启用后，`upload_binary_file` 会暴露 `_meta["openai/fileParams"] = ["file"]`。MCP 进程只调用固定的内部端点 `serverfs-file-ingress:8081/fetch`，并且不会跟随内部重定向。隔离的 ingress sidecar 负责获取临时 HTTPS URL；ServerFS MCP 主容器仍然没有互联网出口。Sidecar 不挂载任何 workdir、不持有 OpenAI 凭据、不发布端口，并拒绝未列入精确白名单的主机或解析到非公网地址的目标，同时重新校验每一次上游重定向。
 
 二进制传输不会绕过 workdir 授权。上传仍然要求目标 workdir 可写。
 

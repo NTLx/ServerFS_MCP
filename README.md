@@ -270,12 +270,25 @@ docker compose logs -f
 
 Two distinct paths — do not mix them.
 
-Upgrading a **deployed instance** uses the published image: edit `SERVERFS_IMAGE`, then
+Upgrading a **deployed instance** uses the published image: edit `SERVERFS_IMAGE`, then preserve the same deployment surface when recreating services.
+
+Base filesystem-only / binary deployment:
 
 ```bash
 docker compose pull
 docker compose up -d
+docker compose restart openai-tunnel
 ```
+
+Agent-enabled deployment — **always keep the Agent overlay**:
+
+```bash
+docker compose -f compose.yml -f compose.agent.yml pull
+docker compose -f compose.yml -f compose.agent.yml up -d
+docker compose -f compose.yml -f compose.agent.yml restart openai-tunnel
+```
+
+If v0.5 ChatGPT file ingress is also enabled, add `--profile file-ingress` to the same Compose invocation; do not replace the Agent overlay with the profile. Recreating `serverfs-mcp` with only the base file removes the Agent socket/lock mounts and makes the runtime surface Agent-disabled even when the `.env` still contains valid Agent policy.
 
 Building the **source** yourself (dependency pins, local changes) uses a scratch tag, so a pinned release tag is never repointed at local code:
 
@@ -294,9 +307,15 @@ SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.4.0
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
 
+### Upgrading to v0.5
+
+The upgrade is backward-compatible by default: `SERVERFS_FILE_INGRESS_ENABLED=false`, the ingress sidecar is not started unless the `file-ingress` profile is selected, and existing Base64 binary transfer continues to work. To opt in only after measuring the real ChatGPT temporary-download hostnames, set `SERVERFS_FILE_INGRESS_ENABLED=true`, set the exact comma-separated `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`, and add `--profile file-ingress` to the same Compose command you already use.
+
+Rollback is equally narrow: set `SERVERFS_FILE_INGRESS_ENABLED=false`, stop/remove the optional `serverfs-file-ingress` profile service if it was running, pin `SERVERFS_IMAGE` back to the previous release, then `pull` + `up -d` using the same base/Agent overlay shape as before and restart `openai-tunnel`. No workdir data migration is involved.
+
 ### Upgrading from v0.1
 
-Nothing to do beyond bumping `SERVERFS_IMAGE`: the new tool surface is additive, every existing workdir stays read-only (no `WORKDIR_XX_READ_ONLY` in a v0.1 `.env` means `true`), and the deny/hidden policy is unchanged. Run `docker compose pull && docker compose up -d` last — starting the container is what replaces the running one.
+Nothing to do beyond bumping `SERVERFS_IMAGE`: the new tool surface is additive, every existing workdir stays read-only (no `WORKDIR_XX_READ_ONLY` in a v0.1 `.env` means `true`), and the deny/hidden policy is unchanged. Preserve the deployment surface shown above when recreating the container.
 
 ## Development
 

@@ -249,8 +249,11 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase B — MCP ingress client
 
-> Status: **COMPLETE / LOCALLY VERIFIED**. The MCP process enforces its workdir byte
-> ceiling again and maps sidecar failures to agent-safe codes without reflecting URLs.
+> Status: **COMPLETE / TARGETED POST-HARDENING VERIFIED**. The MCP process enforces its
+> workdir byte ceiling again, maps sidecar failures to agent-safe codes without reflecting
+> URLs, and now connects only to the fixed internal sidecar host/port/path through
+> `HTTPConnection` (no internal redirect following). The current targeted v0.5 gate is
+> 80 passed with Ruff lint/format green.
 
 - add bounded internal HTTP client;
 - map sidecar statuses/codes to ServerFS errors;
@@ -286,11 +289,13 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase E — Integration and real ChatGPT E2E
 
-> Status: **LOCAL CONTAINER E2E COMPLETE / LIVE CHATGPT E2E PENDING**. Root regression,
-> image build and the real MCP -> isolated sidecar -> public HTTPS -> workdir -> binary
-> download round trip passed. The remaining gate requires refreshed ChatGPT tool discovery
-> and measurement of the live temporary-download host/redirect chain. See
-> `docs/phase-e-v0.5-local-acceptance-2026-09-22.md`.
+> Status: **LOCAL CONTAINER E2E COMPLETE / POST-HARDENING FULL RERUN + LIVE CHATGPT E2E
+> PENDING**. The recorded root regression, image build and real MCP -> isolated sidecar ->
+> public HTTPS -> workdir -> binary download round trip passed. A subsequent hardening
+> change narrowed the MCP-to-sidecar client to one fixed internal HTTP endpoint; its
+> targeted suite is green, but the full root/build gate must be rerun on that exact tree
+> before release. Live ChatGPT discovery and temporary-download host/redirect measurement
+> also remain. See `docs/phase-e-v0.5-local-acceptance-2026-09-22.md`.
 
 - run unit/full regression gates;
 - build Compose image;
@@ -306,10 +311,12 @@ fails calls with a coded recoverable error, not silent fallback to model-generat
 
 ### Phase F — Release closure
 
-> Status: **LOCAL RELEASE GATES COMPLETE / LIVE CHATGPT E2E PENDING**. Runtime docs/config
-> examples, root regression, Compose renders, scratch image build, container-isolation E2E,
-> explicit >4-MiB HTTP compatibility, site build and independent Agent Bridge regression are
-> green. Only live ChatGPT file-parameter E2E and final Git/release closure remain.
+> Status: **PREVIOUS LOCAL RELEASE GATE COMPLETE / CURRENT FULL RERUN + LIVE CHATGPT E2E
+> PENDING**. Runtime docs/config examples, root regression, Compose renders, scratch image
+> build, container-isolation E2E, explicit >4-MiB HTTP compatibility, site build and
+> independent Agent Bridge regression were green at the recorded acceptance baseline. The
+> post-acceptance internal-client hardening has its targeted gate green but requires one
+> full release-gate rerun before final Git/release closure.
 
 - update README/site docs/config examples;
 - document migration and rollback;

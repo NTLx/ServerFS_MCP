@@ -37,7 +37,7 @@ The explicit ServerFS `path` always selects the destination. Client metadata suc
 
 File ingress is independently disabled by default. Set `SERVERFS_FILE_INGRESS_ENABLED=true`, configure exact measured hostnames in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`, and start Compose with `--profile file-ingress`.
 
-When enabled, `upload_binary_file` advertises `_meta["openai/fileParams"] = ["file"]`. The isolated ingress sidecar fetches the temporary HTTPS URL; the main ServerFS MCP container keeps no Internet egress. The sidecar has no workdir mounts, no OpenAI credentials, no published port, and rejects non-allowlisted hosts or non-global resolved addresses.
+When enabled, `upload_binary_file` advertises `_meta["openai/fileParams"] = ["file"]`. The MCP process calls only the fixed internal `serverfs-file-ingress:8081/fetch` endpoint and does not follow internal redirects. The isolated ingress sidecar fetches the temporary HTTPS URL; the main ServerFS MCP container keeps no Internet egress. The sidecar has no workdir mounts, no OpenAI credentials, no published port, and rejects non-allowlisted hosts or non-global resolved addresses while revalidating every upstream redirect.
 
 Binary transfer never bypasses workdir authorization. Upload still requires a read-write workdir.
 

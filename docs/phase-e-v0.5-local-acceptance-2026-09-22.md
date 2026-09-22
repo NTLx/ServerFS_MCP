@@ -188,6 +188,23 @@ After the final run:
 
 No production container was started, stopped, recreated or modified.
 
+## Post-acceptance hardening addendum
+
+After the container acceptance above, the MCP-to-sidecar client was narrowed further:
+it now uses `http.client.HTTPConnection` to the fixed internal
+`serverfs-file-ingress:8081/fetch` endpoint and therefore cannot follow an internal HTTP
+redirect to another destination. The OpenAI-facing sidecar redirect logic is unchanged and
+still revalidates every upstream HTTPS redirect.
+
+The targeted gate on this post-hardening tree passed with **80 tests**, Ruff lint green and
+Ruff format green, covering binary upload, ingress URL/DNS/redirect/size policy, the fixed
+internal endpoint, Compose isolation, configuration and MCP transport-body sizing.
+
+Because this source change happened after the full 790-test/build/site/Agent-Bridge gate
+recorded above, that full release gate must be rerun on the exact final tree before v0.5.0
+is considered release-ready. The earlier evidence remains valid for the container and
+transport behaviour it exercised, but is not a substitute for that final rerun.
+
 ## Remaining Phase E gate
 
 This acceptance proves the current ServerFS/container path using the OpenAI file-object
