@@ -45,7 +45,18 @@ WORKDIR_02_READ_ONLY=false
 - ChatGPT 文件入口默认关闭，并且需要同时设置 `SERVERFS_FILE_INGRESS_ENABLED=true` 与启用 `file-ingress` Compose profile。
 - 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
 - Agent 策略只有在显式配置后才启用。
+- Jev Advisors 只有在 `SERVERFS_JEV_API_KEY` 非空时才启用；该 Key 只进入宿主机 Agent Bridge 部署路径，不进入 MCP 容器。
 - MCP 工具结果不会暴露宿主机路径。
 - Workdir 路径拼写错误会明确失败，而不是静默创建目录。
+
+## 可选 Jev Advisors
+
+如需启用宿主机 advisory suite，在现有、未跟踪的 `.env` 中设置 TypeSafe API Key：
+
+```text
+SERVERFS_JEV_API_KEY=<your key>
+```
+
+留空即可完全关闭 Agent Task Preflight、Runtime Router 与 Approval Advisor。正常 Agent Bridge 安装器只会把已配置的 Key 渲染到用户自有、权限为 `0600` 的配置中。运行行为与安全边界详见 [Jev Advisors](./jev-advisors/)。
 
 完整环境变量参考请查看仓库 [README](https://github.com/NTLx/ServerFS_MCP#workdir-configuration)。

@@ -56,6 +56,23 @@ Host Agent Bridge
 
 The Bridge runs as a user-scoped host service and owns its runtime socket, locks, installed releases, configuration, and state outside the repository checkout.
 
+### Optional Jev advisory path
+
+```text
+Agent task / provider approval
+   │
+   ▼
+Host Agent Bridge
+   │  minimized structured state
+   ▼
+TypeSafe Jev API
+   │  probabilities / confidence / Noul
+   ▼
+Advisory result only
+```
+
+Jev runs from the host Bridge, not the MCP container. Task Preflight and Runtime Router share one task-submission request; Approval Advisor runs only after a provider creates an approval request. These outputs never become authorization or runtime-selection authority.
+
 ## Capability boundaries
 
 ServerFS exposes narrow operations rather than a generic execution primitive:
@@ -65,5 +82,6 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - bounded whole-file binary transfer
 - optional isolated ChatGPT file ingress
 - structured Agent task RPC
+- optional host-side Jev advisory decisions
 
-Every optional capability is separately gated.
+Every optional capability is separately gated. Jev does not change the 11 / 13 / 19 / 21 MCP tool surfaces because it is an internal Agent Bridge advisor, not an MCP capability surface.

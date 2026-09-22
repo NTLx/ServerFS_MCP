@@ -42,6 +42,14 @@ Current deployments can expose:
 - 19 tools: filesystem + Agent
 - 21 tools: filesystem + binary + Agent
 
+## Optional Jev advisors
+
+The host Bridge can optionally use TypeSafe Jev as an **advisory-only** decision layer. It does not add any MCP tool or Agent runtime.
+
+With `SERVERFS_JEV_API_KEY` configured, one task-submission request provides both Agent Task Preflight and Runtime Router advice. If the native provider later creates a concrete approval request, Approval Advisor may make one additional Jev request; identical approvals within the same task reuse cached advice. With no key, none of these Jev paths exist.
+
+Jev never overrides the explicit runtime, workdir policy, writer lease, provider approval state, or `respond_agent_approval`. See [Jev Advisors](./jev-advisors/) for the model contract, request flow, data minimization, and failure behavior.
+
 ## Delegation hygiene
 
 `submit_agent_task` is intentionally an objective-level interface, not a place to embed an

@@ -73,7 +73,7 @@ additional approval-specific request and attach its advisory result to the exist
 approval payload plus an `approval.advice` event. No additional request is made for ordinary
 turns or question prompts. None of the advisors can approve/deny permissions, change
 runtime/workdir/profile, mutate files, or rewrite the prompt. The current experiment pins
-`jev-1.13.0` for reproducible evaluation.
+`jev-1.13.0` for reproducible evaluation. The public operator-facing overview is the [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/).
 
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
 paths must already be real directories, aliases and slots are validated, and unknown

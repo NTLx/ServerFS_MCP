@@ -38,4 +38,12 @@ The transport accepts only the fixed internal authority `serverfs-mcp:8000`, rej
 
 Agent support is opt-in and lives behind a host-side Unix socket. The MCP container receives structured Agent capabilities, not shell access to the host.
 
+## Jev advisor boundary
+
+Jev is optional and runs only from the host Agent Bridge. It is not part of the MCP authorization path, runtime allowlist, writer lease, or native provider approval authority. A missing/failed Jev call removes advisory context only; it never grants additional capability.
+
+The TypeSafe API key is rendered only into the user-owned Bridge config and is never passed to the MCP container. Approval Advisor sends a minimized, redacted approval state and applies an additional secret/token/password sanitizer before the external request. Identical approval advice may be cached only within the same task and never resolves the approval automatically.
+
+See [Jev Advisors](./jev-advisors/) for the complete advisory contract.
+
 For the full threat model and implementation details, see the repository [Security Model](https://github.com/NTLx/ServerFS_MCP#security-model).

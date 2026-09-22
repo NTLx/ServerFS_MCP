@@ -220,7 +220,7 @@ SERVERFS_CLAUDE_BIN=/home/me/.local/bin/claude
 Provider authentication/settings remain the same user's native files. Jev is not an
 Agent runtime and does not inherit Codex/Claude credentials. For the experimental advisory
 Jev features, put the TypeSafe key only in the repository `.env` as
-`SERVERFS_JEV_API_KEY=<key>`; an empty value means all Jev advisory features are absent.
+`SERVERFS_JEV_API_KEY=<key>`; an empty value means all Jev advisory features are absent. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) for the model contract, request economy, and authority boundary.
 
 The user service deliberately does not source `.bashrc` or `.zshrc`.
 If the direct CLI depends on environment variables, put only the required

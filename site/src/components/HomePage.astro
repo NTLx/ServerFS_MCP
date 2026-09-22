@@ -79,8 +79,9 @@ const copy = {
     agentEyebrow: 'OPTIONAL AGENT BRIDGE',
     agentTitle: 'Native agents stay on the host.',
     agentBody:
-      'ServerFS brokers structured tasks over a user-owned Unix socket. Codex and Claude keep their native environment; the MCP container never becomes a generic host shell.',
+      'ServerFS brokers structured tasks over a user-owned Unix socket. Codex and Claude keep their native environment; mainline-experimental Jev advisors add task preflight, routing, and approval context without becoming an authority or changing the MCP tool surface.',
     exploreAgent: 'Explore Agent Bridge',
+    exploreJev: 'Explore Jev Advisors',
     mcpContainer: 'MCP CONTAINER',
     hostService: 'HOST USER SERVICE',
     quickStartBar: 'serverfs · quick start',
@@ -88,7 +89,7 @@ const copy = {
     quickTitleLine1: 'One Compose stack.',
     quickTitleLine2: 'Your machine. Your policy.',
     quickBody:
-      'Start with the 11-tool filesystem surface. Add binary transfer, isolated ChatGPT file ingress, or the Agent Bridge only when the deployment actually needs them.',
+      'Start with the 11-tool filesystem surface. Add binary transfer, isolated ChatGPT file ingress, the Agent Bridge, or host-side Jev advisors only when the deployment actually needs them.',
     readDeployment: 'Read the deployment guide',
     finalTitleLine1: 'Make your server legible to AI.',
     finalTitleLine2: 'Keep the boundary explicit.',
@@ -166,8 +167,9 @@ const copy = {
     agentEyebrow: '可选 AGENT BRIDGE',
     agentTitle: '原生 Agent 留在宿主机。',
     agentBody:
-      'ServerFS 通过用户自有 Unix socket 转发结构化任务。Codex 和 Claude 保留原生运行环境，MCP 容器不会因此变成宿主机的通用 Shell。',
+      'ServerFS 通过用户自有 Unix socket 转发结构化任务。Codex 和 Claude 保留原生运行环境；已合入 main 的实验性 Jev Advisors 提供 task preflight、路由与 approval context，但不会获得授权权力，也不会改变 MCP 工具能力面。',
     exploreAgent: '了解 Agent Bridge',
+    exploreJev: '了解 Jev Advisors',
     mcpContainer: 'MCP 容器',
     hostService: '宿主机用户服务',
     quickStartBar: 'serverfs · 快速开始',
@@ -175,7 +177,7 @@ const copy = {
     quickTitleLine1: '一套 Compose。',
     quickTitleLine2: '你的机器，你的策略。',
     quickBody:
-      '从 11 个文件系统工具开始，只在部署确实需要时再增加二进制传输、隔离的 ChatGPT 文件入口或 Agent Bridge。',
+      '从 11 个文件系统工具开始，只在部署确实需要时再增加二进制传输、隔离的 ChatGPT 文件入口、Agent Bridge 或宿主机 Jev Advisors。',
     readDeployment: '阅读部署指南',
     finalTitleLine1: '让 AI 理解你的服务器。',
     finalTitleLine2: '让边界始终清晰。',
@@ -414,6 +416,9 @@ const canonicalUrl = isZh
           <p>{c.agentBody}</p>
           <a class="text-link" href={local('docs/agent-bridge/')}>
             {c.exploreAgent} <span aria-hidden="true">→</span>
+          </a>
+          <a class="text-link" href={local('docs/jev-advisors/')}>
+            {c.exploreJev} <span aria-hidden="true">→</span>
           </a>
         </div>
 

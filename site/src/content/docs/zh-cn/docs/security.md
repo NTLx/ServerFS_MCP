@@ -38,4 +38,12 @@ v0.4.0 引入了 MCP Streamable HTTP DNS-rebinding protection；v0.5.0 保持这
 
 Agent 支持是 opt-in，并位于宿主机 Unix socket 之后。MCP 容器获得的是结构化 Agent 能力，而不是宿主机 Shell。
 
+## Jev Advisor 边界
+
+Jev 是可选能力，只从宿主机 Agent Bridge 发起调用。它不属于 MCP 授权路径、runtime allowlist、writer lease，也不拥有 provider 原生 approval 的决定权。Jev 调用缺失或失败时，只会缺少 advisory context，不会因此得到更宽能力。
+
+TypeSafe API Key 只会渲染到用户自有的 Bridge 配置，不会进入 MCP 容器。Approval Advisor 只发送最小化、已 redaction 的 approval state，并在外发前再次清洗 secret/token/password 等敏感模式。同一 task 内完全相同的 approval advice 可以复用缓存，但缓存本身绝不会完成审批。
+
+完整 advisory 契约详见 [Jev Advisors](./jev-advisors/)。
+
 完整 threat model 与实现细节请查看仓库 [Security Model](https://github.com/NTLx/ServerFS_MCP#security-model)。

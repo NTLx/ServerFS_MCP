@@ -6,8 +6,8 @@ This script intentionally implements a small, strict subset of Docker Compose
 file. The normal ServerFS .env is the single source of truth for workdirs,
 Agent policy, deployment identity/paths and provider executable locations.
 Provider secrets and shell-only environment normally stay outside the repository in the
-user-owned provider.env loaded by the systemd user service. The experimental Jev advisor
-features are the explicit exception: SERVERFS_JEV_API_KEY is read from the untracked repository
+user-owned provider.env loaded by the systemd user service. The opt-in experimental Jev
+advisor suite is the explicit exception: SERVERFS_JEV_API_KEY is read from the untracked repository
 .env and rendered only into the private 0600 Bridge config.
 """
 

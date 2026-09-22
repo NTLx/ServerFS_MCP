@@ -42,6 +42,14 @@ Unix socket
 - 19 个工具：文件系统 + Agent
 - 21 个工具：文件系统 + 二进制 + Agent
 
+## 可选 Jev Advisors
+
+宿主机 Bridge 可以按需使用 TypeSafe Jev 作为 **advisory-only** 决策辅助层。它不会新增 MCP 工具，也不会成为新的 Agent runtime。
+
+配置 `SERVERFS_JEV_API_KEY` 后，任务提交阶段的一次请求会同时给出 Agent Task Preflight 与 Runtime Router 建议；如果原生 provider 后续真的生成 approval request，Approval Advisor 才可能再发起一次 Jev 请求，同一 task 内完全相同的 approval 会复用缓存。未配置 Key 时，这些 Jev 路径完全不存在。
+
+Jev 不会覆盖显式 runtime、workdir policy、writer lease、provider approval 状态或 `respond_agent_approval`。模型契约、请求流、数据最小化与失败行为详见 [Jev Advisors](./jev-advisors/)。
+
 ## 委派任务编排规范
 
 `submit_agent_task` 的定位是“目标级接口”，不是把整段运维过程原样塞进去的地方。

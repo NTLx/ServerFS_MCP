@@ -1,6 +1,6 @@
 # Jev Agent Task Preflight experiment
 
-Status: opt-in experimental capability on `main` (developed on `experiment/jev-agent-preflight`)
+Status: opt-in experimental capability on `main` (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
 
 This experiment evaluates whether TypeSafe Jev can improve the quality and routing signal of
 ServerFS Agent delegation without becoming part of the authorization or safety boundary.
@@ -48,7 +48,12 @@ The experiment pins:
 - Jev model: `jev-1.13.0`
 
 The model is pinned rather than using `jev-latest` so repeated evaluations can be compared
-against one stable model version.
+against one stable model version. TypeSafe currently documents Jev 1.13 as text-only with a
+64k total request budget plus a 32k limit for the state and single longest question; English
+is the primary training language and currently the most accurate, while CJK is supported but
+should be calibrated on the application's own data.
+Those constraints are part of why ServerFS keeps every Jev result advisory rather than
+authoritative.
 
 Official API documentation:
 

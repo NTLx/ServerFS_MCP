@@ -80,7 +80,7 @@ The repository-root `.env` is the single deployment configuration source for bot
 ServerFS and Phase E. Do not reintroduce `.env.agent`, a second env-file precedence layer,
 or installer-generated deployment env files. `.env.example` documents the complete
 configuration surface. Provider secrets/shell-only variables remain outside the repository
-in `~/.config/serverfs-agent-bridge/provider.env` except for the explicit Jev experiment:
+in `~/.config/serverfs-agent-bridge/provider.env` except for the opt-in Jev advisor suite:
 `SERVERFS_JEV_API_KEY` lives in the existing untracked repository `.env`, is omitted when
 empty, and when configured is rendered only into the private 0600 Bridge config. It must
 never be passed into the MCP container, logs, RPC responses, or task events.

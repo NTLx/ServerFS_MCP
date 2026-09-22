@@ -40,6 +40,16 @@ docker compose -f compose.yml -f compose.agent.yml up -d
 
 启用之前，请先按照仓库中的 [Agent Bridge 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md) 安装并验证宿主机 Agent Bridge。
 
+### 可选 Jev Advisors
+
+如果需要 task preflight、runtime routing 与 provider approval 的 advisory context，可在安装/更新 Bridge 前向现有、未跟踪的 `.env` 中加入 TypeSafe API Key：
+
+```text
+SERVERFS_JEV_API_KEY=<your key>
+```
+
+留空即可让 Agent Bridge 完全不依赖 Jev。无需额外修改 MCP 容器配置，也无需刷新 ChatGPT 插件。详见 [Jev Advisors](./jev-advisors/)。
+
 ## ChatGPT 文件参数入口
 
 v0.5.0 可以让 `upload_binary_file` 直接接收 ChatGPT/OpenAI `file` 参数，同时保持 MCP 主容器没有互联网出口。二进制传输与文件入口是两个独立 opt-in。常见 ChatGPT 场景可设置：

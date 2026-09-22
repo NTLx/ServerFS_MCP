@@ -14,7 +14,7 @@ export default defineConfig({
         alt: 'ServerFS',
       },
       description:
-        'Secure, scoped Linux filesystem access for ChatGPT and AI agents — read-only by default, with controlled mutations, binary transfer, and an optional Agent Bridge.',
+        'Secure, scoped Linux filesystem access for ChatGPT and AI agents — read-only by default, with controlled mutations, binary transfer, an optional Agent Bridge, and opt-in Jev advisory decisions.',
       defaultLocale: 'root',
       locales: {
         root: {
@@ -66,6 +66,11 @@ export default defineConfig({
               label: 'Agent Bridge',
               translations: { 'zh-CN': 'Agent Bridge' },
               slug: 'docs/agent-bridge',
+            },
+            {
+              label: 'Jev Advisors',
+              translations: { 'zh-CN': 'Jev Advisors' },
+              slug: 'docs/jev-advisors',
             },
           ],
         },

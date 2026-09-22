@@ -40,6 +40,16 @@ docker compose -f compose.yml -f compose.agent.yml up -d
 
 Before enabling it, install and verify the host-side Agent Bridge as described in the repository's [Agent Bridge deployment guide](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md).
 
+### Optional Jev advisors
+
+If you want advisory task preflight, runtime routing, and provider-approval context, add a TypeSafe API key to the existing untracked `.env` before installing/updating the Bridge:
+
+```text
+SERVERFS_JEV_API_KEY=<your key>
+```
+
+Leave it empty to keep the Agent Bridge completely Jev-free. No extra MCP container configuration or ChatGPT plugin refresh is required. See [Jev Advisors](./jev-advisors/) for details.
+
 ## ChatGPT file-parameter ingress
 
 v0.5.0 can accept a ChatGPT/OpenAI `file` parameter as the source for `upload_binary_file` without giving the main MCP container Internet egress. Binary transfer and file ingress are separate opt-ins. For the common ChatGPT path, set:
