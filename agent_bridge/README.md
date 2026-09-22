@@ -9,9 +9,9 @@ The Bridge remains a separate host process from the `serverfs-mcp` package. Prod
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
 while the base `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
-> Experimental branch note: `experiment/jev-agent-preflight` layers an optional Jev-backed
-> advisory task-quality Preflight, Runtime Router, and Approval Advisor on top of this frozen
-> provider-neutral baseline. The experiment does not
+> Experimental mainline note: `main` includes an optional Jev-backed advisory task-quality
+> Preflight, Runtime Router, and Approval Advisor on top of this frozen provider-neutral
+> baseline. These capabilities do not
 > change the MCP tool surface, Bridge RPC, runtime allowlist, writer lease, provider adapters,
 > approval/question semantics, or task authorization. It is disabled unless
 > `SERVERFS_JEV_API_KEY` is non-empty.
@@ -62,7 +62,7 @@ steering should stay within that objective; distinct work belongs in a new task.
 least-authority and clarity rule, not an instruction-obfuscation layer: the Bridge must
 never encode, disguise, split or rewrite prompts in order to evade provider safety checks.
 
-On the Jev experiment branch, one configured advisory call evaluates those properties before
+When the opt-in Jev advisor is configured on `main`, one advisory call evaluates those properties before
 the writer lease is acquired and also produces a Runtime Router recommendation among
 `direct_serverfs_tool`, `codex`, `claude`, and `human_review`. Successful quality results are
 persisted as `task.preflight`; the derived router object is persisted as `task.routing_advice`.

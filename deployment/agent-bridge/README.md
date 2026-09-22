@@ -136,8 +136,8 @@ Agent settings into the container, so these values remain inert without
 
 Provider secrets and shell-only environment are intentionally **not** stored in
 `.env`; they remain in the user-owned `provider.env` described in step 4. The experimental
-Jev advisory features are the one explicit exception on `experiment/jev-agent-preflight`:
-`SERVERFS_JEV_API_KEY` is their opt-in master gate. Leave it empty to disable Preflight,
+Jev advisory features are the one explicit exception: `SERVERFS_JEV_API_KEY` is their opt-in
+master gate on `main`. Leave it empty to disable Preflight,
 Runtime Router, and Approval Advisor functionality. When non-empty, the installer renders
 the key only into the user-owned
 `0600` Bridge `config.json`; it is never passed into the MCP container.
