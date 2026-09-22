@@ -8,6 +8,11 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'ServerFS MCP',
+      favicon: '/favicon.svg',
+      logo: {
+        src: './src/assets/serverfs-mark.svg',
+        alt: 'ServerFS',
+      },
       description:
         'Secure, scoped Linux filesystem access for ChatGPT and AI agents — read-only by default, with controlled mutations, binary transfer, and an optional Agent Bridge.',
       social: [
