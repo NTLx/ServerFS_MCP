@@ -157,6 +157,16 @@ a {
   color: #fff;
 }
 
+.language-link {
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #9aa4b6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
 .github-link {
   display: inline-flex;
   align-items: center;
@@ -233,6 +243,14 @@ h1 {
 
 .headline-muted {
   color: #aeb7c9;
+}
+
+html[lang="zh-CN"] h1 {
+  letter-spacing: -0.045em;
+}
+
+html[lang="zh-CN"] .hero-lede {
+  line-height: 1.8;
 }
 
 .hero-lede {

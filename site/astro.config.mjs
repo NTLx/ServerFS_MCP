@@ -15,6 +15,17 @@ export default defineConfig({
       },
       description:
         'Secure, scoped Linux filesystem access for ChatGPT and AI agents — read-only by default, with controlled mutations, binary transfer, and an optional Agent Bridge.',
+      defaultLocale: 'root',
+      locales: {
+        root: {
+          label: 'English',
+          lang: 'en',
+        },
+        'zh-cn': {
+          label: '简体中文',
+          lang: 'zh-CN',
+        },
+      },
       social: [
         {
           icon: 'github',
@@ -27,24 +38,51 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Start',
+          translations: { 'zh-CN': '开始' },
           items: [
-            { label: 'Overview', slug: 'docs' },
-            { label: 'Getting Started', slug: 'docs/getting-started' },
-            { label: 'Configuration', slug: 'docs/configuration' },
+            { label: 'Overview', translations: { 'zh-CN': '概览' }, slug: 'docs' },
+            {
+              label: 'Getting Started',
+              translations: { 'zh-CN': '快速开始' },
+              slug: 'docs/getting-started',
+            },
+            {
+              label: 'Configuration',
+              translations: { 'zh-CN': '配置' },
+              slug: 'docs/configuration',
+            },
           ],
         },
         {
           label: 'Capabilities',
+          translations: { 'zh-CN': '能力' },
           items: [
-            { label: 'Binary Transfer', slug: 'docs/binary-transfer' },
-            { label: 'Agent Bridge', slug: 'docs/agent-bridge' },
+            {
+              label: 'Binary Transfer',
+              translations: { 'zh-CN': '二进制传输' },
+              slug: 'docs/binary-transfer',
+            },
+            {
+              label: 'Agent Bridge',
+              translations: { 'zh-CN': 'Agent Bridge' },
+              slug: 'docs/agent-bridge',
+            },
           ],
         },
         {
           label: 'Trust Boundary',
+          translations: { 'zh-CN': '信任边界' },
           items: [
-            { label: 'Architecture', slug: 'docs/architecture' },
-            { label: 'Security Model', slug: 'docs/security' },
+            {
+              label: 'Architecture',
+              translations: { 'zh-CN': '架构' },
+              slug: 'docs/architecture',
+            },
+            {
+              label: 'Security Model',
+              translations: { 'zh-CN': '安全模型' },
+              slug: 'docs/security',
+            },
           ],
         },
       ],

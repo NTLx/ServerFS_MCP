@@ -11,6 +11,13 @@ The project website is a fully static Astro + Starlight site intended for GitHub
 
 No SSR, database, serverless runtime or third-party hosting service is required.
 
+## Languages
+
+- English is the root/default locale: `/ServerFS_MCP/`
+- Simplified Chinese is served at: `/ServerFS_MCP/zh-cn/`
+- Starlight provides locale-aware docs routing and its built-in Chinese UI translations.
+- The custom landing page uses one shared Astro component with a locale-specific copy dictionary.
+
 ## Local development
 
 Requires Node.js 22.12 or newer.
@@ -35,11 +42,14 @@ The GitHub Pages project path is configured as `/ServerFS_MCP/` in `astro.config
 site/
 ├── public/
 ├── src/
-│   ├── content/docs/docs/   # Starlight pages mounted at /docs/
-│   ├── pages/index.astro    # custom project landing page
+│   ├── components/           # shared landing-page components
+│   ├── content/
+│   │   ├── docs/             # root English docs + zh-cn translations
+│   │   └── i18n/             # Starlight UI translation overrides
+│   ├── pages/                # English root + zh-cn landing routes
 │   └── styles/
 ├── astro.config.mjs
 └── package.json
 ```
 
-The landing page intentionally uses no React island or animation library in the initial version. Motion is CSS-only and respects `prefers-reduced-motion`. Add a UI dependency only when a concrete interaction justifies it.
+The landing page intentionally uses no React island or animation library. Motion is CSS-only and respects `prefers-reduced-motion`. Add a UI dependency only when a concrete interaction justifies it.
