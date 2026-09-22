@@ -69,6 +69,7 @@ def test_build_config_uses_same_user_identity_and_user_paths(tmp_path: Path) -> 
     assert config["enable_fake_runtime"] is False
     assert config["codex"]["enabled"] is True
     assert config["claude"]["enabled"] is False
+    assert "jev" not in config
     assert config["workdirs"] == [
         {
             "slot": 1,
@@ -94,6 +95,19 @@ def test_identity_must_match_current_user(tmp_path: Path, key: str, message: str
     values = valid_env(tmp_path)
     values[key] = str((os.getuid() if "UID" in key else os.getgid()) + 1)
     with pytest.raises(render.ConfigRenderError, match=message):
+        render.build_config(values)
+
+
+def test_jev_api_key_is_opt_in_and_rendered_only_when_nonempty(tmp_path: Path) -> None:
+    values = valid_env(tmp_path)
+    assert "jev" not in render.build_config(values)
+
+    values["SERVERFS_JEV_API_KEY"] = "jev-test-secret-123"
+    config = render.build_config(values)
+    assert config["jev"] == {"api_key": "jev-test-secret-123"}
+
+    values["SERVERFS_JEV_API_KEY"] = "bad key"
+    with pytest.raises(render.ConfigRenderError, match="SERVERFS_JEV_API_KEY"):
         render.build_config(values)
 
 
@@ -254,6 +268,7 @@ def test_env_example_has_single_agent_policy_pair_for_all_slots() -> None:
     assert text.count("SERVERFS_AGENT_RUNTIMES=") == 1
     assert text.count("SERVERFS_BINARY_TRANSFER_ENABLED=false") == 1
     assert text.count("SERVERFS_MAX_BINARY_TRANSFER_BYTES=8388608") == 1
+    assert text.count("SERVERFS_JEV_API_KEY=") == 1
     for slot in range(1, 17):
         prefix = f"WORKDIR_{slot:02d}"
         assert text.count(f"{prefix}_AGENT_MODE=") == 1

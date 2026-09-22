@@ -34,6 +34,7 @@ Linux filesystem
         optional binary path: download / upload / revision-guarded replace
         optional ChatGPT file ingress → isolated sidecar → temporary HTTPS file URL
         optional Agent path: eight Agent tools → host Agent Bridge → Codex/Claude
+          optional experimental Jev preflight → advisory task-quality evaluation only
    → OpenAI Secure MCP Tunnel (official tunnel-client container, outbound-only)
    → ChatGPT
 ```
@@ -41,6 +42,8 @@ Linux filesystem
 The MCP server container has **no Internet egress** and no published ports. The tunnel reaches it over a Docker-internal network. v0.5.0 adds an optional, separately isolated `serverfs-file-ingress` sidecar for ChatGPT file parameters; only that sidecar receives file-download egress, it has no workdir mounts or OpenAI credentials, and the main MCP container remains internal-only. The container root filesystem stays read-only regardless of any workdir setting.
 
 The default `compose.yml` exposes the original 11 filesystem tools. Binary transfer is opt-in: when at least one workdir enables it, `download_binary_file` and `upload_binary_file` are added, producing a 13-tool filesystem surface. When the administrator also configures Agent policy and uses `compose.agent.yml`, the overlay adds eight structured Agent tools. The four supported surfaces are therefore 11 / 13 / 19 / 21 tools for filesystem-only / filesystem+binary / filesystem+Agent / filesystem+binary+Agent. Agent tools broker structured tasks through the host-side Bridge; they are not a shell, argv, or generic command executor. Delegated tasks should therefore stay objective-level and capability-bounded: one authorized goal, explicit mutation scope/stop conditions, and only the context/evidence needed for that goal. This improves clarity and reduces accidental ambiguity; it is not intended to bypass provider safety checks.
+
+The `experiment/jev-agent-preflight` branch adds an optional **advisory-only** Jev task preflight inside the host Agent Bridge. It does not add an MCP tool, runtime, permission, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and task submission follows the existing path unchanged. When configured, the Bridge asks pinned `jev-1.13.0` for structured judgments about task atomicity, mutation scope, stop conditions, verification evidence, and whether the task looks better suited to bounded ServerFS primitives or a native Agent. The result is returned with `submit_agent_task` and recorded as a `task.preflight` event, but it never blocks, rewrites, reroutes, approves, or expands a task. See [the experiment note](docs/jev-agent-preflight-experiment.md).
 
 ## Prerequisites
 

@@ -22,6 +22,7 @@ _CONFIG_KEYS = frozenset(
         "enable_fake_runtime",
         "codex",
         "claude",
+        "jev",
         "workdirs",
     }
 )
@@ -47,6 +48,7 @@ _CODEX_KEYS = frozenset(
         "max_message_bytes",
     }
 )
+_JEV_KEYS = frozenset({"api_key"})
 _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _MAX_WORKDIR_SLOTS = 16
 
@@ -82,6 +84,15 @@ class ClaudeSettings:
 
 
 @dataclass(frozen=True)
+class JevSettings:
+    api_key: str | None = field(default=None, repr=False)
+
+    @property
+    def enabled(self) -> bool:
+        return self.api_key is not None
+
+
+@dataclass(frozen=True)
 class BridgeConfig:
     socket_path: Path
     state_dir: Path
@@ -91,6 +102,7 @@ class BridgeConfig:
     enable_fake_runtime: bool
     codex: CodexSettings
     claude: ClaudeSettings
+    jev: JevSettings
     policies: PolicyRegistry
 
     @classmethod
@@ -163,6 +175,7 @@ class BridgeConfig:
 
         codex = _load_codex_settings(data.get("codex"))
         claude = _load_claude_settings(data.get("claude"))
+        jev = _load_jev_settings(data.get("jev"))
         codex_policies = [policy for policy in policies if "codex" in policy.runtimes]
         if not codex.enabled and codex_policies:
             raise ValueError("codex runtime is allowlisted but codex.enabled is false")
@@ -197,8 +210,29 @@ class BridgeConfig:
             enable_fake_runtime=enable_fake_runtime,
             codex=codex,
             claude=claude,
+            jev=jev,
             policies=PolicyRegistry(policies),
         )
+
+
+def _load_jev_settings(value: Any) -> JevSettings:
+    if value is None:
+        return JevSettings()
+    if not isinstance(value, dict):
+        raise ValueError("jev must be an object")
+    _reject_unknown_keys(value, _JEV_KEYS, "jev")
+
+    raw = value.get("api_key")
+    if raw is None:
+        return JevSettings()
+    if not isinstance(raw, str):
+        raise ValueError("jev.api_key must be a string")
+    api_key = raw.strip()
+    if not api_key:
+        return JevSettings()
+    if not api_key.isascii() or any(char.isspace() or ord(char) < 32 for char in api_key):
+        raise ValueError("jev.api_key has an invalid format")
+    return JevSettings(api_key=api_key)
 
 
 def _load_claude_settings(value: Any) -> ClaudeSettings:

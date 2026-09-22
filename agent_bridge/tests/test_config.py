@@ -40,6 +40,28 @@ def test_load_review_config(tmp_path: Path) -> None:
     assert policy.mode is AgentMode.REVIEW
     assert policy.read_only is True
     assert policy.runtimes == frozenset({"fake"})
+    assert config.jev.enabled is False
+    assert config.jev.api_key is None
+
+
+def test_jev_config_is_opt_in_and_secret_repr_is_redacted(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    secret = "jev-test-secret-123"
+    config = BridgeConfig.load(write_config(tmp_path, repo, jev={"api_key": secret}))
+
+    assert config.jev.enabled is True
+    assert config.jev.api_key == secret
+    assert secret not in repr(config)
+    assert secret not in repr(config.jev)
+
+
+@pytest.mark.parametrize("value", ["has whitespace", "bad\nkey", 123])
+def test_jev_api_key_rejects_invalid_values(tmp_path: Path, value: object) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    with pytest.raises(ValueError, match="jev.api_key"):
+        BridgeConfig.load(write_config(tmp_path, repo, jev={"api_key": value}))
 
 
 def test_workspace_write_plus_read_only_fails_closed(tmp_path: Path) -> None:

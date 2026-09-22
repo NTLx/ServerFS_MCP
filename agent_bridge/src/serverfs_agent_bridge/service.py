@@ -20,6 +20,7 @@ from .models import (
     TaskStatus,
 )
 from .policy import PolicyRegistry, redact_host_path
+from .preflight import TaskPreflight
 from .store import TaskStore
 from .util import new_id
 
@@ -57,12 +58,14 @@ class BridgeService:
         adapters: dict[str, AgentAdapter],
         lease_manager: LeaseManager,
         limits: BridgeLimits | None = None,
+        preflight: TaskPreflight | None = None,
     ):
         self.store = store
         self.policies = policies
         self.adapters = dict(adapters)
         self.lease_manager = lease_manager
         self.limits = limits or BridgeLimits()
+        self.preflight = preflight
         self._background: dict[str, asyncio.Task[None]] = {}
         self._leases: dict[str, WorkdirLease] = {}
         self._pending_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
@@ -108,6 +111,8 @@ class BridgeService:
                 *(adapter.close() for adapter in self.adapters.values()),
                 return_exceptions=True,
             )
+        if self.preflight is not None:
+            await self.preflight.close()
 
     async def list_runtimes(self) -> dict[str, Any]:
         runtimes = []
@@ -190,6 +195,20 @@ class BridgeService:
                 "continuation requires a completed prior task",
             )
 
+        preflight_result: dict[str, Any] | None = None
+        if self.preflight is not None:
+            try:
+                preflight_result = await self.preflight.evaluate(
+                    runtime=runtime,
+                    workdir=workdir,
+                    path=path,
+                    profile=requested_profile.value,
+                    prompt=prompt,
+                    is_continuation=continue_from_task_id is not None,
+                )
+            except Exception:
+                preflight_result = {"status": "unavailable"}
+
         async with self._submit_lock:
             lease: WorkdirLease | None = None
             if requested_profile is AgentProfile.WORKSPACE_WRITE:
@@ -209,6 +228,8 @@ class BridgeService:
                 )
                 if lease is not None:
                     self._leases[task_id] = lease
+                if preflight_result is not None:
+                    self._try_append_event(task_id, "task.preflight", preflight_result)
                 background = asyncio.create_task(
                     self._run_task(
                         task_id=task_id,
@@ -235,7 +256,10 @@ class BridgeService:
             background.add_done_callback(
                 lambda completed: self._background_done(task_id, completed)
             )
-            return {"task_id": task.task_id, "status": task.status}
+            result: dict[str, Any] = {"task_id": task.task_id, "status": task.status}
+            if preflight_result is not None:
+                result["preflight"] = preflight_result
+            return result
 
     def _background_done(self, task_id: str, task: asyncio.Task[None]) -> None:
         self._background.pop(task_id, None)

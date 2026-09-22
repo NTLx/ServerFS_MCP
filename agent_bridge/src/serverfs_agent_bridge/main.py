@@ -10,6 +10,7 @@ from pathlib import Path
 from .adapters import ClaudeAdapter, CodexAdapter, FakeAdapter
 from .config import BridgeConfig
 from .leases import LeaseManager
+from .preflight import JevTaskPreflight
 from .protocol import BridgeProtocolServer
 from .service import BridgeService
 from .store import TaskStore
@@ -31,12 +32,19 @@ async def _serve(
         claude = ClaudeAdapter(config.claude)
         adapters[claude.name] = claude
 
+    preflight = (
+        JevTaskPreflight.from_api_key(config.jev.api_key)
+        if config.jev.enabled and config.jev.api_key is not None
+        else None
+    )
+
     store = TaskStore(config.state_dir)
     service = BridgeService(
         store=store,
         policies=config.policies,
         adapters=adapters,
         lease_manager=LeaseManager(config.lock_dir, shared_gid=config.allowed_peer_gid),
+        preflight=preflight,
     )
     await service.start()
 

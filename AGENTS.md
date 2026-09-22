@@ -23,6 +23,14 @@ adapter), D (Agent MCP surface) and E (production deployment) are complete and f
 `main`. Production Agent delegation remains opt-in through `compose.agent.yml`; the base
 `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
+The branch `experiment/jev-agent-preflight` is an explicitly isolated experiment over
+that frozen baseline. It may add an optional advisory preflight inside the host Bridge,
+but it must not change the MCP tool surface, Bridge RPC, runtime allowlists, provider
+adapters, authorization, approvals/questions, or writer-lease semantics. Jev is not an
+Agent runtime or a safety authority. With no `SERVERFS_JEV_API_KEY`, the experiment must
+construct no Jev client, make no Jev request, emit no preflight result, and preserve baseline
+task submission behavior. With a key, preflight remains fail-open and advisory only.
+
 **Phase D is frozen.** It added the eight provider-neutral Agent MCP tools, a thin
 stdlib Unix-socket Bridge client, fail-closed global/per-workdir Agent configuration,
 audit records, and the shared cross-process writer lease consumed by existing mutation
@@ -66,8 +74,11 @@ Phase E uses explicit `compose.agent.yml`.
 The repository-root `.env` is the single deployment configuration source for both base
 ServerFS and Phase E. Do not reintroduce `.env.agent`, a second env-file precedence layer,
 or installer-generated deployment env files. `.env.example` documents the complete
-non-secret configuration surface. Provider secrets/shell-only variables remain outside
-the repository in `~/.config/serverfs-agent-bridge/provider.env`.
+configuration surface. Provider secrets/shell-only variables remain outside the repository
+in `~/.config/serverfs-agent-bridge/provider.env` except for the explicit Jev experiment:
+`SERVERFS_JEV_API_KEY` lives in the existing untracked repository `.env`, is omitted when
+empty, and when configured is rendered only into the private 0600 Bridge config. It must
+never be passed into the MCP container, logs, RPC responses, or task events.
 
 **Streamable HTTP transport security is a v0.4 security invariant (GitHub #10).** The
 production endpoint remains `http://serverfs-mcp:8000/mcp`; `MCPServer.run()` must receive

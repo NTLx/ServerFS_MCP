@@ -124,6 +124,7 @@ SERVERFS_AGENT_PEER_GID=
 SERVERFS_AGENT_BRIDGE_HOST_SOCKET_DIR=/home/<user>/.local/share/serverfs-agent-bridge/runtime/socket
 SERVERFS_AGENT_LOCK_HOST_DIR=/home/<user>/.local/share/serverfs-agent-bridge/runtime/locks
 SERVERFS_AGENT_BRIDGE_STATE_DIR=/home/<user>/.local/state/serverfs-agent-bridge
+SERVERFS_JEV_API_KEY=
 ```
 
 Use the real absolute home path; `.env` values are not shell-expanded. Leave
@@ -134,7 +135,11 @@ Agent settings into the container, so these values remain inert without
 `compose.agent.yml`.
 
 Provider secrets and shell-only environment are intentionally **not** stored in
-`.env`; they remain in the user-owned `provider.env` described in step 4.
+`.env`; they remain in the user-owned `provider.env` described in step 4. The experimental
+Jev task preflight is the one explicit exception on `experiment/jev-agent-preflight`:
+`SERVERFS_JEV_API_KEY` is its opt-in master gate. Leave it empty to disable all Jev
+functionality. When non-empty, the installer renders the key only into the user-owned
+`0600` Bridge `config.json`; it is never passed into the MCP container.
 
 ## 2. Enable Agent policy for selected workdirs
 
@@ -211,7 +216,10 @@ SERVERFS_CODEX_BIN=/home/me/.local/bin/codex
 SERVERFS_CLAUDE_BIN=/home/me/.local/bin/claude
 ```
 
-Provider authentication/settings remain the same user's native files.
+Provider authentication/settings remain the same user's native files. Jev is not an
+Agent runtime and does not inherit Codex/Claude credentials. For the experimental advisory
+preflight, put the TypeSafe key only in the repository `.env` as
+`SERVERFS_JEV_API_KEY=<key>`; an empty value means the preflight is absent.
 
 The user service deliberately does not source `.bashrc` or `.zshrc`.
 If the direct CLI depends on environment variables, put only the required

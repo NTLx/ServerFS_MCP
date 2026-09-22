@@ -49,6 +49,26 @@ def make_service_with_limits(tmp_path: Path, limits: BridgeLimits) -> BridgeServ
     return service
 
 
+class FakePreflight:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls: list[dict] = []
+        self.closed = False
+
+    async def evaluate(self, **kwargs) -> dict:
+        self.calls.append(kwargs)
+        if self.fail:
+            raise RuntimeError("preflight unavailable")
+        return {
+            "status": "completed",
+            "model": "jev-1.13.0",
+            "answers": {"single_objective": 0.9},
+        }
+
+    async def close(self) -> None:
+        self.closed = True
+
+
 async def wait_for_status(service: BridgeService, task_id: str, *statuses: str) -> dict:
     for _ in range(500):
         task = service.get_task(task_id)
@@ -75,6 +95,61 @@ async def test_submit_returns_before_completion_and_finishes(tmp_path: Path) -> 
     assert task["final_response"] == "hello"
     assert service.store.get_task(submitted["task_id"]).native_session_id
     assert "native_session_id" not in task
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_optional_preflight_is_advisory_and_recorded(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:hello",
+    )
+
+    assert submitted["preflight"]["status"] == "completed"
+    assert preflight.calls == [
+        {
+            "runtime": "fake",
+            "workdir": "repo",
+            "path": "",
+            "profile": "review",
+            "prompt": "complete:hello",
+            "is_continuation": False,
+        }
+    ]
+    events = service.read_events(submitted["task_id"], limit=20)["events"]
+    assert any(event["event_type"] == "task.preflight" for event in events)
+    task = await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert task["final_response"] == "hello"
+
+    await service.close()
+    assert preflight.closed is True
+
+
+@pytest.mark.asyncio
+async def test_preflight_failure_fails_open(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.preflight = FakePreflight(fail=True)
+    await service.start()
+
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:still-runs",
+    )
+
+    assert submitted["preflight"] == {"status": "unavailable"}
+    task = await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert task["final_response"] == "still-runs"
     await service.close()
 
 

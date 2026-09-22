@@ -5,8 +5,10 @@ This script intentionally implements a small, strict subset of Docker Compose
 .env syntax. It does not execute shell syntax, expand variables or source the
 file. The normal ServerFS .env is the single source of truth for workdirs,
 Agent policy, deployment identity/paths and provider executable locations.
-Provider secrets and shell-only environment stay outside the repository in the
-user-owned provider.env loaded by the systemd user service.
+Provider secrets and shell-only environment normally stay outside the repository in the
+user-owned provider.env loaded by the systemd user service. The experimental Jev preflight
+is the explicit exception: SERVERFS_JEV_API_KEY is read from the untracked repository
+.env and rendered only into the private 0600 Bridge config.
 """
 
 from __future__ import annotations
@@ -118,6 +120,15 @@ def _absolute_path(raw: str, key: str) -> str:
     if not path.is_absolute():
         raise ConfigRenderError(f"{key} must be an absolute path")
     return str(path)
+
+
+def _optional_api_key(raw: str, key: str) -> str | None:
+    value = raw.strip()
+    if not value:
+        return None
+    if not value.isascii() or any(char.isspace() or ord(char) < 32 for char in value):
+        raise ConfigRenderError(f"{key} has an invalid format")
+    return value
 
 
 def _provider_binary(
@@ -274,8 +285,12 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         "SERVERFS_CLAUDE_BIN",
         enabled=claude_enabled,
     )
+    jev_api_key = _optional_api_key(
+        values.get("SERVERFS_JEV_API_KEY", ""),
+        "SERVERFS_JEV_API_KEY",
+    )
 
-    return {
+    config = {
         "socket_path": socket_path,
         "state_dir": state_dir,
         "lock_dir": lock_dir,
@@ -311,6 +326,9 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         },
         "workdirs": workdirs,
     }
+    if jev_api_key is not None:
+        config["jev"] = {"api_key": jev_api_key}
+    return config
 
 
 def write_atomic(path: Path, payload: dict[str, Any]) -> None:

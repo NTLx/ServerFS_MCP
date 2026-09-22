@@ -9,6 +9,12 @@ The Bridge remains a separate host process from the `serverfs-mcp` package. Prod
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
 while the base `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
+> Experimental branch note: `experiment/jev-agent-preflight` layers an optional Jev-backed
+> advisory preflight on top of this frozen provider-neutral baseline. The experiment does not
+> change the MCP tool surface, Bridge RPC, runtime allowlist, writer lease, provider adapters,
+> approval/question semantics, or task authorization. It is disabled unless
+> `SERVERFS_JEV_API_KEY` is non-empty.
+
 Phase A is frozen and provides the provider-neutral infrastructure:
 
 - JSON-lines RPC over a Unix-domain socket
@@ -54,6 +60,13 @@ mutation boundary/stop condition, and the evidence required for verification. Fo
 steering should stay within that objective; distinct work belongs in a new task. This is a
 least-authority and clarity rule, not an instruction-obfuscation layer: the Bridge must
 never encode, disguise, split or rewrite prompts in order to evade provider safety checks.
+
+On the Jev experiment branch, a configured preflight evaluates those properties before the
+writer lease is acquired. It is deliberately advisory and fail-open: successful evaluations
+are returned with task submission and persisted as `task.preflight`; an unavailable Jev
+evaluation is reported as `{"status": "unavailable"}` and the authorized task still runs.
+The preflight cannot approve permissions, change runtime/workdir/profile, mutate files, or
+rewrite the prompt. The current experiment pins `jev-1.13.0` for reproducible evaluation.
 
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
 paths must already be real directories, aliases and slots are validated, and unknown
