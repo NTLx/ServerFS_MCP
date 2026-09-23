@@ -5,16 +5,18 @@ import json
 import shutil
 import tempfile
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 from websockets.asyncio.server import unix_serve
 
+from serverfs_agent_bridge.adapters.base import ReconcileResult
 from serverfs_agent_bridge.adapters.codex import CodexAdapter
 from serverfs_agent_bridge.config import CodexSettings
 from serverfs_agent_bridge.leases import LeaseManager
-from serverfs_agent_bridge.models import AgentMode
+from serverfs_agent_bridge.models import AgentMode, ReconciliationStatus
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
 from serverfs_agent_bridge.service import BridgeService
 from serverfs_agent_bridge.store import TaskStore
@@ -537,6 +539,59 @@ async def test_codex_normal_task_and_continuation(tmp_path: Path, codex_home: Pa
     finally:
         await service.close()
         await mock.close()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_clears_guard_after_control_socket_failure_before_thread_start(
+    tmp_path: Path,
+    codex_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = make_service(tmp_path, codex_home)
+    adapter = service.adapters["codex"]
+    reconcile = adapter.reconcile_task
+
+    async def available_probe():
+        return adapter._runtime_info(available=True, version="test")
+
+    async def legacy_reconcile(_task):
+        return ReconcileResult(
+            status=ReconciliationStatus.NOT_RECOVERABLE,
+            provider_active=None,
+            detail="task has no persisted Codex thread id",
+        )
+
+    monkeypatch.setattr(adapter, "probe", available_probe)
+    monkeypatch.setattr(adapter, "reconcile_task", legacy_reconcile)
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="codex",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="socket-unavailable-before-thread-start",
+        )
+        failed = await wait_for_status(service, submitted["task_id"], "failed")
+        assert failed["error_code"] == "AGENT_RUNTIME_NOT_READY"
+        assert failed["error_message"] == ("Codex App Server daemon control socket is unavailable")
+
+        task = service.store.get_task(submitted["task_id"])
+        assert task.native_session_id is None
+        assert task.native_turn_id is None
+        assert service.guard_manager.read(1) is not None
+
+        ambiguous = replace(task, error_message="official Codex daemon start failed")
+        monkeypatch.setattr(adapter, "reconcile_task", reconcile)
+        unresolved = await adapter.reconcile_task(ambiguous)
+        assert unresolved.provider_active is None
+
+        result = await service._reconcile_guard(1)
+        assert result is not None
+        assert result.provider_active is False
+        assert service.guard_manager.read(1) is None
+    finally:
+        await service.close()
 
 
 @pytest.mark.asyncio

@@ -19,6 +19,7 @@ from ..errors import BridgeError
 
 _UDS_HANDSHAKE_URI = "ws://localhost/rpc"
 _DEFAULT_MAX_MESSAGE_BYTES = 128 * 1024 * 1024
+CONTROL_SOCKET_UNAVAILABLE_MESSAGE = "Codex App Server daemon control socket is unavailable"
 
 
 class CodexRpcError(BridgeError):
@@ -79,7 +80,7 @@ class CodexConnection:
         except Exception as exc:
             raise BridgeError(
                 "AGENT_RUNTIME_NOT_READY",
-                "Codex App Server daemon control socket is unavailable",
+                CONTROL_SOCKET_UNAVAILABLE_MESSAGE,
             ) from exc
 
         self._reader = asyncio.create_task(self._reader_loop(), name="serverfs-codex-rpc-reader")

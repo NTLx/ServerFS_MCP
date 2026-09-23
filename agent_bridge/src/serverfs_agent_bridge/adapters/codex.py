@@ -14,9 +14,9 @@ from typing import Any
 
 from ..config import CodexSettings
 from ..errors import BridgeError
-from ..models import AgentProfile, ReconciliationStatus, RuntimeInfo, TaskRecord
+from ..models import AgentProfile, ReconciliationStatus, RuntimeInfo, TaskRecord, TaskStatus
 from .base import AdapterResult, AgentAdapter, ReconcileResult, TaskContext
-from .codex_transport import CodexConnection
+from .codex_transport import CONTROL_SOCKET_UNAVAILABLE_MESSAGE, CodexConnection
 
 _COMMAND_APPROVAL = "item/commandExecution/requestApproval"
 _FILE_APPROVAL = "item/fileChange/requestApproval"
@@ -136,6 +136,17 @@ class CodexAdapter(AgentAdapter):
 
     async def reconcile_task(self, task: TaskRecord) -> ReconcileResult:
         if not task.native_session_id:
+            if (
+                task.status == TaskStatus.FAILED.value
+                and task.error_code == "AGENT_RUNTIME_NOT_READY"
+                and task.error_message == CONTROL_SOCKET_UNAVAILABLE_MESSAGE
+                and not task.native_turn_id
+            ):
+                return ReconcileResult(
+                    status=ReconciliationStatus.NOT_RECOVERABLE,
+                    provider_active=False,
+                    detail="Codex control socket failed before a native thread or turn started",
+                )
             return ReconcileResult(
                 status=ReconciliationStatus.NOT_RECOVERABLE,
                 provider_active=None,
