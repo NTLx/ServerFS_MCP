@@ -12,7 +12,7 @@ const isZh = locale === 'zh-cn';
 const copy = {
   en: {
     lang: 'en',
-    title: 'ServerFS MCP — Your filesystem, safely exposed to AI',
+    title: 'ServerFS MCP — Controlled Linux filesystem access for AI',
     description:
       'ServerFS MCP securely exposes selected Linux directories as controlled workdirs to ChatGPT and AI agents.',
     nav: { docs: 'Docs', architecture: 'Architecture', security: 'Security' },
@@ -20,9 +20,9 @@ const copy = {
     languageLabel: '切换到简体中文',
     release: 'v0.6.0',
     heroEyebrow: 'SECURE MCP FOR LINUX WORKDIRS',
-    headline: ['Your filesystem.', 'Safely exposed', 'to AI.'],
+    headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
-      'ServerFS gives ChatGPT and AI agents precise access to the Linux directories you choose — read-only by default, with opt-in mutations, bounded binary transfer, isolated ChatGPT file ingress, and a structured Codex / Claude Agent Bridge.',
+      'Expose only the Linux workdirs you choose. Read-only by default, with guarded writes, bounded binary transfer, isolated ChatGPT file ingress, and an optional native Agent Bridge.',
     getStarted: 'Get started',
     viewSource: 'View source',
     guaranteesShort: ['No shell', 'No escape', 'Scoped writes', 'MIT licensed'],
@@ -41,6 +41,10 @@ const copy = {
     internalNetwork: 'internal network',
     noPorts: 'no published ports',
     surfacesLabel: 'Capability surfaces',
+    capabilityEyebrow: 'PROGRESSIVE CAPABILITY',
+    capabilityTitle: 'Start narrow. Expand deliberately.',
+    capabilityBody:
+      'ServerFS grows by explicit opt-in. Each added surface is bounded, independently gated, and visible in the tool contract.',
     surfaces: [
       { count: '11', label: 'Filesystem', detail: 'safe read + guarded mutation surface' },
       { count: '13', label: '+ Binary', detail: 'bounded whole-file transfer' },
@@ -62,10 +66,11 @@ const copy = {
     principleLabel: 'DESIGN PRINCIPLE',
     principle:
       '“Give the model the smallest useful primitive — never a general-purpose escape hatch.”',
-    securityEyebrow: 'DEFENSE IN DEPTH',
-    securityTitle: 'Security is the architecture.',
+    securityEyebrow: 'SECURITY BY CONSTRUCTION',
+    securityTitle: 'Security is the shape of the interface.',
     securityBody:
       'ServerFS does not rely on one sandbox or one network assumption. Filesystem policy, transport validation, container isolation, and Agent boundaries reinforce each other.',
+    securityStatement: 'Narrow primitives. Explicit boundaries. No ambient authority.',
     guarantees: [
       'Read-only by default',
       'No shell or generic executor',
@@ -84,6 +89,8 @@ const copy = {
     exploreJev: 'Explore Jev Advisors',
     mcpContainer: 'MCP CONTAINER',
     hostService: 'HOST USER SERVICE',
+    advisoryOnly: 'ADVISORY ONLY',
+    policyDecides: 'policy decides',
     quickStartBar: 'serverfs · quick start',
     selfHosted: 'SELF-HOSTED',
     quickTitleLine1: 'One Compose stack.',
@@ -101,7 +108,7 @@ const copy = {
   },
   'zh-cn': {
     lang: 'zh-CN',
-    title: 'ServerFS MCP — 让 AI 安全访问你的文件系统',
+    title: 'ServerFS MCP — 让 AI 受控访问 Linux 文件系统',
     description:
       'ServerFS MCP 将你明确指定的 Linux 目录以受控 workdir 的形式安全开放给 ChatGPT 和 AI Agent。',
     nav: { docs: '文档', architecture: '架构', security: '安全' },
@@ -109,9 +116,9 @@ const copy = {
     languageLabel: 'Switch to English',
     release: 'v0.6.0',
     heroEyebrow: '面向 LINUX WORKDIR 的安全 MCP',
-    headline: ['你的文件系统。', '让 AI 安全访问。'],
+    headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
-      'ServerFS 让 ChatGPT 和 AI Agent 精确访问你指定的 Linux 目录——默认只读，并可按需启用受控写入、有界二进制传输、隔离的 ChatGPT 文件入口，以及结构化的 Codex / Claude Agent Bridge。',
+      '只开放你明确指定的 Linux workdir。默认只读，并可按需启用受控写入、有界二进制传输、隔离的 ChatGPT 文件入口，以及原生 Agent Bridge。',
     getStarted: '快速开始',
     viewSource: '查看源码',
     guaranteesShort: ['无 Shell', '无法越界', '受控写入', 'MIT 许可'],
@@ -130,6 +137,10 @@ const copy = {
     internalNetwork: '仅内部网络',
     noPorts: '无公开端口',
     surfacesLabel: '能力面',
+    capabilityEyebrow: '渐进式能力',
+    capabilityTitle: '从最小能力开始，按需扩展。',
+    capabilityBody:
+      'ServerFS 的能力通过显式 opt-in 逐层增加；每一层都范围受限、独立门控，并直接体现在工具契约中。',
     surfaces: [
       { count: '11', label: '文件系统', detail: '安全读取 + 受控写入能力面' },
       { count: '13', label: '+ 二进制', detail: '有界的整文件传输' },
@@ -150,10 +161,11 @@ const copy = {
     bound: '受控',
     principleLabel: '设计原则',
     principle: '“只给模型完成任务所需的最小能力，而不是一个通用逃生口。”',
-    securityEyebrow: '纵深防御',
-    securityTitle: '安全本身就是架构。',
+    securityEyebrow: '构造即安全',
+    securityTitle: '安全由接口形态决定。',
     securityBody:
       'ServerFS 不依赖单一 sandbox 或单一网络假设。文件系统策略、传输校验、容器隔离和 Agent 边界相互加固。',
+    securityStatement: '最小能力。显式边界。无环境权限。',
     guarantees: [
       '默认只读',
       '无 Shell 或通用执行器',
@@ -172,6 +184,8 @@ const copy = {
     exploreJev: '了解 Jev Advisors',
     mcpContainer: 'MCP 容器',
     hostService: '宿主机用户服务',
+    advisoryOnly: '仅提供建议',
+    policyDecides: '策略决定',
     quickStartBar: 'serverfs · 快速开始',
     selfHosted: '自托管',
     quickTitleLine1: '一套 Compose。',
@@ -290,14 +304,18 @@ const canonicalUrl = isZh
 
           <div class="system-diagram">
             <div class="node">
-              <span class="node-icon">✦</span>
+              <span class="node-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M5 7.5h14M5 12h14M5 16.5h9" /></svg>
+              </span>
               <div><strong>ChatGPT</strong><small>{c.mcpClient}</small></div>
             </div>
 
             <div class="flow-line" aria-hidden="true"><span></span></div>
 
             <div class="node">
-              <span class="node-icon">⇅</span>
+              <span class="node-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M7 8h10M14 5l3 3-3 3M17 16H7M10 13l-3 3 3 3" /></svg>
+              </span>
               <div><strong>Secure MCP Tunnel</strong><small>{c.outboundOnly}</small></div>
             </div>
 
@@ -317,7 +335,9 @@ const canonicalUrl = isZh
             <div class="branch-grid" aria-label="ServerFS capability boundaries">
               <div class="branch-card workdir-card">
                 <div class="branch-title">
-                  <span class="branch-icon">↳</span>
+                  <span class="branch-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M5 6v7a4 4 0 0 0 4 4h10M15 13l4 4-4 4" /></svg>
+                  </span>
                   <strong>{c.workdirs}</strong>
                 </div>
                 <code>/srv/projects</code>
@@ -326,7 +346,9 @@ const canonicalUrl = isZh
 
               <div class="branch-card agent-card">
                 <div class="branch-title">
-                  <span class="branch-icon">◇</span>
+                  <span class="branch-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M7 12h10M9 8l-4 4 4 4M15 8l4 4-4 4" /></svg>
+                  </span>
                   <strong>Agent Bridge</strong>
                 </div>
                 <code>{c.userSocket}</code>
@@ -345,7 +367,14 @@ const canonicalUrl = isZh
         </div>
       </section>
 
-      <section class="capability-strip shell" aria-label={c.surfacesLabel}>
+      <section class="capability-section shell" aria-labelledby="capability-title">
+        <div class="section-heading capability-heading">
+          <p class="eyebrow">{c.capabilityEyebrow}</p>
+          <h2 id="capability-title">{c.capabilityTitle}</h2>
+          <p>{c.capabilityBody}</p>
+        </div>
+
+        <div class="capability-strip" aria-label={c.surfacesLabel}>
         {c.surfaces.map((surface, index) => (
           <article class:list={['cap-card', { active: index === 3 }]}>
             <div class="cap-top">
@@ -356,6 +385,7 @@ const canonicalUrl = isZh
             <p>{surface.detail}</p>
           </article>
         ))}
+        </div>
       </section>
 
       <section class="section shell" id="architecture">
@@ -398,14 +428,17 @@ const canonicalUrl = isZh
           <p>{c.securityBody}</p>
         </div>
 
-        <div class="security-grid">
-          {c.guarantees.map((item, index) => (
-            <div class="security-item">
-              <span>{String(index + 1).padStart(2, '0')}</span>
-              <p>{item}</p>
-              <i aria-hidden="true">✓</i>
-            </div>
-          ))}
+        <div class="security-layout">
+          <p class="security-statement">{c.securityStatement}</p>
+          <div class="security-grid">
+            {c.guarantees.map((item, index) => (
+              <div class="security-item">
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <p>{item}</p>
+                <i aria-hidden="true">✓</i>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -435,6 +468,12 @@ const canonicalUrl = isZh
               <span><i></i> Codex</span>
               <span><i></i> Claude</span>
             </div>
+            <div class="advisor-row">
+              <span class="advisor-name">Jev</span>
+              <span class="advisor-arrow" aria-hidden="true">→</span>
+              <span>{c.advisoryOnly}</span>
+            </div>
+            <div class="policy-line">{c.policyDecides}</div>
           </div>
         </div>
       </section>

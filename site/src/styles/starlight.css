@@ -1,12 +1,25 @@
 :root {
-  --sl-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sf-bg: #080a0f;
+  --sf-panel: #0d1017;
+  --sf-line: rgba(255, 255, 255, 0.09);
+  --sf-line-strong: rgba(255, 255, 255, 0.15);
+  --sf-text: #f2f5fa;
+  --sf-muted: #8d96a8;
+  --sf-accent: #9cabff;
+  --sf-mint: #91efd2;
+  --sl-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --sl-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 :root[data-theme='dark'] {
   --sl-color-accent-low: #1a2036;
-  --sl-color-accent: #9cabff;
+  --sl-color-accent: var(--sf-accent);
   --sl-color-accent-high: #dfe4ff;
+  --sl-color-bg: var(--sf-bg);
+  --sl-color-bg-nav: rgba(8, 10, 15, 0.86);
+  --sl-color-bg-sidebar: rgba(8, 10, 15, 0.72);
+  --sl-color-hairline-light: var(--sf-line);
+  --sl-color-hairline: var(--sf-line);
 }
 
 :root[data-theme='light'] {
@@ -19,9 +32,31 @@ body {
   letter-spacing: -0.01em;
 }
 
+:root[data-theme='dark'] body {
+  background:
+    radial-gradient(circle at 50% -12%, rgba(105, 122, 235, 0.10), transparent 34rem),
+    linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    var(--sl-color-bg);
+  background-size: auto, 56px 56px, 56px 56px, auto;
+}
+
+header.header {
+  border-bottom-color: var(--sf-line);
+  backdrop-filter: blur(18px);
+}
+
 .site-title {
   font-weight: 650;
   letter-spacing: -0.03em;
+}
+
+.site-title img {
+  border-radius: 7px;
+}
+
+.sl-markdown-content {
+  line-height: 1.72;
 }
 
 .sl-markdown-content h1,
@@ -30,27 +65,69 @@ body {
   letter-spacing: -0.035em;
 }
 
+.sl-markdown-content h1 {
+  letter-spacing: -0.045em;
+}
+
+.sl-markdown-content a {
+  text-decoration-color: color-mix(in srgb, var(--sl-color-accent) 55%, transparent);
+  text-underline-offset: 0.18em;
+}
+
 .sl-markdown-content code:not(:where(.not-content *)) {
+  border: 1px solid color-mix(in srgb, var(--sl-color-accent) 15%, transparent);
   border-radius: 5px;
 }
 
-:root[data-theme='dark'] body {
-  background:
-    radial-gradient(circle at 50% -15%, rgba(92, 111, 215, 0.1), transparent 34rem),
-    var(--sl-color-bg);
+.sl-markdown-content table {
+  border: 1px solid var(--sf-line);
+  border-radius: 10px;
+}
+
+.sl-markdown-content th {
+  background: color-mix(in srgb, var(--sl-color-accent) 5%, transparent);
+}
+
+.expressive-code {
+  --ec-brdRad: 10px;
+  --ec-brdWd: 1px;
+}
+
+.expressive-code .frame {
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.16);
+}
+
+.starlight-aside {
+  border-radius: 10px;
+}
+
+.sidebar-pane {
+  border-inline-end-color: var(--sf-line);
+}
+
+.right-sidebar {
+  border-inline-start-color: var(--sf-line);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --sl-color-accent-low: #1a2036;
-    --sl-color-accent: #9cabff;
+    --sl-color-accent: var(--sf-accent);
     --sl-color-accent-high: #dfe4ff;
+    --sl-color-bg: var(--sf-bg);
+    --sl-color-bg-nav: rgba(8, 10, 15, 0.86);
+    --sl-color-bg-sidebar: rgba(8, 10, 15, 0.72);
+    --sl-color-hairline-light: var(--sf-line);
+    --sl-color-hairline: var(--sf-line);
   }
 
   :root:not([data-theme]) body {
     background:
-      radial-gradient(circle at 50% -15%, rgba(92, 111, 215, 0.1), transparent 34rem),
+      radial-gradient(circle at 50% -12%, rgba(105, 122, 235, 0.10), transparent 34rem),
+      linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px),
       var(--sl-color-bg);
+    background-size: auto, 56px 56px, 56px 56px, auto;
   }
 }
 

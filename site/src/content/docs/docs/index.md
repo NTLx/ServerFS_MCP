@@ -5,7 +5,7 @@ description: Secure, scoped Linux filesystem access for ChatGPT and AI agents.
 
 ServerFS MCP exposes explicitly configured Linux directories as **controlled workdirs** through the Model Context Protocol.
 
-It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations and bounded whole-file binary transfer; v0.5.0 also adds an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge for Codex or Claude remains optional, and can itself opt into advisory-only TypeSafe Jev support without changing the MCP tool surface.
+It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations, bounded whole-file binary transfer, and an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge for Codex or Claude remains optional, and can itself opt into advisory-only TypeSafe Jev support without changing the MCP tool surface.
 
 ## Capability surfaces
 
