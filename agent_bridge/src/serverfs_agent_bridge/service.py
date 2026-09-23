@@ -5,31 +5,40 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .adapters.base import AgentAdapter, TaskContext
+from .adapters.base import AgentAdapter, ReconcileResult, TaskContext
 from .errors import BridgeError
 from .leases import LeaseManager, WorkdirLease
+from .manifest import build_manifest
 from .models import (
     TERMINAL_STATUSES,
     AgentProfile,
     ApprovalDecision,
+    ReconciliationStatus,
     RequestKind,
     RequestStatus,
     TaskStatus,
 )
 from .policy import PolicyRegistry, redact_host_path
 from .preflight import TaskPreflight
+from .recovery import ActiveGuardManager
+from .result_spool import ResultSpool, utf8_prefix
 from .store import TaskStore
-from .util import new_id
+from .util import is_expired, new_id, seconds_until, utc_after, utc_before
 
 
 @dataclass(frozen=True)
 class BridgeLimits:
     max_prompt_bytes: int = 65_536
     max_final_response_bytes: int = 262_144
+    max_spooled_result_bytes: int = 8 * 1024 * 1024
+    max_result_chunk_bytes: int = 65_536
+    result_preview_bytes: int = 65_536
+    task_timeout_seconds: int = 86_400
+    retention_seconds: int = 168 * 60 * 60
     max_event_bytes: int = 65_536
     max_interaction_bytes: int = 65_536
     max_message_bytes: int = 65_536
@@ -40,6 +49,11 @@ class BridgeLimits:
         for name in (
             "max_prompt_bytes",
             "max_final_response_bytes",
+            "max_spooled_result_bytes",
+            "max_result_chunk_bytes",
+            "result_preview_bytes",
+            "task_timeout_seconds",
+            "retention_seconds",
             "max_event_bytes",
             "max_interaction_bytes",
             "max_message_bytes",
@@ -48,6 +62,10 @@ class BridgeLimits:
         ):
             if type(getattr(self, name)) is not int or getattr(self, name) < 1:
                 raise ValueError(f"{name} must be a positive integer")
+        if self.max_spooled_result_bytes < self.max_final_response_bytes:
+            raise ValueError("max_spooled_result_bytes must not be smaller than inline limit")
+        if self.result_preview_bytes > self.max_final_response_bytes:
+            raise ValueError("result_preview_bytes must fit the inline response limit")
 
 
 class BridgeService:
@@ -67,6 +85,11 @@ class BridgeService:
         self.lease_manager = lease_manager
         self.limits = limits or BridgeLimits()
         self.preflight = preflight
+        self.result_spool = ResultSpool(store.state_dir)
+        self.guard_manager = ActiveGuardManager(
+            lease_manager.lock_dir,
+            shared_gid=lease_manager.shared_gid,
+        )
         self._background: dict[str, asyncio.Task[None]] = {}
         self._leases: dict[str, WorkdirLease] = {}
         self._pending_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
@@ -77,22 +100,31 @@ class BridgeService:
         self._closed = False
 
     async def start(self) -> int:
-        return self.store.interrupt_nonterminal_tasks()
+        self._gc_retained()
+        return await self._reconcile_startup()
 
     async def close(self) -> None:
         if self._closed:
             return
         self._closed = True
+        for task_id in list(self._background):
+            try:
+                record = self.store.get_task(task_id)
+                adapter = self.adapters.get(record.runtime)
+                if adapter is not None:
+                    await adapter.cancel(task_id)
+            except Exception:
+                pass
         tasks = list(self._background.values())
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         for task_id in list(self._leases):
-            self._release_lease(task_id)
             try:
                 task = self.store.get_task(task_id)
             except BridgeError:
+                self._release_lease(task_id)
                 continue
             if TaskStatus(task.status) not in TERMINAL_STATUSES:
                 self.store.transition_task(
@@ -104,6 +136,7 @@ class BridgeService:
                 self._try_append_event(
                     task_id, "task.interrupted", {"error_code": "BRIDGE_SHUTDOWN"}
                 )
+            self._release_lease(task_id)
         for request_id, waiter in list(self._pending_waiters.items()):
             self._pending_waiters.pop(request_id, None)
             if not waiter.done():
@@ -138,6 +171,7 @@ class BridgeService:
         profile: str,
         prompt: str,
         continue_from_task_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> dict[str, Any]:
         if self._closed:
             raise BridgeError("BRIDGE_CLOSED", "bridge is closed")
@@ -151,10 +185,18 @@ class BridgeService:
             raise BridgeError("INVALID_REQUEST", "path must be a string")
         if continue_from_task_id is not None and not isinstance(continue_from_task_id, str):
             raise BridgeError("INVALID_REQUEST", "continue_from_task_id must be a string")
+        _validate_correlation_id(correlation_id)
+        self._gc_retained()
         if len(prompt.encode("utf-8")) > self.limits.max_prompt_bytes:
             raise BridgeError("AGENT_PROMPT_TOO_LARGE", "agent prompt exceeds configured limit")
         adapter = self.adapters.get(runtime)
         if adapter is None:
+            raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", f"runtime is unavailable: {runtime}")
+        try:
+            runtime_info = await adapter.probe()
+        except Exception:
+            runtime_info = None
+        if runtime_info is None:
             raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", f"runtime is unavailable: {runtime}")
 
         try:
@@ -216,9 +258,39 @@ class BridgeService:
                 requested_runtime=runtime,
             )
 
+        deadline_at = utc_after(self.limits.task_timeout_seconds)
+        advisor_manifest = {
+            "enabled": self.preflight is not None,
+            "preflight_status": (
+                preflight_result.get("status") if isinstance(preflight_result, dict) else "disabled"
+            ),
+        }
+        _, manifest_json, manifest_sha256 = build_manifest(
+            runtime_info=runtime_info,
+            policy=policy,
+            relative_cwd=path,
+            profile=requested_profile.value,
+            limits=asdict(self.limits),
+            advisor=advisor_manifest,
+            continue_from_task_id=continue_from_task_id,
+            correlation_id=correlation_id,
+            deadline_at=deadline_at,
+        )
+
         async with self._submit_lock:
             lease: WorkdirLease | None = None
+            guard_created = False
             if requested_profile is AgentProfile.WORKSPACE_WRITE:
+                locally_leased = False
+                for active_task_id in self._leases:
+                    try:
+                        if self.store.get_task(active_task_id).workdir_slot == policy.slot:
+                            locally_leased = True
+                            break
+                    except BridgeError:
+                        continue
+                if not locally_leased:
+                    await self._reconcile_guard(policy.slot)
                 lease = self.lease_manager.acquire_exclusive(policy.slot)
 
             task_id = new_id("agt")
@@ -230,10 +302,22 @@ class BridgeService:
                     workdir_slot=policy.slot,
                     relative_cwd=path,
                     profile=requested_profile.value,
+                    deadline_at=deadline_at,
                     continue_from_task_id=continue_from_task_id,
+                    correlation_id=correlation_id,
+                    manifest_json=manifest_json,
+                    manifest_sha256=manifest_sha256,
                     max_active_tasks=self.limits.max_active_tasks,
                 )
                 if lease is not None:
+                    self.guard_manager.create(
+                        slot=policy.slot,
+                        task_id=task_id,
+                        runtime=runtime,
+                        workdir_alias=workdir,
+                        correlation_id=correlation_id,
+                    )
+                    guard_created = True
                     self._leases[task_id] = lease
                 if preflight_result is not None:
                     self._try_append_event(task_id, "task.preflight", preflight_result)
@@ -251,6 +335,8 @@ class BridgeService:
                 )
             except Exception:
                 self._leases.pop(task_id, None)
+                if guard_created:
+                    self.guard_manager.remove(slot=policy.slot, task_id=task_id)
                 if lease is not None:
                     lease.release()
                 if "task" in locals():
@@ -265,7 +351,11 @@ class BridgeService:
             background.add_done_callback(
                 lambda completed: self._background_done(task_id, completed)
             )
-            result: dict[str, Any] = {"task_id": task.task_id, "status": task.status}
+            result: dict[str, Any] = {
+                "task_id": task.task_id,
+                "status": task.status,
+                "correlation_id": correlation_id,
+            }
             if preflight_result is not None:
                 result["preflight"] = preflight_result
             if routing_advice is not None:
@@ -277,21 +367,231 @@ class BridgeService:
         if not task.cancelled():
             task.exception()
 
-    def _release_lease(self, task_id: str) -> None:
+    def _release_lease(self, task_id: str, *, clear_guard: bool = True) -> None:
         lease = self._leases.pop(task_id, None)
-        if lease is not None:
-            lease.release()
+        if lease is None:
+            return
+        if clear_guard:
+            try:
+                task = self.store.get_task(task_id)
+                if task.profile == AgentProfile.WORKSPACE_WRITE.value:
+                    try:
+                        self.guard_manager.remove(slot=task.workdir_slot, task_id=task_id)
+                    except BridgeError:
+                        pass
+            except BridgeError:
+                pass
+        lease.release()
+
+    async def _record_native_ids(
+        self,
+        task_id: str,
+        native_session_id: str | None,
+        native_turn_id: str | None,
+    ) -> None:
+        task = self.store.set_native_ids(
+            task_id,
+            native_session_id=native_session_id,
+            native_turn_id=native_turn_id,
+        )
+        if task.profile == AgentProfile.WORKSPACE_WRITE.value:
+            self.guard_manager.update_native_ids(
+                slot=task.workdir_slot,
+                task_id=task_id,
+                native_session_id=native_session_id,
+                native_turn_id=native_turn_id,
+            )
+
+    def _gc_retained(self) -> int:
+        cutoff = utc_before(self.limits.retention_seconds)
+        deleted = 0
+        for task in self.store.list_terminal_before(cutoff):
+            try:
+                guard = self.guard_manager.read(task.workdir_slot)
+            except BridgeError:
+                continue
+            if guard is not None and guard.payload.get("task_id") == task.task_id:
+                continue
+            if task.result_storage == "spool":
+                try:
+                    self.result_spool.delete(task.task_id)
+                except BridgeError:
+                    continue
+            deleted += self.store.delete_tasks([task.task_id])
+        return deleted
+
+    async def _probe_reconciliation(self, task_id: str) -> ReconcileResult:
+        task = self.store.get_task(task_id)
+        self._try_append_event(
+            task_id,
+            "runtime.reconcile_started",
+            {"runtime": task.runtime},
+        )
+        adapter = self.adapters.get(task.runtime)
+        if adapter is None:
+            result = ReconcileResult(
+                status=ReconciliationStatus.UNKNOWN,
+                provider_active=None,
+                detail="runtime is unavailable during reconciliation",
+            )
+        else:
+            try:
+                result = await adapter.reconcile_task(task)
+            except Exception:
+                result = ReconcileResult(
+                    status=ReconciliationStatus.UNKNOWN,
+                    provider_active=None,
+                    detail="runtime reconciliation failed",
+                )
+        self._try_append_event(
+            task_id,
+            "runtime.reconcile_finished",
+            {
+                "runtime": task.runtime,
+                "status": result.status.value,
+                "provider_active": result.provider_active,
+            },
+        )
+        return result
+
+    async def _reconcile_guard(self, slot: int) -> ReconcileResult | None:
+        guard = self.guard_manager.read(slot)
+        if guard is None:
+            return None
+        task_id = guard.payload.get("task_id")
+        if not isinstance(task_id, str):
+            raise BridgeError(
+                "WORKDIR_RECOVERY_REQUIRED",
+                f"workdir slot {slot:02d} has invalid recovery state",
+            )
+        try:
+            task = self.store.get_task(task_id)
+        except BridgeError as exc:
+            raise BridgeError(
+                "WORKDIR_RECOVERY_REQUIRED",
+                f"workdir slot {slot:02d} has orphaned recovery state",
+            ) from exc
+        result = await self._probe_reconciliation(task_id)
+        self._try_append_event(
+            task_id,
+            "task.reconciled",
+            {
+                "status": result.status.value,
+                "provider_active": result.provider_active,
+            },
+        )
+        if result.provider_active is False:
+            self.guard_manager.remove(slot=slot, task_id=task.task_id)
+            return result
+        raise BridgeError(
+            "WORKDIR_RECOVERY_REQUIRED",
+            f"workdir slot {slot:02d} still has unresolved provider state",
+        )
+
+    async def _reconcile_startup(self) -> int:
+        reconciled = 0
+        handled: set[str] = set()
+        for task in self.store.list_nonterminal_tasks():
+            handled.add(task.task_id)
+            result = await self._probe_reconciliation(task.task_id)
+            timed_out = is_expired(task.deadline_at)
+            if result.status is ReconciliationStatus.REATTACHED and not timed_out:
+                self._try_append_event(
+                    task.task_id,
+                    "task.reconciled",
+                    {"status": result.status.value, "provider_active": True},
+                )
+                continue
+
+            error_code = "AGENT_TASK_TIMED_OUT" if timed_out else "BRIDGE_RESTARTED"
+            error_message = (
+                "agent task exceeded its execution deadline during bridge restart"
+                if timed_out
+                else "bridge restarted while task was active"
+            )
+            self.store.transition_task(
+                task.task_id,
+                TaskStatus.INTERRUPTED,
+                error_code=error_code,
+                error_message=error_message,
+            )
+            self._try_append_event(
+                task.task_id,
+                "task.reconciled",
+                {
+                    "status": result.status.value,
+                    "provider_active": result.provider_active,
+                    "error_code": error_code,
+                },
+            )
+            if (
+                task.profile == AgentProfile.WORKSPACE_WRITE.value
+                and result.provider_active is False
+            ):
+                try:
+                    self.guard_manager.remove(slot=task.workdir_slot, task_id=task.task_id)
+                except BridgeError:
+                    pass
+            reconciled += 1
+
+        for guard in self.guard_manager.list():
+            task_id = guard.payload.get("task_id")
+            if not isinstance(task_id, str) or task_id in handled:
+                continue
+            try:
+                await self._reconcile_guard(guard.slot)
+            except BridgeError:
+                pass
+        return reconciled
 
     def get_task(self, task_id: str) -> dict[str, Any]:
         if not isinstance(task_id, str) or not task_id:
             raise BridgeError("INVALID_REQUEST", "task_id must be a non-empty string")
-        result = self.store.get_task(task_id).to_dict()
+        task = self.store.get_task(task_id)
+        result = task.to_dict()
         result.pop("native_session_id", None)
         result.pop("native_turn_id", None)
+        storage = result.pop("result_storage", "inline")
+        size_bytes = result.pop("result_size_bytes", None)
+        result_sha256 = result.pop("result_sha256", None)
+        result["final_response_truncated"] = storage == "spool"
+        result["result"] = {
+            "storage": storage,
+            "size_bytes": size_bytes,
+            "sha256": result_sha256,
+            "retrievable": storage == "spool",
+        }
         pending_id = result.get("pending_request_id")
         if pending_id:
             result["pending_request"] = self.store.get_request(pending_id).to_dict()
         return result
+
+    def read_result(
+        self,
+        task_id: str,
+        *,
+        offset_bytes: int = 0,
+        max_bytes: int = 65_536,
+    ) -> dict[str, object]:
+        _require_identifier(task_id, "task_id")
+        task = self.store.get_task(task_id)
+        if task.result_storage != "spool":
+            raise BridgeError(
+                "AGENT_RESULT_NOT_RETRIEVABLE",
+                "task result is not stored in the result spool",
+            )
+        if max_bytes > self.limits.max_result_chunk_bytes:
+            raise BridgeError(
+                "INVALID_RESULT_LIMIT",
+                f"max_bytes must not exceed {self.limits.max_result_chunk_bytes}",
+            )
+        chunk = self.result_spool.read_chunk(
+            task_id,
+            offset_bytes=offset_bytes,
+            max_bytes=max_bytes,
+        )
+        chunk["correlation_id"] = task.correlation_id
+        return chunk
 
     def read_events(
         self, task_id: str, *, after_event_id: int = 0, limit: int = 100
@@ -304,12 +604,33 @@ class BridgeService:
             raise BridgeError("INVALID_LIMIT", "event cursor must be a non-negative integer")
         if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 500:
             raise BridgeError("INVALID_LIMIT", "event limit must be between 1 and 500")
+        task = self.store.get_task(task_id)
         events = self.store.list_events(task_id, after_event_id=after_event_id, limit=limit)
         next_cursor = events[-1].event_id if events else after_event_id
         return {
+            "correlation_id": task.correlation_id,
             "events": [event.to_dict() for event in events],
             "next_after_event_id": next_cursor,
         }
+
+    def _expire_request_if_needed(self, task_id: str, request: Any) -> bool:
+        if not is_expired(request.expires_at):
+            return False
+        self.store.stale_task_request(task_id)
+        waiter = self._pending_waiters.pop(request.request_id, None)
+        if waiter is not None and not waiter.done():
+            waiter.set_exception(
+                BridgeError(
+                    "AGENT_INTERACTION_EXPIRED",
+                    "approval or question expired at the task deadline",
+                )
+            )
+        self._try_append_event(
+            task_id,
+            "interaction.expired",
+            {"request_id": request.request_id, "kind": request.kind},
+        )
+        return True
 
     async def respond_approval(
         self,
@@ -332,6 +653,8 @@ class BridgeService:
         task = self.store.get_task(task_id)
         if task.pending_request_id != request_id:
             raise BridgeError("REQUEST_STALE", "approval request is no longer active")
+        if self._expire_request_if_needed(task_id, request):
+            raise BridgeError("REQUEST_STALE", "approval request expired")
         if request.kind != RequestKind.APPROVAL.value:
             raise BridgeError("INVALID_APPROVAL_DECISION", "request is not an approval")
 
@@ -380,7 +703,12 @@ class BridgeService:
                     await adapter.cancel(task_id)
                 except Exception:
                     pass
-        return {"task_id": task_id, "request_id": request_id, "resolved": True}
+        return {
+            "task_id": task_id,
+            "request_id": request_id,
+            "resolved": True,
+            "correlation_id": task.correlation_id,
+        }
 
     async def answer_question(
         self, *, task_id: str, request_id: str, answers: list[dict[str, Any]]
@@ -398,6 +726,8 @@ class BridgeService:
         task = self.store.get_task(task_id)
         if task.pending_request_id != request_id:
             raise BridgeError("REQUEST_STALE", "question request is no longer active")
+        if self._expire_request_if_needed(task_id, request):
+            raise BridgeError("REQUEST_STALE", "question request expired")
         if request.kind != RequestKind.QUESTION.value:
             raise BridgeError("INVALID_QUESTION_ANSWER", "request is not a question")
 
@@ -411,7 +741,12 @@ class BridgeService:
         if waiter is not None and not waiter.done():
             waiter.set_result(resolution)
         self._try_append_event(task_id, "question.answered", {"question_count": len(normalized)})
-        return {"task_id": task_id, "request_id": request_id, "resolved": True}
+        return {
+            "task_id": task_id,
+            "request_id": request_id,
+            "resolved": True,
+            "correlation_id": task.correlation_id,
+        }
 
     async def send_message(self, *, task_id: str, message: str) -> dict[str, Any]:
         _require_identifier(task_id, "task_id")
@@ -436,7 +771,11 @@ class BridgeService:
             "user.message",
             {"bytes": len(message.encode("utf-8"))},
         )
-        return {"task_id": task_id, "accepted": True}
+        return {
+            "task_id": task_id,
+            "accepted": True,
+            "correlation_id": task.correlation_id,
+        }
 
     async def cancel_task(self, task_id: str) -> dict[str, Any]:
         _require_identifier(task_id, "task_id")
@@ -444,7 +783,12 @@ class BridgeService:
             task = self.store.get_task(task_id)
             status = TaskStatus(task.status)
             if status in TERMINAL_STATUSES:
-                return {"task_id": task_id, "status": task.status}
+                self._gc_retained()
+                return {
+                    "task_id": task_id,
+                    "status": task.status,
+                    "correlation_id": task.correlation_id,
+                }
 
             first_cancel = task_id not in self._user_cancelled
             self._user_cancelled.add(task_id)
@@ -470,7 +814,12 @@ class BridgeService:
                 self.store.transition_task(task_id, TaskStatus.CANCELLED)
                 self._release_lease(task_id)
                 self._try_append_event(task_id, "task.cancelled", {})
-            return {"task_id": task_id, "status": TaskStatus.CANCELLED.value}
+            self._gc_retained()
+            return {
+                "task_id": task_id,
+                "status": TaskStatus.CANCELLED.value,
+                "correlation_id": task.correlation_id,
+            }
 
     async def _run_task(
         self,
@@ -482,6 +831,8 @@ class BridgeService:
         continue_native_session_id: str | None,
     ) -> None:
         task = self.store.get_task(task_id)
+        provider_task: asyncio.Task[Any] | None = None
+        clear_guard = True
         try:
             self.store.transition_task(task_id, TaskStatus.STARTING)
             self._append_event(task_id, "task.started", {"runtime": task.runtime})
@@ -513,26 +864,45 @@ class BridgeService:
                     waiting_status=TaskStatus.WAITING_FOR_QUESTION,
                 ),
                 abandon_interaction=lambda: self._abandon_interaction(task_id),
+                record_native_ids=lambda session_id, turn_id: self._record_native_ids(
+                    task_id,
+                    session_id,
+                    turn_id,
+                ),
             )
-            if continue_native_session_id is None:
-                result = await adapter.run_task(context)
+            run = (
+                adapter.run_task(context)
+                if continue_native_session_id is None
+                else adapter.continue_task(context)
+            )
+            clear_guard = False
+            provider_task = asyncio.create_task(
+                run,
+                name=f"serverfs-provider-{task_id}",
+            )
+            remaining = seconds_until(task.deadline_at) if task.deadline_at else 0.0
+            if remaining <= 0:
+                done: set[asyncio.Task[Any]] = set()
             else:
-                result = await adapter.continue_task(context)
-            self.store.set_native_ids(
+                done, _ = await asyncio.wait({provider_task}, timeout=remaining)
+            if not done:
+                try:
+                    await adapter.cancel(task_id)
+                except Exception:
+                    pass
+                provider_task.cancel()
+                await asyncio.gather(provider_task, return_exceptions=True)
+                raise TimeoutError
+            result = provider_task.result()
+            clear_guard = True
+            await self._record_native_ids(
                 task_id,
-                native_session_id=result.native_session_id,
-                native_turn_id=result.native_turn_id,
+                result.native_session_id,
+                result.native_turn_id,
             )
             if not isinstance(result.final_response, str):
                 raise BridgeError(
                     "AGENT_PROVIDER_ERROR", "agent runtime returned an invalid result"
-                )
-            final_response = self._redact_text(task.workdir_alias, result.final_response)
-            encoded = final_response.encode("utf-8")
-            if len(encoded) > self.limits.max_final_response_bytes:
-                raise BridgeError(
-                    "AGENT_RESULT_TOO_LARGE",
-                    "final agent response exceeds configured limit",
                 )
             if task_id in self._user_cancelled:
                 self.store.transition_task(task_id, TaskStatus.CANCELLED)
@@ -548,13 +918,81 @@ class BridgeService:
                     task_id, "task.interrupted", {"error_code": "BRIDGE_SHUTDOWN"}
                 )
             else:
+                final_response = self._redact_text(task.workdir_alias, result.final_response)
+                encoded = final_response.encode("utf-8")
+                if len(encoded) > self.limits.max_spooled_result_bytes:
+                    raise BridgeError(
+                        "AGENT_RESULT_TOO_LARGE",
+                        "final agent response exceeds configured spool limit",
+                    )
+                digest = hashlib.sha256(encoded).hexdigest()
+                if len(encoded) <= self.limits.max_final_response_bytes:
+                    self.store.transition_task(
+                        task_id,
+                        TaskStatus.SUCCEEDED,
+                        final_response=final_response,
+                        result_storage="inline",
+                        result_size_bytes=len(encoded),
+                        result_sha256=digest,
+                    )
+                    self._try_append_event(
+                        task_id,
+                        "task.completed",
+                        {"result_storage": "inline", "result_size_bytes": len(encoded)},
+                    )
+                else:
+                    metadata = self.result_spool.write(task_id, final_response)
+                    preview = utf8_prefix(final_response, self.limits.result_preview_bytes)
+                    self.store.transition_task(
+                        task_id,
+                        TaskStatus.SUCCEEDED,
+                        final_response=preview,
+                        result_storage="spool",
+                        result_size_bytes=metadata.size_bytes,
+                        result_sha256=metadata.sha256,
+                    )
+                    self._try_append_event(
+                        task_id,
+                        "task.result_spooled",
+                        {
+                            "size_bytes": metadata.size_bytes,
+                            "sha256": metadata.sha256,
+                        },
+                    )
+                    self._try_append_event(
+                        task_id,
+                        "task.completed",
+                        {
+                            "result_storage": "spool",
+                            "result_size_bytes": metadata.size_bytes,
+                        },
+                    )
+        except TimeoutError:
+            current = self.store.get_task(task_id)
+            if TaskStatus(current.status) not in TERMINAL_STATUSES:
+                self.store.stale_task_request(task_id)
                 self.store.transition_task(
                     task_id,
-                    TaskStatus.SUCCEEDED,
-                    final_response=final_response,
+                    TaskStatus.INTERRUPTED,
+                    error_code="AGENT_TASK_TIMED_OUT",
+                    error_message="agent task exceeded its execution deadline",
                 )
-                self._try_append_event(task_id, "task.completed", {})
+                self._try_append_event(
+                    task_id,
+                    "task.interrupted",
+                    {"error_code": "AGENT_TASK_TIMED_OUT"},
+                )
         except asyncio.CancelledError:
+            provider_stopped = provider_task is not None and provider_task.done()
+            if provider_task is not None and not provider_task.done():
+                try:
+                    await adapter.cancel(task_id)
+                except Exception:
+                    pass
+                provider_task.cancel()
+                await asyncio.gather(provider_task, return_exceptions=True)
+            if provider_stopped:
+                clear_guard = True
             current = self.store.get_task(task_id)
             if TaskStatus(current.status) not in TERMINAL_STATUSES:
                 if task_id in self._user_cancelled:
@@ -621,7 +1059,15 @@ class BridgeService:
         finally:
             self._user_cancelled.discard(task_id)
             self._approval_advice_cache.pop(task_id, None)
-            self._release_lease(task_id)
+            if not clear_guard and task.profile == AgentProfile.WORKSPACE_WRITE.value:
+                try:
+                    reconciliation = await self._probe_reconciliation(task_id)
+                except Exception:
+                    reconciliation = None
+                if reconciliation is not None and reconciliation.provider_active is False:
+                    clear_guard = True
+            self._release_lease(task_id, clear_guard=clear_guard)
+            self._gc_retained()
             for request_id, waiter in list(self._pending_waiters.items()):
                 if not waiter.done():
                     try:
@@ -778,17 +1224,20 @@ class BridgeService:
             self._try_append_event(task_id, "approval.advice", approval_advice)
 
         self._ensure_interaction_size(normalized_payload)
+        task = self.store.get_task(task_id)
+        expires_at = task.deadline_at or utc_after(self.limits.task_timeout_seconds)
         self.store.create_pending_request(
             task_id=task_id,
             request_id=request_id,
             kind=kind.value,
             payload=normalized_payload,
             waiting_status=waiting_status,
+            expires_at=expires_at,
         )
         self._append_event(
             task_id,
             f"{kind.value}.requested",
-            {"request_id": request_id},
+            {"request_id": request_id, "expires_at": expires_at},
         )
         loop = asyncio.get_running_loop()
         waiter: asyncio.Future[dict[str, Any]] = loop.create_future()
@@ -797,7 +1246,15 @@ class BridgeService:
         if request.status == "resolved":
             waiter.set_result(request.resolution or {})
         elif request.status == "stale":
-            waiter.cancel()
+            if is_expired(request.expires_at):
+                waiter.set_exception(
+                    BridgeError(
+                        "AGENT_INTERACTION_EXPIRED",
+                        "approval or question expired at the task deadline",
+                    )
+                )
+            else:
+                waiter.cancel()
         try:
             return await waiter
         finally:
@@ -953,6 +1410,17 @@ def _validate_answers(
     if set(by_id) != seen:
         raise BridgeError("INVALID_QUESTION_ANSWER", "every question requires an answer")
     return normalized
+
+
+def _validate_correlation_id(value: str | None) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str):
+        raise BridgeError("INVALID_REQUEST", "correlation_id must be a string")
+    if len(value.encode("utf-8")) > 256:
+        raise BridgeError("INVALID_REQUEST", "correlation_id exceeds 256 UTF-8 bytes")
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise BridgeError("INVALID_REQUEST", "correlation_id contains an ASCII control character")
 
 
 def _require_identifier(value: Any, name: str) -> None:

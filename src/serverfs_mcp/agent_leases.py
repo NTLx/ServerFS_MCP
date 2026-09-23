@@ -20,6 +20,11 @@ class WorkdirBusyError(AgentLeaseError):
     message = "workdir is busy with an active Agent task"
 
 
+class WorkdirRecoveryRequiredError(AgentLeaseError):
+    code = "WORKDIR_RECOVERY_REQUIRED"
+    message = "workdir has unresolved Agent recovery state"
+
+
 @contextlib.contextmanager
 def mutation_agent_lease(lock_dir: Path, slot: int, *, enabled: bool) -> Iterator[None]:
     """Take the same per-slot flock used by workspace-write Agent tasks.
@@ -51,6 +56,21 @@ def mutation_agent_lease(lock_dir: Path, slot: int, *, enabled: bool) -> Iterato
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise WorkdirBusyError from exc
+
+        # A live workspace-write task holds both the flock and the persistent
+        # guard. Only an available flock plus a remaining guard is recovery state.
+        guard_path = lock_dir / "active" / f"{slot:02d}"
+        try:
+            guard_stat = os.lstat(guard_path)
+        except FileNotFoundError:
+            guard_stat = None
+        except OSError as exc:
+            raise AgentLeaseError("shared Agent recovery guard is unavailable") from exc
+        if guard_stat is not None:
+            if not stat.S_ISREG(guard_stat.st_mode):
+                raise AgentLeaseError("shared Agent recovery guard is unsafe")
+            raise WorkdirRecoveryRequiredError
+
         try:
             yield
         finally:

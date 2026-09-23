@@ -33,14 +33,22 @@ This keeps:
 
 ## Runtime behavior
 
-ServerFS exposes eight structured Agent tools when Agent policy is enabled. They cover runtime discovery, task submission, status/events, approval/question handling, steering where supported, and cancellation.
+ServerFS exposes nine structured Agent tools when Agent policy is enabled. They cover runtime discovery, task submission, status/events, exact retrieval of spooled final results, approval/question handling, steering where supported, and cancellation.
 
 They are **not** a shell, argv passthrough, or generic command executor.
 
 Current deployments can expose:
 
-- 19 tools: filesystem + Agent
-- 21 tools: filesystem + binary + Agent
+- 20 tools: filesystem + Agent
+- 22 tools: filesystem + binary + Agent
+
+## v0.7 runtime reliability
+
+v0.7.0 adds reliability and evidence around the existing Bridge rather than adding orchestration. New tasks carry an immutable execution manifest and optional opaque `correlation_id`; normalized events use envelope schema v1; tasks default to a 24-hour deadline and seven-day terminal retention.
+
+Workspace-write tasks also publish a persistent per-slot recovery guard alongside the existing `flock`. If the Bridge exits abnormally, mutations fail closed with `WORKDIR_RECOVERY_REQUIRED` until provider-aware reconciliation proves the prior provider is no longer active. ServerFS does not blindly rerun an interrupted task.
+
+Final responses up to 256 KiB stay inline. Responses above 256 KiB through 8 MiB are atomically spooled to private Bridge state and exposed by `get_agent_task` as a bounded preview plus size/SHA-256 metadata. `read_agent_task_result` retrieves the exact UTF-8 result in bounded chunks. Results above 8 MiB fail with `AGENT_RESULT_TOO_LARGE`.
 
 ## Optional Jev advisors
 

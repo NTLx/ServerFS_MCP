@@ -293,12 +293,15 @@ class BridgeProtocolServer:
             _require_keys(
                 params,
                 {"runtime", "workdir", "path", "profile", "prompt"},
-                optional={"continue_from_task_id"},
+                optional={"continue_from_task_id", "correlation_id"},
             )
             _require_types(
                 params,
                 {"runtime": str, "workdir": str, "path": str, "profile": str, "prompt": str},
-                optional={"continue_from_task_id": (str, type(None))},
+                optional={
+                    "continue_from_task_id": (str, type(None)),
+                    "correlation_id": (str, type(None)),
+                },
             )
             return await self.service.submit_task(**params)
         if method == "task.get":
@@ -313,6 +316,14 @@ class BridgeProtocolServer:
                 optional={"after_event_id": int, "limit": int},
             )
             return self.service.read_events(**params)
+        if method == "task.result.read":
+            _require_keys(params, {"task_id"}, optional={"offset_bytes", "max_bytes"})
+            _require_types(
+                params,
+                {"task_id": str},
+                optional={"offset_bytes": int, "max_bytes": int},
+            )
+            return self.service.read_result(**params)
         if method == "task.approval.respond":
             _require_keys(
                 params,

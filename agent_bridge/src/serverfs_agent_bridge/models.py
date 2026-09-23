@@ -63,6 +63,13 @@ class ApprovalDecision(StrEnum):
     CANCEL_TASK = "cancel_task"
 
 
+class ReconciliationStatus(StrEnum):
+    REATTACHED = "REATTACHED"
+    SESSION_RESUMABLE = "SESSION_RESUMABLE"
+    NOT_RECOVERABLE = "NOT_RECOVERABLE"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass(frozen=True)
 class RuntimeInfo:
     name: str
@@ -91,10 +98,17 @@ class TaskRecord:
     started_at: str | None
     updated_at: str
     completed_at: str | None
+    deadline_at: str | None
     continue_from_task_id: str | None
+    correlation_id: str | None
     native_session_id: str | None
     native_turn_id: str | None
     final_response: str | None
+    result_storage: str
+    result_size_bytes: int | None
+    result_sha256: str | None
+    manifest: dict[str, Any] | None
+    manifest_sha256: str | None
     error_code: str | None
     error_message: str | None
     pending_request_id: str | None
@@ -111,6 +125,7 @@ class PendingRequest:
     status: str
     payload: dict[str, Any]
     created_at: str
+    expires_at: str | None
     resolved_at: str | None
     resolution: dict[str, Any] | None
 
@@ -122,9 +137,11 @@ class PendingRequest:
 class BridgeEvent:
     event_id: int
     task_id: str
+    correlation_id: str | None
     event_type: str
     payload: dict[str, Any]
     created_at: str
+    schema_version: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

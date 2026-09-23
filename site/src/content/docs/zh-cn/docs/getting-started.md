@@ -78,12 +78,12 @@ Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口�
 
 ## 已发布镜像
 
-ServerFS MCP v0.6.0 已发布到 GHCR，稳定标签如下：
+ServerFS MCP v0.7.0 使用以下 GHCR 稳定标签：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.6
-ghcr.io/ntlx/serverfs_mcp:0.6.0
+ghcr.io/ntlx/serverfs_mcp:0.7
+ghcr.io/ntlx/serverfs_mcp:0.7.0
 ```
 
-生产环境建议固定使用 `0.6.0`，不要长期跟随 `latest` 或 `edge`。
+生产环境建议固定使用 `0.7.0`，不要长期跟随 `latest` 或 `edge`。

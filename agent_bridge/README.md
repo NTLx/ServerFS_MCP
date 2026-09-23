@@ -1,20 +1,18 @@
-# ServerFS Agent Bridge — v0.6.0
+# ServerFS Agent Bridge — v0.7.0
 
-This directory contains the **host-side** Agent Bridge shipped with ServerFS v0.6.0. The
+This directory contains the **host-side** Agent Bridge shipped with ServerFS v0.7.0. The
 provider-neutral execution/approval contract originated in v0.3 and remains compatible;
-v0.6.0 advances the Bridge package to 0.6.0 because it adds the optional Jev advisory suite
-(Task Preflight, Runtime Router, Approval Advisor, and task-local identical-approval caching).
+v0.6.0 added the optional Jev advisory suite, while v0.7.0 adds runtime reliability,
+recovery evidence, immutable execution manifests and bounded large-result retrieval.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
 while the base `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
-> v0.6.0 includes an optional Jev-backed advisory task-quality
-> Preflight, Runtime Router, and Approval Advisor on top of this frozen provider-neutral
-> baseline. These capabilities do not
-> change the MCP tool surface, Bridge RPC, runtime allowlist, writer lease, provider adapters,
-> approval/question semantics, or task authorization. It is disabled unless
-> `SERVERFS_JEV_API_KEY` is non-empty.
+> The Jev-backed Preflight, Runtime Router, and Approval Advisor introduced in v0.6.0
+> remain optional and advisory-only. v0.7.0 does not turn Jev into a runtime, authorization
+> layer or safety authority; it preserves the explicit runtime/workdir/profile and provider
+> approval contracts.
 
 Phase A is frozen and provides the provider-neutral infrastructure:
 
@@ -54,6 +52,20 @@ Phase D is complete and frozen. It provides the ServerFS MCP client/tool surface
 shared writer-lease integration. Phase E is also complete and frozen: production
 Compose/systemd wiring, runtime permissions and ChatGPT end-to-end deployment were
 accepted for v0.3.0; see `../docs/phase-e-acceptance-2026-09-20.md`.
+
+v0.7.0 adds a narrow reliability layer over those frozen contracts:
+
+- event envelope schema v1 with optional opaque `correlation_id` propagation;
+- immutable manifest JSON plus SHA-256 for every newly submitted task;
+- a default 24-hour task deadline, interaction expiry at the same deadline, and seven-day
+  terminal retention;
+- a persistent per-slot recovery guard layered on the existing writer `flock`, with
+  provider-aware restart reconciliation and no blind task rerun;
+- inline final responses through 256 KiB, private spool storage above 256 KiB through
+  8 MiB, exact SHA-256 metadata, and bounded UTF-8 retrieval through
+  `read_agent_task_result`;
+- additive SQLite migration: old tasks remain readable but do not receive fabricated
+  manifest, deadline or correlation evidence.
 
 Agent delegation should remain objective-level and capability-bounded. A submitted task
 should carry one authorized objective, the minimum context needed for it, an explicit
@@ -134,7 +146,7 @@ uv run serverfs-agent-bridge --config /tmp/serverfs-agent-bridge.json
 ```
 
 The protocol is newline-delimited JSON over the configured Unix socket. Phase D provides
-the thin ServerFS MCP client and eight provider-neutral Agent tools. The accepted Phase E
+the thin ServerFS MCP client and nine provider-neutral Agent tools. The accepted Phase E
 production deployment exposes the Bridge socket and shared lock directory to the MCP
 container through read-only bind mounts defined by `../compose.agent.yml`.
 

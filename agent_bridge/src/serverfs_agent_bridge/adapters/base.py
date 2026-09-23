@@ -8,12 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..models import RuntimeInfo
+from ..models import ReconciliationStatus, RuntimeInfo, TaskRecord
 
 EmitEvent = Callable[[str, dict[str, Any]], Awaitable[None]]
 RequestApproval = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 AskQuestion = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 AbandonInteraction = Callable[[], Awaitable[None]]
+RecordNativeIds = Callable[[str | None, str | None], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class TaskContext:
     request_approval: RequestApproval
     ask_question: AskQuestion
     abandon_interaction: AbandonInteraction
+    record_native_ids: RecordNativeIds
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,13 @@ class AdapterResult:
     final_response: str
     native_session_id: str | None = None
     native_turn_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ReconcileResult:
+    status: ReconciliationStatus
+    provider_active: bool | None
+    detail: str
 
 
 class AgentAdapter(ABC):
@@ -71,6 +80,13 @@ class AgentAdapter(ABC):
 
     async def reconcile(self) -> None:
         return None
+
+    async def reconcile_task(self, task: TaskRecord) -> ReconcileResult:
+        return ReconcileResult(
+            status=ReconciliationStatus.UNKNOWN,
+            provider_active=None,
+            detail="runtime does not expose task reconciliation",
+        )
 
     async def send_message(self, task_id: str, message: str) -> None:
         raise NotImplementedError

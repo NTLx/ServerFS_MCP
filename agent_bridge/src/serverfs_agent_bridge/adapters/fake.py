@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 
-from ..models import RuntimeInfo
-from .base import AdapterResult, AgentAdapter, TaskContext
+from ..models import ReconciliationStatus, RuntimeInfo, TaskRecord
+from .base import AdapterResult, AgentAdapter, ReconcileResult, TaskContext
 
 
 class FakeAdapter(AgentAdapter):
@@ -29,6 +29,13 @@ class FakeAdapter(AgentAdapter):
             interactive_approval=True,
             interactive_question=True,
             in_flight_recovery="none",
+        )
+
+    async def reconcile_task(self, task: TaskRecord) -> ReconcileResult:
+        return ReconcileResult(
+            status=ReconciliationStatus.NOT_RECOVERABLE,
+            provider_active=False,
+            detail="fake runtime has no out-of-process provider state",
         )
 
     async def run_task(self, context: TaskContext) -> AdapterResult:

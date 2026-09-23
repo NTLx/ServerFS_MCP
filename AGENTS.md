@@ -1,8 +1,10 @@
 # AGENTS.md
 
-Read `dev_plan_v0.5.md` first for the released/frozen v0.5.0 line: ChatGPT/OpenAI file-parameter ingress, the isolated file-ingress sidecar, MCP request-body sizing, and release closure. For every v0.5.0 change, that plan plus executed tests and implementation are authoritative over older binary-transfer assumptions.
+Read `dev_plan_v0.7.md` first for the current v0.7.0 release line: Runtime Reliability & Observability, schema-versioned event envelopes, opaque correlation IDs, immutable execution manifests, task deadline/retention, provider-aware restart reconciliation, persistent active-slot recovery guards, and bounded large-result spooling/retrieval. For v0.7.0 work, that plan plus executed tests and implementation are authoritative over older Agent Bridge assumptions.
 
-Read `README.md` for the current v0.6.0 behaviour, security model,
+Read `dev_plan_v0.5.md` for the released/frozen v0.5.0 line: ChatGPT/OpenAI file-parameter ingress, the isolated file-ingress sidecar, MCP request-body sizing, and release closure. For every v0.5.0 change, that plan plus executed tests and implementation are authoritative over older binary-transfer assumptions.
+
+Read `README.md` for the current v0.7.0 behaviour, security model,
 deployment and release contract. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
 acceptance baseline for hierarchical workdir policy, binary file transfer and the Issue #10
 transport-security fix.
@@ -16,9 +18,9 @@ for the original v0.1 baseline. Where v0.4 explicitly extends an older rule,
 accepted v0.3 contracts remain authoritative.
 
 The `agent_bridge/` directory carries the **released/frozen v0.3 provider-neutral Agent
-Bridge contract** forward while v0.6.0 adds an optional Jev advisory layer without changing
-runtime authorization, provider approval semantics, Bridge RPC, or writer-lease authority.
-The Bridge package version is 0.6.0 in this release.
+Bridge contract** forward. v0.6.0 added an optional Jev advisory layer; v0.7.0 adds
+reliability/evidence features without changing runtime authorization, provider approval
+semantics, or writer-lease authority. The Bridge package version is 0.7.0 in this release.
 Phases A (provider-neutral core), B (Codex native-mode adapter), C (Claude Code native-mode
 adapter), D (Agent MCP surface) and E (production deployment) are complete and frozen on
 `main`. Production Agent delegation remains opt-in through `compose.agent.yml`; the base
@@ -37,11 +39,10 @@ extra Jev request only after a provider creates an approval request; it must not
 auto-deny, alter available decisions, grant permission IDs, or bypass the existing
 `respond_agent_approval` validation path.
 
-**Phase D is frozen.** It added the eight provider-neutral Agent MCP tools, a thin
+**Phase D is frozen except for the explicit v0.7.0 additive extension.** It originally added eight provider-neutral Agent MCP tools, a thin
 stdlib Unix-socket Bridge client, fail-closed global/per-workdir Agent configuration,
 audit records, and the shared cross-process writer lease consumed by existing mutation
-tools. Do not modify its MCP public surface, UDS protocol, local authorization model or
-shared writer-lease contract except to fix a demonstrated defect. Phase D kept
+tools. v0.7.0 adds exactly one read-only public tool, `read_agent_task_result`, plus additive protocol fields/RPC needed for correlation metadata and spooled-result retrieval. Do not otherwise modify the MCP public surface, UDS protocol, local authorization model or shared writer-lease contract except to fix a demonstrated defect. Phase D kept
 `SERVERFS_AGENT_BRIDGE_ENABLED=false` as the default, so an upgrade retains the 11-tool
 v0.2 surface unless the administrator explicitly enables Agent delegation. Agent tools
 talk only to the Bridge RPC contract; they never import provider adapters or provider
@@ -106,7 +107,7 @@ changes the native provider capability model frozen in Phases B/C. Do not auto-e
 login lingering; whether the user's systemd manager persists after logout is an
 environment/administrator policy outside this project.
 
-Do not add a generic shell/argv/env MCP tool. Do not replace the eight tools with the MCP
+Do not add a generic shell/argv/env MCP tool. Do not replace the nine tools with the MCP
 Tasks extension yet: as of 2026-09-20 the official Python SDK still lists
 `io.modelcontextprotocol/tasks` as not implemented. Keep the backend compatible with a
 future Tasks adapter instead.
@@ -411,7 +412,7 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   reports the running `server_version`, which is the cheapest proof of what the
   deployment actually serves.
 - `docker compose build` tags the result `SERVERFS_IMAGE`, which in a production
-  `.env` is a pinned release (`ghcr.io/ntlx/serverfs_mcp:0.6.0`). A bare build
+  `.env` is a pinned release (`ghcr.io/ntlx/serverfs_mcp:0.7.0`). A bare build
   therefore shadows that release locally: the running container is unaffected,
   but the next `up -d` starts local code under a release tag. Always build under a
   scratch tag (`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`). Upgrading

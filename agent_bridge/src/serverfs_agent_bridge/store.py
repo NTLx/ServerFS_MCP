@@ -103,10 +103,17 @@ class TaskStore:
                     started_at TEXT,
                     updated_at TEXT NOT NULL,
                     completed_at TEXT,
+                    deadline_at TEXT,
                     continue_from_task_id TEXT,
+                    correlation_id TEXT,
                     native_session_id TEXT,
                     native_turn_id TEXT,
                     final_response TEXT,
+                    result_storage TEXT NOT NULL DEFAULT 'inline',
+                    result_size_bytes INTEGER,
+                    result_sha256 TEXT,
+                    manifest_json TEXT,
+                    manifest_sha256 TEXT,
                     error_code TEXT,
                     error_message TEXT,
                     pending_request_id TEXT,
@@ -131,6 +138,7 @@ class TaskStore:
                     status TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
+                    expires_at TEXT,
                     resolved_at TEXT,
                     resolution_json TEXT
                 );
@@ -140,6 +148,20 @@ class TaskStore:
                 """
             )
             columns = {row[1] for row in con.execute("PRAGMA table_info(tasks)").fetchall()}
+            task_migrations = {
+                "deadline_at": "ALTER TABLE tasks ADD COLUMN deadline_at TEXT",
+                "correlation_id": "ALTER TABLE tasks ADD COLUMN correlation_id TEXT",
+                "result_storage": (
+                    "ALTER TABLE tasks ADD COLUMN result_storage TEXT NOT NULL DEFAULT 'inline'"
+                ),
+                "result_size_bytes": "ALTER TABLE tasks ADD COLUMN result_size_bytes INTEGER",
+                "result_sha256": "ALTER TABLE tasks ADD COLUMN result_sha256 TEXT",
+                "manifest_json": "ALTER TABLE tasks ADD COLUMN manifest_json TEXT",
+                "manifest_sha256": "ALTER TABLE tasks ADD COLUMN manifest_sha256 TEXT",
+            }
+            for column, statement in task_migrations.items():
+                if column not in columns:
+                    con.execute(statement)
             if "event_count" not in columns:
                 con.execute("ALTER TABLE tasks ADD COLUMN event_count INTEGER NOT NULL DEFAULT 0")
                 con.execute(
@@ -151,6 +173,12 @@ class TaskStore:
                     """
                 )
 
+            request_columns = {
+                row[1] for row in con.execute("PRAGMA table_info(pending_requests)").fetchall()
+            }
+            if "expires_at" not in request_columns:
+                con.execute("ALTER TABLE pending_requests ADD COLUMN expires_at TEXT")
+
     def create_task(
         self,
         *,
@@ -161,6 +189,10 @@ class TaskStore:
         relative_cwd: str,
         profile: str,
         continue_from_task_id: str | None,
+        deadline_at: str | None = None,
+        correlation_id: str | None = None,
+        manifest_json: str | None = None,
+        manifest_sha256: str | None = None,
         max_active_tasks: int | None = None,
     ) -> TaskRecord:
         now = utc_now()
@@ -180,8 +212,9 @@ class TaskStore:
                     """
                     INSERT INTO tasks (
                         task_id, runtime, workdir_alias, workdir_slot, relative_cwd,
-                        profile, status, created_at, updated_at, continue_from_task_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        profile, status, created_at, updated_at, deadline_at,
+                        continue_from_task_id, correlation_id, manifest_json, manifest_sha256
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         task_id,
@@ -193,7 +226,11 @@ class TaskStore:
                         TaskStatus.QUEUED.value,
                         now,
                         now,
+                        deadline_at,
                         continue_from_task_id,
+                        correlation_id,
+                        manifest_json,
+                        manifest_sha256,
                     ),
                 )
             except sqlite3.IntegrityError as exc:
@@ -216,6 +253,9 @@ class TaskStore:
         native_session_id: str | None | object = _UNSET,
         native_turn_id: str | None | object = _UNSET,
         final_response: str | None | object = _UNSET,
+        result_storage: str | object = _UNSET,
+        result_size_bytes: int | None | object = _UNSET,
+        result_sha256: str | None | object = _UNSET,
         error_code: str | None | object = _UNSET,
         error_message: str | None | object = _UNSET,
     ) -> TaskRecord:
@@ -255,6 +295,9 @@ class TaskStore:
                 "native_session_id": native_session_id,
                 "native_turn_id": native_turn_id,
                 "final_response": final_response,
+                "result_storage": result_storage,
+                "result_size_bytes": result_size_bytes,
+                "result_sha256": result_sha256,
                 "error_code": error_code,
                 "error_message": error_message,
             }.items():
@@ -306,7 +349,10 @@ class TaskStore:
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
-            if con.execute("SELECT 1 FROM tasks WHERE task_id = ?", (task_id,)).fetchone() is None:
+            task_row = con.execute(
+                "SELECT correlation_id FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            if task_row is None:
                 raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {task_id}")
             if max_events_per_task is None:
                 updated = con.execute(
@@ -332,7 +378,14 @@ class TaskStore:
                 (task_id, event_type, encoded, now),
             )
             event_id = int(cur.lastrowid)
-        return BridgeEvent(event_id, task_id, event_type, payload, now)
+        return BridgeEvent(
+            event_id=event_id,
+            task_id=task_id,
+            correlation_id=task_row["correlation_id"],
+            event_type=event_type,
+            payload=payload,
+            created_at=now,
+        )
 
     def count_events(self, task_id: str) -> int:
         with self._connect() as con:
@@ -344,7 +397,7 @@ class TaskStore:
     def list_events(
         self, task_id: str, *, after_event_id: int = 0, limit: int = 100
     ) -> list[BridgeEvent]:
-        self.get_task(task_id)
+        task = self.get_task(task_id)
         with self._connect() as con:
             rows = con.execute(
                 """
@@ -359,6 +412,7 @@ class TaskStore:
             BridgeEvent(
                 event_id=row["event_id"],
                 task_id=row["task_id"],
+                correlation_id=task.correlation_id,
                 event_type=row["event_type"],
                 payload=json.loads(row["payload_json"]),
                 created_at=row["created_at"],
@@ -374,6 +428,7 @@ class TaskStore:
         kind: str,
         payload: dict[str, Any],
         waiting_status: TaskStatus,
+        expires_at: str | None = None,
     ) -> PendingRequest:
         now = utc_now()
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
@@ -389,8 +444,8 @@ class TaskStore:
                 con.execute(
                     """
                     INSERT INTO pending_requests(
-                        request_id, task_id, kind, status, payload_json, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        request_id, task_id, kind, status, payload_json, created_at, expires_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         request_id,
@@ -399,6 +454,7 @@ class TaskStore:
                         RequestStatus.PENDING.value,
                         encoded,
                         now,
+                        expires_at,
                     ),
                 )
             except sqlite3.IntegrityError as exc:
@@ -481,6 +537,48 @@ class TaskStore:
                 terminal,
             ).fetchone()
         return int(row["n"])
+
+    def list_nonterminal_tasks(self) -> list[TaskRecord]:
+        terminal = tuple(status.value for status in TERMINAL_STATUSES)
+        placeholders = ",".join("?" for _ in terminal)
+        with self._connect() as con:
+            rows = con.execute(
+                f"""
+                SELECT * FROM tasks
+                WHERE status NOT IN ({placeholders})
+                ORDER BY created_at ASC
+                """,
+                terminal,
+            ).fetchall()
+        return [_task_from_row(row) for row in rows]
+
+    def list_terminal_before(self, cutoff: str) -> list[TaskRecord]:
+        terminal = tuple(status.value for status in TERMINAL_STATUSES)
+        placeholders = ",".join("?" for _ in terminal)
+        with self._connect() as con:
+            rows = con.execute(
+                f"""
+                SELECT * FROM tasks
+                WHERE status IN ({placeholders})
+                  AND completed_at IS NOT NULL
+                  AND completed_at < ?
+                ORDER BY completed_at ASC
+                """,
+                (*terminal, cutoff),
+            ).fetchall()
+        return [_task_from_row(row) for row in rows]
+
+    def delete_tasks(self, task_ids: list[str]) -> int:
+        if not task_ids:
+            return 0
+        placeholders = ",".join("?" for _ in task_ids)
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            deleted = con.execute(
+                f"DELETE FROM tasks WHERE task_id IN ({placeholders})",
+                tuple(task_ids),
+            )
+        return int(deleted.rowcount)
 
     def abandon_pending_request(self, task_id: str) -> str | None:
         """Atomically stale a provider-cleared request and resume its task."""
@@ -607,10 +705,17 @@ def _task_from_row(row: sqlite3.Row) -> TaskRecord:
         started_at=row["started_at"],
         updated_at=row["updated_at"],
         completed_at=row["completed_at"],
+        deadline_at=row["deadline_at"],
         continue_from_task_id=row["continue_from_task_id"],
+        correlation_id=row["correlation_id"],
         native_session_id=row["native_session_id"],
         native_turn_id=row["native_turn_id"],
         final_response=row["final_response"],
+        result_storage=row["result_storage"] or "inline",
+        result_size_bytes=row["result_size_bytes"],
+        result_sha256=row["result_sha256"],
+        manifest=json.loads(row["manifest_json"]) if row["manifest_json"] else None,
+        manifest_sha256=row["manifest_sha256"],
         error_code=row["error_code"],
         error_message=row["error_message"],
         pending_request_id=row["pending_request_id"],
@@ -625,6 +730,7 @@ def _request_from_row(row: sqlite3.Row) -> PendingRequest:
         status=row["status"],
         payload=json.loads(row["payload_json"]),
         created_at=row["created_at"],
+        expires_at=row["expires_at"],
         resolved_at=row["resolved_at"],
         resolution=json.loads(row["resolution_json"]) if row["resolution_json"] else None,
     )

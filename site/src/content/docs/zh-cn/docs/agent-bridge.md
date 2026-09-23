@@ -33,14 +33,22 @@ Unix socket
 
 ## Runtime 行为
 
-启用 Agent 策略后，ServerFS 会暴露 8 个结构化 Agent 工具，覆盖 runtime 发现、任务提交、状态/事件、approval/question 处理、受支持 runtime 的 steering，以及任务取消。
+启用 Agent 策略后，ServerFS 会暴露 9 个结构化 Agent 工具，覆盖 runtime 发现、任务提交、状态/事件、spool 最终结果的精确读取、approval/question 处理、受支持 runtime 的 steering，以及任务取消。
 
 这些工具**不是** Shell、argv 透传或通用命令执行器。
 
 当前部署可形成：
 
-- 19 个工具：文件系统 + Agent
-- 21 个工具：文件系统 + 二进制 + Agent
+- 20 个工具：文件系统 + Agent
+- 22 个工具：文件系统 + 二进制 + Agent
+
+## v0.7 Runtime Reliability
+
+v0.7.0 在现有 Bridge 上补强可靠性与证据链，而不是增加工作流编排。新任务会冻结不可变执行 manifest，并可携带可选的 opaque `correlation_id`；标准化事件采用 envelope schema v1；任务默认 24 小时 deadline，终态默认保留 7 天。
+
+workspace-write 任务还会在现有 `flock` 之外发布持久化的 slot recovery guard。Bridge 异常退出后，在 provider-aware reconciliation 能证明旧 provider 已停止之前，文件写入会以 `WORKDIR_RECOVERY_REQUIRED` 失败关闭；ServerFS 不会盲目重跑中断任务。
+
+最终响应不超过 256 KiB 时继续内联返回；超过 256 KiB、且不超过 8 MiB 时，会原子写入 Bridge 私有 spool，`get_agent_task` 返回有界 preview 以及大小/SHA-256 元数据，`read_agent_task_result` 可分块精确重建 UTF-8 原文。超过 8 MiB 仍返回 `AGENT_RESULT_TOO_LARGE`。
 
 ## 可选 Jev Advisors
 

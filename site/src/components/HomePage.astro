@@ -18,7 +18,7 @@ const copy = {
     nav: { docs: 'Docs', architecture: 'Architecture', security: 'Security' },
     languageSwitch: '简中',
     languageLabel: '切换到简体中文',
-    release: 'v0.6.0',
+    release: 'v0.7.0',
     heroEyebrow: 'SECURE MCP FOR LINUX WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
@@ -48,8 +48,8 @@ const copy = {
     surfaces: [
       { count: '11', label: 'Filesystem', detail: 'safe read + guarded mutation surface' },
       { count: '13', label: '+ Binary', detail: 'bounded whole-file transfer' },
-      { count: '19', label: '+ Agent', detail: 'structured Codex / Claude delegation' },
-      { count: '21', label: 'Full surface', detail: 'binary + Agent Bridge enabled' },
+      { count: '20', label: '+ Agent', detail: 'structured Codex / Claude delegation' },
+      { count: '22', label: 'Full surface', detail: 'binary + Agent Bridge enabled' },
     ],
     architectureEyebrow: 'ARCHITECTURE',
     architectureTitle: 'Capability, not ambient authority.',
@@ -84,7 +84,7 @@ const copy = {
     agentEyebrow: 'OPTIONAL AGENT BRIDGE',
     agentTitle: 'Native agents stay on the host.',
     agentBody:
-      'ServerFS brokers structured tasks over a user-owned Unix socket. Codex and Claude keep their native environment; mainline-experimental Jev advisors add task preflight, routing, and approval context without becoming an authority or changing the MCP tool surface.',
+      'ServerFS brokers structured tasks over a user-owned Unix socket. Codex and Claude keep their native environment; optional Jev advisors add task preflight, routing, and approval context without becoming an authority or changing the MCP tool surface.',
     exploreAgent: 'Explore Agent Bridge',
     exploreJev: 'Explore Jev Advisors',
     mcpContainer: 'MCP CONTAINER',
@@ -114,7 +114,7 @@ const copy = {
     nav: { docs: '文档', architecture: '架构', security: '安全' },
     languageSwitch: 'EN',
     languageLabel: 'Switch to English',
-    release: 'v0.6.0',
+    release: 'v0.7.0',
     heroEyebrow: '面向 LINUX WORKDIR 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
@@ -144,8 +144,8 @@ const copy = {
     surfaces: [
       { count: '11', label: '文件系统', detail: '安全读取 + 受控写入能力面' },
       { count: '13', label: '+ 二进制', detail: '有界的整文件传输' },
-      { count: '19', label: '+ Agent', detail: '结构化 Codex / Claude 委派' },
-      { count: '21', label: '完整能力面', detail: '同时启用二进制与 Agent Bridge' },
+      { count: '20', label: '+ Agent', detail: '结构化 Codex / Claude 委派' },
+      { count: '22', label: '完整能力面', detail: '同时启用二进制与 Agent Bridge' },
     ],
     architectureEyebrow: '架构',
     architectureTitle: '提供能力，而不是环境权限。',
@@ -179,7 +179,7 @@ const copy = {
     agentEyebrow: '可选 AGENT BRIDGE',
     agentTitle: '原生 Agent 留在宿主机。',
     agentBody:
-      'ServerFS 通过用户自有 Unix socket 转发结构化任务。Codex 和 Claude 保留原生运行环境；已合入 main 的实验性 Jev Advisors 提供 task preflight、路由与 approval context，但不会获得授权权力，也不会改变 MCP 工具能力面。',
+      'ServerFS 通过用户自有 Unix socket 转发结构化任务。Codex 和 Claude 保留原生运行环境；可选的 Jev Advisors 提供 task preflight、路由与 approval context，但不会获得授权权力，也不会改变 MCP 工具能力面。',
     exploreAgent: '了解 Agent Bridge',
     exploreJev: '了解 Jev Advisors',
     mcpContainer: 'MCP 容器',
@@ -265,7 +265,7 @@ const canonicalUrl = isZh
         <div class="hero-copy">
           <a
             class="release-pill"
-            href="https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.6.0"
+            href="https://github.com/NTLx/ServerFS_MCP/releases"
             target="_blank"
             rel="noreferrer"
           >
@@ -326,7 +326,7 @@ const canonicalUrl = isZh
               <div class="server-head">
                 <span class="server-led"></span>
                 <strong>ServerFS MCP</strong>
-                <code>v0.6.0</code>
+                <code>v0.7.0</code>
               </div>
               {c.serverRows.map(([label, detail]) => (
                 <div class="server-row" data-policy-row><span>{label}</span><em>{detail}</em></div>
@@ -532,7 +532,7 @@ const canonicalUrl = isZh
       <div>
         <a href={local('docs/')}>{c.footerDocs}</a>
         <a href="https://github.com/NTLx/ServerFS_MCP">{c.footerSource}</a>
-        <a href="https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.6.0">{c.footerReleases}</a>
+        <a href="https://github.com/NTLx/ServerFS_MCP/releases">{c.footerReleases}</a>
       </div>
     </footer>
 

@@ -98,6 +98,45 @@ def test_mutation_returns_workdir_busy_when_agent_holds_lease(tmp_path: Path) ->
     assert not (wd.container_path / "blocked.txt").exists()
 
 
+def test_live_agent_guard_keeps_workdir_busy_precedence(tmp_path: Path) -> None:
+    server, wd, lock_file = make_mutation_server(tmp_path)
+    active_dir = lock_file.parent / "active"
+    active_dir.mkdir()
+    (active_dir / "01").write_text('{"schema_version":1}\n')
+
+    holder = os.open(lock_file, os.O_RDWR | os.O_CLOEXEC)
+    try:
+        fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        message = call_error(
+            server,
+            "create_text_file",
+            {"workdir": "repo", "path": "blocked.txt", "content": "no\n"},
+        )
+    finally:
+        fcntl.flock(holder, fcntl.LOCK_UN)
+        os.close(holder)
+
+    assert error_code(message) == "WORKDIR_BUSY"
+    assert not (wd.container_path / "blocked.txt").exists()
+
+
+def test_mutation_fails_closed_when_recovery_guard_survives_agent_crash(
+    tmp_path: Path,
+) -> None:
+    server, wd, lock_file = make_mutation_server(tmp_path)
+    active_dir = lock_file.parent / "active"
+    active_dir.mkdir()
+    (active_dir / "01").write_text('{"schema_version":1}\n')
+
+    message = call_error(
+        server,
+        "create_text_file",
+        {"workdir": "repo", "path": "blocked.txt", "content": "no\n"},
+    )
+    assert error_code(message) == "WORKDIR_RECOVERY_REQUIRED"
+    assert not (wd.container_path / "blocked.txt").exists()
+
+
 def test_mutation_fails_closed_when_shared_lock_file_is_missing(tmp_path: Path) -> None:
     server, wd, lock_file = make_mutation_server(tmp_path)
     lock_file.unlink()

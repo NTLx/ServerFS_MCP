@@ -36,7 +36,12 @@ from mcp.types import (
 from pydantic import Field
 
 from . import logging as jsonlog
-from .agent_leases import AgentLeaseError, WorkdirBusyError, mutation_agent_lease
+from .agent_leases import (
+    AgentLeaseError,
+    WorkdirBusyError,
+    WorkdirRecoveryRequiredError,
+    mutation_agent_lease,
+)
 from .binary import BinaryTransferError, decode_base64_payload
 from .binary import read_binary_file as read_binary_file_impl
 from .config import Settings
@@ -267,6 +272,10 @@ def _mutation_tool_error(exc: Exception, workdir: str, path: str) -> ToolError:
         return exc
     if isinstance(exc, WorkdirBusyError):
         return ToolError(f"WORKDIR_BUSY: {workdir} has an active Agent writer")
+    if isinstance(exc, WorkdirRecoveryRequiredError):
+        return ToolError(
+            f"WORKDIR_RECOVERY_REQUIRED: {workdir} has unresolved Agent recovery state"
+        )
     if isinstance(exc, BinaryTransferError):
         return ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
     if isinstance(exc, AgentLeaseError):

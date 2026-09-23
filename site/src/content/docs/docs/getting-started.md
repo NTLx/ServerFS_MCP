@@ -78,12 +78,12 @@ The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port.
 
 ## Published images
 
-ServerFS MCP v0.6.0 is published to GHCR under these stable tags:
+ServerFS MCP v0.7.0 uses these stable GHCR tags:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.6
-ghcr.io/ntlx/serverfs_mcp:0.6.0
+ghcr.io/ntlx/serverfs_mcp:0.7
+ghcr.io/ntlx/serverfs_mcp:0.7.0
 ```
 
-Use the pinned `0.6.0` tag for production deployments rather than `latest` or `edge`.
+Use the pinned `0.7.0` tag for production deployments rather than `latest` or `edge`.

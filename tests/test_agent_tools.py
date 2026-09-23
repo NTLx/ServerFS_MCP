@@ -44,6 +44,12 @@ class FakeAgentClient:
             "task.submit": {"task_id": "agt_test", "status": "queued"},
             "task.get": {"task_id": "agt_test", "status": "running"},
             "task.events": {"events": [], "next_after_event_id": 0},
+            "task.result.read": {
+                "text": "chunk",
+                "offset_bytes": 0,
+                "next_offset_bytes": 5,
+                "eof": True,
+            },
             "task.approval.respond": {
                 "task_id": "agt_test",
                 "request_id": "req_1",
@@ -123,7 +129,7 @@ def test_enabled_server_requires_explicit_bridge_client(tmp_path: Path) -> None:
         create_server(settings, WorkdirRegistry([wd]))
 
 
-def test_enabled_surface_adds_exactly_eight_agent_tools(tmp_path: Path) -> None:
+def test_enabled_surface_adds_exactly_nine_agent_tools(tmp_path: Path) -> None:
     client = FakeAgentClient()
     names = tool_names(server_with_client(tmp_path, client))
     expected = {
@@ -131,13 +137,14 @@ def test_enabled_surface_adds_exactly_eight_agent_tools(tmp_path: Path) -> None:
         "submit_agent_task",
         "get_agent_task",
         "read_agent_task_events",
+        "read_agent_task_result",
         "respond_agent_approval",
         "answer_agent_question",
         "send_agent_message",
         "cancel_agent_task",
     }
     assert expected <= names
-    assert len(names) == 19
+    assert len(names) == 20
 
 
 def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
@@ -157,9 +164,11 @@ def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
             "path",
             "profile",
             "continue_from_task_id",
+            "correlation_id",
         },
         "get_agent_task": {"task_id"},
         "read_agent_task_events": {"task_id", "after_event_id", "limit"},
+        "read_agent_task_result": {"task_id", "offset_bytes", "max_bytes"},
         "respond_agent_approval": {
             "task_id",
             "request_id",
@@ -174,6 +183,7 @@ def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
         "list_agent_runtimes": (True, None, None, False),
         "get_agent_task": (True, None, None, False),
         "read_agent_task_events": (True, None, None, False),
+        "read_agent_task_result": (True, None, None, False),
         "submit_agent_task": (False, True, False, True),
         "respond_agent_approval": (False, True, True, True),
         "answer_agent_question": (False, False, True, True),
@@ -286,6 +296,23 @@ def test_submit_agent_task_maps_flat_arguments_to_bridge_rpc(tmp_path: Path) -> 
             "prompt": "Fix the failing test",
         },
     )
+
+
+def test_submit_forwards_opaque_correlation_id(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    server = server_with_client(tmp_path, client)
+    call_success(
+        server,
+        "submit_agent_task",
+        {
+            "runtime": "codex",
+            "workdir": "repo",
+            "profile": "workspace-write",
+            "prompt": "Correlate",
+            "correlation_id": "batch-42",
+        },
+    )
+    assert client.calls[-1][1]["correlation_id"] == "batch-42"
 
 
 def test_submit_continuation_forwards_prior_task_id(tmp_path: Path) -> None:
@@ -464,6 +491,11 @@ def test_read_and_interaction_tools_map_to_expected_rpc_methods(tmp_path: Path) 
     )
     call_success(
         server,
+        "read_agent_task_result",
+        {"task_id": "agt_test", "offset_bytes": 5, "max_bytes": 10},
+    )
+    call_success(
+        server,
         "respond_agent_approval",
         {
             "task_id": "agt_test",
@@ -496,12 +528,13 @@ def test_read_and_interaction_tools_map_to_expected_rpc_methods(tmp_path: Path) 
     assert [method for method, _ in client.calls] == [
         "task.get",
         "task.events",
+        "task.result.read",
         "task.approval.respond",
         "task.question.answer",
         "task.message.send",
         "task.cancel",
     ]
-    assert client.calls[3][1]["answers"][0] == {
+    assert client.calls[4][1]["answers"][0] == {
         "question_id": "q0",
         "selected_option_ids": ["B"],
         "text": "details",

@@ -14,8 +14,8 @@ from typing import Any
 
 from ..config import CodexSettings
 from ..errors import BridgeError
-from ..models import AgentProfile, RuntimeInfo
-from .base import AdapterResult, AgentAdapter, TaskContext
+from ..models import AgentProfile, ReconciliationStatus, RuntimeInfo, TaskRecord
+from .base import AdapterResult, AgentAdapter, ReconcileResult, TaskContext
 from .codex_transport import CodexConnection
 
 _COMMAND_APPROVAL = "item/commandExecution/requestApproval"
@@ -50,7 +50,7 @@ class CodexAdapter(AgentAdapter):
         self,
         settings: CodexSettings,
         *,
-        client_version: str = "0.4.0",
+        client_version: str = "0.7.0",
     ) -> None:
         self.settings = settings
         self.client_version = client_version
@@ -132,9 +132,73 @@ class CodexAdapter(AgentAdapter):
             return
 
     async def reconcile(self) -> None:
-        # The managed daemon persists native threads, but Phase B doesn't claim
-        # transparent recovery of an in-flight turn after Bridge restart.
         return None
+
+    async def reconcile_task(self, task: TaskRecord) -> ReconcileResult:
+        if not task.native_session_id:
+            return ReconcileResult(
+                status=ReconciliationStatus.NOT_RECOVERABLE,
+                provider_active=None,
+                detail="task has no persisted Codex thread id",
+            )
+
+        connection = self._new_connection()
+        try:
+            await connection.connect()
+            result = await connection.request(
+                "thread/read",
+                {"threadId": task.native_session_id, "includeTurns": True},
+            )
+        except BridgeError:
+            return ReconcileResult(
+                status=ReconciliationStatus.UNKNOWN,
+                provider_active=None,
+                detail="Codex thread state could not be verified",
+            )
+        finally:
+            try:
+                await connection.close()
+            except Exception:
+                pass
+
+        thread = result.get("thread") if isinstance(result, dict) else None
+        if not isinstance(thread, dict) or thread.get("id") != task.native_session_id:
+            return ReconcileResult(
+                status=ReconciliationStatus.UNKNOWN,
+                provider_active=None,
+                detail="Codex returned a different or invalid thread",
+            )
+
+        thread_status = thread.get("status")
+        turns = thread.get("turns")
+        target_turn = None
+        if isinstance(turns, list) and task.native_turn_id:
+            for turn in turns:
+                if isinstance(turn, dict) and turn.get("id") == task.native_turn_id:
+                    target_turn = turn
+                    break
+
+        if thread_status == "active":
+            if isinstance(target_turn, dict) and target_turn.get("status") == "inProgress":
+                return ReconcileResult(
+                    status=ReconciliationStatus.UNKNOWN,
+                    provider_active=True,
+                    detail=(
+                        "exact Codex turn is still active; Bridge cannot safely resume "
+                        "event consumption"
+                    ),
+                )
+            return ReconcileResult(
+                status=ReconciliationStatus.UNKNOWN,
+                provider_active=True,
+                detail="Codex thread is active but exact turn ownership is not recoverable",
+            )
+
+        return ReconcileResult(
+            status=ReconciliationStatus.SESSION_RESUMABLE,
+            provider_active=False,
+            detail="Codex thread is no longer active and remains resumable",
+        )
 
     async def close(self) -> None:
         if self._closed:
@@ -181,7 +245,9 @@ class CodexAdapter(AgentAdapter):
                 active.thread_id = await self._resume_thread(connection, context)
             else:
                 active.thread_id = await self._start_thread(connection, context)
+            await context.record_native_ids(active.thread_id, None)
             active.turn_id = await self._start_turn(connection, context, active.thread_id)
+            await context.record_native_ids(active.thread_id, active.turn_id)
             active.turn_ready.set()
 
             return await self._consume_turn(active)

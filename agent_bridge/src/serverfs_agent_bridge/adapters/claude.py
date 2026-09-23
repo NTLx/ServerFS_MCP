@@ -34,8 +34,8 @@ from claude_agent_sdk.types import (
 
 from ..config import ClaudeSettings
 from ..errors import BridgeError
-from ..models import AgentProfile, RuntimeInfo
-from .base import AdapterResult, AgentAdapter, TaskContext
+from ..models import AgentProfile, ReconciliationStatus, RuntimeInfo, TaskRecord
+from .base import AdapterResult, AgentAdapter, ReconcileResult, TaskContext
 
 _ClientFactory = Callable[[ClaudeAgentOptions], ClaudeSDKClient]
 
@@ -62,6 +62,7 @@ class ClaudeAdapter(AgentAdapter):
         self._active: dict[str, _ActiveClaudeTask] = {}
         self._active_lock = asyncio.Lock()
         self._cancel_requested: set[str] = set()
+        self._locally_stopped: set[str] = set()
         self._closed = False
 
     @property
@@ -143,6 +144,33 @@ class ClaudeAdapter(AgentAdapter):
             # Local Bridge cancellation remains authoritative.
             return
 
+    async def reconcile_task(self, task: TaskRecord) -> ReconcileResult:
+        if task.task_id in self._locally_stopped:
+            self._locally_stopped.discard(task.task_id)
+            return ReconcileResult(
+                status=(
+                    ReconciliationStatus.SESSION_RESUMABLE
+                    if task.native_session_id is not None
+                    else ReconciliationStatus.NOT_RECOVERABLE
+                ),
+                provider_active=False,
+                detail="local Claude SDK client disconnected and the subprocess is stopped",
+            )
+        if task.native_session_id is None:
+            return ReconcileResult(
+                status=ReconciliationStatus.NOT_RECOVERABLE,
+                provider_active=None,
+                detail="task has no persisted Claude session id; prior process state is unknown",
+            )
+        return ReconcileResult(
+            status=ReconciliationStatus.SESSION_RESUMABLE,
+            provider_active=None,
+            detail=(
+                "Claude session is resumable by a new task, but that does not prove "
+                "the prior in-flight subprocess has stopped"
+            ),
+        )
+
     async def close(self) -> None:
         self._closed = True
         active = list(self._active.values())
@@ -202,8 +230,11 @@ class ClaudeAdapter(AgentAdapter):
                 raise BridgeError("AGENT_PROVIDER_ERROR", "Claude task is already active")
             self._active[context.task_id] = active
 
+        record_local_stop = False
         try:
             await client.connect()
+            if context.continue_native_session_id is not None:
+                await context.record_native_ids(context.continue_native_session_id, None)
             await client.query(context.prompt)
             active.client_ready.set()
             if context.task_id in self._cancel_requested:
@@ -219,16 +250,21 @@ class ClaudeAdapter(AgentAdapter):
             final = result.result if isinstance(result.result, str) else active.latest_text
             if not isinstance(final, str):
                 final = ""
+            native_turn_id = getattr(result, "uuid", None)
+            await context.record_native_ids(result.session_id, native_turn_id)
             return AdapterResult(
                 final_response=final,
                 native_session_id=result.session_id,
-                native_turn_id=getattr(result, "uuid", None),
+                native_turn_id=native_turn_id,
             )
         except asyncio.CancelledError:
+            record_local_stop = True
             raise
         except BridgeError:
+            record_local_stop = True
             raise
         except Exception as exc:
+            record_local_stop = True
             raise BridgeError("AGENT_PROVIDER_ERROR", "Claude Code task failed") from exc
         finally:
             active.client_ready.set()
@@ -239,6 +275,8 @@ class ClaudeAdapter(AgentAdapter):
             async with self._active_lock:
                 self._active.pop(context.task_id, None)
             self._cancel_requested.discard(context.task_id)
+            if record_local_stop:
+                self._locally_stopped.add(context.task_id)
 
     async def _receive_result(self, active: _ActiveClaudeTask) -> ResultMessage:
         iterator = active.client.receive_response().__aiter__()

@@ -83,7 +83,7 @@ def register_agent_tools(
     settings: Settings,
     client: AgentBridgeClient,
 ) -> None:
-    """Register the eight v0.3 Agent delegation tools."""
+    """Register the nine v0.7 Agent delegation tools."""
 
     @mcp.tool(annotations=AGENT_READ_ANNOTATIONS)
     async def list_agent_runtimes() -> dict[str, Any]:
@@ -155,6 +155,16 @@ def register_agent_tools(
                 ),
             ),
         ] = None,
+        correlation_id: Annotated[
+            str | None,
+            Field(
+                default=None,
+                description=(
+                    "Optional opaque correlation identifier (UTF-8, at most 256 bytes); "
+                    "stored as metadata only and never forwarded as provider instructions"
+                ),
+            ),
+        ] = None,
     ) -> dict[str, Any]:
         """Submit one narrow authorized Agent objective and return a task handle.
 
@@ -181,6 +191,8 @@ def register_agent_tools(
             }
             if continue_from_task_id is not None:
                 params["continue_from_task_id"] = continue_from_task_id
+            if correlation_id is not None:
+                params["correlation_id"] = correlation_id
             result = await client.call("task.submit", params)
         except Exception as exc:
             err = _agent_tool_error(exc)
@@ -192,6 +204,7 @@ def register_agent_tools(
                 path=path,
                 runtime=runtime,
                 profile=profile,
+                correlation_id=correlation_id,
                 error_code=_tool_error_code(err),
             )
             raise err from exc
@@ -203,6 +216,7 @@ def register_agent_tools(
             path=normalized_path,
             runtime=runtime,
             profile=profile,
+            correlation_id=correlation_id,
             task_id=result.get("task_id"),
             status=result.get("status"),
         )
@@ -238,6 +252,33 @@ def register_agent_tools(
             "task.events",
             {"task_id": task_id, "after_event_id": after_event_id, "limit": limit},
             task_id=task_id,
+        )
+
+    @mcp.tool(annotations=AGENT_READ_ANNOTATIONS)
+    async def read_agent_task_result(
+        task_id: Annotated[str, Field(description="ServerFS Agent task identifier")],
+        offset_bytes: Annotated[
+            int,
+            Field(default=0, ge=0, description="UTF-8 result byte offset"),
+        ] = 0,
+        max_bytes: Annotated[
+            int,
+            Field(default=65_536, ge=1, le=65_536, description="Maximum UTF-8 bytes to return"),
+        ] = 65_536,
+    ) -> dict[str, Any]:
+        """Read an exact byte-ranged UTF-8 chunk from a spooled Agent result."""
+        return await _simple_agent_call(
+            client,
+            "read_agent_task_result",
+            "task.result.read",
+            {
+                "task_id": task_id,
+                "offset_bytes": offset_bytes,
+                "max_bytes": max_bytes,
+            },
+            task_id=task_id,
+            offset_bytes=offset_bytes,
+            max_bytes=max_bytes,
         )
 
     @mcp.tool(annotations=AGENT_APPROVAL_ANNOTATIONS)
@@ -365,6 +406,9 @@ async def _simple_agent_call(
             **audit_fields,
         )
         raise err from exc
+    correlation_id = result.get("correlation_id")
+    if isinstance(correlation_id, str):
+        audit_fields.setdefault("correlation_id", correlation_id)
     _audit_agent(tool, t0, success=True, **audit_fields)
     return result
 
@@ -450,6 +494,7 @@ def _audit_agent(
     **fields: object,
 ) -> None:
     record: dict[str, object] = {
+        "schema_version": 1,
         "tool": tool,
         "duration_ms": round((time.monotonic() - t0) * 1000, 1),
         "success": success,

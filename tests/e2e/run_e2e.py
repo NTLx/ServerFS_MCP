@@ -54,6 +54,7 @@ AGENT_TOOLS = {
     "submit_agent_task",
     "get_agent_task",
     "read_agent_task_events",
+    "read_agent_task_result",
     "respond_agent_approval",
     "answer_agent_question",
     "send_agent_message",
@@ -221,8 +222,8 @@ async def run(report: Report, base: Path) -> None:
             f"{len(default_names)} tools",
         )
         report.check(
-            "global + per-workdir enablement yields 19 tools",
-            len(enabled_names) == 19,
+            "global + per-workdir enablement yields 20 tools",
+            len(enabled_names) == 20,
             f"{len(enabled_names)} tools",
         )
 
@@ -336,6 +337,15 @@ async def run(report: Report, base: Path) -> None:
             "MCP read_agent_task_events returns a cursor",
             bool(task_events["events"]) and task_events["next_after_event_id"] > 0,
             f"{len(task_events['events'])} events",
+        )
+        inline_result_error = await probe.err(
+            "read_agent_task_result",
+            {"task_id": mcp_id},
+        )
+        report.check(
+            "result reader rejects inline results with the normalized code",
+            error_code(inline_result_error) == "AGENT_RESULT_NOT_RETRIEVABLE",
+            error_code(inline_result_error),
         )
 
         # ---- human in the loop -------------------------------------------------

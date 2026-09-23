@@ -12,7 +12,7 @@ from serverfs_agent_bridge.adapters.claude import ClaudeAdapter
 from serverfs_agent_bridge.config import ClaudeSettings
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.leases import LeaseManager
-from serverfs_agent_bridge.models import AgentMode
+from serverfs_agent_bridge.models import AgentMode, ReconciliationStatus
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
 from serverfs_agent_bridge.service import BridgeService
 from serverfs_agent_bridge.store import TaskStore
@@ -393,6 +393,7 @@ async def test_claude_cancel_interrupts_active_client(
         cancelled = await wait_for_status(service, submitted["task_id"], "cancelled")
         assert cancelled["status"] == "cancelled"
         assert factory.clients[0].interrupted is True
+        assert service.guard_manager.read(1) is None
     finally:
         await service.close()
 
@@ -504,3 +505,27 @@ async def test_claude_live_steer_is_rejected_for_an_active_task(
         await wait_for_status(service, submitted["task_id"], "cancelled")
     finally:
         await service.close()
+
+
+@pytest.mark.asyncio
+async def test_claude_restart_reconciliation_does_not_treat_resumable_as_stopped(
+    tmp_path: Path,
+) -> None:
+    store = TaskStore(tmp_path / "state")
+    task = store.create_task(
+        task_id="agt_reconcile_claude",
+        runtime="claude",
+        workdir_alias="repo",
+        workdir_slot=1,
+        relative_cwd="",
+        profile="workspace-write",
+        continue_from_task_id=None,
+    )
+    task = store.set_native_ids(task.task_id, native_session_id="claude-session-1")
+    adapter = ClaudeAdapter(ClaudeSettings(enabled=True))
+
+    result = await adapter.reconcile_task(task)
+
+    assert result.status is ReconciliationStatus.SESSION_RESUMABLE
+    assert result.provider_active is None
+    assert "does not prove" in result.detail
