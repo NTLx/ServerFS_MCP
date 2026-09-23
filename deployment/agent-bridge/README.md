@@ -471,7 +471,7 @@ Before host acceptance, run both independent code gates: the repository-root gat
 `bash -n deployment/agent-bridge/*.sh` for deployment shell syntax. Root `pytest`
 collects only `tests/` and does not validate `agent_bridge/tests/`.
 
-For the ServerFS v0.7.0 package, verify the target host proves:
+For the ServerFS v0.7.1 package, verify the target host proves:
 
 - install/update/rollback require no sudo/root;
 - real peer UID/GID equal the current login user;
@@ -487,7 +487,7 @@ For the ServerFS v0.7.0 package, verify the target host proves:
 - shared writer lease works across host/container;
 - rollback implementation and recovery tests remain green; the live base
   11-tool rollback/re-cutover drill was **WAIVED BY MAINTAINER for v0.3.0**
-  (2026-09-20) as a historical release decision and is not repeated as a v0.7.0
+  (2026-09-20) as a historical release decision and is not repeated as a v0.7.1
   verification requirement;
 - no provider credentials enter the MCP container;
 - MCP container still has no Internet egress;
@@ -501,4 +501,4 @@ container.
 
 If post-release verification fails, use the documented rollback script to restore the
 previous user-scoped Bridge release, configuration and unit state; after publication,
-do not recreate or move the `v0.7.0` tag.
+do not recreate or move published release tags; `v0.7.0` remains immutable, and `v0.7.1` becomes immutable when published.

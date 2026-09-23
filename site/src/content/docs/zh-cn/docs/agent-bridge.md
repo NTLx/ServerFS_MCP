@@ -46,6 +46,8 @@ Unix socket
 
 v0.7.0 在现有 Bridge 上补强可靠性与证据链，而不是增加工作流编排。新任务会冻结不可变执行 manifest，并可携带可选的 opaque `correlation_id`；标准化事件采用 envelope schema v1；任务默认 24 小时 deadline，终态默认保留 7 天。
 
+v0.7.1 保持上述契约不变，只修复一个很窄的 Codex 恢复边界：只有任务已经失败、没有 native session/turn ID，且持久化错误能证明 control socket 在 provider 执行开始前连接失败时，reconciliation 才会清除 recovery guard；其它无 ID 的失败仍保持未知并 fail-closed。
+
 workspace-write 任务还会在现有 `flock` 之外发布持久化的 slot recovery guard。Bridge 异常退出后，在 provider-aware reconciliation 能证明旧 provider 已停止之前，文件写入会以 `WORKDIR_RECOVERY_REQUIRED` 失败关闭；ServerFS 不会盲目重跑中断任务。
 
 最终响应不超过 256 KiB 时继续内联返回；超过 256 KiB、且不超过 8 MiB 时，会原子写入 Bridge 私有 spool，`get_agent_task` 返回有界 preview 以及大小/SHA-256 元数据，`read_agent_task_result` 可分块精确重建 UTF-8 原文。超过 8 MiB 仍返回 `AGENT_RESULT_TOO_LARGE`。

@@ -45,7 +45,7 @@ The default `compose.yml` exposes the original 11 filesystem tools. Binary trans
 
 `main` includes an optional **advisory-only** Jev task advisor inside the host Agent Bridge. It does not add an MCP tool, runtime, permission, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and task submission follows the existing path unchanged. When configured, one pinned `jev-1.13.0` task-submission request evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a four-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, or `human_review`. If a native provider later creates an approval request, the same Jev client may make one additional approval-specific request that scores necessity, scope, destructive/irreversible risk, sensitive access and external side effects, then returns an advisory recommendation; identical approvals within the same task reuse task-local advice instead of calling Jev again. Ordinary turns and question prompts do not create that extra request. No Jev result blocks, rewrites, reroutes, approves, denies, or expands a task; the explicit runtime and approval contracts remain authoritative. The feature was introduced in v0.6.0 as an opt-in experimental capability. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository [Preflight note](docs/jev-agent-preflight-experiment.md), [Runtime Router note](docs/jev-runtime-router-experiment.md), and [Approval Advisor note](docs/jev-approval-advisor-experiment.md).
 
-v0.7.0 strengthens the existing Agent Bridge without turning ServerFS into a workflow engine. Every new task freezes an immutable execution manifest and optional opaque `correlation_id`; normalized events use schema-versioned envelopes; tasks receive a 24-hour deadline and terminal state is retained for seven days by default. Workspace-write runs add a persistent active-slot recovery guard on top of the existing `flock`, so an abnormal Bridge exit fails closed with `WORKDIR_RECOVERY_REQUIRED` until provider state is reconciled. Final responses up to 256 KiB remain inline; responses above 256 KiB and up to 8 MiB are atomically spooled in private Bridge state and can be reconstructed exactly through the read-only `read_agent_task_result` tool. Results above 8 MiB still fail with `AGENT_RESULT_TOO_LARGE`.
+v0.7.0 introduced the current Agent Bridge reliability layer without turning ServerFS into a workflow engine. Every new task freezes an immutable execution manifest and optional opaque `correlation_id`; normalized events use schema-versioned envelopes; tasks receive a 24-hour deadline and terminal state is retained for seven days by default. Workspace-write runs add a persistent active-slot recovery guard on top of the existing `flock`, so an abnormal Bridge exit fails closed with `WORKDIR_RECOVERY_REQUIRED` until provider state is reconciled. Final responses up to 256 KiB remain inline; responses above 256 KiB and up to 8 MiB are atomically spooled in private Bridge state and can be reconstructed exactly through the read-only `read_agent_task_result` tool. Results above 8 MiB still fail with `AGENT_RESULT_TOO_LARGE`. v0.7.1 is a maintenance hotfix on that frozen surface: Codex reconciliation now clears a recovery guard only for the proven pre-provider-start failure where the task is already failed, the control socket connection failed before `thread/start`, and no native session/turn ID exists. Ambiguous no-ID failures remain unresolved and fail closed.
 
 ## Prerequisites
 
@@ -90,7 +90,7 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.7.0` | `v0.7.0` |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.7.1` | `v0.7.1` |
 | Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.7` | newest `v0.7.x` tag |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
@@ -103,7 +103,7 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-The v0.7.0 release line publishes `0.7.0`, `0.7` and `latest` from the immutable `v0.7.0` tag. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
+The v0.7.1 maintenance release publishes `0.7.1`, `0.7` and `latest` from the immutable `v0.7.1` tag. The earlier `v0.7.0` tag remains immutable. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
 
 ## Workdir Configuration
 
@@ -303,21 +303,21 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose up -d
 
 Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins and rebuilding along the source path. Avoid `latest`.
 
-For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. After v0.7.0 is published, use:
+For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. After v0.7.1 is published, use:
 
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.0
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.1
 ```
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
 
-### Upgrading to v0.7.0
+### Upgrading to v0.7.1
 
-v0.7.0 is an additive Agent-runtime reliability release. The Bridge migrates existing SQLite state in place, preserving historical tasks without fabricating v0.7 manifest/deadline/correlation evidence. Existing inline results and Agent task semantics remain compatible, while the Agent MCP surface gains one read-only tool, `read_agent_task_result`, for exact chunked retrieval of spooled final responses.
+v0.7.1 is a maintenance hotfix on the additive Agent-runtime reliability release introduced in v0.7.0. It keeps the same MCP surface, manifest/event schema, deadlines, retention, recovery guards and result-spool contract. The fix narrows one Codex restart-reconciliation edge case: when a task is already failed because the managed control socket could not be connected before `thread/start`, and neither a native session ID nor turn ID was ever recorded, the Bridge can prove the provider never started and report `provider_active=false`, allowing the stale recovery guard to clear. Other no-ID failures remain ambiguous and continue to fail closed.
 
-Before updating the host Bridge, confirm there are no active writer-lease tasks and use the existing user-scoped installer/update flow. After the update, a stale persistent recovery guard deliberately blocks file mutations with `WORKDIR_RECOVERY_REQUIRED` until startup reconciliation can prove the prior provider is no longer active; ServerFS never blindly reruns an interrupted task. Jev remains optional, fail-open and advisory-only exactly as in v0.6.0.
+The Bridge still migrates existing SQLite state in place, preserving historical tasks without fabricating v0.7 manifest/deadline/correlation evidence. Before updating the host Bridge, confirm there are no active writer-lease tasks and use the existing user-scoped installer/update flow. ServerFS never blindly reruns an interrupted task. Jev remains optional, fail-open and advisory-only exactly as in v0.6.0.
 
-After v0.7.0 is published, production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.0`. Agent-enabled clients must refresh their MCP tool schema to see `read_agent_task_result`.
+After v0.7.1 is published, production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.1`. Agent-enabled clients upgrading from versions before v0.7.0 must refresh their MCP tool schema to see `read_agent_task_result`.
 
 ### Upgrading to v0.5.0
 
@@ -342,6 +342,6 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 
 The scratch tag on the last line matters: `image` doubles as the tag Compose builds to, so an untagged build with a pinned production `.env` present would repoint that release tag at your working tree.
 
-## Still not in v0.7.0 (by design)
+## Still not in v0.7.1 (by design)
 
 No generic URL downloader, no rename/move/copy, no recursive mkdir or delete, no in-place binary editing API, no chmod/chown tools, no symlink or hardlink creation, no chunked/resumable transfer sessions, no shell or command execution, no Git operations, no automatic backup or trash, no database/index/RAG, no ACL management, no cross-workdir move, no OAuth/SSO, no web UI, and no file watching. Binary transfer remains bounded whole-file transfer; the optional ChatGPT file-ingress sidecar is a narrow, policy-checked HTTPS ingress capability that accepts only exact administrator hosts or the explicit constrained OpenAI Blob family rather than acting as a general proxy.

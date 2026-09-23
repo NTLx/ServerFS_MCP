@@ -1,18 +1,19 @@
-# ServerFS Agent Bridge — v0.7.0
+# ServerFS Agent Bridge — v0.7.1
 
-This directory contains the **host-side** Agent Bridge shipped with ServerFS v0.7.0. The
+This directory contains the **host-side** Agent Bridge shipped with ServerFS v0.7.1. The
 provider-neutral execution/approval contract originated in v0.3 and remains compatible;
-v0.6.0 added the optional Jev advisory suite, while v0.7.0 adds runtime reliability,
-recovery evidence, immutable execution manifests and bounded large-result retrieval.
+v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability,
+recovery evidence, immutable execution manifests and bounded large-result retrieval, and
+v0.7.1 adds a targeted Codex reconciliation hotfix without changing that public surface.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
 while the base `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
 > The Jev-backed Preflight, Runtime Router, and Approval Advisor introduced in v0.6.0
-> remain optional and advisory-only. v0.7.0 does not turn Jev into a runtime, authorization
-> layer or safety authority; it preserves the explicit runtime/workdir/profile and provider
-> approval contracts.
+> remain optional and advisory-only. The v0.7 release line does not turn Jev into a runtime,
+> authorization layer or safety authority; it preserves the explicit runtime/workdir/profile
+> and provider approval contracts.
 
 Phase A is frozen and provides the provider-neutral infrastructure:
 
@@ -53,7 +54,7 @@ shared writer-lease integration. Phase E is also complete and frozen: production
 Compose/systemd wiring, runtime permissions and ChatGPT end-to-end deployment were
 accepted for v0.3.0; see `../docs/phase-e-acceptance-2026-09-20.md`.
 
-v0.7.0 adds a narrow reliability layer over those frozen contracts:
+v0.7.0 added a narrow reliability layer over those frozen contracts:
 
 - event envelope schema v1 with optional opaque `correlation_id` propagation;
 - immutable manifest JSON plus SHA-256 for every newly submitted task;
@@ -66,6 +67,11 @@ v0.7.0 adds a narrow reliability layer over those frozen contracts:
   `read_agent_task_result`;
 - additive SQLite migration: old tasks remain readable but do not receive fabricated
   manifest, deadline or correlation evidence.
+
+v0.7.1 keeps that surface frozen and fixes one Codex recovery edge case. A recovery guard
+may be cleared only when the persisted task is already failed, the recorded control-socket
+connection failure occurred before provider execution began, and both native session and
+turn IDs are absent. Other no-ID failures remain ambiguous and continue to fail closed.
 
 Agent delegation should remain objective-level and capability-bounded. A submitted task
 should carry one authorized objective, the minimum context needed for it, an explicit

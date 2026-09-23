@@ -44,7 +44,9 @@ Current deployments can expose:
 
 ## v0.7 runtime reliability
 
-v0.7.0 adds reliability and evidence around the existing Bridge rather than adding orchestration. New tasks carry an immutable execution manifest and optional opaque `correlation_id`; normalized events use envelope schema v1; tasks default to a 24-hour deadline and seven-day terminal retention.
+v0.7.0 introduced reliability and evidence around the existing Bridge rather than adding orchestration. New tasks carry an immutable execution manifest and optional opaque `correlation_id`; normalized events use envelope schema v1; tasks default to a 24-hour deadline and seven-day terminal retention.
+
+v0.7.1 keeps that contract unchanged and fixes a narrow Codex recovery edge case: a failed task with no native session/turn ID can clear its recovery guard only when the recorded failure proves the control socket connection failed before provider execution began. Other no-ID failures remain unresolved and fail closed.
 
 Workspace-write tasks also publish a persistent per-slot recovery guard alongside the existing `flock`. If the Bridge exits abnormally, mutations fail closed with `WORKDIR_RECOVERY_REQUIRED` until provider-aware reconciliation proves the prior provider is no longer active. ServerFS does not blindly rerun an interrupted task.
 
