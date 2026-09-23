@@ -303,7 +303,7 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose up -d
 
 Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins and rebuilding along the source path. Avoid `latest`.
 
-For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`:
+For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. After v0.7.0 is published, use:
 
 ```env
 SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.0
@@ -317,7 +317,7 @@ v0.7.0 is an additive Agent-runtime reliability release. The Bridge migrates exi
 
 Before updating the host Bridge, confirm there are no active writer-lease tasks and use the existing user-scoped installer/update flow. After the update, a stale persistent recovery guard deliberately blocks file mutations with `WORKDIR_RECOVERY_REQUIRED` until startup reconciliation can prove the prior provider is no longer active; ServerFS never blindly reruns an interrupted task. Jev remains optional, fail-open and advisory-only exactly as in v0.6.0.
 
-Production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.0`. Agent-enabled clients must refresh their MCP tool schema to see `read_agent_task_result`.
+After v0.7.0 is published, production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.0`. Agent-enabled clients must refresh their MCP tool schema to see `read_agent_task_result`.
 
 ### Upgrading to v0.5.0
 

@@ -412,7 +412,8 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   reports the running `server_version`, which is the cheapest proof of what the
   deployment actually serves.
 - `docker compose build` tags the result `SERVERFS_IMAGE`, which in a production
-  `.env` is a pinned release (`ghcr.io/ntlx/serverfs_mcp:0.7.0`). A bare build
+  `.env` is a pinned published release (for example `ghcr.io/ntlx/serverfs_mcp:0.7.0`
+  after v0.7.0 is published). A bare build
   therefore shadows that release locally: the running container is unaffected,
   but the next `up -d` starts local code under a release tag. Always build under a
   scratch tag (`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`). Upgrading

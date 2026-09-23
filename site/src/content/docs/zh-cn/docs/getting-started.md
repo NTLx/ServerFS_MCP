@@ -76,9 +76,9 @@ docker compose --profile file-ingress -f compose.yml -f compose.agent.yml up -d
 
 Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 的主机策略与网络边界详见[二进制传输](./binary-transfer/)和[安全模型](./security/)。
 
-## 已发布镜像
+## v0.7.0 发布镜像
 
-ServerFS MCP v0.7.0 使用以下 GHCR 稳定标签：
+v0.7.0 发布后，将提供以下 GHCR 稳定标签：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
@@ -86,4 +86,4 @@ ghcr.io/ntlx/serverfs_mcp:0.7
 ghcr.io/ntlx/serverfs_mcp:0.7.0
 ```
 
-生产环境建议固定使用 `0.7.0`，不要长期跟随 `latest` 或 `edge`。
+生产环境应在发布后固定使用 `0.7.0`，而不是长期跟随 `latest` 或 `edge`。
