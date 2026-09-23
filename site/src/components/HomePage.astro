@@ -220,6 +220,7 @@ const canonicalUrl = isZh
     <meta name="viewport" content="width=device-width" />
     <meta name="description" content={c.description} />
     <meta name="theme-color" content="#090b10" />
+    <script is:inline>document.documentElement.classList.add('motion-ready');</script>
     <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
     <link rel="canonical" href={canonicalUrl} />
     <link rel="alternate" hreflang="en" href="https://ntlx.github.io/ServerFS_MCP/" />
@@ -298,42 +299,42 @@ const canonicalUrl = isZh
           </div>
         </div>
 
-        <div class="hero-system" aria-label="ServerFS architecture overview">
+        <div class="hero-system" data-system-stage data-system-step="0" aria-label="ServerFS architecture overview">
           <div class="system-grid" aria-hidden="true"></div>
           <div class="system-label top-label">{c.diagramLabel}</div>
 
           <div class="system-diagram">
-            <div class="node">
+            <div class="node" data-system-node="client">
               <span class="node-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M5 7.5h14M5 12h14M5 16.5h9" /></svg>
               </span>
               <div><strong>ChatGPT</strong><small>{c.mcpClient}</small></div>
             </div>
 
-            <div class="flow-line" aria-hidden="true"><span></span></div>
+            <div class="flow-line" data-system-flow="client-tunnel" aria-hidden="true"><span></span></div>
 
-            <div class="node">
+            <div class="node" data-system-node="tunnel">
               <span class="node-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M7 8h10M14 5l3 3-3 3M17 16H7M10 13l-3 3 3 3" /></svg>
               </span>
               <div><strong>Secure MCP Tunnel</strong><small>{c.outboundOnly}</small></div>
             </div>
 
-            <div class="flow-line" aria-hidden="true"><span></span></div>
+            <div class="flow-line" data-system-flow="tunnel-server" aria-hidden="true"><span></span></div>
 
-            <div class="server-card">
+            <div class="server-card" data-system-node="server">
               <div class="server-head">
                 <span class="server-led"></span>
                 <strong>ServerFS MCP</strong>
                 <code>v0.6.0</code>
               </div>
               {c.serverRows.map(([label, detail]) => (
-                <div class="server-row"><span>{label}</span><em>{detail}</em></div>
+                <div class="server-row" data-policy-row><span>{label}</span><em>{detail}</em></div>
               ))}
             </div>
 
             <div class="branch-grid" aria-label="ServerFS capability boundaries">
-              <div class="branch-card workdir-card">
+              <div class="branch-card workdir-card" data-system-node="workdir">
                 <div class="branch-title">
                   <span class="branch-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24"><path d="M5 6v7a4 4 0 0 0 4 4h10M15 13l4 4-4 4" /></svg>
@@ -344,7 +345,7 @@ const canonicalUrl = isZh
                 <small>{c.workdirDefault}</small>
               </div>
 
-              <div class="branch-card agent-card">
+              <div class="branch-card agent-card" data-system-node="agent">
                 <div class="branch-title">
                   <span class="branch-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24"><path d="M7 12h10M9 8l-4 4 4 4M15 8l4 4-4 4" /></svg>
@@ -367,14 +368,14 @@ const canonicalUrl = isZh
         </div>
       </section>
 
-      <section class="capability-section shell" aria-labelledby="capability-title">
-        <div class="section-heading capability-heading">
+      <section class="capability-section shell" data-reveal aria-labelledby="capability-title">
+        <div class="section-heading capability-heading" data-reveal-item>
           <p class="eyebrow">{c.capabilityEyebrow}</p>
           <h2 id="capability-title">{c.capabilityTitle}</h2>
           <p>{c.capabilityBody}</p>
         </div>
 
-        <div class="capability-strip" aria-label={c.surfacesLabel}>
+        <div class="capability-strip" data-reveal-item aria-label={c.surfacesLabel}>
         {c.surfaces.map((surface, index) => (
           <article class:list={['cap-card', { active: index === 3 }]}>
             <div class="cap-top">
@@ -388,14 +389,14 @@ const canonicalUrl = isZh
         </div>
       </section>
 
-      <section class="section shell" id="architecture">
-        <div class="section-heading">
+      <section class="section shell" id="architecture" data-reveal>
+        <div class="section-heading" data-reveal-item>
           <p class="eyebrow">{c.architectureEyebrow}</p>
           <h2>{c.architectureTitle}</h2>
           <p>{c.architectureBody}</p>
         </div>
 
-        <div class="architecture-layout">
+        <div class="architecture-layout" data-reveal-item>
           <div class="layer-stack">
             {c.layers.map(([number, title, detail]) => (
               <div class="layer-row">
@@ -419,8 +420,8 @@ const canonicalUrl = isZh
         </div>
       </section>
 
-      <section class="section shell" id="security">
-        <div class="section-heading split-heading">
+      <section class="section shell" id="security" data-reveal>
+        <div class="section-heading split-heading" data-reveal-item>
           <div>
             <p class="eyebrow">{c.securityEyebrow}</p>
             <h2>{c.securityTitle}</h2>
@@ -428,7 +429,7 @@ const canonicalUrl = isZh
           <p>{c.securityBody}</p>
         </div>
 
-        <div class="security-layout">
+        <div class="security-layout" data-reveal-item>
           <p class="security-statement">{c.securityStatement}</p>
           <div class="security-grid">
             {c.guarantees.map((item, index) => (
@@ -442,8 +443,8 @@ const canonicalUrl = isZh
         </div>
       </section>
 
-      <section class="section shell agent-section">
-        <div class="agent-copy">
+      <section class="section shell agent-section" data-reveal>
+        <div class="agent-copy" data-reveal-item>
           <p class="eyebrow">{c.agentEyebrow}</p>
           <h2>{c.agentTitle}</h2>
           <p>{c.agentBody}</p>
@@ -455,7 +456,7 @@ const canonicalUrl = isZh
           </a>
         </div>
 
-        <div class="agent-diagram" aria-label="Agent Bridge data path">
+        <div class="agent-diagram" data-reveal-item aria-label="Agent Bridge data path">
           <div class="agent-box muted-box">
             <small>{c.mcpContainer}</small>
             <strong>ServerFS</strong>
@@ -478,8 +479,8 @@ const canonicalUrl = isZh
         </div>
       </section>
 
-      <section class="section shell quickstart-section">
-        <div class="terminal">
+      <section class="section shell quickstart-section" data-reveal>
+        <div class="terminal" data-reveal-item>
           <div class="terminal-bar">
             <span class="terminal-dots"><i></i><i></i><i></i></span>
             <span>{c.quickStartBar}</span>
@@ -495,7 +496,7 @@ const canonicalUrl = isZh
 <span class="success">✓ openai-tunnel     connected</span></code></pre>
         </div>
 
-        <div class="quickstart-copy">
+        <div class="quickstart-copy" data-reveal-item>
           <p class="eyebrow">{c.selfHosted}</p>
           <h2>{c.quickTitleLine1}<br />{c.quickTitleLine2}</h2>
           <p>{c.quickBody}</p>
@@ -503,12 +504,12 @@ const canonicalUrl = isZh
         </div>
       </section>
 
-      <section class="final-cta shell">
-        <div>
+      <section class="final-cta shell" data-reveal>
+        <div data-reveal-item>
           <p class="eyebrow">SERVERFS MCP</p>
           <h2>{c.finalTitleLine1}<br /><span>{c.finalTitleLine2}</span></h2>
         </div>
-        <div class="cta-actions">
+        <div class="cta-actions" data-reveal-item>
           <a class="button primary" href={local('docs/')}>{c.readDocs}</a>
           <a
             class="button secondary"
@@ -534,5 +535,67 @@ const canonicalUrl = isZh
         <a href="https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.6.0">{c.footerReleases}</a>
       </div>
     </footer>
+
+    <script is:inline>
+      (() => {
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const revealSections = document.querySelectorAll('[data-reveal]');
+        const stage = document.querySelector('[data-system-stage]');
+
+        const revealAll = () => {
+          revealSections.forEach((section) => section.classList.add('is-visible'));
+          stage?.classList.add('is-visible');
+        };
+
+        if (reducedMotion.matches) {
+          revealAll();
+          if (stage) stage.dataset.systemStep = '4';
+          return;
+        }
+
+        if ('IntersectionObserver' in window) {
+          const observer = new IntersectionObserver(
+            (entries, instance) => {
+              for (const entry of entries) {
+                if (!entry.isIntersecting) continue;
+                entry.target.classList.add('is-visible');
+                instance.unobserve(entry.target);
+              }
+            },
+            { threshold: 0.16, rootMargin: '0px 0px -8% 0px' },
+          );
+
+          revealSections.forEach((section) => observer.observe(section));
+        } else {
+          revealSections.forEach((section) => section.classList.add('is-visible'));
+        }
+
+        if (!stage) return;
+
+        requestAnimationFrame(() => stage.classList.add('is-visible'));
+
+        let ticking = false;
+        const updateSystemStage = () => {
+          const rect = stage.getBoundingClientRect();
+          const travel = window.innerHeight + rect.height;
+          const progress = Math.min(1, Math.max(0, (window.innerHeight - rect.top) / travel));
+          const step = Math.min(4, Math.floor(progress * 5));
+
+          stage.style.setProperty('--system-progress', progress.toFixed(3));
+          stage.dataset.systemStep = String(step);
+          ticking = false;
+        };
+
+        const requestStageUpdate = () => {
+          if (ticking) return;
+          ticking = true;
+          requestAnimationFrame(updateSystemStage);
+        };
+
+        updateSystemStage();
+        window.addEventListener('scroll', requestStageUpdate, { passive: true });
+        window.addEventListener('resize', requestStageUpdate, { passive: true });
+      })();
+    </script>
   </body>
 </html>

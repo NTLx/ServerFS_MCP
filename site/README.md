@@ -7,7 +7,7 @@ The project website is a fully static Astro + Starlight site intended for GitHub
 - Astro 7
 - Starlight
 - self-hosted Noto Sans SC Variable for deterministic Simplified Chinese glyphs
-- plain CSS for the landing-page visual system and motion
+- plain CSS plus a tiny dependency-free browser script for viewport reveal and scroll-state motion
 - GitHub Pages via `.github/workflows/pages.yml`
 
 No SSR, database, serverless runtime or third-party hosting service is required.
@@ -53,4 +53,4 @@ site/
 └── package.json
 ```
 
-The landing page intentionally uses no React island or animation library. Motion is CSS-only and respects `prefers-reduced-motion`. Add a UI dependency only when a concrete interaction justifies it.
+The landing page intentionally uses no React island or animation library. Motion is implemented with CSS plus a small native browser script that only tracks viewport visibility and the Hero system-stage scroll state; it respects `prefers-reduced-motion`. Add a UI dependency only when a concrete interaction justifies it.
