@@ -42,7 +42,7 @@ Unix socket
 - 20 个工具：文件系统 + Agent
 - 22 个工具：文件系统 + 二进制 + Agent
 
-## v0.7 Runtime Reliability
+## v0.7.2 Runtime Reliability
 
 v0.7.0 在现有 Bridge 上补强可靠性与证据链，而不是增加工作流编排。新任务会冻结不可变执行 manifest，并可携带可选的 opaque `correlation_id`；标准化事件采用 envelope schema v1；任务默认 24 小时 deadline，终态默认保留 7 天。
 
@@ -54,7 +54,7 @@ workspace-write 任务还会在现有 `flock` 之外发布持久化的 slot reco
 
 ## 部署验收
 
-Agent-enabled 发布验收使用：
+v0.7.2 Agent-enabled 部署验收使用：
 
 ```bash
 python3 deployment/agent-bridge/verify_host.py --require-runtimes

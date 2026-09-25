@@ -9,7 +9,7 @@ Jev 属于 System One 模型：它不是生成面向人类阅读的长文本，�
 
 这套集成始终是 **opt-in、advisory-only、fail-open**。Jev 不是 Agent runtime，不是授权源，也不是安全边界。
 
-> **状态：**这套 opt-in 实验能力随 v0.6.0 发布，只修改宿主机 Agent Bridge，不改变 MCP 公共工具 schema。
+> **状态：**这套 opt-in 实验能力在 v0.6.0 引入，并继续包含在当前 v0.7.2 稳定版中；它只修改宿主机 Agent Bridge，不改变 MCP 公共工具 schema。
 
 ## 启用方式
 

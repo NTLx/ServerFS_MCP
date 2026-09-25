@@ -1,6 +1,6 @@
 # Jev Runtime Router experiment
 
-Status: opt-in experimental capability on `main` (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
+Status: opt-in experimental capability included in the current **v0.7.2 stable release** (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
 
 This experiment adds the second Jev feature proposed for ServerFS: an advisory Runtime
 Router layered on the existing Agent Task Preflight.

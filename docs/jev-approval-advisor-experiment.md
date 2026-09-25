@@ -1,6 +1,6 @@
 # Jev Approval Advisor experiment
 
-Status: opt-in experimental capability on `main` (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
+Status: opt-in experimental capability included in the current **v0.7.2 stable release** (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
 
 This experiment adds the third Jev-backed advisory capability to the ServerFS Agent Bridge:
 an Approval Advisor for provider-originated approval requests.

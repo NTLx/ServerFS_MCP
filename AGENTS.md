@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Read `dev_plan_v0.7.2.md` first for the current v0.7.2 maintenance implementation: bounded-FD filesystem traversal, proven-inactive Agent task reconciliation, and opt-in bounded native-runtime readiness verification. Read `dev_plan_v0.7.md` for the frozen v0.7.0 Runtime Reliability & Observability baseline: schema-versioned event envelopes, opaque correlation IDs, immutable execution manifests, task deadline/retention, provider-aware restart reconciliation, persistent active-slot recovery guards, and bounded large-result spooling/retrieval. v0.7.1 remains the published Codex pre-provider-start reconciliation hotfix baseline that v0.7.2 extends without changing the public MCP surface or frozen v0.7 contracts.
+Read `dev_plan_v0.7.2.md` first for the current v0.7.2 maintenance implementation: bounded-FD filesystem traversal, proven-inactive Agent task reconciliation, and opt-in bounded native-runtime readiness verification. Read `dev_plan_v0.7.md` for the frozen v0.7.0 Runtime Reliability & Observability baseline: schema-versioned event envelopes, opaque correlation IDs, immutable execution manifests, task deadline/retention, provider-aware restart reconciliation, persistent active-slot recovery guards, and bounded large-result spooling/retrieval. v0.7.1 is the prior Codex pre-provider-start reconciliation hotfix baseline; v0.7.2 is the current stable maintenance release and preserves the same public MCP surface and frozen v0.7 contracts.
 
 Read `dev_plan_v0.5.md` for the released/frozen v0.5.0 line: ChatGPT/OpenAI file-parameter ingress, the isolated file-ingress sidecar, MCP request-body sizing, and release closure. For every v0.5.0 change, that plan plus executed tests and implementation are authoritative over older binary-transfer assumptions.
 
@@ -21,15 +21,15 @@ The `agent_bridge/` directory carries the **released/frozen v0.3 provider-neutra
 Bridge contract** forward. v0.6.0 added an optional Jev advisory layer; v0.7.0 added
 reliability/evidence features without changing runtime authorization, provider approval
 semantics, or writer-lease authority. v0.7.1 is the targeted Codex reconciliation hotfix;
-v0.7.2 adds maintenance-only filesystem/recovery/readiness fixes on the same contract. The
-Bridge package version is 0.7.2 in this release.
+v0.7.2 is the current stable release and adds maintenance-only filesystem/recovery/readiness
+fixes on the same contract. The Bridge package version is 0.7.2 in this release.
 Phases A (provider-neutral core), B (Codex native-mode adapter), C (Claude Code native-mode
 adapter), D (Agent MCP surface) and E (production deployment) are complete and frozen on
 `main`. Production Agent delegation remains opt-in through `compose.agent.yml`; the base
 `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
-The Jev advisory suite is an explicitly opt-in experimental capability on `main` over
-that frozen baseline. It adds advisory task-quality Preflight, Runtime Router, and Approval
+The Jev advisory suite is an explicitly opt-in experimental capability included in the
+current v0.7.2 release over that frozen baseline. It adds advisory task-quality Preflight, Runtime Router, and Approval
 Advisor results inside the host Bridge, but it must not change the MCP tool surface, Bridge
 RPC, runtime allowlists, provider adapters, authorization, approval/question decision
 semantics, or writer-lease semantics. Jev is not an Agent runtime or a safety authority.
@@ -414,8 +414,8 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   reports the running `server_version`, which is the cheapest proof of what the
   deployment actually serves.
 - `docker compose build` tags the result `SERVERFS_IMAGE`, which in a production
-  `.env` is a pinned published release (for example `ghcr.io/ntlx/serverfs_mcp:0.7.2`
-  after v0.7.2 is published). A bare build
+  `.env` is a pinned published release (for example the current stable
+  `ghcr.io/ntlx/serverfs_mcp:0.7.2`). A bare build
   therefore shadows that release locally: the running container is unaffected,
   but the next `up -d` starts local code under a release tag. Always build under a
   scratch tag (`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`). Upgrading

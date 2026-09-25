@@ -1,19 +1,21 @@
 # ServerFS MCP v0.7.2 Development Plan
 
-Status: implementation plan in progress  
-Theme: **Runtime State Reconciliation & Filesystem Reliability**  
-Released baseline: v0.7.1 tag `7c73d27a6a4aa31073a4e4fd82767b545dd9664f`  
-Current main baseline: `987011fbc3bee2c125da52c7bed3056741fd16f9`
+Status: frozen release plan; **v0.7.2 is the current stable release**
+Theme: **Runtime State Reconciliation & Filesystem Reliability**
+Previous stable baseline: v0.7.1 tag `7c73d27a6a4aa31073a4e4fd82767b545dd9664f`
+Current release line: **v0.7.2**
 
-## 1. Release intent
+> This document is retained as the frozen v0.7.2 design and acceptance record. Requirement language in the design sections describes the contract satisfied by the current release; it is not an outstanding release gate.
 
-v0.7.2 is a maintenance release on the frozen v0.7 runtime contract.
+## 1. Release summary
+
+v0.7.2 is the current stable maintenance release on the frozen v0.7 runtime contract.
 
 It fixes demonstrated reliability defects and tightens deployment verification. It does not add Agent orchestration, new MCP tools, new Bridge RPC methods, provider lifecycle ownership, a new sandbox, or any new authorization path.
 
 The four maintenance objectives are:
 
-1. publish the already-validated bounded-FD `find_files` fix that landed on `main` after v0.7.1;
+1. include the already-validated bounded-FD `find_files` fix that landed on `main` after v0.7.1;
 2. close the Agent recovery state gap where reconciliation can prove a provider is inactive while the persisted ServerFS task remains non-terminal;
 3. make post-deployment native-runtime readiness an explicit bounded verification option without starting, restarting, bootstrapping, killing, or otherwise managing provider daemons;
 4. make the Agent-enabled upgrade path and post-deploy verification harder to execute incorrectly while preserving the explicit `compose.agent.yml` architecture.
@@ -148,66 +150,36 @@ Do not solve this by adding `COMPOSE_FILE` to `.env` or by making the base Compo
 
 ## 7. Version and documentation consistency
 
-Only after runtime/filesystem/deployment targeted tests are green:
+Release consistency is complete:
 
-- bump root package version to 0.7.2;
-- bump Agent Bridge package/client version to 0.7.2;
-- refresh lockfiles through the project-standard `uv` workflow;
-- update README, `.env.example`, AGENTS, deployment docs, Agent Bridge docs, site English/Chinese content and release references;
-- regenerate site output through the normal site build rather than hand-editing `site/dist`;
-- describe v0.7.2 strictly as a maintenance/reliability release.
+- the root package version is 0.7.2;
+- the Agent Bridge package/client version is 0.7.2;
+- both lockfiles were refreshed through the project-standard `uv` workflow;
+- README, `.env.example`, AGENTS, deployment docs, Agent Bridge docs, release references, and English/Chinese site content describe v0.7.2 as the current stable maintenance/reliability release;
+- current MCP capability surfaces are documented consistently as 11 / 13 / 20 / 22 tools;
+- site output is generated through the normal site build rather than hand-editing `site/dist`.
 
-## 8. Verification sequence
+## 8. Verification evidence
 
-Run in this order so failures remain cheap and localized:
+The release gates were executed and passed:
 
-1. targeted Agent reconciliation tests;
-2. targeted deployment-verifier tests;
-3. targeted filesystem regression tests;
-4. full `agent_bridge/` gate:
-   - `uv sync --frozen`
-   - `uv run ruff check .`
-   - `uv run ruff format --check .`
-   - `uv run pytest`
-5. deployment shell syntax gate:
-   - `bash -n deployment/agent-bridge/*.sh`
-6. full root gate:
-   - `uv sync --frozen`
-   - `uv run ruff check .`
-   - `uv run ruff format --check .`
-   - `uv run pytest`
-   - `docker compose config`
-   - `SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`
-7. site gate after documentation/version updates:
-   - `cd site && npm ci && npm run build`
-   - `git diff --check`
-8. build/publish the normal `edge` image from the final commit;
-9. deploy Edge while preserving the Agent overlay;
-10. verify:
-    - Bridge package version 0.7.2;
-    - user service active/running with no restart loop;
-    - `verify_host.py --require-runtimes`;
-    - container-to-Bridge `runtime.list`;
-    - Codex and Claude both available;
-    - 20/22-tool Agent surface as configured;
-    - bounded concurrent `find_files` smoke;
-    - no stale non-terminal task remains after an inactive-provider recovery scenario.
+1. targeted Agent reconciliation, deployment-verifier, and filesystem regression suites passed;
+2. the full `agent_bridge/` gate passed, including frozen sync, Ruff check/format, and **115 tests**;
+3. deployment shell syntax and Agent-overlay Compose rendering passed;
+4. the full root gate passed, including frozen sync, Ruff check/format, **811 tests**, Compose config, and scratch-tag Docker source build;
+5. the two-process Agent Bridge E2E harness passed **47 / 47** scenarios;
+6. the documentation/site gate built **19 pages** and passed `git diff --check`;
+7. GitHub Container and Pages workflows for the final release line completed successfully;
+8. Edge was deployed with `compose.agent.yml` preserved and the MCP container reported healthy;
+9. live acceptance proved Bridge package **0.7.2**, user service active/running with no restart loop, `verify_host.py --require-runtimes` passing, and container-to-Bridge `runtime.list` healthy;
+10. Codex **0.157.0** and Claude Code **2.1.282** were both available, and bounded concurrent `find_files` smoke checks completed without `EMFILE` recurrence.
 
-## 9. Delegation policy for this development pass
+## 9. Delegation policy used for this development pass
 
-Prefer direct ServerFS file primitives for inspection and edits.
+During v0.7.2 development, direct ServerFS file primitives were preferred for inspection and edits. Delegation was reserved for capability gaps requiring a host shell or external runtime, including pytest/Ruff/uv/npm/Docker/systemd execution, lockfile regeneration, live deployment/runtime verification, and Git operations.
 
-Delegate only capability gaps that require a host shell or external runtime, such as:
+Delegated tasks used one objective, a narrow mutation boundary, explicit stop conditions, and minimal commands so each operation remained independently auditable.
 
-- executing pytest/ruff/uv/npm/docker/systemd commands;
-- regenerating lockfiles;
-- live deployment and provider/runtime verification;
-- Git commit/push operations when requested.
+## 10. Release state
 
-Each delegated task should have one objective, a narrow mutation boundary, explicit stop conditions, and minimal commands so it can complete quickly.
-
-## 10. Release stop condition
-
-Prepare `main` to a fully verified, clean, release-ready v0.7.2 state.
-
-**Do not create the v0.7.2 tag or GitHub Release until the maintainer explicitly authorizes release.**
+v0.7.2 is the current stable ServerFS MCP release on the frozen v0.7 contract. The release is represented by the immutable `v0.7.2` tag and matching GitHub Release; both identify the final verified release commit and must not be moved or recreated.

@@ -1,6 +1,6 @@
 # Phase E — user-scoped Agent Bridge deployment
 
-Phase E wires the frozen Phase A–D contracts into a real Linux deployment.
+Phase E wires the frozen Phase A–D contracts into a real Linux deployment. This runbook is current for **ServerFS v0.7.2**, the current stable release.
 
 The deployment has one non-negotiable rule:
 
@@ -137,7 +137,7 @@ Agent settings into the container, so these values remain inert without
 Provider secrets and shell-only environment are intentionally **not** stored in
 `.env`; they remain in the user-owned `provider.env` described in step 4. The experimental
 Jev advisory features are the one explicit exception: `SERVERFS_JEV_API_KEY` is their opt-in
-master gate on `main`. Leave it empty to disable Preflight,
+master gate in the current v0.7.2 release. Leave it empty to disable Preflight,
 Runtime Router, and Approval Advisor functionality. When non-empty, the installer renders
 the key only into the user-owned
 `0600` Bridge `config.json`; it is never passed into the MCP container.
@@ -517,5 +517,6 @@ to the default 11-tool surface. Workdir `AGENT_MODE/RUNTIMES` values in
 container.
 
 If post-release verification fails, use the documented rollback script to restore the
-previous user-scoped Bridge release, configuration and unit state; after publication,
-do not recreate or move published release tags; existing v0.7.x tags remain immutable, and `v0.7.2` becomes immutable when published.
+previous user-scoped Bridge release, configuration and unit state. Do not recreate or move
+published release tags: `v0.7.2` is the current stable immutable release tag, and earlier
+v0.7.x tags remain immutable as well.

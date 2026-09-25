@@ -84,4 +84,4 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - structured Agent task RPC
 - optional host-side Jev advisory decisions
 
-Every optional capability is separately gated. Jev does not change the 11 / 13 / 19 / 21 MCP tool surfaces because it is an internal Agent Bridge advisor, not an MCP capability surface.
+In the current v0.7.2 release, the supported MCP surfaces are 11 / 13 / 20 / 22 tools. Every optional capability is separately gated; Jev does not change those counts because it is an internal Agent Bridge advisor, not an MCP capability surface.

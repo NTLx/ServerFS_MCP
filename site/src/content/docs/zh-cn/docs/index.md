@@ -5,6 +5,8 @@ description: 让 ChatGPT 与 AI Agent 安全、受控地访问 Linux workdir。
 
 ServerFS MCP 通过 Model Context Protocol，将你明确配置的 Linux 目录暴露为**受控 workdir**。
 
+当前稳定版本：**v0.7.2**。
+
 它**默认只读**。管理员可以按 workdir 显式启用受控文件写入、有界整文件二进制传输，以及隔离且独立门控的 ChatGPT 文件参数入口。用于调用 Codex 或 Claude 的宿主机 Agent Bridge 仍然是可选能力，并可进一步按需启用 advisory-only 的 TypeSafe Jev 支持，而不改变 MCP 工具能力面。
 
 ## 能力面
@@ -13,8 +15,8 @@ ServerFS MCP 通过 Model Context Protocol，将你明确配置的 Linux 目录�
 | --- | ---: | --- |
 | 文件系统 | 11 | 基础部署 |
 | 文件系统 + 二进制 | 13 | 启用二进制传输 |
-| 文件系统 + Agent | 19 | 启用 Agent overlay |
-| 完整能力 | 21 | 同时启用二进制 + Agent |
+| 文件系统 + Agent | 20 | 启用 Agent overlay |
+| 完整能力 | 22 | 同时启用二进制 + Agent |
 
 ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
 
@@ -26,6 +28,6 @@ ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆�
 - [安全模型](./security/) — 查看纵深防御模型。
 - [二进制传输](./binary-transfer/) — 启用有界 download/upload，以及可选的 ChatGPT 文件参数入口。
 - [Agent Bridge](./agent-bridge/) — 按需启用结构化 Codex/Claude 委派。
-- [Jev Advisors](./jev-advisors/) — 在宿主机 Bridge 中按需启用已合入 main 的实验性 task preflight、runtime routing advice 与 approval advice。
+- [Jev Advisors](./jev-advisors/) — 在 v0.7.2 宿主机 Bridge 中按需启用实验性的 task preflight、runtime routing advice 与 approval advice。
 
 实现细节与完整运维参考请查看仓库 [README](https://github.com/NTLx/ServerFS_MCP#readme)。

@@ -85,7 +85,7 @@ steering should stay within that objective; distinct work belongs in a new task.
 least-authority and clarity rule, not an instruction-obfuscation layer: the Bridge must
 never encode, disguise, split or rewrite prompts in order to evade provider safety checks.
 
-When the opt-in Jev advisor is configured on `main`, one advisory call evaluates those properties before
+When the opt-in Jev advisor is configured in v0.7.2, one advisory call evaluates those properties before
 the writer lease is acquired and also produces a Runtime Router recommendation among
 `direct_serverfs_tool`, `codex`, `claude`, and `human_review`. Successful quality results are
 persisted as `task.preflight`; the derived router object is persisted as `task.routing_advice`.

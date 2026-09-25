@@ -42,7 +42,7 @@ Current deployments can expose:
 - 20 tools: filesystem + Agent
 - 22 tools: filesystem + binary + Agent
 
-## v0.7 runtime reliability
+## v0.7.2 runtime reliability
 
 v0.7.0 introduced reliability and evidence around the existing Bridge rather than adding orchestration. New tasks carry an immutable execution manifest and optional opaque `correlation_id`; normalized events use envelope schema v1; tasks default to a 24-hour deadline and seven-day terminal retention.
 
@@ -54,7 +54,7 @@ Final responses up to 256 KiB stay inline. Responses above 256 KiB through 8 MiB
 
 ## Deployment verification
 
-For Agent-enabled release acceptance, run:
+For Agent-enabled v0.7.2 deployment acceptance, run:
 
 ```bash
 python3 deployment/agent-bridge/verify_host.py --require-runtimes

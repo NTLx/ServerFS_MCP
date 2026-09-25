@@ -84,4 +84,4 @@ ServerFS 提供窄能力操作，而不是通用执行原语：
 - 结构化 Agent task RPC
 - 可选的宿主机 Jev advisory decision
 
-每种可选能力都有独立门控。Jev 是 Agent Bridge 内部 advisor，不是新的 MCP capability surface，因此不会改变 11 / 13 / 19 / 21 个 MCP 工具的能力面。
+当前 v0.7.2 稳定版支持 11 / 13 / 20 / 22 个工具的四种 MCP 能力面。每种可选能力都有独立门控；Jev 是 Agent Bridge 内部 advisor，不是新的 MCP capability surface，因此不会改变这些工具数量。
