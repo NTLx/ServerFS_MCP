@@ -46,11 +46,23 @@ Unix socket
 
 v0.7.0 在现有 Bridge 上补强可靠性与证据链，而不是增加工作流编排。新任务会冻结不可变执行 manifest，并可携带可选的 opaque `correlation_id`；标准化事件采用 envelope schema v1；任务默认 24 小时 deadline，终态默认保留 7 天。
 
-v0.7.1 保持上述契约不变，只修复一个很窄的 Codex 恢复边界：只有任务已经失败、没有 native session/turn ID，且持久化错误能证明 control socket 在 provider 执行开始前连接失败时，reconciliation 才会清除 recovery guard；其它无 ID 的失败仍保持未知并 fail-closed。
+v0.7.1 保持上述契约不变，修复了一个可证明发生在 provider 启动前的 Codex control-socket 恢复边界。v0.7.2 继续做维护性收口：当 lazy reconciliation 能明确证明 `provider_active=false` 时，仍处于非终态的 ServerFS task 会先以 `AGENT_PROVIDER_INACTIVE` 转为 `interrupted`，待处理 interaction 通过正常终态转换变为 stale，随后才清除 recovery guard；无法证明 provider 已停止时仍保持 fail-closed，并保留 guard。
 
 workspace-write 任务还会在现有 `flock` 之外发布持久化的 slot recovery guard。Bridge 异常退出后，在 provider-aware reconciliation 能证明旧 provider 已停止之前，文件写入会以 `WORKDIR_RECOVERY_REQUIRED` 失败关闭；ServerFS 不会盲目重跑中断任务。
 
 最终响应不超过 256 KiB 时继续内联返回；超过 256 KiB、且不超过 8 MiB 时，会原子写入 Bridge 私有 spool，`get_agent_task` 返回有界 preview 以及大小/SHA-256 元数据，`read_agent_task_result` 可分块精确重建 UTF-8 原文。超过 8 MiB 仍返回 `AGENT_RESULT_TOO_LARGE`。
+
+## 部署验收
+
+Agent-enabled 发布验收使用：
+
+```bash
+python3 deployment/agent-bridge/verify_host.py --require-runtimes
+```
+
+严格模式先验证用户级 Bridge 部署，再对所有已启用原生 runtime 做有界、只读的 `runtime.list` 重试。它不会启动、重启、bootstrap、update、kill 或以其它方式管理 Codex/Claude；如果 retry 窗口结束后 runtime 仍不可用，验收失败，provider 生命周期诊断仍由运维人员通过原生工具完成。
+
+重建 MCP 容器时必须同时保留 `-f compose.yml -f compose.agent.yml`；如果只使用基础 Compose，即使 `.env` 中仍保留 Agent 策略，也会丢失 Agent socket/lock 挂载。
 
 ## 可选 Jev Advisors
 

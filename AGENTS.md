@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Read `dev_plan_v0.7.md` first for the frozen v0.7.0 Runtime Reliability & Observability baseline: schema-versioned event envelopes, opaque correlation IDs, immutable execution manifests, task deadline/retention, provider-aware restart reconciliation, persistent active-slot recovery guards, and bounded large-result spooling/retrieval. The current v0.7.1 line is a maintenance hotfix on that baseline: it narrows Codex reconciliation for a proven pre-provider-start control-socket connection failure without changing the public MCP surface or the frozen v0.7 contracts.
+Read `dev_plan_v0.7.2.md` first for the current v0.7.2 maintenance implementation: bounded-FD filesystem traversal, proven-inactive Agent task reconciliation, and opt-in bounded native-runtime readiness verification. Read `dev_plan_v0.7.md` for the frozen v0.7.0 Runtime Reliability & Observability baseline: schema-versioned event envelopes, opaque correlation IDs, immutable execution manifests, task deadline/retention, provider-aware restart reconciliation, persistent active-slot recovery guards, and bounded large-result spooling/retrieval. v0.7.1 remains the published Codex pre-provider-start reconciliation hotfix baseline that v0.7.2 extends without changing the public MCP surface or frozen v0.7 contracts.
 
 Read `dev_plan_v0.5.md` for the released/frozen v0.5.0 line: ChatGPT/OpenAI file-parameter ingress, the isolated file-ingress sidecar, MCP request-body sizing, and release closure. For every v0.5.0 change, that plan plus executed tests and implementation are authoritative over older binary-transfer assumptions.
 
-Read `README.md` for the current v0.7.1 behaviour, security model,
+Read `README.md` for the current v0.7.2 behaviour, security model,
 deployment and release contract. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
 acceptance baseline for hierarchical workdir policy, binary file transfer and the Issue #10
 transport-security fix.
@@ -20,8 +20,9 @@ accepted v0.3 contracts remain authoritative.
 The `agent_bridge/` directory carries the **released/frozen v0.3 provider-neutral Agent
 Bridge contract** forward. v0.6.0 added an optional Jev advisory layer; v0.7.0 added
 reliability/evidence features without changing runtime authorization, provider approval
-semantics, or writer-lease authority. v0.7.1 is a targeted reconciliation hotfix on that
-same contract. The Bridge package version is 0.7.1 in this release.
+semantics, or writer-lease authority. v0.7.1 is the targeted Codex reconciliation hotfix;
+v0.7.2 adds maintenance-only filesystem/recovery/readiness fixes on the same contract. The
+Bridge package version is 0.7.2 in this release.
 Phases A (provider-neutral core), B (Codex native-mode adapter), C (Claude Code native-mode
 adapter), D (Agent MCP surface) and E (production deployment) are complete and frozen on
 `main`. Production Agent delegation remains opt-in through `compose.agent.yml`; the base
@@ -43,7 +44,7 @@ auto-deny, alter available decisions, grant permission IDs, or bypass the existi
 **Phase D is frozen except for the explicit v0.7.0 additive extension.** It originally added eight provider-neutral Agent MCP tools, a thin
 stdlib Unix-socket Bridge client, fail-closed global/per-workdir Agent configuration,
 audit records, and the shared cross-process writer lease consumed by existing mutation
-tools. v0.7.0 added exactly one read-only public tool, `read_agent_task_result`, plus additive protocol fields/RPC needed for correlation metadata and spooled-result retrieval. v0.7.1 does not add or remove any public tool or RPC; it only fixes a demonstrated Codex pre-start reconciliation defect. Do not otherwise modify the MCP public surface, UDS protocol, local authorization model or shared writer-lease contract except to fix a demonstrated defect. Phase D kept
+tools. v0.7.0 added exactly one read-only public tool, `read_agent_task_result`, plus additive protocol fields/RPC needed for correlation metadata and spooled-result retrieval. v0.7.1 and v0.7.2 do not add or remove any public tool or RPC; they only fix demonstrated reliability defects while preserving the same authorization and lease boundaries. Do not otherwise modify the MCP public surface, UDS protocol, local authorization model or shared writer-lease contract except to fix a demonstrated defect. Phase D kept
 `SERVERFS_AGENT_BRIDGE_ENABLED=false` as the default, so an upgrade retains the 11-tool
 v0.2 surface unless the administrator explicitly enables Agent delegation. Agent tools
 talk only to the Bridge RPC contract; they never import provider adapters or provider
@@ -413,8 +414,8 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   reports the running `server_version`, which is the cheapest proof of what the
   deployment actually serves.
 - `docker compose build` tags the result `SERVERFS_IMAGE`, which in a production
-  `.env` is a pinned published release (for example `ghcr.io/ntlx/serverfs_mcp:0.7.1`
-  after v0.7.1 is published). A bare build
+  `.env` is a pinned published release (for example `ghcr.io/ntlx/serverfs_mcp:0.7.2`
+  after v0.7.2 is published). A bare build
   therefore shadows that release locally: the running container is unaffected,
   but the next `up -d` starts local code under a release tag. Always build under a
   scratch tag (`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`). Upgrading

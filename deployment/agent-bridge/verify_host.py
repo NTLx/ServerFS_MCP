@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import socket
@@ -83,7 +84,7 @@ def _read_config() -> dict[str, Any]:
     return value
 
 
-def _probe_bridge(socket_path: Path) -> None:
+def _probe_bridge(socket_path: Path) -> dict[str, Any]:
     request = {
         "protocol_version": 1,
         "request_id": f"verify_{os.getpid()}",
@@ -112,6 +113,7 @@ def _probe_bridge(socket_path: Path) -> None:
         raise VerifyError("Bridge response request_id mismatch")
     if payload.get("ok") is not True or not isinstance(payload.get("result"), dict):
         raise VerifyError(f"Bridge runtime.list failed: {payload!r}")
+    return payload["result"]
 
 
 def _wait_for_bridge_ready(
@@ -153,7 +155,52 @@ def _wait_for_bridge_ready(
         time.sleep(retry_interval_seconds)
 
 
-def verify() -> None:
+def _wait_for_enabled_runtimes_ready(
+    socket_path: Path,
+    enabled_runtimes: set[str],
+    *,
+    timeout_seconds: float = 10.0,
+    retry_interval_seconds: float = 0.25,
+) -> None:
+    if not enabled_runtimes:
+        return
+
+    deadline = time.monotonic() + timeout_seconds
+    last_unready = sorted(enabled_runtimes)
+    last_transient_error: BaseException | None = None
+
+    while True:
+        try:
+            result = _probe_bridge(socket_path)
+        except (FileNotFoundError, ConnectionError, TimeoutError) as exc:
+            last_transient_error = exc
+        else:
+            runtimes = result.get("runtimes")
+            if not isinstance(runtimes, list):
+                raise VerifyError("Bridge runtime.list returned an invalid runtimes payload")
+            available = {
+                item.get("name")
+                for item in runtimes
+                if isinstance(item, dict)
+                and isinstance(item.get("name"), str)
+                and item.get("available") is True
+            }
+            last_unready = sorted(enabled_runtimes - available)
+            if not last_unready:
+                return
+            last_transient_error = None
+
+        if time.monotonic() >= deadline:
+            names = ", ".join(last_unready) if last_unready else "unknown"
+            message = (
+                f"enabled runtimes did not become ready within {timeout_seconds:g} seconds: {names}"
+            )
+            raise VerifyError(message) from last_transient_error
+
+        time.sleep(retry_interval_seconds)
+
+
+def verify(*, require_runtimes: bool = False) -> None:
     if os.geteuid() == 0:
         raise VerifyError("run verification as the normal login user, not root")
 
@@ -214,12 +261,14 @@ def verify() -> None:
     if not entrypoint.is_file() or not os.access(entrypoint, os.X_OK):
         raise VerifyError("installed Agent Bridge entrypoint is missing or not executable")
 
+    enabled_runtimes: set[str] = set()
     for provider in ("codex", "claude"):
         section = config.get(provider)
         if not isinstance(section, dict):
             raise VerifyError(f"missing {provider} config section")
         if not section.get("enabled"):
             continue
+        enabled_runtimes.add(provider)
         key = "codex_bin" if provider == "codex" else "claude_bin"
         raw = section.get(key)
         if not isinstance(raw, str) or not raw:
@@ -228,17 +277,31 @@ def verify() -> None:
         if not binary.is_absolute() or not binary.is_file() or not os.access(binary, os.X_OK):
             raise VerifyError(f"{provider} executable is unavailable")
 
+    if require_runtimes:
+        _wait_for_enabled_runtimes_ready(socket_path, enabled_runtimes)
+
     print(f"user_uid={os.getuid()}")
     print(f"user_gid={os.getgid()}")
     print(f"socket={socket_path}")
     print(f"state={state_dir}")
     print("bridge_rpc=PASS")
+    if require_runtimes:
+        print("enabled_runtimes=PASS:" + ",".join(sorted(enabled_runtimes)))
     print("user_scoped_deployment=PASS")
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Verify the user-scoped ServerFS Agent Bridge deployment."
+    )
+    parser.add_argument(
+        "--require-runtimes",
+        action="store_true",
+        help="wait up to 10 seconds for every enabled native runtime to report available",
+    )
+    args = parser.parse_args()
     try:
-        verify()
+        verify(require_runtimes=args.require_runtimes)
     except (VerifyError, OSError, TimeoutError) as exc:
         raise SystemExit(f"user_scoped_deployment=FAIL: {exc}") from exc
 

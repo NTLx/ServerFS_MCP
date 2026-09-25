@@ -1,10 +1,11 @@
-# ServerFS Agent Bridge — v0.7.1
+# ServerFS Agent Bridge — v0.7.2
 
-This directory contains the **host-side** Agent Bridge shipped with ServerFS v0.7.1. The
+This directory contains the **host-side** Agent Bridge shipped with ServerFS v0.7.2. The
 provider-neutral execution/approval contract originated in v0.3 and remains compatible;
 v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability,
-recovery evidence, immutable execution manifests and bounded large-result retrieval, and
-v0.7.1 adds a targeted Codex reconciliation hotfix without changing that public surface.
+recovery evidence, immutable execution manifests and bounded large-result retrieval,
+v0.7.1 added a targeted Codex reconciliation hotfix, and v0.7.2 closes a stale non-terminal
+recovery-state gap without changing the public surface.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
@@ -69,9 +70,13 @@ v0.7.0 added a narrow reliability layer over those frozen contracts:
   manifest, deadline or correlation evidence.
 
 v0.7.1 keeps that surface frozen and fixes one Codex recovery edge case. A recovery guard
-may be cleared only when the persisted task is already failed, the recorded control-socket
-connection failure occurred before provider execution began, and both native session and
-turn IDs are absent. Other no-ID failures remain ambiguous and continue to fail closed.
+may be cleared when a persisted task is already failed and recorded evidence proves the
+control-socket connection failed before provider execution began. v0.7.2 extends recovery
+state hygiene without weakening that proof requirement: when lazy guard reconciliation
+independently proves `provider_active=false`, any still non-terminal ServerFS task is first
+marked `interrupted` with `AGENT_PROVIDER_INACTIVE`, pending interaction state becomes
+stale through the normal terminal transition, and only then is the guard removed. Unknown
+provider state remains fail-closed and preserves the guard.
 
 Agent delegation should remain objective-level and capability-bounded. A submitted task
 should carry one authorized objective, the minimum context needed for it, an explicit

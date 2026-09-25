@@ -481,6 +481,20 @@ class BridgeService:
             },
         )
         if result.provider_active is False:
+            current = self.store.get_task(task_id)
+            if TaskStatus(current.status) not in TERMINAL_STATUSES:
+                error_code = "AGENT_PROVIDER_INACTIVE"
+                self.store.transition_task(
+                    current.task_id,
+                    TaskStatus.INTERRUPTED,
+                    error_code=error_code,
+                    error_message="provider is no longer active during recovery",
+                )
+                self._try_append_event(
+                    current.task_id,
+                    "task.interrupted",
+                    {"error_code": error_code},
+                )
             self.guard_manager.remove(slot=slot, task_id=task.task_id)
             return result
         raise BridgeError(

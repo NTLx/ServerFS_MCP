@@ -60,6 +60,15 @@ class UnknownRecoveryAdapter(FakeAdapter):
         )
 
 
+class InactiveRecoveryAdapter(FakeAdapter):
+    async def reconcile_task(self, task) -> ReconcileResult:
+        return ReconcileResult(
+            status=ReconciliationStatus.NOT_RECOVERABLE,
+            provider_active=False,
+            detail="provider is no longer active",
+        )
+
+
 class CountingFakeAdapter(FakeAdapter):
     def __init__(self) -> None:
         super().__init__()
@@ -129,7 +138,7 @@ async def test_correlation_event_envelope_and_manifest_hash(tmp_path: Path) -> N
     task = await wait_for_status(service, submitted["task_id"], "succeeded")
     assert task["correlation_id"] == correlation_id
     assert task["manifest"]["schema_version"] == 1
-    assert task["manifest"]["bridge_version"] == "0.7.1"
+    assert task["manifest"]["bridge_version"] == "0.7.2"
     assert task["manifest"]["protocol_version"] == 1
     assert task["manifest"]["correlation_id"] == correlation_id
     assert task["manifest"]["runtime"]["name"] == "fake"
@@ -324,6 +333,99 @@ async def test_timeout_keeps_recovery_guard_when_provider_stop_is_unproven(
             prompt="must-not-start",
         )
     assert blocked.value.code == "WORKDIR_RECOVERY_REQUIRED"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_lazy_guard_reconciliation_terminalizes_inactive_running_task(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path, adapter=InactiveRecoveryAdapter())
+    await service.start()
+    task_id = "agt_inactive_running"
+    service.store.create_task(
+        task_id=task_id,
+        runtime="fake",
+        workdir_alias="repo",
+        workdir_slot=1,
+        relative_cwd="",
+        profile="workspace-write",
+        continue_from_task_id=None,
+        deadline_at=utc_after(60),
+    )
+    service.store.transition_task(task_id, TaskStatus.STARTING)
+    service.store.transition_task(task_id, TaskStatus.RUNNING)
+    service.guard_manager.create(
+        slot=1,
+        task_id=task_id,
+        runtime="fake",
+        workdir_alias="repo",
+        correlation_id=None,
+    )
+
+    result = await service._reconcile_guard(1)
+
+    assert result is not None
+    assert result.provider_active is False
+    task = service.get_task(task_id)
+    assert task["status"] == "interrupted"
+    assert task["error_code"] == "AGENT_PROVIDER_INACTIVE"
+    assert service.guard_manager.read(1) is None
+    events = service.read_events(task_id)["events"]
+    assert any(
+        event["event_type"] == "task.interrupted"
+        and event["payload"]["error_code"] == "AGENT_PROVIDER_INACTIVE"
+        for event in events
+    )
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_lazy_guard_reconciliation_stales_pending_request_when_provider_inactive(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path, adapter=InactiveRecoveryAdapter())
+    await service.start()
+    task_id = "agt_inactive_waiting"
+    request_id = "req_inactive_waiting"
+    service.store.create_task(
+        task_id=task_id,
+        runtime="fake",
+        workdir_alias="repo",
+        workdir_slot=1,
+        relative_cwd="",
+        profile="workspace-write",
+        continue_from_task_id=None,
+        deadline_at=utc_after(60),
+    )
+    service.store.transition_task(task_id, TaskStatus.STARTING)
+    service.store.transition_task(task_id, TaskStatus.RUNNING)
+    service.store.create_pending_request(
+        task_id=task_id,
+        request_id=request_id,
+        kind="approval",
+        payload={"command_display": "noop"},
+        waiting_status=TaskStatus.WAITING_FOR_APPROVAL,
+        expires_at=utc_after(60),
+    )
+    service.guard_manager.create(
+        slot=1,
+        task_id=task_id,
+        runtime="fake",
+        workdir_alias="repo",
+        correlation_id=None,
+    )
+
+    result = await service._reconcile_guard(1)
+
+    assert result is not None
+    assert result.provider_active is False
+    task = service.get_task(task_id)
+    assert task["status"] == "interrupted"
+    assert task["pending_request_id"] is None
+    assert task["error_code"] == "AGENT_PROVIDER_INACTIVE"
+    assert service.store.get_request(request_id).status == "stale"
+    assert service.guard_manager.read(1) is None
     await service.close()
 
 

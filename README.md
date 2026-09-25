@@ -45,7 +45,7 @@ The default `compose.yml` exposes the original 11 filesystem tools. Binary trans
 
 `main` includes an optional **advisory-only** Jev task advisor inside the host Agent Bridge. It does not add an MCP tool, runtime, permission, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and task submission follows the existing path unchanged. When configured, one pinned `jev-1.13.0` task-submission request evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a four-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, or `human_review`. If a native provider later creates an approval request, the same Jev client may make one additional approval-specific request that scores necessity, scope, destructive/irreversible risk, sensitive access and external side effects, then returns an advisory recommendation; identical approvals within the same task reuse task-local advice instead of calling Jev again. Ordinary turns and question prompts do not create that extra request. No Jev result blocks, rewrites, reroutes, approves, denies, or expands a task; the explicit runtime and approval contracts remain authoritative. The feature was introduced in v0.6.0 as an opt-in experimental capability. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository [Preflight note](docs/jev-agent-preflight-experiment.md), [Runtime Router note](docs/jev-runtime-router-experiment.md), and [Approval Advisor note](docs/jev-approval-advisor-experiment.md).
 
-v0.7.0 introduced the current Agent Bridge reliability layer without turning ServerFS into a workflow engine. Every new task freezes an immutable execution manifest and optional opaque `correlation_id`; normalized events use schema-versioned envelopes; tasks receive a 24-hour deadline and terminal state is retained for seven days by default. Workspace-write runs add a persistent active-slot recovery guard on top of the existing `flock`, so an abnormal Bridge exit fails closed with `WORKDIR_RECOVERY_REQUIRED` until provider state is reconciled. Final responses up to 256 KiB remain inline; responses above 256 KiB and up to 8 MiB are atomically spooled in private Bridge state and can be reconstructed exactly through the read-only `read_agent_task_result` tool. Results above 8 MiB still fail with `AGENT_RESULT_TOO_LARGE`. v0.7.1 is a maintenance hotfix on that frozen surface: Codex reconciliation now clears a recovery guard only for the proven pre-provider-start failure where the task is already failed, the control socket connection failed before `thread/start`, and no native session/turn ID exists. Ambiguous no-ID failures remain unresolved and fail closed.
+v0.7.0 introduced the current Agent Bridge reliability layer without turning ServerFS into a workflow engine. Every new task freezes an immutable execution manifest and optional opaque `correlation_id`; normalized events use schema-versioned envelopes; tasks receive a 24-hour deadline and terminal state is retained for seven days by default. Workspace-write runs add a persistent active-slot recovery guard on top of the existing `flock`, so an abnormal Bridge exit fails closed with `WORKDIR_RECOVERY_REQUIRED` until provider state is reconciled. Final responses up to 256 KiB remain inline; responses above 256 KiB and up to 8 MiB are atomically spooled in private Bridge state and can be reconstructed exactly through the read-only `read_agent_task_result` tool. Results above 8 MiB still fail with `AGENT_RESULT_TOO_LARGE`. v0.7.1 added the narrow Codex pre-provider-start reconciliation hotfix. v0.7.2 remains a maintenance release on that frozen surface: `find_files` now keeps directory-FD usage bounded on wide trees and reports `EMFILE`/`ENFILE` as `RESOURCE_EXHAUSTED`; lazy Agent recovery now terminalizes a stale non-terminal task when reconciliation proves its provider is inactive, while unknown provider state still fails closed and keeps the recovery guard.
 
 ## Prerequisites
 
@@ -90,7 +90,7 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.7.1` | `v0.7.1` |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.7.2` | `v0.7.2` |
 | Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.7` | newest `v0.7.x` tag |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
@@ -103,7 +103,7 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-The v0.7.1 maintenance release publishes `0.7.1`, `0.7` and `latest` from the immutable `v0.7.1` tag. The earlier `v0.7.0` tag remains immutable. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
+The v0.7.2 maintenance release publishes `0.7.2`, `0.7` and `latest` from the immutable `v0.7.2` tag. Earlier v0.7.x tags remain immutable. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
 
 ## Workdir Configuration
 
@@ -259,7 +259,7 @@ Mutation tools (read-write workdirs only; all require the path's parent to exist
 
 A `serverfs://{workdir}/{path}` resource template is also exposed; it goes through the exact same validation as `read_text_file` and is **read-only** — mutations are available as tools only. Resources are all-or-nothing: a file that exceeds the read budget returns `RESOURCE_TOO_LARGE` instead of a silently truncated body — use `read_text_file` for paginated access.
 
-Common error codes: `WORKDIR_READ_ONLY`, `BINARY_TRANSFER_DISABLED`, `BINARY_FILE_TOO_LARGE`, `BINARY_PAYLOAD_TOO_LARGE`, `BINARY_SOURCE_REQUIRED`, `BINARY_SOURCE_CONFLICT`, `INVALID_BASE64`, `FILE_INGRESS_DISABLED`, `FILE_INGRESS_UNAVAILABLE`, `FILE_INGRESS_FAILED`, `FILE_INGRESS_URL_NOT_ALLOWED`, `FILE_INGRESS_HOST_NOT_ALLOWED`, `FILE_INGRESS_ADDRESS_NOT_ALLOWED`, `FILE_INGRESS_DNS_FAILED`, `FILE_INGRESS_TOO_MANY_REDIRECTS`, `FILE_INGRESS_UPSTREAM_FAILED`, `PATH_ALREADY_EXISTS`, `PARENT_NOT_FOUND`, `ROOT_MUTATION_NOT_ALLOWED`, `REVISION_REQUIRED`, `REVISION_CONFLICT`, `EDIT_CONFLICT`, `TOO_MANY_EDITS`, `WRITE_TOO_LARGE`, `BINARY_CONTENT_NOT_ALLOWED`, `BINARY_FILE`, `DIRECTORY_NOT_EMPTY`, `MULTIPLE_HARDLINKS_NOT_SUPPORTED`, `METADATA_PRESERVATION_FAILED`, `RESERVED_PATH`, plus the read-channel codes (`PATH_NOT_FOUND`, `SYMLINK_NOT_ALLOWED`, `DENIED_PATH`, `HIDDEN_PATH_NOT_ALLOWED`, `UNSUPPORTED_FILE_TYPE`, …).
+Common error codes: `RESOURCE_EXHAUSTED`, `WORKDIR_READ_ONLY`, `BINARY_TRANSFER_DISABLED`, `BINARY_FILE_TOO_LARGE`, `BINARY_PAYLOAD_TOO_LARGE`, `BINARY_SOURCE_REQUIRED`, `BINARY_SOURCE_CONFLICT`, `INVALID_BASE64`, `FILE_INGRESS_DISABLED`, `FILE_INGRESS_UNAVAILABLE`, `FILE_INGRESS_FAILED`, `FILE_INGRESS_URL_NOT_ALLOWED`, `FILE_INGRESS_HOST_NOT_ALLOWED`, `FILE_INGRESS_ADDRESS_NOT_ALLOWED`, `FILE_INGRESS_DNS_FAILED`, `FILE_INGRESS_TOO_MANY_REDIRECTS`, `FILE_INGRESS_UPSTREAM_FAILED`, `PATH_ALREADY_EXISTS`, `PARENT_NOT_FOUND`, `ROOT_MUTATION_NOT_ALLOWED`, `REVISION_REQUIRED`, `REVISION_CONFLICT`, `EDIT_CONFLICT`, `TOO_MANY_EDITS`, `WRITE_TOO_LARGE`, `BINARY_CONTENT_NOT_ALLOWED`, `BINARY_FILE`, `DIRECTORY_NOT_EMPTY`, `MULTIPLE_HARDLINKS_NOT_SUPPORTED`, `METADATA_PRESERVATION_FAILED`, `RESERVED_PATH`, plus the read-channel codes (`PATH_NOT_FOUND`, `SYMLINK_NOT_ALLOWED`, `DENIED_PATH`, `HIDDEN_PATH_NOT_ALLOWED`, `UNSUPPORTED_FILE_TYPE`, …).
 
 ## Operations
 
@@ -287,10 +287,13 @@ docker compose restart openai-tunnel
 Agent-enabled deployment — **always keep the Agent overlay**:
 
 ```bash
-docker compose -f compose.yml -f compose.agent.yml pull
-docker compose -f compose.yml -f compose.agent.yml up -d
-docker compose -f compose.yml -f compose.agent.yml restart openai-tunnel
+docker compose --env-file .env -f compose.yml -f compose.agent.yml pull
+docker compose --env-file .env -f compose.yml -f compose.agent.yml up -d
+docker compose --env-file .env -f compose.yml -f compose.agent.yml restart openai-tunnel
+python3 deployment/agent-bridge/verify_host.py --require-runtimes
 ```
+
+The strict verifier only performs bounded read-only `runtime.list` retries; it never starts, restarts, bootstraps, updates, kills, or otherwise manages Codex/Claude processes.
 
 If v0.5.0 ChatGPT file ingress is also enabled, add `--profile file-ingress` to the same Compose invocation; do not replace the Agent overlay with the profile. Recreating `serverfs-mcp` with only the base file removes the Agent socket/lock mounts and makes the runtime surface Agent-disabled even when the `.env` still contains valid Agent policy.
 
@@ -303,21 +306,21 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose up -d
 
 Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins and rebuilding along the source path. Avoid `latest`.
 
-For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. After v0.7.1 is published, use:
+For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. For v0.7.2, use:
 
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.1
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.2
 ```
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
 
-### Upgrading to v0.7.1
+### Upgrading to v0.7.2
 
-v0.7.1 is a maintenance hotfix on the additive Agent-runtime reliability release introduced in v0.7.0. It keeps the same MCP surface, manifest/event schema, deadlines, retention, recovery guards and result-spool contract. The fix narrows one Codex restart-reconciliation edge case: when a task is already failed because the managed control socket could not be connected before `thread/start`, and neither a native session ID nor turn ID was ever recorded, the Bridge can prove the provider never started and report `provider_active=false`, allowing the stale recovery guard to clear. Other no-ID failures remain ambiguous and continue to fail closed.
+v0.7.2 is a maintenance/reliability release on the v0.7 contract. It includes the post-v0.7.1 `find_files` FD-amplification fix, maps `EMFILE`/`ENFILE` to `RESOURCE_EXHAUSTED`, and closes a recovery-state gap where a provider can be proven inactive while the persisted ServerFS task remains `running` or `waiting_*`. In that proven-inactive case the stale task is now marked `interrupted` with `AGENT_PROVIDER_INACTIVE`, any pending interaction becomes stale through the normal terminal transition, and only then is the recovery guard cleared. `provider_active=None` remains fail-closed and retains the guard.
 
-The Bridge still migrates existing SQLite state in place, preserving historical tasks without fabricating v0.7 manifest/deadline/correlation evidence. Before updating the host Bridge, confirm there are no active writer-lease tasks and use the existing user-scoped installer/update flow. ServerFS never blindly reruns an interrupted task. Jev remains optional, fail-open and advisory-only exactly as in v0.6.0.
+The MCP surface, Bridge protocol, manifest/event schema, deadlines, retention, result spool, writer lease, provider authorization and Jev advisory-only contract are unchanged. The Bridge still migrates existing SQLite state in place without fabricating historical evidence. Before updating the host Bridge, confirm there are no active Agent tasks and use the existing user-scoped installer/update flow; ServerFS never blindly reruns an interrupted task.
 
-After v0.7.1 is published, production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.1`. Agent-enabled clients upgrading from versions before v0.7.0 must refresh their MCP tool schema to see `read_agent_task_result`.
+For Agent-enabled deployments, preserve `-f compose.yml -f compose.agent.yml` when recreating the container. After the host Bridge is active, `python3 deployment/agent-bridge/verify_host.py --require-runtimes` provides a bounded acceptance check that all enabled native runtimes report available without taking provider lifecycle ownership. Production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.2`. Agent-enabled clients upgrading from versions before v0.7.0 must refresh their MCP tool schema to see `read_agent_task_result`.
 
 ### Upgrading to v0.5.0
 
@@ -342,6 +345,6 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 
 The scratch tag on the last line matters: `image` doubles as the tag Compose builds to, so an untagged build with a pinned production `.env` present would repoint that release tag at your working tree.
 
-## Still not in v0.7.1 (by design)
+## Still not in v0.7.2 (by design)
 
 No generic URL downloader, no rename/move/copy, no recursive mkdir or delete, no in-place binary editing API, no chmod/chown tools, no symlink or hardlink creation, no chunked/resumable transfer sessions, no shell or command execution, no Git operations, no automatic backup or trash, no database/index/RAG, no ACL management, no cross-workdir move, no OAuth/SSO, no web UI, and no file watching. Binary transfer remains bounded whole-file transfer; the optional ChatGPT file-ingress sidecar is a narrow, policy-checked HTTPS ingress capability that accepts only exact administrator hosts or the explicit constrained OpenAI Blob family rather than acting as a general proxy.

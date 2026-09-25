@@ -46,11 +46,23 @@ Current deployments can expose:
 
 v0.7.0 introduced reliability and evidence around the existing Bridge rather than adding orchestration. New tasks carry an immutable execution manifest and optional opaque `correlation_id`; normalized events use envelope schema v1; tasks default to a 24-hour deadline and seven-day terminal retention.
 
-v0.7.1 keeps that contract unchanged and fixes a narrow Codex recovery edge case: a failed task with no native session/turn ID can clear its recovery guard only when the recorded failure proves the control socket connection failed before provider execution began. Other no-ID failures remain unresolved and fail closed.
+v0.7.1 keeps that contract unchanged and fixes a narrow Codex recovery edge case around a proven pre-provider-start control-socket failure. v0.7.2 adds maintenance-only recovery state hygiene: when lazy reconciliation proves `provider_active=false`, any still non-terminal ServerFS task is first marked `interrupted` with `AGENT_PROVIDER_INACTIVE`, pending interaction state becomes stale through the normal terminal transition, and only then is the recovery guard removed. Unknown provider state remains fail-closed and preserves the guard.
 
 Workspace-write tasks also publish a persistent per-slot recovery guard alongside the existing `flock`. If the Bridge exits abnormally, mutations fail closed with `WORKDIR_RECOVERY_REQUIRED` until provider-aware reconciliation proves the prior provider is no longer active. ServerFS does not blindly rerun an interrupted task.
 
 Final responses up to 256 KiB stay inline. Responses above 256 KiB through 8 MiB are atomically spooled to private Bridge state and exposed by `get_agent_task` as a bounded preview plus size/SHA-256 metadata. `read_agent_task_result` retrieves the exact UTF-8 result in bounded chunks. Results above 8 MiB fail with `AGENT_RESULT_TOO_LARGE`.
+
+## Deployment verification
+
+For Agent-enabled release acceptance, run:
+
+```bash
+python3 deployment/agent-bridge/verify_host.py --require-runtimes
+```
+
+The strict mode first proves the user-scoped Bridge deployment, then performs bounded read-only `runtime.list` retries for every enabled native runtime. It never starts, restarts, bootstraps, updates, kills, or otherwise manages Codex/Claude. If a runtime remains unavailable after the retry window, verification fails and provider-native lifecycle diagnostics remain an operator action.
+
+When recreating the MCP container, always preserve both `-f compose.yml -f compose.agent.yml`; using base Compose alone removes the Agent socket/lock mounts even if `.env` still contains Agent policy.
 
 ## Optional Jev advisors
 

@@ -35,10 +35,11 @@ docker compose logs -f openai-tunnel
 Agent 能力通过显式 overlay 启用：
 
 ```bash
-docker compose -f compose.yml -f compose.agent.yml up -d
+docker compose --env-file .env -f compose.yml -f compose.agent.yml up -d
+python3 deployment/agent-bridge/verify_host.py --require-runtimes
 ```
 
-启用之前，请先按照仓库中的 [Agent Bridge 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md) 安装并验证宿主机 Agent Bridge。
+启用之前，请先按照仓库中的 [Agent Bridge 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md) 安装并验证宿主机 Agent Bridge。后续每次重建都必须保留 Agent overlay；只用基础 Compose 会移除 Agent socket/lock 挂载。
 
 ### 可选 Jev Advisors
 
@@ -70,20 +71,20 @@ docker compose --profile file-ingress up -d
 如果同时启用 Agent Bridge，必须在同一次 Compose 调用中同时保留 Agent overlay 与 file-ingress profile：
 
 ```bash
-docker compose --profile file-ingress -f compose.yml -f compose.agent.yml pull
-docker compose --profile file-ingress -f compose.yml -f compose.agent.yml up -d
+docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.agent.yml pull
+docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.agent.yml up -d
 ```
 
 Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 的主机策略与网络边界详见[二进制传输](./binary-transfer/)和[安全模型](./security/)。
 
-## v0.7.1 发布镜像
+## v0.7.2 发布镜像
 
-v0.7.1 发布后，将提供以下 GHCR 稳定标签：
+v0.7.2 维护版本发布以下 GHCR 稳定标签：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
 ghcr.io/ntlx/serverfs_mcp:0.7
-ghcr.io/ntlx/serverfs_mcp:0.7.1
+ghcr.io/ntlx/serverfs_mcp:0.7.2
 ```
 
-生产环境应在发布后固定使用 `0.7.1`，而不是长期跟随 `latest` 或 `edge`。
+生产环境应固定使用 `0.7.2`，而不是长期跟随 `latest` 或 `edge`。

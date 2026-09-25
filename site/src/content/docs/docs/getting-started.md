@@ -35,10 +35,11 @@ The base deployment exposes the 11 filesystem tools and remains read-only unless
 Agent support is deliberately an explicit overlay:
 
 ```bash
-docker compose -f compose.yml -f compose.agent.yml up -d
+docker compose --env-file .env -f compose.yml -f compose.agent.yml up -d
+python3 deployment/agent-bridge/verify_host.py --require-runtimes
 ```
 
-Before enabling it, install and verify the host-side Agent Bridge as described in the repository's [Agent Bridge deployment guide](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md).
+Before enabling it, install and verify the host-side Agent Bridge as described in the repository's [Agent Bridge deployment guide](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md). Keep the Agent overlay on every later recreation; using base Compose alone removes the Agent socket/lock mounts.
 
 ### Optional Jev advisors
 
@@ -70,20 +71,20 @@ docker compose --profile file-ingress up -d
 If Agent Bridge is also enabled, keep both the Agent overlay and the file-ingress profile in the same invocation:
 
 ```bash
-docker compose --profile file-ingress -f compose.yml -f compose.agent.yml pull
-docker compose --profile file-ingress -f compose.yml -f compose.agent.yml up -d
+docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.agent.yml pull
+docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.agent.yml up -d
 ```
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](./binary-transfer/) and [Security Model](./security/) for the v0.5.0 host policy and network boundary.
 
-## v0.7.1 release images
+## v0.7.2 release images
 
-After v0.7.1 is published, these stable GHCR tags are available:
+The v0.7.2 maintenance release publishes these stable GHCR tags:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
 ghcr.io/ntlx/serverfs_mcp:0.7
-ghcr.io/ntlx/serverfs_mcp:0.7.1
+ghcr.io/ntlx/serverfs_mcp:0.7.2
 ```
 
-For production deployments, pin `0.7.1` after release rather than following `latest` or `edge`.
+For production deployments, pin `0.7.2` rather than following `latest` or `edge`.

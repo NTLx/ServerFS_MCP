@@ -4,7 +4,7 @@ Status: frozen implementation plan for v0.7.0
 Theme: **Runtime Reliability & Observability**  
 Baseline: v0.6.0 on `main` at `d556c3265bd225470e21d83c738d1c3ef28bda42`
 
-> **Release-state note:** this file is the frozen historical plan for v0.7.0. v0.7.0 has already been published; the current maintenance line is v0.7.1. v0.7.1 keeps the v0.7.0 public/runtime contract frozen and carries only the targeted Codex pre-start reconciliation hotfix described by the current README, tests and implementation. Historical pre-release stop instructions below are retained as audit evidence, not as the current release state.
+> **Release-state note:** this file is the frozen historical plan for v0.7.0. v0.7.0 and v0.7.1 have already been published; the current maintenance line is v0.7.2. v0.7.2 keeps the v0.7.0 public/runtime contract frozen while adding only the bounded-FD filesystem fix, proven-inactive Agent task state reconciliation, and bounded read-only runtime-readiness verification described by `dev_plan_v0.7.2.md`, the current README, tests and implementation. Historical pre-release stop instructions below are retained as audit evidence, not as the current release state.
 
 ## 1. Product boundary
 

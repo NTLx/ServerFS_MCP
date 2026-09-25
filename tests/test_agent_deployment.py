@@ -500,6 +500,59 @@ def test_verify_host_distinguishes_missing_socket_from_unready_rpc(
         socket_path.unlink(missing_ok=True)
 
 
+def test_verify_host_runtime_readiness_retries_until_all_enabled_are_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+
+    def fake_probe(_path: Path) -> dict[str, object]:
+        nonlocal attempts
+        attempts += 1
+        return {
+            "runtimes": [
+                {"name": "claude", "available": True},
+                {"name": "codex", "available": attempts >= 3},
+            ]
+        }
+
+    monkeypatch.setattr(verify_host, "_probe_bridge", fake_probe)
+    monkeypatch.setattr(verify_host.time, "sleep", lambda _seconds: None)
+
+    verify_host._wait_for_enabled_runtimes_ready(
+        Path("/unused"),
+        {"codex", "claude"},
+        timeout_seconds=1.0,
+        retry_interval_seconds=0.01,
+    )
+
+    assert attempts == 3
+
+
+def test_verify_host_runtime_readiness_times_out_without_starting_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_probe(_path: Path) -> dict[str, object]:
+        return {
+            "runtimes": [
+                {"name": "claude", "available": True},
+                {"name": "codex", "available": False},
+            ]
+        }
+
+    ticks = iter([0.0, 2.0])
+    monkeypatch.setattr(verify_host, "_probe_bridge", fake_probe)
+    monkeypatch.setattr(verify_host.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(verify_host.time, "monotonic", lambda: next(ticks, 2.0))
+
+    with pytest.raises(verify_host.VerifyError, match="codex"):
+        verify_host._wait_for_enabled_runtimes_ready(
+            Path("/unused"),
+            {"codex", "claude"},
+            timeout_seconds=1.0,
+            retry_interval_seconds=0.01,
+        )
+
+
 def test_deployment_executables_never_require_privileged_install() -> None:
     names = [
         "install.sh",

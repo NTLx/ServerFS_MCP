@@ -306,6 +306,12 @@ documented operationally rather than worked around with a root/system Bridge.
 python3 deployment/agent-bridge/verify_host.py
 ```
 
+For release acceptance or an Agent-enabled upgrade, use the stricter bounded runtime-readiness check:
+
+```bash
+python3 deployment/agent-bridge/verify_host.py --require-runtimes
+```
+
 It verifies:
 
 - all deployment assets are owned by the current user;
@@ -314,7 +320,10 @@ It verifies:
 - socket and all 16 lock files have expected modes;
 - installed Bridge entrypoint exists;
 - enabled provider binaries exist and are executable;
-- a real `runtime.list` RPC succeeds over the Unix socket.
+- a real `runtime.list` RPC succeeds over the Unix socket;
+- with `--require-runtimes`, every enabled native runtime reports `available=true` within a bounded 10-second retry window.
+
+The strict mode is read-only with respect to provider lifecycle: it does not start, restart, bootstrap, update, kill, or otherwise manage Codex/Claude. A runtime that remains unavailable at the deadline fails verification and must be diagnosed through its provider-native lifecycle.
 
 Because the user unit is `Type=simple`, systemd can report the service started just
 before the Bridge binds `bridge.sock`. Verification waits briefly for that startup-only
@@ -353,6 +362,8 @@ docker compose \
   -f compose.agent.yml \
   up -d
 ```
+
+**Do not recreate `serverfs-mcp` with base `compose.yml` alone during an Agent-enabled upgrade.** Doing so removes the Agent socket/lock mounts and collapses the MCP surface back to filesystem-only even if `.env` still contains valid Agent policy.
 
 Then prove container -> host Bridge connectivity:
 
@@ -413,7 +424,7 @@ Only after host/container verification:
 1. confirm the OpenAI tunnel is healthy;
 2. refresh/reconnect the ServerFS MCP integration if the old 11-tool schema is
    cached;
-3. verify the 19-tool surface;
+3. verify the configured 20-tool or 22-tool Agent surface;
 4. call `list_agent_runtimes`;
 5. submit disposable Codex and Claude tasks and poll them;
 6. exercise native approval/question paths when providers request them;
@@ -471,7 +482,7 @@ Before host acceptance, run both independent code gates: the repository-root gat
 `bash -n deployment/agent-bridge/*.sh` for deployment shell syntax. Root `pytest`
 collects only `tests/` and does not validate `agent_bridge/tests/`.
 
-For the ServerFS v0.7.1 package, verify the target host proves:
+For the ServerFS v0.7.2 package, verify the target host proves:
 
 - install/update/rollback require no sudo/root;
 - real peer UID/GID equal the current login user;
@@ -481,13 +492,14 @@ For the ServerFS v0.7.1 package, verify the target host proves:
 - container-to-Bridge RPC works;
 - provider environment parity holds;
 - Codex managed-daemon version matches the selected direct CLI after upgrades;
+- `verify_host.py --require-runtimes` proves every enabled runtime becomes available without ServerFS taking provider lifecycle ownership;
 - Codex and Claude runtime discovery works;
 - Agent mode exposes 20 tools without binary transfer and 22 tools with binary transfer;
 - real submit/poll/HITL/cancel works;
 - shared writer lease works across host/container;
 - rollback implementation and recovery tests remain green; the live base
   11-tool rollback/re-cutover drill was **WAIVED BY MAINTAINER for v0.3.0**
-  (2026-09-20) as a historical release decision and is not repeated as a v0.7.1
+  (2026-09-20) as a historical release decision and is not repeated as a v0.7.2
   verification requirement;
 - no provider credentials enter the MCP container;
 - MCP container still has no Internet egress;
@@ -501,4 +513,4 @@ container.
 
 If post-release verification fails, use the documented rollback script to restore the
 previous user-scoped Bridge release, configuration and unit state; after publication,
-do not recreate or move published release tags; `v0.7.0` remains immutable, and `v0.7.1` becomes immutable when published.
+do not recreate or move published release tags; existing v0.7.x tags remain immutable, and `v0.7.2` becomes immutable when published.
