@@ -136,17 +136,17 @@ compose.yml + compose.agent.yml
   -> Agent-enabled surfaces
 ```
 
-v0.7.2 documentation must make the canonical Agent-enabled upgrade sequence copy/paste safe and include immediate post-deploy verification.
+The v0.7.2 documentation makes the canonical Agent-enabled upgrade sequence copy/paste safe and includes immediate post-deploy verification.
 
-At minimum, the runbook must:
+The published runbook:
 
-- use `--env-file .env`;
-- include both `-f compose.yml -f compose.agent.yml`;
-- warn that recreating `serverfs-mcp` with base Compose alone removes Agent mounts even when Agent settings remain in `.env`;
-- run host verification with `--require-runtimes` for release acceptance;
-- verify container-to-Bridge `runtime.list` after recreation.
+- uses `--env-file .env`;
+- includes both `-f compose.yml -f compose.agent.yml`;
+- warns that recreating `serverfs-mcp` with base Compose alone removes Agent mounts even when Agent settings remain in `.env`;
+- uses host verification with `--require-runtimes` for deployment acceptance;
+- verifies container-to-Bridge `runtime.list` after recreation.
 
-Do not solve this by adding `COMPOSE_FILE` to `.env` or by making the base Compose Agent-aware.
+This was completed without adding `COMPOSE_FILE` to `.env` or making the base Compose Agent-aware.
 
 ## 7. Version and documentation consistency
 
