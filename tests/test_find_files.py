@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 
 from serverfs_mcp.filesystem import find_files
@@ -83,6 +84,42 @@ class TestLimits:
         )
         assert truncated is True
         assert len(matches) < 10
+
+    def test_wide_tree_keeps_open_fds_bounded(self, workdir, monkeypatch) -> None:
+        root = workdir.container_path
+        for i in range(32):
+            child = root / f"d{i:02d}"
+            child.mkdir()
+            (child / "target.txt").write_text("x")
+
+        real_open = os.open
+        real_close = os.close
+        tracked: set[int] = set()
+        peak = 0
+
+        def bounded_open(*args, **kwargs):
+            nonlocal peak
+            if len(tracked) >= 8:
+                raise OSError(errno.EMFILE, "Too many open files")
+            fd = real_open(*args, **kwargs)
+            tracked.add(fd)
+            peak = max(peak, len(tracked))
+            return fd
+
+        def tracked_close(fd):
+            tracked.discard(fd)
+            return real_close(fd)
+
+        monkeypatch.setattr(os, "open", bounded_open)
+        monkeypatch.setattr(os, "close", tracked_close)
+
+        matches, truncated = find_files(
+            resolve(workdir), pattern="target.txt", limit=100, max_walk_entries=200_000
+        )
+
+        assert len(matches) == 32
+        assert truncated is False
+        assert peak <= 3
 
 
 class TestFiltering:

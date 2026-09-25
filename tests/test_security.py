@@ -9,6 +9,7 @@ channel, and that audit logs carry no secrets.
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import os
 import socket
@@ -230,6 +231,14 @@ class TestToolErrors:
     def test_nul_rejected(self, server) -> None:
         msg = call_error(server, "read_text_file", {"workdir": "test", "path": "a\x00b"})
         assert "ACCESS_DENIED" in msg
+
+    def test_find_files_emfile_reports_resource_exhausted(self, server, monkeypatch) -> None:
+        def fail_scandir(*args, **kwargs):
+            raise OSError(errno.EMFILE, "Too many open files")
+
+        monkeypatch.setattr(os, "scandir", fail_scandir)
+        msg = call_error(server, "find_files", {"workdir": "test", "pattern": "*"})
+        assert "RESOURCE_EXHAUSTED" in msg
 
 
 class TestPolicyMatrix:

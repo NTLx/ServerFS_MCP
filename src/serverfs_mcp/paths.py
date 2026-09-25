@@ -81,6 +81,11 @@ class PathSecurityError(Exception):
             self.message = message
 
 
+class ResourceExhaustedError(PathSecurityError):
+    code = "RESOURCE_EXHAUSTED"
+    message = "filesystem resources are exhausted"
+
+
 class AbsolutePathError(PathSecurityError):
     code = "PATH_OUTSIDE_WORKDIR"
     message = "paths must be relative to the workdir"

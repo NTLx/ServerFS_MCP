@@ -26,6 +26,7 @@ import stat as stat_module
 from .paths import (
     RESERVED_TEMP_PREFIX,
     PathSecurityError,
+    ResourceExhaustedError,
     SymlinkNotAllowedError,
     UnsupportedFileTypeError,
 )
@@ -43,6 +44,8 @@ def _map_open_error(exc: OSError, name: str, *, dir_fd: int | None = None) -> No
     available we lstat purely to CLASSIFY the error (the open already
     failed, so this adds no TOCTOU exposure).
     """
+    if exc.errno in (errno.EMFILE, errno.ENFILE):
+        raise ResourceExhaustedError(exc.strerror or "too many open files") from exc
     if exc.errno == errno.ELOOP:
         raise SymlinkNotAllowedError() from exc
     if exc.errno == errno.ENOENT:

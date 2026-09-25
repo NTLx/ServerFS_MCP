@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import errno
 import os
 import time
 from pathlib import Path
@@ -1249,6 +1250,8 @@ def _fs_error(exc: OSError, workdir: str, path: str) -> ToolError:
         return ToolError(f"NOT_A_FILE: {workdir}:{path} is a directory")
     if isinstance(exc, NotADirectoryError):
         return ToolError(f"NOT_A_DIRECTORY: {workdir}:{path} is not a directory")
+    if exc.errno in (errno.EMFILE, errno.ENFILE):
+        return ToolError(f"RESOURCE_EXHAUSTED: {workdir}:{path} ({exc.strerror})")
     return ToolError(f"ACCESS_DENIED: {workdir}:{path} ({exc.strerror})")
 
 

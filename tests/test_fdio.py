@@ -6,6 +6,7 @@ makes symlink enforcement and object identity atomic (no lstat→open race).
 
 from __future__ import annotations
 
+import errno
 import os
 import socket
 import stat as stat_module
@@ -16,10 +17,12 @@ import pytest
 from serverfs_mcp.fdio import (
     open_directory_fd,
     open_file_fd,
+    open_root,
     stat_final,
     walk_parent_dirs,
 )
 from serverfs_mcp.paths import (
+    ResourceExhaustedError,
     SymlinkNotAllowedError,
     UnsupportedFileTypeError,
 )
@@ -36,6 +39,15 @@ def root_fd(workdir):
 
 def _mklink(workdir, name: str, target: str) -> None:
     os.symlink(target, workdir.container_path / name)
+
+
+def test_emfile_is_resource_exhausted(monkeypatch) -> None:
+    def fail_open(*args, **kwargs):
+        raise OSError(errno.EMFILE, "Too many open files")
+
+    monkeypatch.setattr(os, "open", fail_open)
+    with pytest.raises(ResourceExhaustedError):
+        open_root("/unused")
 
 
 class TestParentSymlinkWalk:
