@@ -406,7 +406,12 @@ differ after a CLI upgrade, treat the native daemon as stale before release acce
 For current Codex releases, prefer the provider-native `codex app-server daemon update`
 flow over a blind `restart`: the update flow is designed to prepare/validate a compatible
 managed daemon package and migrate legacy daemon layouts before replacing a running
-server. It may interrupt active work. If the provider reports `unsupported`, distinguish
+server. It may interrupt active work. If `daemon update` succeeds but reports
+`runningVersion: null` and the control socket is absent, the managed package is ready but
+no daemon is running; after proving there are no active Agent tasks, run
+`codex app-server daemon bootstrap` without `--remote-control`, then re-check
+`daemon version`, the control socket and Bridge `runtime.list`. If the provider reports
+`unsupported`, distinguish
 an externally/unmanaged app-server from a damaged managed installation before doing
 anything else. A responsive unmanaged app-server must be retired before `daemon bootstrap`:
 Codex intentionally refuses to bootstrap while the control socket is served by a process

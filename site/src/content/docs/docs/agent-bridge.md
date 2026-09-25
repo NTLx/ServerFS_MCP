@@ -60,7 +60,7 @@ For Agent-enabled release acceptance, run:
 python3 deployment/agent-bridge/verify_host.py --require-runtimes
 ```
 
-The strict mode first proves the user-scoped Bridge deployment, then performs bounded read-only `runtime.list` retries for every enabled native runtime. It never starts, restarts, bootstraps, updates, kills, or otherwise manages Codex/Claude. If a runtime remains unavailable after the retry window, verification fails and provider-native lifecycle diagnostics remain an operator action.
+The strict mode first proves the user-scoped Bridge deployment, then performs bounded read-only `runtime.list` retries for every enabled native runtime. It never starts, restarts, bootstraps, updates, kills, or otherwise manages Codex/Claude. If a runtime remains unavailable after the retry window, verification fails and provider-native lifecycle diagnostics remain an operator action. For Codex specifically, if `codex app-server daemon update` succeeds with `runningVersion: null` and the managed control socket is absent, first prove there are no active Agent tasks, then run `codex app-server daemon bootstrap` without `--remote-control` and re-run `daemon version` plus this strict verifier.
 
 When recreating the MCP container, always preserve both `-f compose.yml -f compose.agent.yml`; using base Compose alone removes the Agent socket/lock mounts even if `.env` still contains Agent policy.
 

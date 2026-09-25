@@ -60,7 +60,7 @@ Agent-enabled 发布验收使用：
 python3 deployment/agent-bridge/verify_host.py --require-runtimes
 ```
 
-严格模式先验证用户级 Bridge 部署，再对所有已启用原生 runtime 做有界、只读的 `runtime.list` 重试。它不会启动、重启、bootstrap、update、kill 或以其它方式管理 Codex/Claude；如果 retry 窗口结束后 runtime 仍不可用，验收失败，provider 生命周期诊断仍由运维人员通过原生工具完成。
+严格模式先验证用户级 Bridge 部署，再对所有已启用原生 runtime 做有界、只读的 `runtime.list` 重试。它不会启动、重启、bootstrap、update、kill 或以其它方式管理 Codex/Claude；如果 retry 窗口结束后 runtime 仍不可用，验收失败，provider 生命周期诊断仍由运维人员通过原生工具完成。对 Codex 而言，如果 `codex app-server daemon update` 成功但返回 `runningVersion: null`，同时 managed control socket 不存在，应先确认没有活动 Agent task，再执行不带 `--remote-control` 的 `codex app-server daemon bootstrap`，随后重新核对 `daemon version` 并再次运行严格验收。
 
 重建 MCP 容器时必须同时保留 `-f compose.yml -f compose.agent.yml`；如果只使用基础 Compose，即使 `.env` 中仍保留 Agent 策略，也会丢失 Agent socket/lock 挂载。
 
