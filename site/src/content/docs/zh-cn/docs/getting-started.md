@@ -53,7 +53,7 @@ SERVERFS_JEV_API_KEY=<your key>
 
 ## ChatGPT 文件参数入口
 
-v0.5.0 可以让 `upload_binary_file` 直接接收 ChatGPT/OpenAI `file` 参数，同时保持 MCP 主容器没有互联网出口。二进制传输与文件入口是两个独立 opt-in。常见 ChatGPT 场景可设置：
+自 v0.5.0 起，ServerFS 支持让 `upload_binary_file` 直接接收 ChatGPT/OpenAI `file` 参数，同时保持 MCP 主容器没有互联网出口。二进制传输与文件入口是两个独立 opt-in。常见 ChatGPT 场景可设置：
 
 ```text
 SERVERFS_BINARY_TRANSFER_ENABLED=true
@@ -75,7 +75,7 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.agent.yml up -d
 ```
 
-Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 的主机策略与网络边界详见[二进制传输](./binary-transfer/)和[安全模型](./security/)。
+Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 引入的文件入口主机策略与网络边界详见[二进制传输](./binary-transfer/)和[安全模型](./security/)。
 
 ## 当前稳定版本：v0.7.2
 

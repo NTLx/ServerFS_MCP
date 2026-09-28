@@ -53,7 +53,7 @@ Leave it empty to keep the Agent Bridge completely Jev-free. No extra MCP contai
 
 ## ChatGPT file-parameter ingress
 
-v0.5.0 can accept a ChatGPT/OpenAI `file` parameter as the source for `upload_binary_file` without giving the main MCP container Internet egress. Binary transfer and file ingress are separate opt-ins. For the common ChatGPT path, set:
+Since v0.5.0, ServerFS has supported accepting a ChatGPT/OpenAI `file` parameter as the source for `upload_binary_file` without giving the main MCP container Internet egress. Binary transfer and file ingress are separate opt-ins. For the common ChatGPT path, set:
 
 ```text
 SERVERFS_BINARY_TRANSFER_ENABLED=true
@@ -75,7 +75,7 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.agent.yml up -d
 ```
 
-The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](./binary-transfer/) and [Security Model](./security/) for the v0.5.0 host policy and network boundary.
+The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](./binary-transfer/) and [Security Model](./security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
 ## Current stable release: v0.7.2
 
