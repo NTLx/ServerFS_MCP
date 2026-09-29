@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import serverfs_agent_bridge.service as service_module
 from serverfs_agent_bridge.adapters import FakeAdapter
 from serverfs_agent_bridge.adapters.base import AdapterResult
 from serverfs_agent_bridge.errors import BridgeError
@@ -534,6 +535,40 @@ async def test_approval_round_trip(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_cancel_task_approval_uses_terminal_cancel_semantics(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="approval:pytest",
+    )
+    waiting = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+    request = waiting["pending_request"]
+
+    resolved = await service.respond_approval(
+        task_id=submitted["task_id"],
+        request_id=request["request_id"],
+        decision="cancel_task",
+    )
+    assert resolved["resolved"] is True
+    assert service.get_task(submitted["task_id"])["status"] == "cancelled"
+
+    for _ in range(200):
+        if submitted["task_id"] not in service._background:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("approval-driven cancellation did not finish background cleanup")
+
+    lease = service.lease_manager.acquire_exclusive(1)
+    lease.release()
+    await service.close()
+
+
+@pytest.mark.asyncio
 async def test_identical_approval_advice_is_cached_per_task(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     preflight = FakePreflight()
@@ -670,6 +705,12 @@ async def test_workspace_write_busy_is_rejected_at_submit(tmp_path: Path) -> Non
 
     await service.cancel_task(first["task_id"])
     await wait_for_status(service, first["task_id"], "cancelled")
+    for _ in range(200):
+        if first["task_id"] not in service._background:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("cancelled task background cleanup did not finish")
     lease = service.lease_manager.acquire_exclusive(1)
     lease.release()
     await service.close()
@@ -838,6 +879,99 @@ async def test_close_before_background_start_interrupts_and_releases_lease(tmp_p
     assert service.store.get_task(submitted["task_id"]).status == "interrupted"
     lease = service.lease_manager.acquire_exclusive(1)
     lease.release()
+
+
+@pytest.mark.asyncio
+async def test_cancel_is_terminal_before_slow_provider_cleanup_releases_lease(
+    tmp_path: Path,
+) -> None:
+    class SlowCancelAdapter(FakeAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.release = asyncio.Event()
+
+        async def run_task(self, context):
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await self.release.wait()
+                return AdapterResult(final_response="late")
+
+    service = make_service(tmp_path)
+    adapter = SlowCancelAdapter()
+    service.adapters = {"fake": adapter}
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="wait:",
+    )
+    await wait_for_status(service, submitted["task_id"], "running")
+
+    cancelled = await service.cancel_task(submitted["task_id"])
+    assert cancelled["status"] == "cancelled"
+    assert service.get_task(submitted["task_id"])["status"] == "cancelled"
+
+    with pytest.raises(BridgeError) as busy:
+        service.lease_manager.acquire_exclusive(1)
+    assert busy.value.code == "WORKDIR_BUSY"
+
+    adapter.release.set()
+    for _ in range(200):
+        if submitted["task_id"] not in service._background:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("cancelled task background cleanup did not finish")
+
+    lease = service.lease_manager.acquire_exclusive(1)
+    lease.release()
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_cancel_provider_interrupt_is_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class HangingCancelAdapter(FakeAdapter):
+        async def run_task(self, context):
+            await asyncio.Event().wait()
+
+        async def cancel(self, task_id: str) -> None:
+            del task_id
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(service_module, "_PROVIDER_CANCEL_TIMEOUT_SECONDS", 0.01)
+    service = make_service(tmp_path)
+    service.adapters = {"fake": HangingCancelAdapter()}
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="wait:",
+    )
+    await wait_for_status(service, submitted["task_id"], "running")
+
+    started = asyncio.get_running_loop().time()
+    cancelled = await service.cancel_task(submitted["task_id"])
+    elapsed = asyncio.get_running_loop().time() - started
+    assert cancelled["status"] == "cancelled"
+    assert elapsed < 0.5
+
+    for _ in range(200):
+        if submitted["task_id"] not in service._background:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("bounded provider cancel did not finish background cleanup")
+
+    lease = service.lease_manager.acquire_exclusive(1)
+    lease.release()
+    await service.close()
 
 
 @pytest.mark.asyncio

@@ -268,14 +268,17 @@ class ClaudeAdapter(AgentAdapter):
             raise BridgeError("AGENT_PROVIDER_ERROR", "Claude Code task failed") from exc
         finally:
             active.client_ready.set()
+            cancel_requested = context.task_id in self._cancel_requested
+            disconnect_succeeded = False
             try:
                 await client.disconnect()
+                disconnect_succeeded = True
             except Exception:
                 pass
             async with self._active_lock:
                 self._active.pop(context.task_id, None)
             self._cancel_requested.discard(context.task_id)
-            if record_local_stop:
+            if record_local_stop or (cancel_requested and disconnect_succeeded):
                 self._locally_stopped.add(context.task_id)
 
     async def _receive_result(self, active: _ActiveClaudeTask) -> ResultMessage:

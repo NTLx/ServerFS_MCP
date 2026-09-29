@@ -561,6 +561,12 @@ async def run(report: Report, base: Path) -> None:
             cancelled.get("status") == "cancelled",
             str(cancelled.get("status")),
         )
+        cancel_readback = await probe.ok("get_agent_task", {"task_id": cancel_id})
+        report.check(
+            "cancel state is persisted before the cancel RPC returns",
+            cancel_readback.get("status") == "cancelled",
+            str(cancel_readback.get("status")),
+        )
         await probe.poll(cancel_id, TERMINAL)
         again = await probe.ok("cancel_agent_task", {"task_id": cancel_id})
         report.check(

@@ -52,7 +52,7 @@ v0.7.1 保持上述契约不变，修复了一个可证明发生在 provider 启
 
 `main` 分支新增面向 `task.submit` 响应丢失场景的可重试提交。`submit_agent_task` 增加可选 opaque `idempotency_key`，它与 `correlation_id` 含义独立；同一个 key 配合同一语义请求重试时返回仍在保留期内的原 task，不会再启动第二个 provider turn；同 key 对应不同请求则返回 `AGENT_IDEMPOTENCY_CONFLICT`。
 
-Agent 生命周期改为管理员策略，不再固定为 24 小时。开发态默认值为 task timeout 2 小时、approval/question timeout 30 分钟、最多 4 个 active task、终态保留 7 天。无人响应的 interaction 会变为 stale，并以 `AGENT_INTERACTION_TIMED_OUT` 中断 task。清理过程会释放实时 writer lease，但只有 provider-aware reconciliation 能证明 provider 已停止时才清除持久 recovery guard；单纯 MCP/ChatGPT 断开或停止轮询不会取消健康的异步任务。
+Agent 生命周期改为管理员策略，不再固定为 24 小时。开发态默认值为 task timeout 2 小时、approval/question timeout 30 分钟、最多 4 个 active task、终态保留 7 天。无人响应的 interaction 会变为 stale，并以 `AGENT_INTERACTION_TIMED_OUT` 中断 task。显式取消（包括 approval 中选择 `cancel_task`）会在 RPC 返回前先把 task 持久化为 `cancelled`；provider interrupt 采用 best-effort，并在内部限制为 10 秒，避免卡住 Bridge 侧取消流程。实时 writer lease 仍只在后台清理完成后释放，且只有 provider-aware reconciliation 能证明 provider 已停止时才清除持久 recovery guard；单纯 MCP/ChatGPT 断开或停止轮询不会取消健康的异步任务。
 
 这些限制与 MCP→Bridge RPC timeout、provider event-idle timeout 是不同机制。部署 `.env` 使用 `SERVERFS_AGENT_TASK_TIMEOUT_SECONDS`、`SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS`、`SERVERFS_AGENT_MAX_ACTIVE_TASKS` 和 `SERVERFS_AGENT_TASK_RETENTION_HOURS`。
 

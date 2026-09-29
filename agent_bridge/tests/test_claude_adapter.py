@@ -393,7 +393,44 @@ async def test_claude_cancel_interrupts_active_client(
         cancelled = await wait_for_status(service, submitted["task_id"], "cancelled")
         assert cancelled["status"] == "cancelled"
         assert factory.clients[0].interrupted is True
+        for _ in range(200):
+            if submitted["task_id"] not in service._background:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("cancelled Claude task background cleanup did not finish")
         assert service.guard_manager.read(1) is None
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_claude_normal_result_after_cancel_proves_local_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, factory = make_service(tmp_path, monkeypatch)
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="claude",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="wait",
+        )
+        await wait_for_status(service, submitted["task_id"], "running")
+        for _ in range(200):
+            if factory.clients and factory.clients[0].connected:
+                break
+            await asyncio.sleep(0.01)
+
+        adapter = service.adapters["claude"]
+        await adapter.cancel(submitted["task_id"])
+        await wait_for_status(service, submitted["task_id"], "succeeded")
+
+        reconciliation = await adapter.reconcile_task(service.store.get_task(submitted["task_id"]))
+        assert reconciliation.provider_active is False
+        assert "disconnected" in reconciliation.detail
     finally:
         await service.close()
 

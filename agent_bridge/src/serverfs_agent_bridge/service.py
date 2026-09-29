@@ -29,6 +29,8 @@ from .result_spool import ResultSpool, utf8_prefix
 from .store import TaskStore
 from .util import is_expired, new_id, seconds_until, utc_after, utc_before
 
+_PROVIDER_CANCEL_TIMEOUT_SECONDS = 10.0
+
 
 @dataclass(frozen=True)
 class BridgeLimits:
@@ -114,7 +116,7 @@ class BridgeService:
                 record = self.store.get_task(task_id)
                 adapter = self.adapters.get(record.runtime)
                 if adapter is not None:
-                    await adapter.cancel(task_id)
+                    await self._request_provider_cancel(adapter, task_id)
             except Exception:
                 pass
         tasks = list(self._background.values())
@@ -394,6 +396,16 @@ class BridgeService:
         self._background.pop(task_id, None)
         if not task.cancelled():
             task.exception()
+
+    async def _request_provider_cancel(self, adapter: AgentAdapter, task_id: str) -> bool:
+        try:
+            async with asyncio.timeout(_PROVIDER_CANCEL_TIMEOUT_SECONDS):
+                await adapter.cancel(task_id)
+        except TimeoutError:
+            return False
+        except Exception:
+            return False
+        return True
 
     def _release_lease(self, task_id: str, *, clear_guard: bool = True) -> None:
         lease = self._leases.pop(task_id, None)
@@ -690,10 +702,7 @@ class BridgeService:
             )
         adapter = self.adapters.get(current.runtime)
         if adapter is not None:
-            try:
-                await adapter.cancel(task_id)
-            except Exception:
-                pass
+            await self._request_provider_cancel(adapter, task_id)
         background = self._background.get(task_id)
         if background is not None and not background.done():
             background.cancel()
@@ -761,20 +770,13 @@ class BridgeService:
 
         resolution = {"decision": normalized.value, "granted_permission_ids": granted}
         self._ensure_interaction_size(resolution)
-        if normalized is ApprovalDecision.CANCEL_TASK:
-            self._user_cancelled.add(task_id)
         self.store.resolve_request(request_id, resolution)
         waiter = self._pending_waiters.pop(request_id, None)
         if waiter is not None and not waiter.done():
             waiter.set_result(resolution)
         self._try_append_event(task_id, "approval.resolved", {"decision": normalized.value})
         if normalized is ApprovalDecision.CANCEL_TASK:
-            adapter = self.adapters.get(task.runtime)
-            if adapter is not None:
-                try:
-                    await adapter.cancel(task_id)
-                except Exception:
-                    pass
+            await self.cancel_task(task_id)
         return {
             "task_id": task_id,
             "request_id": request_id,
@@ -864,28 +866,25 @@ class BridgeService:
 
             first_cancel = task_id not in self._user_cancelled
             self._user_cancelled.add(task_id)
+            pending_request_id = task.pending_request_id
+            self.store.transition_task(task_id, TaskStatus.CANCELLED)
+            self._try_append_event(task_id, "task.cancelled", {})
+            if pending_request_id is not None:
+                waiter = self._pending_waiters.pop(pending_request_id, None)
+                if waiter is not None and not waiter.done():
+                    waiter.cancel()
+
             adapter = self.adapters.get(task.runtime)
             if first_cancel and adapter is not None:
-                try:
-                    await adapter.cancel(task_id)
-                except Exception:
-                    # The task is still cancelled locally.  The provider may be
-                    # unavailable, but it must not turn a user cancellation into
-                    # an unhandled RPC failure or leave the lease held forever.
-                    pass
+                await self._request_provider_cancel(adapter, task_id)
 
             background = self._background.get(task_id)
             if background is not None and not background.done():
                 background.cancel()
-                current = self.store.get_task(task_id)
-                if TaskStatus(current.status) is TaskStatus.QUEUED:
-                    self.store.transition_task(task_id, TaskStatus.CANCELLED)
+                if status is TaskStatus.QUEUED:
                     self._release_lease(task_id)
-                    self._try_append_event(task_id, "task.cancelled", {})
             else:
-                self.store.transition_task(task_id, TaskStatus.CANCELLED)
                 self._release_lease(task_id)
-                self._try_append_event(task_id, "task.cancelled", {})
             self._gc_retained()
             return {
                 "task_id": task_id,
@@ -958,10 +957,7 @@ class BridgeService:
             else:
                 done, _ = await asyncio.wait({provider_task}, timeout=remaining)
             if not done:
-                try:
-                    await adapter.cancel(task_id)
-                except Exception:
-                    pass
+                await self._request_provider_cancel(adapter, task_id)
                 provider_task.cancel()
                 await asyncio.gather(provider_task, return_exceptions=True)
                 raise TimeoutError
@@ -977,8 +973,10 @@ class BridgeService:
                     "AGENT_PROVIDER_ERROR", "agent runtime returned an invalid result"
                 )
             if task_id in self._user_cancelled:
-                self.store.transition_task(task_id, TaskStatus.CANCELLED)
-                self._try_append_event(task_id, "task.cancelled", {})
+                current = self.store.get_task(task_id)
+                if TaskStatus(current.status) not in TERMINAL_STATUSES:
+                    self.store.transition_task(task_id, TaskStatus.CANCELLED)
+                    self._try_append_event(task_id, "task.cancelled", {})
             elif self._closed:
                 self.store.transition_task(
                     task_id,
@@ -1057,10 +1055,7 @@ class BridgeService:
         except asyncio.CancelledError:
             if provider_task is not None:
                 if not provider_task.done():
-                    try:
-                        await adapter.cancel(task_id)
-                    except Exception:
-                        pass
+                    await self._request_provider_cancel(adapter, task_id)
                     provider_task.cancel()
                 # Always consume the provider Task result. It may already have
                 # completed with an exception before this parent was cancelled.

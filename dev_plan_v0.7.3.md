@@ -248,19 +248,20 @@ For every task terminalization path, v0.7.3 must prove the following ownership r
 
 ### 6.2 Explicit user cancellation
 
-- provider cancellation is attempted once;
+- task becomes persistently `cancelled` before the cancellation RPC returns;
+- approval decision `cancel_task` delegates to the same cancellation path;
+- provider cancellation is attempted once and is internally bounded to 10 seconds;
 - Bridge background/provider tasks are cancelled/drained;
 - pending interaction becomes stale;
 - interaction timer is cancelled;
-- task becomes `cancelled`;
-- writer lease releases;
-- recovery guard follows the existing proof rule.
+- writer lease releases only after background cleanup;
+- recovery guard follows the existing provider-stop proof rule and is not cleared merely because the task record is terminal.
 
 Repeated cancellation remains safe.
 
 ### 6.3 Task deadline
 
-- provider cancellation is best-effort;
+- provider cancellation is best-effort and internally bounded to 10 seconds;
 - pending interaction becomes stale;
 - interaction timer is cancelled;
 - task becomes `interrupted` with `AGENT_TASK_TIMED_OUT`;
@@ -276,7 +277,7 @@ Repeated cancellation remains safe.
 
 Existing v0.7.2 shutdown and recovery behavior remains authoritative:
 
-- orderly Bridge shutdown interrupts active tasks and releases in-process resources;
+- orderly Bridge shutdown requests provider cancellation with the same internal 10-second bound, interrupts active tasks, and releases in-process resources;
 - process death naturally releases `flock`;
 - the persistent guard survives abnormal death;
 - restart/lazy reconciliation may clear it only after provider inactivity is proven;
@@ -504,3 +505,90 @@ state only.
 
 Do not tag, publish, or deploy v0.7.3 as stable until the implementation, regression tests,
 full gates, documentation/version alignment, and live acceptance are complete.
+
+## 14. Live acceptance defects discovered before release
+
+The first user-scoped v0.7.3 live acceptance exposed four cancellation/recovery defects that
+were not visible in the original fake-provider unit coverage. They are release blockers until
+the repaired code is committed, rebuilt, redeployed, and re-accepted against real providers.
+
+### 14.1 Cancel RPC could report terminal state before the store was terminal
+
+For an active task, `cancel_task()` previously requested provider cancellation and cancelled the
+Bridge background coroutine, then immediately returned `status=cancelled`. The persisted task
+could remain `running`/`waiting_*` until asynchronous `_run_task` cancellation cleanup finished.
+A live Claude cancellation demonstrated this mismatch.
+
+Required semantics:
+
+- explicit cancellation persists `TaskStatus.CANCELLED` before the RPC returns;
+- pending interaction becomes stale through the normal terminal transition;
+- the public task read therefore agrees with the cancel RPC immediately;
+- writer `flock` and persistent recovery guard are **not** released early merely because the
+  task record is terminal;
+- background provider cleanup plus provider-aware reconciliation remain authoritative for
+  lease/guard release.
+
+Regression evidence must deliberately delay provider cleanup and prove both conditions at once:
+`get_task` already reports `cancelled`, while the writer lease still reports `WORKDIR_BUSY` until
+cleanup finishes.
+
+### 14.2 Claude normal ResultMessage after interrupt could strand the recovery guard
+
+Claude Code may handle `client.interrupt()` by returning a normal terminal `ResultMessage`
+instead of raising `CancelledError`. The adapter previously recorded `_locally_stopped` only on
+exception/cancellation paths. In the normal-result case the SDK client still disconnected and the
+local subprocess stopped, but later `reconcile_task()` had no proof of that stop and returned
+`provider_active=None`. Live lazy reconciliation then kept the workspace recovery guard
+fail-closed indefinitely.
+
+Required semantics:
+
+- remember whether cancellation was explicitly requested before clearing `_cancel_requested`;
+- after a successful local SDK `disconnect()`, record `_locally_stopped` when cancellation had
+  been requested even if the provider produced a normal terminal result;
+- the next reconciliation consumes that evidence and returns `provider_active=false`;
+- unknown state remains fail-closed when local disconnect itself cannot be established.
+
+### 14.3 Provider interrupt must not block lifecycle cleanup indefinitely
+
+Several lifecycle paths awaited `adapter.cancel()` directly: explicit cancel, interaction expiry,
+task deadline, approval-driven cancellation, and Bridge shutdown. A provider interrupt call that
+stalls could therefore hold the cancellation RPC or cleanup path past the MCP caller's own timeout.
+
+Required semantics:
+
+- provider cancellation is best-effort and internally bounded to 10 seconds;
+- when that bound expires, Bridge-side background cancellation still proceeds;
+- no writer lease or recovery guard is cleared merely because the provider interrupt timed out;
+- provider-aware reconciliation remains the authority for clearing persistent recovery state;
+- the bound is an internal cleanup safeguard, not a new public lifecycle configuration knob.
+
+Regression coverage uses an adapter whose `cancel()` never returns and proves that explicit
+cancellation still becomes terminal within the short test bound and that background cleanup can
+complete without weakening lease/guard safety.
+
+### 14.4 Approval-driven `cancel_task` must share the same terminal semantics
+
+`respond_approval(..., decision="cancel_task")` previously resolved the pending request and sent
+provider cancellation directly without immediately terminalizing the ServerFS task or cancelling
+the Bridge background coroutine. That left approval-driven cancellation with weaker semantics than
+the public `cancel_agent_task` path.
+
+Required semantics:
+
+- resolve and audit the approval response first;
+- then delegate cancellation to the same `cancel_task()` implementation used by the public tool;
+- the task must be observably `cancelled` when the approval RPC returns;
+- provider interruption stays bounded and writer lease/recovery-guard release still waits for safe
+  background cleanup and reconciliation.
+
+Local post-fix verification copied the exact modified Bridge modules/tests through ServerFS's
+bounded binary channel into an isolated Python environment. The focused cancellation/recovery
+coverage passes, and the complete `test_service.py` + `test_claude_adapter.py` set passes 40/40
+using a minimal import-only Claude SDK stub while the repository's own FakeClaudeClient exercises
+adapter behavior. The complete Agent Bridge unit-test directory contains 130 tests; 129/129 pass
+when the single Python-3.13-specific UDS fixture is excluded. That fixture manually unlinks a test
+socket after `asyncio.start_unix_server()` has already removed it under Python 3.13, so it is not a
+ServerFS protocol failure. The repository's authoritative Python 3.12/uv CI remains required, as
+does real-provider live acceptance after redeployment.
