@@ -2,9 +2,7 @@
 
 > ServerFS MCP is a secure MCP server that exposes explicitly configured Linux directories as controlled workdirs to AI agents, **read-only by default** with opt-in per-workdir file mutation.
 
-Current stable release: **v0.7.3**. The Runtime Lifecycle Reliability release state is finalized in this documentation update; v0.7.3 is the current immutable stable release line.
-
-Development on `main` is preparing **v0.8.0**, whose primary addition is Qoder as the third native Agent Bridge runtime alongside Codex and Claude. The public Agent RPC/tool contract remains provider-neutral and does not add a model-selection parameter.
+Current stable release: **v0.8.0**. v0.8.0 adds Qoder as the third native Agent Bridge runtime alongside Codex and Claude while preserving the provider-neutral Agent RPC/tool contract and the existing MCP tool counts. Production ServerFS does not add a model-selection parameter; Qoder keeps its native model/configuration ownership.
 
 Agents reach your directories through the **OpenAI Secure MCP Tunnel**. They can list, find, search, read and stat files anywhere you mount; optionally transfer bounded whole binary files; and, in workdirs you explicitly mark read-write, create, edit, delete or revision-guarded replace files through narrow tools. Nothing else: no shell, no command execution, no unguarded overwrite, no recursive delete, no escape from the directories you configure.
 
@@ -47,7 +45,7 @@ The MCP server container has **no Internet egress** and no published ports. The 
 
 The default `compose.yml` exposes the original 11 filesystem tools. Binary transfer is opt-in: when at least one workdir enables it, `download_binary_file` and `upload_binary_file` are added, producing a 13-tool filesystem surface. When the administrator also configures Agent policy and uses `compose.agent.yml`, the overlay adds nine structured Agent tools. The four supported surfaces are therefore 11 / 13 / 20 / 22 tools for filesystem-only / filesystem+binary / filesystem+Agent / filesystem+binary+Agent. Agent tools broker structured tasks through the host-side Bridge; they are not a shell, argv, or generic command executor. Delegated tasks should therefore stay objective-level and capability-bounded: one authorized goal, explicit mutation scope/stop conditions, and only the context/evidence needed for that goal. This improves clarity and reduces accidental ambiguity; it is not intended to bypass provider safety checks.
 
-The current v0.7.3 release includes an optional **advisory-only** Jev task advisor inside the host Agent Bridge. It does not add an MCP tool, runtime, permission, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and task submission follows the existing path unchanged. In v0.7.3, one pinned `jev-1.13.0` task-submission request evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a four-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, or `human_review`. The v0.8.0 development line extends only that advisory vocabulary with `qoder`; it still never overrides the caller's explicit runtime. If a native provider later creates an approval request, the same Jev client may make one additional approval-specific request that scores necessity, scope, destructive/irreversible risk, sensitive access and external side effects, then returns an advisory recommendation; identical approvals within the same task reuse task-local advice instead of calling Jev again. Ordinary turns and question prompts do not create that extra request. No Jev result blocks, rewrites, reroutes, approves, denies, or expands a task; the explicit runtime and approval contracts remain authoritative. The feature was introduced in v0.6.0 as an opt-in experimental capability. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository [Preflight note](docs/jev-agent-preflight-experiment.md), [Runtime Router note](docs/jev-runtime-router-experiment.md), and [Approval Advisor note](docs/jev-approval-advisor-experiment.md).
+The current v0.8.0 release includes an optional **advisory-only** Jev task advisor inside the host Agent Bridge. It does not add an MCP tool, runtime, permission, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and task submission follows the existing path unchanged. One pinned `jev-1.13.0` task-submission request evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a five-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, `qoder`, or `human_review`. The recommendation never overrides the caller's explicit runtime. If a native provider later creates an approval request, the same Jev client may make one additional approval-specific request that scores necessity, scope, destructive/irreversible risk, sensitive access and external side effects, then returns an advisory recommendation; identical approvals within the same task reuse task-local advice instead of calling Jev again. Ordinary turns and question prompts do not create that extra request. No Jev result blocks, rewrites, reroutes, approves, denies, or expands a task; the explicit runtime and approval contracts remain authoritative. The feature was introduced in v0.6.0 as an opt-in experimental capability. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository [Preflight note](docs/jev-agent-preflight-experiment.md), [Runtime Router note](docs/jev-runtime-router-experiment.md), and [Approval Advisor note](docs/jev-approval-advisor-experiment.md).
 
 v0.7.0 introduced the current Agent Bridge reliability layer without turning ServerFS into a workflow engine. Every new task freezes an immutable execution manifest and optional opaque `correlation_id`; normalized events use schema-versioned envelopes; the original v0.7.0 default task deadline was 24 hours and terminal state is retained for seven days by default. Workspace-write runs add a persistent active-slot recovery guard on top of the existing `flock`, so an abnormal Bridge exit fails closed with `WORKDIR_RECOVERY_REQUIRED` until provider state is reconciled. Final responses up to 256 KiB remain inline; responses above 256 KiB and up to 8 MiB are atomically spooled in private Bridge state and can be reconstructed exactly through the read-only `read_agent_task_result` tool. Results above 8 MiB still fail with `AGENT_RESULT_TOO_LARGE`. v0.7.1 added the narrow Codex pre-provider-start reconciliation hotfix. v0.7.2 was the previous stable maintenance release on that frozen surface: `find_files` keeps directory-FD usage bounded on wide trees and reports `EMFILE`/`ENFILE` as `RESOURCE_EXHAUSTED`; lazy Agent recovery terminalizes a stale non-terminal task when reconciliation proves its provider is inactive, while unknown provider state remains fail-closed.
 
@@ -96,8 +94,8 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.7.3` | `v0.7.3` |
-| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.7` | newest `v0.7.x` tag |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.8.0` | `v0.8.0` |
+| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.8` | newest `v0.8.x` tag |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
 Every image is multi-arch: `linux/amd64` and `linux/arm64`.
@@ -109,7 +107,7 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-The v0.7.3 release publishes immutable tag `v0.7.3` and stable GHCR tags `0.7.3`, `0.7` and `latest`. Earlier v0.7.x tags remain immutable. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
+The v0.8.0 release publishes immutable tag `v0.8.0` and stable GHCR tags `0.8.0`, `0.8` and `latest`. Earlier release tags remain immutable. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
 
 ## Workdir Configuration
 
@@ -312,21 +310,25 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose up -d
 
 Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins and rebuilding along the source path. Avoid `latest`.
 
-For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. For v0.7.3, use:
+For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. For v0.8.0, use:
 
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.3
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.8.0
 ```
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
 
+### Upgrading to v0.8.0
+
+v0.8.0 adds Qoder as the third production native Agent runtime beside Codex and Claude. The integration uses the official Qoder Agent SDK with the existing system `qodercli`, supports native session continuation, interactive approvals and `AskUserQuestion`, cancellation through `interrupt()`, strict deployment/runtime validation, and the existing provider-neutral workdir lease/lifecycle model. Production ServerFS does **not** expose a model selector: Qoder keeps its native model/settings ownership. A real `Qwen3.8-Flash` validation proved new-session, continuation, question brokerage and workspace-write behavior.
+
+Qoder live steering remains deliberately disabled. Real SDK testing showed that `priority="now"` first terminates the current Qoder response iteration with `error_during_execution`, while the steered success arrives only from a second response iteration; that does not fit the current one-task/one-terminal-Result Bridge contract. v0.8.0 therefore reports `live_steer=false` rather than emulating provider-specific multi-Result orchestration.
+
+The MCP tool count, Bridge protocol version, manifest/event schemas, result spool, writer lease, provider authorization and Jev advisory-only contract remain unchanged. Jev Runtime Router now understands `qoder` as a fifth advisory route but still never overrides the explicitly requested runtime. Before updating the host Bridge, confirm there are no active Agent tasks and use the existing user-scoped installer/update flow. For Agent-enabled deployments, preserve `-f compose.yml -f compose.agent.yml`, set the desired workdir runtime allowlists to include `qoder`, and run `python3 deployment/agent-bridge/verify_host.py --require-runtimes` after the host Bridge is active. Production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.8.0`.
+
 ### Upgrading to v0.7.3
 
-v0.7.3 is a lifecycle reliability release on the frozen v0.7 contract. It adds retry-safe submission through `idempotency_key`, bounded administrator-configured task and interaction lifetimes, terminal-first explicit cancellation, and bounded provider interrupt while retaining provider-aware lease and recovery-guard cleanup. It includes the v0.7.2 maintenance fixes: bounded `find_files` directory-FD usage, `EMFILE`/`ENFILE` mapping to `RESOURCE_EXHAUSTED`, and recovery reconciliation that terminalizes a stale task only when provider inactivity is proven.
-
-The tool surface, Bridge protocol version, manifest/event schemas, result spool, writer lease, provider authorization and Jev advisory-only contract remain unchanged. The Bridge RPC adds the optional `idempotency_key`; task and interaction deadlines now use the v0.7.3 administrator-configured limits. The Bridge still migrates existing SQLite state in place without fabricating historical evidence. Before updating the host Bridge, confirm there are no active Agent tasks and use the existing user-scoped installer/update flow; ServerFS never blindly reruns an interrupted task.
-
-For Agent-enabled deployments, preserve `-f compose.yml -f compose.agent.yml` when recreating the container. After the host Bridge is active, `python3 deployment/agent-bridge/verify_host.py --require-runtimes` provides a bounded acceptance check that all enabled native runtimes report available without taking provider lifecycle ownership. Production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.7.3`. Agent-enabled clients upgrading from versions before v0.7.0 must refresh their MCP tool schema to see `read_agent_task_result`.
+v0.7.3 was the lifecycle reliability release on the frozen v0.7 contract. It added retry-safe submission through `idempotency_key`, bounded administrator-configured task and interaction lifetimes, terminal-first explicit cancellation, and bounded provider interrupt while retaining provider-aware lease and recovery-guard cleanup. It included the v0.7.2 maintenance fixes: bounded `find_files` directory-FD usage, `EMFILE`/`ENFILE` mapping to `RESOURCE_EXHAUSTED`, and recovery reconciliation that terminalizes a stale task only when provider inactivity is proven.
 
 ### Upgrading to v0.5.0
 

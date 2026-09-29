@@ -1,13 +1,13 @@
 # Jev Runtime Router experiment
 
-Status: opt-in experimental capability included in the current **v0.7.3 stable release** (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
+Status: opt-in experimental capability included in the current **v0.8.0 stable release** (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
 
 This experiment adds the second Jev feature proposed for ServerFS: an advisory Runtime
 Router layered on the existing Agent Task Preflight.
 
 ## Goal
 
-For every Jev-enabled `submit_agent_task`, recommend one execution route. The v0.7.3 stable release has four choices; the v0.8.0 development line adds `qoder` as a fifth:
+For every Jev-enabled `submit_agent_task`, recommend one execution route. v0.8.0 has five choices:
 
 - `direct_serverfs_tool`
 - `codex`
@@ -19,7 +19,7 @@ The recommendation is advisory only. It does not change the submitted runtime, a
 anything, block the task, rewrite the prompt, invoke a different MCP tool, or create a
 human approval request.
 
-The explicit `runtime=codex|claude|qoder` public contract on the v0.8.0 development line remains unchanged. There is
+The explicit `runtime=codex|claude|qoder` public contract in v0.8.0 remains unchanged. There is
 no `runtime=auto`.
 
 ## Why the router shares the Preflight request

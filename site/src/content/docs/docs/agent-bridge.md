@@ -3,7 +3,7 @@ title: Agent Bridge
 description: Optional structured delegation to native Codex, Claude and Qoder runtimes.
 ---
 
-The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.7.3 remains the stable release; the v0.8.0 development line adds Qoder under the same provider-neutral tool/RPC contract.
+The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.8.0 is the current stable release and includes Qoder under the same provider-neutral tool/RPC contract.
 
 ```text
 ChatGPT
@@ -43,9 +43,9 @@ Current deployments can expose:
 - 20 tools: filesystem + Agent
 - 22 tools: filesystem + binary + Agent
 
-## v0.8 Qoder runtime development
+## v0.8 Qoder runtime
 
-The v0.8.0 development line adds `qoder` as the third production runtime. It uses the official Qoder Agent SDK with the existing system `qodercli`, supports native session continuation, approval and `AskUserQuestion` brokerage, and cancellation through `interrupt()`. Production ServerFS does **not** add a model-selection field: Qoder model choice remains provider-native. The dedicated live-smoke script may pin an explicit validation model without changing the MCP schema.
+v0.8.0 adds `qoder` as the third production runtime. It uses the official Qoder Agent SDK with the existing system `qodercli`, supports native session continuation, approval and `AskUserQuestion` brokerage, and cancellation through `interrupt()`. Production ServerFS does **not** add a model-selection field: Qoder model choice remains provider-native. The dedicated live-smoke script may pin an explicit validation model without changing the MCP schema.
 
 Qoder restart semantics are conservative: a persisted native session can be resumed by a new task, but ServerFS does not claim that an old in-flight qodercli process can be reattached after Bridge restart. Live steering is also deliberately disabled: a 2026-09-29 real SDK/CLI probe showed that `priority="now"` first ends the current `receive_response()` with an `error_during_execution` Result, while the steered success arrives only from a second response iteration. That does not fit the current one-task/one-terminal-Result Bridge contract.
 

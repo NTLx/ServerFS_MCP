@@ -1,10 +1,9 @@
 # Qoder Native Runtime Validation — 2026-09-29
 
-Status: PASS for the v0.8.0 development line
+Status: PASS for the v0.8.0 release
 
 This record freezes the validation evidence for adding Qoder as the third
-production Agent Bridge runtime. v0.7.3 remains the current stable release;
-this evidence does not publish or deploy v0.8.0 by itself.
+production Agent Bridge runtime. v0.8.0 is the current stable release; this record is the pre-release validation evidence used to accept the Qoder runtime.
 
 ## Scope
 

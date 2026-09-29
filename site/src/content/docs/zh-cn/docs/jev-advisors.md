@@ -9,7 +9,7 @@ Jev 属于 System One 模型：它不是生成面向人类阅读的长文本，�
 
 这套集成始终是 **opt-in、advisory-only、fail-open**。Jev 不是 Agent runtime，不是授权源，也不是安全边界。
 
-> **状态：**这套 opt-in 实验能力在 v0.6.0 引入，并继续包含在当前 v0.7.3 稳定版中；它只修改宿主机 Agent Bridge，不改变 MCP 公共工具 schema。
+> **状态：**这套 opt-in 实验能力在 v0.6.0 引入，并继续包含在当前 v0.8.0 稳定版中；它只修改宿主机 Agent Bridge，不改变 MCP 公共工具 schema。
 
 ## 启用方式
 
@@ -59,7 +59,7 @@ TypeSafe 当前文档说明 Jev 1.13 只接受文本输入，总请求预算为 
 - `direct_serverfs_tool`
 - `codex`
 - `claude`
-- `qoder`（v0.8.0 开发线）
+- `qoder`
 - `human_review`
 
 它**不会**增加 `runtime=auto`。调用者显式选择的 runtime，以及 workdir 上的确定性 runtime allowlist，仍然具有最终约束力。
@@ -125,7 +125,7 @@ Preflight 与 Runtime Router 共用一次 `system_one`，因为 Jev 可以针对
 - 有界文件读取；
 - Git / pytest 任务；
 - 明确的 Codex / Claude provider 选择错误；
-- Qoder 路由由 v0.8.0 确定性测试覆盖，在补充真实 router 验证前仍只作为 advisory 能力；
+- Qoder 路由已包含在 v0.8.0 中，并与其它 Runtime Router 推荐一样保持 advisory-only；
 - 应交由人工判断的任务；
 - 故意捆绑或宽泛的 prompt；
 - 一次性有界写入；

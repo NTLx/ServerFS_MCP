@@ -1,6 +1,6 @@
-# ServerFS Agent Bridge — v0.7.3 stable / v0.8.0 development
+# ServerFS Agent Bridge — v0.8.0 stable
 
-This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.7.3 release. Development on `main` is preparing v0.8.0 with Qoder as the third production native runtime; the provider-neutral Bridge RPC and nine MCP Agent tools remain unchanged. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability, recovery evidence, immutable execution manifests and bounded large-result retrieval, v0.7.1 added a targeted Codex reconciliation hotfix, v0.7.2 closed stale non-terminal recovery state, and v0.7.3 adds retry-safe submission plus bounded task/interaction lifetime without turning the Bridge into a scheduler.
+This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.8.0 release. v0.8.0 adds Qoder as the third production native runtime; the provider-neutral Bridge RPC and nine MCP Agent tools remain unchanged. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability, recovery evidence, immutable execution manifests and bounded large-result retrieval, v0.7.1 added a targeted Codex reconciliation hotfix, v0.7.2 closed stale non-terminal recovery state, and v0.7.3 adds retry-safe submission plus bounded task/interaction lifetime without turning the Bridge into a scheduler.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
@@ -45,7 +45,7 @@ Phase C is frozen and provides **Claude Code native-mode delegation**:
 - `interrupt()` cancellation
 - live steer disabled until real installed-SDK behavior proves the intended semantics
 
-The v0.8.0 development line adds **Qoder native-mode delegation** under the same adapter contract:
+v0.8.0 adds **Qoder native-mode delegation** under the same adapter contract:
 
 - official Python Qoder Agent SDK / `QoderSDKClient`;
 - existing system-installed `qodercli` through `cli_path` and the current user's native Qoder login;
@@ -98,7 +98,7 @@ never encode, disguise, split or rewrite prompts in order to evade provider safe
 
 When the opt-in Jev advisor is configured, one advisory call evaluates those properties before
 the writer lease is acquired and also produces a Runtime Router recommendation among
-`direct_serverfs_tool`, `codex`, `claude`, `qoder`, and `human_review` on the v0.8.0 development line (v0.7.3 stable has the original four-way vocabulary). Successful quality results are
+`direct_serverfs_tool`, `codex`, `claude`, `qoder`, and `human_review` in v0.8.0. Successful quality results are
 persisted as `task.preflight`; the derived router object is persisted as `task.routing_advice`.
 Both are deliberately fail-open: an unavailable Jev evaluation is reported as
 `{"status": "unavailable"}` and the authorized task still runs on the explicitly requested

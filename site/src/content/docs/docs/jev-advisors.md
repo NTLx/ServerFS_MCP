@@ -9,7 +9,7 @@ Jev is a System One model: instead of generating prose, it evaluates typed quest
 
 The integration is **opt-in, advisory-only, and fail-open**. Jev is not an Agent runtime, authorization source, or security boundary.
 
-> **Status:** this opt-in experimental capability was introduced in v0.6.0 and remains included in the current v0.7.3 release. It changes the host Agent Bridge only and does not change the MCP public tool schema.
+> **Status:** this opt-in experimental capability was introduced in v0.6.0 and remains included in the current v0.8.0 release. It changes the host Agent Bridge only and does not change the MCP public tool schema.
 
 ## Enable it
 
@@ -59,7 +59,7 @@ The same task-submission Jev request also recommends one route:
 - `direct_serverfs_tool`
 - `codex`
 - `claude`
-- `qoder` (v0.8.0 development line)
+- `qoder`
 - `human_review`
 
 This does **not** add `runtime=auto`. The explicitly requested runtime and deterministic per-workdir runtime policy remain authoritative.
@@ -125,7 +125,7 @@ The current integration has been live-tested with:
 - bounded filesystem reads;
 - Git/test tasks;
 - explicit Codex/Claude provider mismatches;
-- Qoder routing is covered by the v0.8.0 deterministic tests and must remain advisory until additional live-router validation is recorded;
+- Qoder routing is included in v0.8.0 and remains advisory-only, like every Runtime Router recommendation;
 - human-review decisions;
 - intentionally bundled or vague prompts;
 - bounded one-time writes;

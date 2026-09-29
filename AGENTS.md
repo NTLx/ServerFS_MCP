@@ -1,12 +1,12 @@
 # AGENTS.md
 
-For current `main` development, read `dev_plan_v0.8.md` first. v0.8.0 adds Qoder as the third production native Agent runtime under the existing provider-neutral Bridge RPC/tool contract; it must not add public model selection or provider-specific MCP methods. v0.7.3 remains the current stable release until a v0.8.0 release is explicitly published.
+For the current stable release, read `dev_plan_v0.8.md` first. v0.8.0 adds Qoder as the third production native Agent runtime under the existing provider-neutral Bridge RPC/tool contract; it does not add public model selection or provider-specific MCP methods. v0.8.0 is the current stable release.
 
-Read `dev_plan_v0.7.3.md` first for the frozen v0.7.3 release record: retry-safe Agent submission with a distinct `idempotency_key`, configurable bounded task/interaction lifetimes, terminal-first explicit cancellation, bounded provider interrupt, and lifecycle cleanup/recovery evidence. v0.7.3 is the current stable release. Read `dev_plan_v0.7.2.md` for the frozen prior release's bounded-FD filesystem traversal, proven-inactive Agent task reconciliation, and bounded native-runtime readiness verification. Read `dev_plan_v0.7.md` for the frozen v0.7.0 Runtime Reliability & Observability baseline: schema-versioned event envelopes, opaque correlation IDs, immutable execution manifests, task deadline/retention, provider-aware restart reconciliation, persistent active-slot recovery guards, and bounded large-result spooling/retrieval.
+Read `dev_plan_v0.7.3.md` for the frozen prior v0.7.3 release record: retry-safe Agent submission with a distinct `idempotency_key`, configurable bounded task/interaction lifetimes, terminal-first explicit cancellation, bounded provider interrupt, and lifecycle cleanup/recovery evidence. v0.8.0 is the current stable release. Read `dev_plan_v0.7.2.md` for the frozen prior release's bounded-FD filesystem traversal, proven-inactive Agent task reconciliation, and bounded native-runtime readiness verification. Read `dev_plan_v0.7.md` for the frozen v0.7.0 Runtime Reliability & Observability baseline: schema-versioned event envelopes, opaque correlation IDs, immutable execution manifests, task deadline/retention, provider-aware restart reconciliation, persistent active-slot recovery guards, and bounded large-result spooling/retrieval.
 
 Read `dev_plan_v0.5.md` for the released/frozen v0.5.0 line: ChatGPT/OpenAI file-parameter ingress, the isolated file-ingress sidecar, MCP request-body sizing, and release closure. For every v0.5.0 change, that plan plus executed tests and implementation are authoritative over older binary-transfer assumptions.
 
-Read `README.md` for the current stable v0.7.3 deployment/release contract. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
+Read `README.md` for the current stable v0.8.0 deployment/release contract. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
 acceptance baseline for hierarchical workdir policy, binary file transfer and the Issue #10
 transport-security fix.
 Read `dev_plan_v0.3.md` for the frozen v0.3 Agent Bridge contract: provider-neutral
@@ -24,14 +24,14 @@ reliability/evidence features without changing runtime authorization, provider a
 semantics, or writer-lease authority. v0.7.1 is the targeted Codex reconciliation hotfix;
 v0.7.2 was the previous stable release and added maintenance-only filesystem/recovery/readiness
 fixes on the same contract. The v0.7.3 release adds lifecycle reliability without changing
-provider authorization or writer-lease authority. The v0.8.0 development line adds the Qoder Agent SDK adapter, Qoder deployment/config validation, and advisory router vocabulary without changing the provider-neutral RPC or tool count.
+provider authorization or writer-lease authority. v0.8.0 adds the Qoder Agent SDK adapter, Qoder deployment/config validation, and advisory router vocabulary without changing the provider-neutral RPC or tool count.
 Phases A (provider-neutral core), B (Codex native-mode adapter), C (Claude Code native-mode
 adapter), D (Agent MCP surface) and E (production deployment) are complete and frozen on
 `main`. Production Agent delegation remains opt-in through `compose.agent.yml`; the base
 `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
 The Jev advisory suite is an explicitly opt-in experimental capability included in the
-current v0.7.3 release over that frozen baseline. It adds advisory task-quality Preflight, Runtime Router, and Approval
+current v0.8.0 release over that frozen baseline. It adds advisory task-quality Preflight, Runtime Router, and Approval
 Advisor results inside the host Bridge, but it must not change the MCP tool surface, Bridge
 RPC, runtime allowlists, provider adapters, authorization, approval/question decision
 semantics, or writer-lease semantics. Jev is not an Agent runtime or a safety authority.
@@ -417,7 +417,7 @@ and non-OpenAI clients are out of scope for v0.2, not pending work.
   deployment actually serves.
 - `docker compose build` tags the result `SERVERFS_IMAGE`, which in a production
   `.env` is a pinned published release (for example the current stable
-  `ghcr.io/ntlx/serverfs_mcp:0.7.3`). A bare build
+  `ghcr.io/ntlx/serverfs_mcp:0.8.0`). A bare build
   therefore shadows that release locally: the running container is unaffected,
   but the next `up -d` starts local code under a release tag. Always build under a
   scratch tag (`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build`). Upgrading

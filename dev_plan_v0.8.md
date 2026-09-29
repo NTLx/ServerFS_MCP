@@ -1,6 +1,6 @@
-# ServerFS v0.8.0 Development Plan — Qoder Native Runtime
+# ServerFS v0.8.0 Release Plan — Qoder Native Runtime
 
-Status: implementation and validation complete; release/deployment pending
+Status: frozen/released; v0.8.0 is the current stable release
 Baseline: v0.7.3 / main
 Scope: add Qoder as the third production Agent runtime without changing the public Bridge RPC protocol.
 
@@ -188,4 +188,4 @@ The implementation is accepted when:
 - real smoke explicitly uses `Qwen3.8-Flash`;
 - any unsupported recovery/steer behavior is reported conservatively rather than emulated;
 - the real validation evidence is recorded in `docs/qoder-runtime-validation-2026-09-29.md`;
-- repository changes are limited to the Qoder runtime feature, its tests, deployment/config documentation and the v0.8.0 development plan.
+- repository changes are limited to the Qoder runtime feature, its tests, deployment/config documentation and the v0.8.0 release plan.

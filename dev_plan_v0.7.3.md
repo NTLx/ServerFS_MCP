@@ -1,6 +1,6 @@
 # ServerFS MCP v0.7.3 Release Plan
 
-Status: frozen/released; v0.7.3 is the current stable release, with release-state documentation finalized in this commit
+Status: frozen historical release plan; v0.7.3 was the stable release before v0.8.0
 Theme: **Runtime Lifecycle Reliability**
 Previous stable baseline: v0.7.2
 Release line: **v0.7.3**
@@ -500,7 +500,7 @@ Not in v0.7.3:
 
 ## 13. Release rule
 
-All v0.7.3 acceptance gates are complete: implementation and regression coverage, root and Agent Bridge gates, deployment and E2E checks, documentation/site validation, and live acceptance. v0.7.3 is the current stable release.
+All v0.7.3 acceptance gates are complete: implementation and regression coverage, root and Agent Bridge gates, deployment and E2E checks, documentation/site validation, and live acceptance. v0.7.3 is a prior stable release; v0.8.0 is current.
 
 The v0.7.3 release uses immutable tag `v0.7.3` and publishes stable GHCR tags `0.7.3`, `0.7`, and `latest`. These release-facing documents record the finalized release state; they do not assert that a tag or GitHub Release was created by this documentation change.
 
