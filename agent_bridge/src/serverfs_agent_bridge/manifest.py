@@ -51,6 +51,7 @@ def build_manifest(
     advisor: dict[str, Any],
     continue_from_task_id: str | None,
     correlation_id: str | None,
+    idempotency_key: str | None,
     deadline_at: str,
 ) -> tuple[dict[str, Any], str, str]:
     manifest: dict[str, Any] = {
@@ -77,6 +78,7 @@ def build_manifest(
         "advisor": advisor,
         "continuation": {"from_task_id": continue_from_task_id},
         "correlation_id": correlation_id,
+        "idempotency_key": idempotency_key,
         "deadline_at": deadline_at,
     }
     encoded = canonical_json(manifest)

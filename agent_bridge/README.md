@@ -1,11 +1,6 @@
-# ServerFS Agent Bridge — v0.7.2
+# ServerFS Agent Bridge — v0.7.3 development
 
-This directory contains the **host-side** Agent Bridge shipped with ServerFS v0.7.2. The
-provider-neutral execution/approval contract originated in v0.3 and remains compatible;
-v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability,
-recovery evidence, immutable execution manifests and bounded large-result retrieval,
-v0.7.1 added a targeted Codex reconciliation hotfix, and v0.7.2 closes a stale non-terminal
-recovery-state gap without changing the public surface.
+This directory contains the **host-side** Agent Bridge on the ServerFS v0.7.3 development line; v0.7.2 remains the current published stable release. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability, recovery evidence, immutable execution manifests and bounded large-result retrieval, v0.7.1 added a targeted Codex reconciliation hotfix, v0.7.2 closed stale non-terminal recovery state, and v0.7.3 adds retry-safe submission plus bounded task/interaction lifetime without turning the Bridge into a scheduler.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
@@ -78,6 +73,10 @@ marked `interrupted` with `AGENT_PROVIDER_INACTIVE`, pending interaction state b
 stale through the normal terminal transition, and only then is the guard removed. Unknown
 provider state remains fail-closed and preserves the guard.
 
+v0.7.3 adds lifecycle reliability for short-lived MCP/ChatGPT callers while preserving asynchronous Agent execution. `task.submit` accepts an optional opaque `idempotency_key` distinct from `correlation_id`. A retained task with the same key and semantic submission fingerprint is returned on retry without a second provider turn, lease, guard or Jev preflight; conflicting reuse fails with `AGENT_IDEMPOTENCY_CONFLICT`. The default task timeout is now 2 hours and each approval/question receives its own 30-minute bound, both administrator-configurable. Interaction expiry interrupts the task with `AGENT_INTERACTION_TIMED_OUT`; late answers are stale. A live writer lease is released after task cleanup, while a persistent recovery guard remains whenever provider stop cannot be proven. Disconnecting or ceasing to poll an MCP connection does not itself cancel an otherwise healthy task.
+
+The four lifecycle policy values are `task_timeout_seconds`, `interaction_timeout_seconds`, `max_active_tasks`, and `retention_seconds` in the private Bridge JSON config. Production rendering derives them from `SERVERFS_AGENT_TASK_TIMEOUT_SECONDS`, `SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS`, `SERVERFS_AGENT_MAX_ACTIVE_TASKS`, and `SERVERFS_AGENT_TASK_RETENTION_HOURS` in the repository-root `.env`.
+
 Agent delegation should remain objective-level and capability-bounded. A submitted task
 should carry one authorized objective, the minimum context needed for it, an explicit
 mutation boundary/stop condition, and the evidence required for verification. Follow-up
@@ -85,7 +84,7 @@ steering should stay within that objective; distinct work belongs in a new task.
 least-authority and clarity rule, not an instruction-obfuscation layer: the Bridge must
 never encode, disguise, split or rewrite prompts in order to evade provider safety checks.
 
-When the opt-in Jev advisor is configured in v0.7.2, one advisory call evaluates those properties before
+When the opt-in Jev advisor is configured, one advisory call evaluates those properties before
 the writer lease is acquired and also produces a Runtime Router recommendation among
 `direct_serverfs_tool`, `codex`, `claude`, and `human_review`. Successful quality results are
 persisted as `task.preflight`; the derived router object is persisted as `task.routing_advice`.

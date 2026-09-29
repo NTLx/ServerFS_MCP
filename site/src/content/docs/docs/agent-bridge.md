@@ -42,11 +42,19 @@ Current deployments can expose:
 - 20 tools: filesystem + Agent
 - 22 tools: filesystem + binary + Agent
 
-## v0.7.2 runtime reliability
+## v0.7 runtime reliability
 
-v0.7.0 introduced reliability and evidence around the existing Bridge rather than adding orchestration. New tasks carry an immutable execution manifest and optional opaque `correlation_id`; normalized events use envelope schema v1; tasks default to a 24-hour deadline and seven-day terminal retention.
+v0.7.0 introduced reliability and evidence around the existing Bridge rather than adding orchestration. New tasks carry an immutable execution manifest and optional opaque `correlation_id`; normalized events use envelope schema v1. The original v0.7.0 task deadline default was 24 hours and terminal retention was seven days.
 
 v0.7.1 keeps that contract unchanged and fixes a narrow Codex recovery edge case around a proven pre-provider-start control-socket failure. v0.7.2 adds maintenance-only recovery state hygiene: when lazy reconciliation proves `provider_active=false`, any still non-terminal ServerFS task is first marked `interrupted` with `AGENT_PROVIDER_INACTIVE`, pending interaction state becomes stale through the normal terminal transition, and only then is the recovery guard removed. Unknown provider state remains fail-closed and preserves the guard.
+
+### v0.7.3 development: lifecycle reliability
+
+The `main` branch adds retry-safe Agent submission for callers that lose the `task.submit` response. `submit_agent_task` accepts an optional opaque `idempotency_key`, distinct from `correlation_id`. Reusing the same key with the same semantic submission returns the retained original task and does not start a second provider turn; conflicting reuse fails with `AGENT_IDEMPOTENCY_CONFLICT`.
+
+Agent lifetime is now administrator policy rather than a hard-coded 24-hour window. Development defaults are a 2-hour task timeout, a 30-minute approval/question timeout, four active tasks, and seven-day terminal retention. An unanswered interaction becomes stale and interrupts the task with `AGENT_INTERACTION_TIMED_OUT`. The live writer lease is released during cleanup, but the persistent recovery guard is cleared only when provider-aware reconciliation proves the provider has stopped. Client disconnect or stopped polling alone does not cancel a healthy asynchronous task.
+
+These limits are separate from the MCP-to-Bridge RPC timeout and provider event-idle timeout. The deployment `.env` uses `SERVERFS_AGENT_TASK_TIMEOUT_SECONDS`, `SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS`, `SERVERFS_AGENT_MAX_ACTIVE_TASKS`, and `SERVERFS_AGENT_TASK_RETENTION_HOURS`.
 
 Workspace-write tasks also publish a persistent per-slot recovery guard alongside the existing `flock`. If the Bridge exits abnormally, mutations fail closed with `WORKDIR_RECOVERY_REQUIRED` until provider-aware reconciliation proves the prior provider is no longer active. ServerFS does not blindly rerun an interrupted task.
 

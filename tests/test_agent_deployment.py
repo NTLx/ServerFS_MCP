@@ -67,6 +67,12 @@ def test_build_config_uses_same_user_identity_and_user_paths(tmp_path: Path) -> 
     assert config["lock_dir"] == str(tmp_path / "runtime/locks")
     assert config["state_dir"] == str(tmp_path / "state")
     assert config["enable_fake_runtime"] is False
+    assert config["limits"] == {
+        "task_timeout_seconds": 7200,
+        "interaction_timeout_seconds": 1800,
+        "max_active_tasks": 4,
+        "retention_seconds": 168 * 60 * 60,
+    }
     assert config["codex"]["enabled"] is True
     assert config["claude"]["enabled"] is False
     assert "jev" not in config
@@ -129,6 +135,41 @@ def test_invalid_bridge_timeout_fails_closed(tmp_path: Path, value: str) -> None
     values["SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS"] = value
     with pytest.raises(render.ConfigRenderError, match="must be positive"):
         render.build_config(values)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "SERVERFS_AGENT_TASK_TIMEOUT_SECONDS",
+        "SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS",
+        "SERVERFS_AGENT_MAX_ACTIVE_TASKS",
+        "SERVERFS_AGENT_TASK_RETENTION_HOURS",
+    ],
+)
+def test_invalid_agent_lifecycle_limit_fails_closed(tmp_path: Path, key: str) -> None:
+    values = valid_env(tmp_path)
+    values[key] = "0"
+    with pytest.raises(render.ConfigRenderError, match=key):
+        render.build_config(values)
+
+
+def test_agent_lifecycle_limits_render_from_env(tmp_path: Path) -> None:
+    values = valid_env(tmp_path)
+    values.update(
+        {
+            "SERVERFS_AGENT_TASK_TIMEOUT_SECONDS": "60",
+            "SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS": "30",
+            "SERVERFS_AGENT_MAX_ACTIVE_TASKS": "2",
+            "SERVERFS_AGENT_TASK_RETENTION_HOURS": "3",
+        }
+    )
+    config = render.build_config(values)
+    assert config["limits"] == {
+        "task_timeout_seconds": 60,
+        "interaction_timeout_seconds": 30,
+        "max_active_tasks": 2,
+        "retention_seconds": 3 * 60 * 60,
+    }
 
 
 @pytest.mark.parametrize(

@@ -165,6 +165,16 @@ def register_agent_tools(
                 ),
             ),
         ] = None,
+        idempotency_key: Annotated[
+            str | None,
+            Field(
+                default=None,
+                description=(
+                    "Optional retry key for one logical Agent submission. Reuse the same key "
+                    "only when retrying an uncertain submit outcome."
+                ),
+            ),
+        ] = None,
     ) -> dict[str, Any]:
         """Submit one narrow authorized Agent objective and return a task handle.
 
@@ -193,6 +203,8 @@ def register_agent_tools(
                 params["continue_from_task_id"] = continue_from_task_id
             if correlation_id is not None:
                 params["correlation_id"] = correlation_id
+            if idempotency_key is not None:
+                params["idempotency_key"] = idempotency_key
             result = await client.call("task.submit", params)
         except Exception as exc:
             err = _agent_tool_error(exc)
@@ -205,6 +217,7 @@ def register_agent_tools(
                 runtime=runtime,
                 profile=profile,
                 correlation_id=correlation_id,
+                idempotency_key=idempotency_key,
                 error_code=_tool_error_code(err),
             )
             raise err from exc
@@ -217,6 +230,7 @@ def register_agent_tools(
             runtime=runtime,
             profile=profile,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
             task_id=result.get("task_id"),
             status=result.get("status"),
         )

@@ -293,7 +293,7 @@ class BridgeProtocolServer:
             _require_keys(
                 params,
                 {"runtime", "workdir", "path", "profile", "prompt"},
-                optional={"continue_from_task_id", "correlation_id"},
+                optional={"continue_from_task_id", "correlation_id", "idempotency_key"},
             )
             _require_types(
                 params,
@@ -301,6 +301,7 @@ class BridgeProtocolServer:
                 optional={
                     "continue_from_task_id": (str, type(None)),
                     "correlation_id": (str, type(None)),
+                    "idempotency_key": (str, type(None)),
                 },
             )
             return await self.service.submit_task(**params)

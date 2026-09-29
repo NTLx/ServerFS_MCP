@@ -42,6 +42,32 @@ def test_load_review_config(tmp_path: Path) -> None:
     assert policy.runtimes == frozenset({"fake"})
     assert config.jev.enabled is False
     assert config.jev.api_key is None
+    assert config.limits.task_timeout_seconds == 7200
+    assert config.limits.interaction_timeout_seconds == 1800
+    assert config.limits.max_active_tasks == 4
+    assert config.limits.retention_seconds == 168 * 60 * 60
+
+
+def test_lifecycle_limits_are_strict_positive_integers(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    valid = {
+        "task_timeout_seconds": 60,
+        "interaction_timeout_seconds": 30,
+        "max_active_tasks": 2,
+        "retention_seconds": 3600,
+    }
+    config = BridgeConfig.load(write_config(tmp_path, repo, limits=valid))
+    assert config.limits.task_timeout_seconds == 60
+    assert config.limits.interaction_timeout_seconds == 30
+    assert config.limits.max_active_tasks == 2
+    assert config.limits.retention_seconds == 3600
+
+    for key in valid:
+        invalid = dict(valid)
+        invalid[key] = 0
+        with pytest.raises(ValueError, match=key):
+            BridgeConfig.load(write_config(tmp_path, repo, limits=invalid))
 
 
 def test_jev_config_is_opt_in_and_secret_repr_is_redacted(tmp_path: Path) -> None:

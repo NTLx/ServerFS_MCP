@@ -186,16 +186,20 @@ async def start_bridge(socket_path: Path, lock_dir: Path, state_dir: Path, workd
     return proc
 
 
-async def mutation_succeeds(probe: McpProbe) -> bool:
-    """True once the released lease lets a mutation through."""
+async def mutation_path_succeeds(probe: McpProbe, path: str) -> bool:
+    """True once the released lease lets a named mutation through."""
     try:
         await probe.ok(
             "create_text_file",
-            {"workdir": WORKDIR_ALIAS, "path": "after-release.txt", "content": "yes\n"},
+            {"workdir": WORKDIR_ALIAS, "path": path, "content": "yes\n"},
         )
         return True
     except ToolError as exc:
         return error_code(str(exc)) == "PATH_ALREADY_EXISTS"
+
+
+async def mutation_succeeds(probe: McpProbe) -> bool:
+    return await mutation_path_succeeds(probe, "after-release.txt")
 
 
 async def run(report: Report, base: Path) -> None:
@@ -346,6 +350,90 @@ async def run(report: Report, base: Path) -> None:
             "result reader rejects inline results with the normalized code",
             error_code(inline_result_error) == "AGENT_RESULT_NOT_RETRIEVABLE",
             error_code(inline_result_error),
+        )
+
+        # ---- retry-safe submission ---------------------------------------------
+        report.section("retry-safe Agent submission")
+        retry_args = {
+            "runtime": "codex",
+            "workdir": WORKDIR_ALIAS,
+            "prompt": "complete: retry-safe result",
+            "idempotency_key": "e2e-submit-1",
+        }
+        retry_first = await probe.ok("submit_agent_task", retry_args)
+        retry_second = await probe.ok("submit_agent_task", retry_args)
+        report.check(
+            "same idempotency key returns the same task handle",
+            retry_first["task_id"] == retry_second["task_id"],
+            retry_first["task_id"],
+        )
+        retry_id = retry_first["task_id"]
+        retry_done = await probe.poll(retry_id, TERMINAL)
+        retry_events = await probe.ok(
+            "read_agent_task_events",
+            {"task_id": retry_id, "limit": 50},
+        )
+        started_count = sum(
+            event.get("event_type") == "task.started" for event in retry_events["events"]
+        )
+        report.check(
+            "idempotent retry starts exactly one provider turn",
+            retry_done.get("status") == "succeeded" and started_count == 1,
+            f"status={retry_done.get('status')} task.started={started_count}",
+        )
+        conflict = await probe.err(
+            "submit_agent_task",
+            {
+                **retry_args,
+                "prompt": "complete: conflicting retry",
+            },
+        )
+        report.check(
+            "conflicting idempotency-key reuse fails deterministically",
+            error_code(conflict) == "AGENT_IDEMPOTENCY_CONFLICT",
+            error_code(conflict),
+        )
+
+        # ---- bounded abandoned interaction -------------------------------------
+        report.section("bounded abandoned interaction")
+        timeout_task = await probe.ok(
+            "submit_agent_task",
+            {
+                "runtime": "codex",
+                "workdir": WORKDIR_ALIAS,
+                "prompt": "approval: leave this unanswered",
+            },
+        )
+        timeout_id = timeout_task["task_id"]
+        timeout_waiting = await probe.poll(timeout_id, {"waiting_for_approval"})
+        timeout_request = timeout_waiting["pending_request"]
+        timeout_done = await probe.poll(timeout_id, TERMINAL, timeout=10)
+        report.check(
+            "unanswered interaction is bounded and interrupts the task",
+            timeout_done.get("status") == "interrupted"
+            and timeout_done.get("error_code") == "AGENT_INTERACTION_TIMED_OUT",
+            f"status={timeout_done.get('status')} error={timeout_done.get('error_code')}",
+        )
+        late_timeout_response = await probe.err(
+            "respond_agent_approval",
+            {
+                "task_id": timeout_id,
+                "request_id": timeout_request["request_id"],
+                "decision": "approve_once",
+            },
+        )
+        report.check(
+            "late response after interaction timeout is stale",
+            error_code(late_timeout_response) == "REQUEST_STALE",
+            error_code(late_timeout_response),
+        )
+        timeout_released = await wait_for(
+            lambda: mutation_path_succeeds(probe, "after-interaction-timeout.txt"),
+            timeout=10,
+        )
+        report.check(
+            "interaction timeout releases the writer lease after provider reconciliation",
+            timeout_released,
         )
 
         # ---- human in the loop -------------------------------------------------

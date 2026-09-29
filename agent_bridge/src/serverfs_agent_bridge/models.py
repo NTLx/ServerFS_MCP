@@ -101,6 +101,8 @@ class TaskRecord:
     deadline_at: str | None
     continue_from_task_id: str | None
     correlation_id: str | None
+    idempotency_key: str | None
+    request_fingerprint: str | None
     native_session_id: str | None
     native_turn_id: str | None
     final_response: str | None

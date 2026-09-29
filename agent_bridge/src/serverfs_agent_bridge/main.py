@@ -12,7 +12,7 @@ from .config import BridgeConfig
 from .leases import LeaseManager
 from .preflight import JevTaskPreflight
 from .protocol import BridgeProtocolServer
-from .service import BridgeService
+from .service import BridgeLimits, BridgeService
 from .store import TaskStore
 
 
@@ -44,6 +44,12 @@ async def _serve(
         policies=config.policies,
         adapters=adapters,
         lease_manager=LeaseManager(config.lock_dir, shared_gid=config.allowed_peer_gid),
+        limits=BridgeLimits(
+            task_timeout_seconds=config.limits.task_timeout_seconds,
+            interaction_timeout_seconds=config.limits.interaction_timeout_seconds,
+            max_active_tasks=config.limits.max_active_tasks,
+            retention_seconds=config.limits.retention_seconds,
+        ),
         preflight=preflight,
     )
     await service.start()

@@ -142,6 +142,269 @@ async def test_submit_returns_before_completion_and_finishes(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+async def test_idempotent_submit_recovers_original_task_without_repeating_preflight(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path)
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+    try:
+        first = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:hello",
+            correlation_id="trace-1",
+            idempotency_key="submit-1",
+        )
+        second = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:hello",
+            correlation_id="trace-1",
+            idempotency_key="submit-1",
+        )
+
+        assert second["task_id"] == first["task_id"]
+        assert second["idempotency_key"] == "submit-1"
+        assert len(preflight.calls) == 1
+        done = await wait_for_status(service, first["task_id"], "succeeded")
+        assert done["idempotency_key"] == "submit-1"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_idempotent_submit_rejects_conflicting_reuse(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:first",
+            idempotency_key="submit-1",
+        )
+        with pytest.raises(BridgeError) as exc:
+            await service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="review",
+                prompt="complete:different",
+                idempotency_key="submit-1",
+            )
+        assert exc.value.code == "AGENT_IDEMPOTENCY_CONFLICT"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_idempotent_retry_normalizes_equivalent_relative_paths(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        first = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:path-normalized",
+            idempotency_key="path-normalized-1",
+        )
+        second = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path=".",
+            profile="review",
+            prompt="complete:path-normalized",
+            idempotency_key="path-normalized-1",
+        )
+        assert second["task_id"] == first["task_id"]
+        assert service.store.get_task(first["task_id"]).relative_cwd == ""
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_idempotent_retry_recovers_after_continuation_source_is_gone(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        base = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:base",
+        )
+        await wait_for_status(service, base["task_id"], "succeeded")
+        child_args = {
+            "runtime": "fake",
+            "workdir": "repo",
+            "path": "",
+            "profile": "review",
+            "prompt": "complete:child",
+            "continue_from_task_id": base["task_id"],
+            "idempotency_key": "continuation-retry-1",
+        }
+        child = await service.submit_task(**child_args)
+        await wait_for_status(service, child["task_id"], "succeeded")
+        assert service.store.delete_tasks([base["task_id"]]) == 1
+
+        recovered = await service.submit_task(**child_args)
+        assert recovered["task_id"] == child["task_id"]
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_idempotent_submissions_start_one_provider_turn(tmp_path: Path) -> None:
+    class CountingSlowProbeAdapter(FakeAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.runs = 0
+
+        async def probe(self):
+            await asyncio.sleep(0.01)
+            return await super().probe()
+
+        async def run_task(self, context):
+            self.runs += 1
+            return await super().run_task(context)
+
+    service = make_service(tmp_path)
+    adapter = CountingSlowProbeAdapter()
+    service.adapters = {"fake": adapter}
+    await service.start()
+    try:
+        first, second = await asyncio.gather(
+            service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="review",
+                prompt="complete:one",
+                idempotency_key="concurrent-1",
+            ),
+            service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="review",
+                prompt="complete:one",
+                idempotency_key="concurrent-1",
+            ),
+        )
+        assert first["task_id"] == second["task_id"]
+        await wait_for_status(service, first["task_id"], "succeeded")
+        assert adapter.runs == 1
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_expired_response_terminalizes_interaction_before_watchdog_fires(
+    tmp_path: Path,
+) -> None:
+    service = make_service_with_limits(
+        tmp_path,
+        BridgeLimits(task_timeout_seconds=60, interaction_timeout_seconds=30),
+    )
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="approval:danger",
+        )
+        waiting = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request_id = waiting["pending_request"]["request_id"]
+        with service.store._connect() as con:
+            con.execute(
+                "UPDATE pending_requests SET expires_at = ? WHERE request_id = ?",
+                ("2000-01-01T00:00:00Z", request_id),
+            )
+
+        with pytest.raises(BridgeError) as late:
+            await service.respond_approval(
+                task_id=submitted["task_id"],
+                request_id=request_id,
+                decision="approve_once",
+            )
+        assert late.value.code == "REQUEST_STALE"
+        interrupted = await wait_for_status(service, submitted["task_id"], "interrupted")
+        assert interrupted["error_code"] == "AGENT_INTERACTION_TIMED_OUT"
+        assert service.store.get_request(request_id).status == "stale"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_interaction_timeout_interrupts_task_and_releases_writer_lease(
+    tmp_path: Path,
+) -> None:
+    service = make_service_with_limits(
+        tmp_path,
+        BridgeLimits(task_timeout_seconds=30, interaction_timeout_seconds=1),
+    )
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="approval:danger",
+        )
+        waiting = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request_id = waiting["pending_request"]["request_id"]
+
+        interrupted = await wait_for_status(service, submitted["task_id"], "interrupted")
+        assert interrupted["error_code"] == "AGENT_INTERACTION_TIMED_OUT"
+        assert service.store.get_request(request_id).status == "stale"
+
+        adapter = service.adapters["fake"]
+        for _ in range(200):
+            if submitted["task_id"] in adapter._cancelled:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("provider cancel was not attempted after interaction timeout")
+
+        for _ in range(200):
+            try:
+                lease = service.lease_manager.acquire_exclusive(1)
+            except BridgeError as exc:
+                assert exc.code == "WORKDIR_BUSY"
+                await asyncio.sleep(0.01)
+                continue
+            lease.release()
+            break
+        else:
+            raise AssertionError("writer lease was not released after interaction timeout")
+        assert service.guard_manager.read(1) is None
+
+        with pytest.raises(BridgeError) as late:
+            await service.respond_approval(
+                task_id=submitted["task_id"],
+                request_id=request_id,
+                decision="approve_once",
+            )
+        assert late.value.code in {"REQUEST_STALE", "REQUEST_ALREADY_RESOLVED"}
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
 async def test_optional_preflight_is_advisory_and_recorded(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     preflight = FakePreflight()

@@ -20,6 +20,7 @@ _CONFIG_KEYS = frozenset(
         "allowed_peer_uid",
         "allowed_peer_gid",
         "enable_fake_runtime",
+        "limits",
         "codex",
         "claude",
         "jev",
@@ -49,6 +50,9 @@ _CODEX_KEYS = frozenset(
     }
 )
 _JEV_KEYS = frozenset({"api_key"})
+_LIMIT_KEYS = frozenset(
+    {"task_timeout_seconds", "interaction_timeout_seconds", "max_active_tasks", "retention_seconds"}
+)
 _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _MAX_WORKDIR_SLOTS = 16
 
@@ -84,6 +88,14 @@ class ClaudeSettings:
 
 
 @dataclass(frozen=True)
+class LifecycleLimits:
+    task_timeout_seconds: int = 7200
+    interaction_timeout_seconds: int = 1800
+    max_active_tasks: int = 4
+    retention_seconds: int = 168 * 60 * 60
+
+
+@dataclass(frozen=True)
 class JevSettings:
     api_key: str | None = field(default=None, repr=False)
 
@@ -100,6 +112,7 @@ class BridgeConfig:
     allowed_peer_uid: int | None
     allowed_peer_gid: int | None
     enable_fake_runtime: bool
+    limits: LifecycleLimits
     codex: CodexSettings
     claude: ClaudeSettings
     jev: JevSettings
@@ -173,6 +186,7 @@ class BridgeConfig:
         if not enable_fake_runtime and any("fake" in policy.runtimes for policy in policies):
             raise ValueError("fake runtime is allowlisted but enable_fake_runtime is false")
 
+        limits = _load_lifecycle_limits(data.get("limits"))
         codex = _load_codex_settings(data.get("codex"))
         claude = _load_claude_settings(data.get("claude"))
         jev = _load_jev_settings(data.get("jev"))
@@ -208,11 +222,27 @@ class BridgeConfig:
             allowed_peer_uid=_optional_int(data.get("allowed_peer_uid")),
             allowed_peer_gid=_optional_int(data.get("allowed_peer_gid")),
             enable_fake_runtime=enable_fake_runtime,
+            limits=limits,
             codex=codex,
             claude=claude,
             jev=jev,
             policies=PolicyRegistry(policies),
         )
+
+
+def _load_lifecycle_limits(value: Any) -> LifecycleLimits:
+    if value is None:
+        return LifecycleLimits()
+    if not isinstance(value, dict):
+        raise ValueError("limits must be an object")
+    _reject_unknown_keys(value, _LIMIT_KEYS, "limits")
+
+    defaults = LifecycleLimits()
+    parsed: dict[str, int] = {}
+    for key in _LIMIT_KEYS:
+        raw = value.get(key, getattr(defaults, key))
+        parsed[key] = _strict_positive_int(raw, f"limits.{key}")
+    return LifecycleLimits(**parsed)
 
 
 def _load_jev_settings(value: Any) -> JevSettings:
@@ -355,6 +385,13 @@ def _strict_int(value: Any, label: str) -> int:
     if value < 0:
         raise ValueError(f"{label} must not be negative")
     return value
+
+
+def _strict_positive_int(value: Any, label: str) -> int:
+    parsed = _strict_int(value, label)
+    if parsed < 1:
+        raise ValueError(f"{label} must be a positive integer")
+    return parsed
 
 
 def _strict_positive_number(value: Any, label: str) -> float:

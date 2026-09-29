@@ -24,7 +24,7 @@ from serverfs_agent_bridge.leases import LeaseManager
 from serverfs_agent_bridge.models import AgentMode
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
 from serverfs_agent_bridge.protocol import BridgeProtocolServer
-from serverfs_agent_bridge.service import BridgeService
+from serverfs_agent_bridge.service import BridgeLimits, BridgeService
 from serverfs_agent_bridge.store import TaskStore
 
 WORKDIR_ALIAS = "repo"
@@ -53,6 +53,7 @@ async def _serve(args: argparse.Namespace) -> None:
         policies=PolicyRegistry([policy]),
         adapters={"codex": CodexNamedFakeAdapter()},
         lease_manager=LeaseManager(args.lock_dir),
+        limits=BridgeLimits(task_timeout_seconds=60, interaction_timeout_seconds=1),
     )
     await service.start()
     server = BridgeProtocolServer(service=service, socket_path=args.socket)

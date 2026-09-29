@@ -1,6 +1,6 @@
 # Phase E — user-scoped Agent Bridge deployment
 
-Phase E wires the frozen Phase A–D contracts into a real Linux deployment. This runbook is current for **ServerFS v0.7.2**, the current stable release.
+Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.7.2 remains the current published stable release; the `main` branch is developing v0.7.3 Runtime Lifecycle Reliability.** The deployment topology and user-scoped security boundary are unchanged.
 
 The deployment has one non-negotiable rule:
 
@@ -118,7 +118,13 @@ For an existing deployment, add/review the Phase E keys in `.env` directly. Set:
 SERVERFS_UID=<id -u>
 SERVERFS_GID=<id -g>
 SERVERFS_AGENT_BRIDGE_ENABLED=false
+# MCP container -> Bridge RPC timeout; not the lifetime of an Agent task.
 SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS=30
+# v0.7.3 lifecycle policy, enforced by the host Bridge.
+SERVERFS_AGENT_TASK_TIMEOUT_SECONDS=7200
+SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS=1800
+SERVERFS_AGENT_MAX_ACTIVE_TASKS=4
+SERVERFS_AGENT_TASK_RETENTION_HOURS=168
 SERVERFS_AGENT_PEER_UID=
 SERVERFS_AGENT_PEER_GID=
 SERVERFS_AGENT_BRIDGE_HOST_SOCKET_DIR=/home/<user>/.local/share/serverfs-agent-bridge/runtime/socket
@@ -132,7 +138,7 @@ Use the real absolute home path; `.env` values are not shell-expanded. Leave
 peer identity. Keep `SERVERFS_AGENT_BRIDGE_ENABLED=false` until that measurement
 and the provider/workdir review are complete. The base `compose.yml` does not pass
 Agent settings into the container, so these values remain inert without
-`compose.agent.yml`.
+`compose.agent.yml`. `SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS` bounds one MCP-to-Bridge RPC; the task timeout bounds total Agent execution, the interaction timeout bounds one unanswered approval/question, and retention controls only already-terminal task evidence. These are separate mechanisms.
 
 Provider secrets and shell-only environment are intentionally **not** stored in
 `.env`; they remain in the user-owned `provider.env` described in step 4. The experimental

@@ -165,6 +165,7 @@ def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
             "profile",
             "continue_from_task_id",
             "correlation_id",
+            "idempotency_key",
         },
         "get_agent_task": {"task_id"},
         "read_agent_task_events": {"task_id", "after_event_id", "limit"},
@@ -313,6 +314,23 @@ def test_submit_forwards_opaque_correlation_id(tmp_path: Path) -> None:
         },
     )
     assert client.calls[-1][1]["correlation_id"] == "batch-42"
+
+
+def test_submit_forwards_idempotency_key(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    server = server_with_client(tmp_path, client)
+    call_success(
+        server,
+        "submit_agent_task",
+        {
+            "runtime": "codex",
+            "workdir": "repo",
+            "profile": "workspace-write",
+            "prompt": "Retry safely",
+            "idempotency_key": "submit-42",
+        },
+    )
+    assert client.calls[-1][1]["idempotency_key"] == "submit-42"
 
 
 def test_submit_continuation_forwards_prior_task_id(tmp_path: Path) -> None:

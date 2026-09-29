@@ -204,3 +204,49 @@ def test_event_limit_is_enforced_by_atomic_task_counter(tmp_path: Path) -> None:
         store.append_event("agt_test", "three", {}, max_events_per_task=2)
     assert exc.value.code == "AGENT_EVENT_LIMIT_REACHED"
     assert len(store.list_events("agt_test", limit=10)) == 2
+
+
+def test_idempotency_key_is_unique_and_retrievable(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    first = store.create_task(
+        task_id="agt_one",
+        runtime="fake",
+        workdir_alias="repo",
+        workdir_slot=1,
+        relative_cwd="",
+        profile="review",
+        continue_from_task_id=None,
+        idempotency_key="submit-1",
+        request_fingerprint="fingerprint-1",
+    )
+
+    recovered = store.get_task_by_idempotency_key("submit-1")
+    assert recovered is not None
+    assert recovered.task_id == first.task_id
+    assert recovered.idempotency_key == "submit-1"
+    assert recovered.request_fingerprint == "fingerprint-1"
+
+    with pytest.raises(BridgeError) as exc:
+        store.create_task(
+            task_id="agt_two",
+            runtime="fake",
+            workdir_alias="repo",
+            workdir_slot=1,
+            relative_cwd="",
+            profile="review",
+            continue_from_task_id=None,
+            idempotency_key="submit-1",
+            request_fingerprint="fingerprint-1",
+        )
+    assert exc.value.code == "AGENT_IDEMPOTENCY_CONFLICT"
+
+
+def test_existing_database_migrates_idempotency_columns(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    store = TaskStore(state_dir)
+    make_task(store)
+
+    reopened = TaskStore(state_dir)
+    task = reopened.get_task("agt_test")
+    assert task.idempotency_key is None
+    assert task.request_fingerprint is None

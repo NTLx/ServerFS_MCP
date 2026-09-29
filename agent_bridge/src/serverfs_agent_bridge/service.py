@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import json
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .adapters.base import AgentAdapter, ReconcileResult, TaskContext
@@ -37,7 +37,8 @@ class BridgeLimits:
     max_spooled_result_bytes: int = 8 * 1024 * 1024
     max_result_chunk_bytes: int = 65_536
     result_preview_bytes: int = 65_536
-    task_timeout_seconds: int = 86_400
+    task_timeout_seconds: int = 7200
+    interaction_timeout_seconds: int = 1800
     retention_seconds: int = 168 * 60 * 60
     max_event_bytes: int = 65_536
     max_interaction_bytes: int = 65_536
@@ -53,6 +54,7 @@ class BridgeLimits:
             "max_result_chunk_bytes",
             "result_preview_bytes",
             "task_timeout_seconds",
+            "interaction_timeout_seconds",
             "retention_seconds",
             "max_event_bytes",
             "max_interaction_bytes",
@@ -172,6 +174,7 @@ class BridgeService:
         prompt: str,
         continue_from_task_id: str | None = None,
         correlation_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         if self._closed:
             raise BridgeError("BRIDGE_CLOSED", "bridge is closed")
@@ -186,28 +189,34 @@ class BridgeService:
         if continue_from_task_id is not None and not isinstance(continue_from_task_id, str):
             raise BridgeError("INVALID_REQUEST", "continue_from_task_id must be a string")
         _validate_correlation_id(correlation_id)
+        _validate_idempotency_key(idempotency_key)
         self._gc_retained()
         if len(prompt.encode("utf-8")) > self.limits.max_prompt_bytes:
             raise BridgeError("AGENT_PROMPT_TOO_LARGE", "agent prompt exceeds configured limit")
-        adapter = self.adapters.get(runtime)
-        if adapter is None:
-            raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", f"runtime is unavailable: {runtime}")
-        try:
-            runtime_info = await adapter.probe()
-        except Exception:
-            runtime_info = None
-        if runtime_info is None:
-            raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", f"runtime is unavailable: {runtime}")
-
         try:
             requested_profile = AgentProfile(profile)
         except ValueError as exc:
             raise BridgeError("AGENT_PROFILE_NOT_ALLOWED", "unknown agent profile") from exc
+        normalized_path = _normalize_submission_path(path)
+        request_fingerprint = _submission_fingerprint(
+            runtime=runtime,
+            workdir=workdir,
+            path=normalized_path,
+            profile=requested_profile.value,
+            prompt=prompt,
+            continue_from_task_id=continue_from_task_id,
+            correlation_id=correlation_id,
+        )
+        if idempotency_key is not None:
+            existing = self.store.get_task_by_idempotency_key(idempotency_key)
+            if existing is not None:
+                return _idempotent_submission_result(existing, request_fingerprint)
+
         policy, cwd = self.policies.authorize(
             workdir=workdir,
             runtime=runtime,
             profile=requested_profile,
-            relative_cwd=path,
+            relative_cwd=normalized_path,
         )
 
         continue_native_session_id = None
@@ -239,6 +248,16 @@ class BridgeService:
                 "continuation requires a completed prior task",
             )
 
+        adapter = self.adapters.get(runtime)
+        if adapter is None:
+            raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", f"runtime is unavailable: {runtime}")
+        try:
+            runtime_info = await adapter.probe()
+        except Exception:
+            runtime_info = None
+        if runtime_info is None:
+            raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", f"runtime is unavailable: {runtime}")
+
         preflight_result: dict[str, Any] | None = None
         routing_advice: dict[str, Any] | None = None
         if self.preflight is not None:
@@ -246,7 +265,7 @@ class BridgeService:
                 preflight_result = await self.preflight.evaluate(
                     runtime=runtime,
                     workdir=workdir,
-                    path=path,
+                    path=normalized_path,
                     profile=requested_profile.value,
                     prompt=prompt,
                     is_continuation=continue_from_task_id is not None,
@@ -268,16 +287,22 @@ class BridgeService:
         _, manifest_json, manifest_sha256 = build_manifest(
             runtime_info=runtime_info,
             policy=policy,
-            relative_cwd=path,
+            relative_cwd=normalized_path,
             profile=requested_profile.value,
             limits=asdict(self.limits),
             advisor=advisor_manifest,
             continue_from_task_id=continue_from_task_id,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
             deadline_at=deadline_at,
         )
 
         async with self._submit_lock:
+            if idempotency_key is not None:
+                existing = self.store.get_task_by_idempotency_key(idempotency_key)
+                if existing is not None:
+                    return _idempotent_submission_result(existing, request_fingerprint)
+
             lease: WorkdirLease | None = None
             guard_created = False
             if requested_profile is AgentProfile.WORKSPACE_WRITE:
@@ -300,11 +325,13 @@ class BridgeService:
                     runtime=runtime,
                     workdir_alias=workdir,
                     workdir_slot=policy.slot,
-                    relative_cwd=path,
+                    relative_cwd=normalized_path,
                     profile=requested_profile.value,
                     deadline_at=deadline_at,
                     continue_from_task_id=continue_from_task_id,
                     correlation_id=correlation_id,
+                    idempotency_key=idempotency_key,
+                    request_fingerprint=request_fingerprint,
                     manifest_json=manifest_json,
                     manifest_sha256=manifest_sha256,
                     max_active_tasks=self.limits.max_active_tasks,
@@ -355,6 +382,7 @@ class BridgeService:
                 "task_id": task.task_id,
                 "status": task.status,
                 "correlation_id": correlation_id,
+                "idempotency_key": idempotency_key,
             }
             if preflight_result is not None:
                 result["preflight"] = preflight_result
@@ -565,6 +593,7 @@ class BridgeService:
         result = task.to_dict()
         result.pop("native_session_id", None)
         result.pop("native_turn_id", None)
+        result.pop("request_fingerprint", None)
         storage = result.pop("result_storage", "inline")
         size_bytes = result.pop("result_size_bytes", None)
         result_sha256 = result.pop("result_sha256", None)
@@ -627,24 +656,53 @@ class BridgeService:
             "next_after_event_id": next_cursor,
         }
 
-    def _expire_request_if_needed(self, task_id: str, request: Any) -> bool:
-        if not is_expired(request.expires_at):
+    async def _interrupt_for_interaction_timeout(self, task_id: str, request: Any) -> bool:
+        current = self.store.get_task(task_id)
+        if (
+            TaskStatus(current.status)
+            not in (TaskStatus.WAITING_FOR_APPROVAL, TaskStatus.WAITING_FOR_QUESTION)
+            or current.pending_request_id != request.request_id
+        ):
             return False
-        self.store.stale_task_request(task_id)
-        waiter = self._pending_waiters.pop(request.request_id, None)
-        if waiter is not None and not waiter.done():
-            waiter.set_exception(
-                BridgeError(
-                    "AGENT_INTERACTION_EXPIRED",
-                    "approval or question expired at the task deadline",
-                )
-            )
+        self.store.transition_task(
+            task_id,
+            TaskStatus.INTERRUPTED,
+            error_code="AGENT_INTERACTION_TIMED_OUT",
+            error_message="agent interaction exceeded its response deadline",
+        )
         self._try_append_event(
             task_id,
             "interaction.expired",
             {"request_id": request.request_id, "kind": request.kind},
         )
+        self._try_append_event(
+            task_id,
+            "task.interrupted",
+            {"error_code": "AGENT_INTERACTION_TIMED_OUT"},
+        )
+        waiter = self._pending_waiters.pop(request.request_id, None)
+        if waiter is not None and not waiter.done():
+            waiter.set_exception(
+                BridgeError(
+                    "AGENT_INTERACTION_TIMED_OUT",
+                    "agent interaction exceeded its response deadline",
+                )
+            )
+        adapter = self.adapters.get(current.runtime)
+        if adapter is not None:
+            try:
+                await adapter.cancel(task_id)
+            except Exception:
+                pass
+        background = self._background.get(task_id)
+        if background is not None and not background.done():
+            background.cancel()
         return True
+
+    async def _expire_request_if_needed(self, task_id: str, request: Any) -> bool:
+        if not is_expired(request.expires_at):
+            return False
+        return await self._interrupt_for_interaction_timeout(task_id, request)
 
     async def respond_approval(
         self,
@@ -667,7 +725,7 @@ class BridgeService:
         task = self.store.get_task(task_id)
         if task.pending_request_id != request_id:
             raise BridgeError("REQUEST_STALE", "approval request is no longer active")
-        if self._expire_request_if_needed(task_id, request):
+        if await self._expire_request_if_needed(task_id, request):
             raise BridgeError("REQUEST_STALE", "approval request expired")
         if request.kind != RequestKind.APPROVAL.value:
             raise BridgeError("INVALID_APPROVAL_DECISION", "request is not an approval")
@@ -740,7 +798,7 @@ class BridgeService:
         task = self.store.get_task(task_id)
         if task.pending_request_id != request_id:
             raise BridgeError("REQUEST_STALE", "question request is no longer active")
-        if self._expire_request_if_needed(task_id, request):
+        if await self._expire_request_if_needed(task_id, request):
             raise BridgeError("REQUEST_STALE", "question request expired")
         if request.kind != RequestKind.QUESTION.value:
             raise BridgeError("INVALID_QUESTION_ANSWER", "request is not a question")
@@ -997,16 +1055,20 @@ class BridgeService:
                     {"error_code": "AGENT_TASK_TIMED_OUT"},
                 )
         except asyncio.CancelledError:
-            provider_stopped = provider_task is not None and provider_task.done()
-            if provider_task is not None and not provider_task.done():
-                try:
-                    await adapter.cancel(task_id)
-                except Exception:
-                    pass
-                provider_task.cancel()
+            if provider_task is not None:
+                if not provider_task.done():
+                    try:
+                        await adapter.cancel(task_id)
+                    except Exception:
+                        pass
+                    provider_task.cancel()
+                # Always consume the provider Task result. It may already have
+                # completed with an exception before this parent was cancelled.
                 await asyncio.gather(provider_task, return_exceptions=True)
-            if provider_stopped:
-                clear_guard = True
+            # An adapter coroutine being done is not proof that an out-of-process
+            # provider turn has stopped. Keep clear_guard false here and let the
+            # provider-aware reconciliation in finally decide whether the
+            # persistent recovery guard may be removed.
             current = self.store.get_task(task_id)
             if TaskStatus(current.status) not in TERMINAL_STATUSES:
                 if task_id in self._user_cancelled:
@@ -1239,7 +1301,13 @@ class BridgeService:
 
         self._ensure_interaction_size(normalized_payload)
         task = self.store.get_task(task_id)
-        expires_at = task.deadline_at or utc_after(self.limits.task_timeout_seconds)
+        interaction_deadline = utc_after(self.limits.interaction_timeout_seconds)
+        interaction_deadline_is_authoritative = task.deadline_at is None or seconds_until(
+            interaction_deadline
+        ) < seconds_until(task.deadline_at)
+        expires_at = (
+            interaction_deadline if interaction_deadline_is_authoritative else task.deadline_at
+        )
         self.store.create_pending_request(
             task_id=task_id,
             request_id=request_id,
@@ -1270,9 +1338,78 @@ class BridgeService:
             else:
                 waiter.cancel()
         try:
-            return await waiter
+            if not interaction_deadline_is_authoritative:
+                return await waiter
+            timeout_seconds = max(0.0, seconds_until(expires_at))
+            try:
+                async with asyncio.timeout(timeout_seconds):
+                    return await waiter
+            except TimeoutError as exc:
+                await self._interrupt_for_interaction_timeout(
+                    task_id,
+                    self.store.get_request(request_id),
+                )
+                raise BridgeError(
+                    "AGENT_INTERACTION_TIMED_OUT",
+                    "agent interaction exceeded its response deadline",
+                ) from exc
         finally:
             self._pending_waiters.pop(request_id, None)
+
+
+def _normalize_submission_path(path: str) -> str:
+    if "\x00" in path:
+        raise BridgeError("INVALID_WORKDIR_PATH", "relative cwd contains NUL")
+    pure = PurePosixPath(path or ".")
+    if pure.is_absolute():
+        raise BridgeError("INVALID_WORKDIR_PATH", "relative cwd must not be absolute")
+    if any(part == ".." for part in pure.parts):
+        raise BridgeError("INVALID_WORKDIR_PATH", "relative cwd must not contain '..'")
+    parts = [part for part in pure.parts if part not in ("", ".")]
+    return PurePosixPath(*parts).as_posix() if parts else ""
+
+
+def _submission_fingerprint(
+    *,
+    runtime: str,
+    workdir: str,
+    path: str,
+    profile: str,
+    prompt: str,
+    continue_from_task_id: str | None,
+    correlation_id: str | None,
+) -> str:
+    payload = {
+        "runtime": runtime,
+        "workdir": workdir,
+        "path": path,
+        "profile": profile,
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "continue_from_task_id": continue_from_task_id,
+        "correlation_id": correlation_id,
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _idempotent_submission_result(task: Any, request_fingerprint: str) -> dict[str, Any]:
+    if task.request_fingerprint != request_fingerprint:
+        raise BridgeError(
+            "AGENT_IDEMPOTENCY_CONFLICT",
+            "idempotency key was already used for a different submission",
+        )
+    return {
+        "task_id": task.task_id,
+        "status": task.status,
+        "correlation_id": task.correlation_id,
+        "idempotency_key": task.idempotency_key,
+    }
 
 
 def _approval_advice_fingerprint(payload: dict[str, Any]) -> str:
@@ -1424,6 +1561,20 @@ def _validate_answers(
     if set(by_id) != seen:
         raise BridgeError("INVALID_QUESTION_ANSWER", "every question requires an answer")
     return normalized
+
+
+def _validate_idempotency_key(value: str | None) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str) or not value:
+        raise BridgeError("INVALID_REQUEST", "idempotency_key must be a non-empty string")
+    if len(value.encode("utf-8")) > 256:
+        raise BridgeError("INVALID_REQUEST", "idempotency_key exceeds 256 UTF-8 bytes")
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise BridgeError(
+            "INVALID_REQUEST",
+            "idempotency_key contains an ASCII control character",
+        )
 
 
 def _validate_correlation_id(value: str | None) -> None:

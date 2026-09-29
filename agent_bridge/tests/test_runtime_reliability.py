@@ -138,7 +138,7 @@ async def test_correlation_event_envelope_and_manifest_hash(tmp_path: Path) -> N
     task = await wait_for_status(service, submitted["task_id"], "succeeded")
     assert task["correlation_id"] == correlation_id
     assert task["manifest"]["schema_version"] == 1
-    assert task["manifest"]["bridge_version"] == "0.7.2"
+    assert task["manifest"]["bridge_version"] == "0.7.3"
     assert task["manifest"]["protocol_version"] == 1
     assert task["manifest"]["correlation_id"] == correlation_id
     assert task["manifest"]["runtime"]["name"] == "fake"
@@ -324,6 +324,58 @@ async def test_timeout_keeps_recovery_guard_when_provider_stop_is_unproven(
     lease = service.lease_manager.acquire_exclusive(1)
     lease.release()
 
+    with pytest.raises(BridgeError) as blocked:
+        await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="must-not-start",
+        )
+    assert blocked.value.code == "WORKDIR_RECOVERY_REQUIRED"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_interaction_timeout_keeps_guard_when_provider_stop_is_unproven(
+    tmp_path: Path,
+) -> None:
+    class UnknownApprovalAdapter(UnknownRecoveryAdapter):
+        async def run_task(self, context: TaskContext) -> AdapterResult:
+            return await FakeAdapter.run_task(self, context)
+
+    service = make_service(
+        tmp_path,
+        adapter=UnknownApprovalAdapter(),
+        limits=BridgeLimits(task_timeout_seconds=30, interaction_timeout_seconds=1),
+    )
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="approval:never-answered",
+    )
+
+    interrupted = await wait_for_status(service, submitted["task_id"], "interrupted")
+    assert interrupted["error_code"] == "AGENT_INTERACTION_TIMED_OUT"
+
+    for _ in range(200):
+        try:
+            lease = service.lease_manager.acquire_exclusive(1)
+        except BridgeError as exc:
+            assert exc.code == "WORKDIR_BUSY"
+            await asyncio.sleep(0.01)
+            continue
+        lease.release()
+        break
+    else:
+        raise AssertionError("writer lease was not released")
+
+    guard = service.guard_manager.read(1)
+    assert guard is not None
+    assert guard.payload["task_id"] == submitted["task_id"]
     with pytest.raises(BridgeError) as blocked:
         await service.submit_task(
             runtime="fake",

@@ -42,11 +42,19 @@ Unix socket
 - 20 个工具：文件系统 + Agent
 - 22 个工具：文件系统 + 二进制 + Agent
 
-## v0.7.2 Runtime Reliability
+## v0.7 Runtime Reliability
 
-v0.7.0 在现有 Bridge 上补强可靠性与证据链，而不是增加工作流编排。新任务会冻结不可变执行 manifest，并可携带可选的 opaque `correlation_id`；标准化事件采用 envelope schema v1；任务默认 24 小时 deadline，终态默认保留 7 天。
+v0.7.0 在现有 Bridge 上补强可靠性与证据链，而不是增加工作流编排。新任务会冻结不可变执行 manifest，并可携带可选的 opaque `correlation_id`；标准化事件采用 envelope schema v1。v0.7.0 最初的 task deadline 默认值为 24 小时，终态默认保留 7 天。
 
 v0.7.1 保持上述契约不变，修复了一个可证明发生在 provider 启动前的 Codex control-socket 恢复边界。v0.7.2 继续做维护性收口：当 lazy reconciliation 能明确证明 `provider_active=false` 时，仍处于非终态的 ServerFS task 会先以 `AGENT_PROVIDER_INACTIVE` 转为 `interrupted`，待处理 interaction 通过正常终态转换变为 stale，随后才清除 recovery guard；无法证明 provider 已停止时仍保持 fail-closed，并保留 guard。
+
+### v0.7.3 开发线：生命周期可靠性
+
+`main` 分支新增面向 `task.submit` 响应丢失场景的可重试提交。`submit_agent_task` 增加可选 opaque `idempotency_key`，它与 `correlation_id` 含义独立；同一个 key 配合同一语义请求重试时返回仍在保留期内的原 task，不会再启动第二个 provider turn；同 key 对应不同请求则返回 `AGENT_IDEMPOTENCY_CONFLICT`。
+
+Agent 生命周期改为管理员策略，不再固定为 24 小时。开发态默认值为 task timeout 2 小时、approval/question timeout 30 分钟、最多 4 个 active task、终态保留 7 天。无人响应的 interaction 会变为 stale，并以 `AGENT_INTERACTION_TIMED_OUT` 中断 task。清理过程会释放实时 writer lease，但只有 provider-aware reconciliation 能证明 provider 已停止时才清除持久 recovery guard；单纯 MCP/ChatGPT 断开或停止轮询不会取消健康的异步任务。
+
+这些限制与 MCP→Bridge RPC timeout、provider event-idle timeout 是不同机制。部署 `.env` 使用 `SERVERFS_AGENT_TASK_TIMEOUT_SECONDS`、`SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS`、`SERVERFS_AGENT_MAX_ACTIVE_TASKS` 和 `SERVERFS_AGENT_TASK_RETENTION_HOURS`。
 
 workspace-write 任务还会在现有 `flock` 之外发布持久化的 slot recovery guard。Bridge 异常退出后，在 provider-aware reconciliation 能证明旧 provider 已停止之前，文件写入会以 `WORKDIR_RECOVERY_REQUIRED` 失败关闭；ServerFS 不会盲目重跑中断任务。
 

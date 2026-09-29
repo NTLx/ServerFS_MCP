@@ -106,6 +106,8 @@ class TaskStore:
                     deadline_at TEXT,
                     continue_from_task_id TEXT,
                     correlation_id TEXT,
+                    idempotency_key TEXT,
+                    request_fingerprint TEXT,
                     native_session_id TEXT,
                     native_turn_id TEXT,
                     final_response TEXT,
@@ -151,6 +153,8 @@ class TaskStore:
             task_migrations = {
                 "deadline_at": "ALTER TABLE tasks ADD COLUMN deadline_at TEXT",
                 "correlation_id": "ALTER TABLE tasks ADD COLUMN correlation_id TEXT",
+                "idempotency_key": "ALTER TABLE tasks ADD COLUMN idempotency_key TEXT",
+                "request_fingerprint": "ALTER TABLE tasks ADD COLUMN request_fingerprint TEXT",
                 "result_storage": (
                     "ALTER TABLE tasks ADD COLUMN result_storage TEXT NOT NULL DEFAULT 'inline'"
                 ),
@@ -173,6 +177,14 @@ class TaskStore:
                     """
                 )
 
+            con.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS tasks_idempotency_key
+                ON tasks(idempotency_key)
+                WHERE idempotency_key IS NOT NULL
+                """
+            )
+
             request_columns = {
                 row[1] for row in con.execute("PRAGMA table_info(pending_requests)").fetchall()
             }
@@ -191,6 +203,8 @@ class TaskStore:
         continue_from_task_id: str | None,
         deadline_at: str | None = None,
         correlation_id: str | None = None,
+        idempotency_key: str | None = None,
+        request_fingerprint: str | None = None,
         manifest_json: str | None = None,
         manifest_sha256: str | None = None,
         max_active_tasks: int | None = None,
@@ -213,8 +227,9 @@ class TaskStore:
                     INSERT INTO tasks (
                         task_id, runtime, workdir_alias, workdir_slot, relative_cwd,
                         profile, status, created_at, updated_at, deadline_at,
-                        continue_from_task_id, correlation_id, manifest_json, manifest_sha256
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        continue_from_task_id, correlation_id, idempotency_key,
+                        request_fingerprint, manifest_json, manifest_sha256
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         task_id,
@@ -229,13 +244,33 @@ class TaskStore:
                         deadline_at,
                         continue_from_task_id,
                         correlation_id,
+                        idempotency_key,
+                        request_fingerprint,
                         manifest_json,
                         manifest_sha256,
                     ),
                 )
             except sqlite3.IntegrityError as exc:
+                if idempotency_key is not None:
+                    existing = con.execute(
+                        "SELECT task_id FROM tasks WHERE idempotency_key = ?",
+                        (idempotency_key,),
+                    ).fetchone()
+                    if existing is not None:
+                        raise BridgeError(
+                            "AGENT_IDEMPOTENCY_CONFLICT",
+                            "idempotency key already belongs to another task",
+                        ) from exc
                 raise BridgeError("AGENT_TASK_EXISTS", f"task already exists: {task_id}") from exc
         return self.get_task(task_id)
+
+    def get_task_by_idempotency_key(self, idempotency_key: str) -> TaskRecord | None:
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT * FROM tasks WHERE idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+        return None if row is None else _task_from_row(row)
 
     def get_task(self, task_id: str) -> TaskRecord:
         with self._connect() as con:
@@ -708,6 +743,8 @@ def _task_from_row(row: sqlite3.Row) -> TaskRecord:
         deadline_at=row["deadline_at"],
         continue_from_task_id=row["continue_from_task_id"],
         correlation_id=row["correlation_id"],
+        idempotency_key=row["idempotency_key"],
+        request_fingerprint=row["request_fingerprint"],
         native_session_id=row["native_session_id"],
         native_turn_id=row["native_turn_id"],
         final_response=row["final_response"],

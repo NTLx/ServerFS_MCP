@@ -112,6 +112,19 @@ def _positive_float(raw: str, key: str, default: float) -> float:
     return parsed
 
 
+def _positive_int(raw: str, key: str, default: int) -> int:
+    value = raw.strip()
+    if not value:
+        return default
+    try:
+        parsed = int(value, 10)
+    except ValueError as exc:
+        raise ConfigRenderError(f"{key} must be an integer") from exc
+    if parsed <= 0:
+        raise ConfigRenderError(f"{key} must be a positive integer")
+    return parsed
+
+
 def _absolute_path(raw: str, key: str) -> str:
     value = raw.strip()
     if not value:
@@ -290,6 +303,27 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         "SERVERFS_JEV_API_KEY",
     )
 
+    task_timeout_seconds = _positive_int(
+        values.get("SERVERFS_AGENT_TASK_TIMEOUT_SECONDS", ""),
+        "SERVERFS_AGENT_TASK_TIMEOUT_SECONDS",
+        7200,
+    )
+    interaction_timeout_seconds = _positive_int(
+        values.get("SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS", ""),
+        "SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS",
+        1800,
+    )
+    max_active_tasks = _positive_int(
+        values.get("SERVERFS_AGENT_MAX_ACTIVE_TASKS", ""),
+        "SERVERFS_AGENT_MAX_ACTIVE_TASKS",
+        4,
+    )
+    retention_hours = _positive_int(
+        values.get("SERVERFS_AGENT_TASK_RETENTION_HOURS", ""),
+        "SERVERFS_AGENT_TASK_RETENTION_HOURS",
+        168,
+    )
+
     config = {
         "socket_path": socket_path,
         "state_dir": state_dir,
@@ -297,6 +331,12 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         "allowed_peer_uid": peer_uid,
         "allowed_peer_gid": peer_gid,
         "enable_fake_runtime": False,
+        "limits": {
+            "task_timeout_seconds": task_timeout_seconds,
+            "interaction_timeout_seconds": interaction_timeout_seconds,
+            "max_active_tasks": max_active_tasks,
+            "retention_seconds": retention_hours * 60 * 60,
+        },
         "codex": {
             "enabled": codex_enabled,
             "autostart": _bool(
