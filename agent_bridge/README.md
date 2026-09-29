@@ -1,6 +1,6 @@
-# ServerFS Agent Bridge — v0.7.3 development
+# ServerFS Agent Bridge — v0.7.3
 
-This directory contains the **host-side** Agent Bridge on the ServerFS v0.7.3 development line; v0.7.2 remains the current published stable release. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability, recovery evidence, immutable execution manifests and bounded large-result retrieval, v0.7.1 added a targeted Codex reconciliation hotfix, v0.7.2 closed stale non-terminal recovery state, and v0.7.3 adds retry-safe submission plus bounded task/interaction lifetime without turning the Bridge into a scheduler.
+This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.7.3 release. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability, recovery evidence, immutable execution manifests and bounded large-result retrieval, v0.7.1 added a targeted Codex reconciliation hotfix, v0.7.2 closed stale non-terminal recovery state, and v0.7.3 adds retry-safe submission plus bounded task/interaction lifetime without turning the Bridge into a scheduler.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,

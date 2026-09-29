@@ -1,15 +1,15 @@
 # ServerFS MCP v0.7.2 Development Plan
 
-Status: frozen release plan; **v0.7.2 is the current stable release**
+Status: frozen historical release plan; v0.7.2 was the stable release before v0.7.3
 Theme: **Runtime State Reconciliation & Filesystem Reliability**
 Previous stable baseline: v0.7.1 tag `7c73d27a6a4aa31073a4e4fd82767b545dd9664f`
-Current release line: **v0.7.2**
+Release line recorded here: **v0.7.2**
 
-> This document is retained as the frozen v0.7.2 design and acceptance record. Requirement language in the design sections describes the contract satisfied by the current release; it is not an outstanding release gate.
+> This document is retained as the frozen v0.7.2 design and acceptance record. Requirement language in the design sections describes the contract satisfied by v0.7.2 at its release; it is not an outstanding release gate.
 
 ## 1. Release summary
 
-v0.7.2 is the current stable maintenance release on the frozen v0.7 runtime contract.
+v0.7.2 was the stable maintenance release on the frozen v0.7 runtime contract.
 
 It fixes demonstrated reliability defects and tightens deployment verification. It does not add Agent orchestration, new MCP tools, new Bridge RPC methods, provider lifecycle ownership, a new sandbox, or any new authorization path.
 
@@ -155,7 +155,7 @@ Release consistency is complete:
 - the root package version is 0.7.2;
 - the Agent Bridge package/client version is 0.7.2;
 - both lockfiles were refreshed through the project-standard `uv` workflow;
-- README, `.env.example`, AGENTS, deployment docs, Agent Bridge docs, release references, and English/Chinese site content describe v0.7.2 as the current stable maintenance/reliability release;
+- at the v0.7.2 release, README, `.env.example`, AGENTS, deployment docs, Agent Bridge docs, release references, and English/Chinese site content described v0.7.2 as the current stable maintenance/reliability release;
 - current MCP capability surfaces are documented consistently as 11 / 13 / 20 / 22 tools;
 - site output is generated through the normal site build rather than hand-editing `site/dist`.
 
@@ -182,4 +182,4 @@ Delegated tasks used one objective, a narrow mutation boundary, explicit stop co
 
 ## 10. Release state
 
-v0.7.2 is the current stable ServerFS MCP release on the frozen v0.7 contract. The release is represented by the immutable `v0.7.2` tag and matching GitHub Release; both identify the final verified release commit and must not be moved or recreated.
+v0.7.2 is a frozen historical ServerFS MCP release on the v0.7 contract. Its immutable `v0.7.2` tag and matching GitHub Release record that release and must not be moved or recreated.

@@ -1,6 +1,6 @@
 # Phase E — user-scoped Agent Bridge deployment
 
-Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.7.2 remains the current published stable release; the `main` branch is developing v0.7.3 Runtime Lifecycle Reliability.** The deployment topology and user-scoped security boundary are unchanged.
+Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.7.3 is the current stable release, with Runtime Lifecycle Reliability.** The deployment topology and user-scoped security boundary are unchanged.
 
 The deployment has one non-negotiable rule:
 
@@ -143,7 +143,7 @@ Agent settings into the container, so these values remain inert without
 Provider secrets and shell-only environment are intentionally **not** stored in
 `.env`; they remain in the user-owned `provider.env` described in step 4. The experimental
 Jev advisory features are the one explicit exception: `SERVERFS_JEV_API_KEY` is their opt-in
-master gate in the current v0.7.2 release. Leave it empty to disable Preflight,
+master gate in the current v0.7.3 release. Leave it empty to disable Preflight,
 Runtime Router, and Approval Advisor functionality. When non-empty, the installer renders
 the key only into the user-owned
 `0600` Bridge `config.json`; it is never passed into the MCP container.
@@ -493,7 +493,7 @@ Before host acceptance, run both independent code gates: the repository-root gat
 `bash -n deployment/agent-bridge/*.sh` for deployment shell syntax. Root `pytest`
 collects only `tests/` and does not validate `agent_bridge/tests/`.
 
-For the ServerFS v0.7.2 package, verify the target host proves:
+For the current ServerFS v0.7.3 package, verify the target host proves:
 
 - install/update/rollback require no sudo/root;
 - real peer UID/GID equal the current login user;
@@ -510,7 +510,7 @@ For the ServerFS v0.7.2 package, verify the target host proves:
 - shared writer lease works across host/container;
 - rollback implementation and recovery tests remain green; the live base
   11-tool rollback/re-cutover drill was **WAIVED BY MAINTAINER for v0.3.0**
-  (2026-09-20) as a historical release decision and is not repeated as a v0.7.2
+  (2026-09-20) as a historical release decision and is not repeated as a v0.7.3
   verification requirement;
 - no provider credentials enter the MCP container;
 - MCP container still has no Internet egress;
@@ -523,6 +523,5 @@ to the default 11-tool surface. Workdir `AGENT_MODE/RUNTIMES` values in
 container.
 
 If post-release verification fails, use the documented rollback script to restore the
-previous user-scoped Bridge release, configuration and unit state. Do not recreate or move
-published release tags: `v0.7.2` is the current stable immutable release tag, and earlier
-v0.7.x tags remain immutable as well.
+previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The v0.7.3 release uses an immutable
+tag; earlier v0.7.x release tags remain immutable as well.

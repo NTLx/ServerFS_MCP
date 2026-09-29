@@ -48,11 +48,11 @@ v0.7.0 introduced reliability and evidence around the existing Bridge rather tha
 
 v0.7.1 keeps that contract unchanged and fixes a narrow Codex recovery edge case around a proven pre-provider-start control-socket failure. v0.7.2 adds maintenance-only recovery state hygiene: when lazy reconciliation proves `provider_active=false`, any still non-terminal ServerFS task is first marked `interrupted` with `AGENT_PROVIDER_INACTIVE`, pending interaction state becomes stale through the normal terminal transition, and only then is the recovery guard removed. Unknown provider state remains fail-closed and preserves the guard.
 
-### v0.7.3 development: lifecycle reliability
+### v0.7.3: lifecycle reliability
 
-The `main` branch adds retry-safe Agent submission for callers that lose the `task.submit` response. `submit_agent_task` accepts an optional opaque `idempotency_key`, distinct from `correlation_id`. Reusing the same key with the same semantic submission returns the retained original task and does not start a second provider turn; conflicting reuse fails with `AGENT_IDEMPOTENCY_CONFLICT`.
+The v0.7.3 release adds retry-safe Agent submission for callers that lose the `task.submit` response. `submit_agent_task` accepts an optional opaque `idempotency_key`, distinct from `correlation_id`. Reusing the same key with the same semantic submission returns the retained original task and does not start a second provider turn; conflicting reuse fails with `AGENT_IDEMPOTENCY_CONFLICT`.
 
-Agent lifetime is now administrator policy rather than a hard-coded 24-hour window. Development defaults are a 2-hour task timeout, a 30-minute approval/question timeout, four active tasks, and seven-day terminal retention. An unanswered interaction becomes stale and interrupts the task with `AGENT_INTERACTION_TIMED_OUT`. Explicit cancellation, including an approval decision of `cancel_task`, is persisted as terminal before the RPC returns. Provider interrupt is best-effort and internally bounded to 10 seconds so a stuck provider RPC cannot indefinitely block Bridge-side cancellation. The live writer lease is released only after background cleanup, and the persistent recovery guard is cleared only when provider-aware reconciliation proves the provider has stopped. Client disconnect or stopped polling alone does not cancel a healthy asynchronous task.
+Agent lifetime is now administrator policy rather than a hard-coded 24-hour window. Release defaults are a 2-hour task timeout, a 30-minute approval/question timeout, four active tasks, and seven-day terminal retention. An unanswered interaction becomes stale and interrupts the task with `AGENT_INTERACTION_TIMED_OUT`. Explicit cancellation, including an approval decision of `cancel_task`, is persisted as terminal before the RPC returns. Provider interrupt is best-effort and internally bounded to 10 seconds so a stuck provider RPC cannot indefinitely block Bridge-side cancellation. The live writer lease is released only after background cleanup, and the persistent recovery guard is cleared only when provider-aware reconciliation proves the provider has stopped. Client disconnect or stopped polling alone does not cancel a healthy asynchronous task.
 
 These limits are separate from the MCP-to-Bridge RPC timeout and provider event-idle timeout. The deployment `.env` uses `SERVERFS_AGENT_TASK_TIMEOUT_SECONDS`, `SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS`, `SERVERFS_AGENT_MAX_ACTIVE_TASKS`, and `SERVERFS_AGENT_TASK_RETENTION_HOURS`.
 
@@ -62,7 +62,7 @@ Final responses up to 256 KiB stay inline. Responses above 256 KiB through 8 MiB
 
 ## Deployment verification
 
-For Agent-enabled v0.7.2 deployment acceptance, run:
+For current Agent-enabled deployments, run:
 
 ```bash
 python3 deployment/agent-bridge/verify_host.py --require-runtimes

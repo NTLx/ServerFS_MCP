@@ -1,9 +1,9 @@
-# ServerFS MCP v0.7.3 Development Plan
+# ServerFS MCP v0.7.3 Release Plan
 
-Status: active development plan; **v0.7.2 remains the current stable release**
+Status: frozen/released; v0.7.3 is the current stable release, with release-state documentation finalized in this commit
 Theme: **Runtime Lifecycle Reliability**
 Previous stable baseline: v0.7.2
-Target release line: **v0.7.3**
+Release line: **v0.7.3**
 
 > v0.7.3 is a narrow reliability release. It addresses task-lifecycle defects exposed when
 > ChatGPT/MCP callers time out or disappear after Agent submission. It must not turn ServerFS
@@ -465,7 +465,7 @@ runtimes without starting/restarting provider daemons merely for the test.
 
 ## 11. Acceptance criteria
 
-v0.7.3 is implementation-complete only when all of the following are demonstrated:
+The v0.7.3 acceptance criteria were completed as follows:
 
 1. a lost submission response can be recovered by retrying the same idempotency key;
 2. recovery returns the original task and never starts duplicate provider work;
@@ -500,17 +500,16 @@ Not in v0.7.3:
 
 ## 13. Release rule
 
-Until all acceptance gates pass, v0.7.2 remains the stable release and v0.7.3 is development
-state only.
+All v0.7.3 acceptance gates are complete: implementation and regression coverage, root and Agent Bridge gates, deployment and E2E checks, documentation/site validation, and live acceptance. v0.7.3 is the current stable release.
 
-Do not tag, publish, or deploy v0.7.3 as stable until the implementation, regression tests,
-full gates, documentation/version alignment, and live acceptance are complete.
+The v0.7.3 release uses immutable tag `v0.7.3` and publishes stable GHCR tags `0.7.3`, `0.7`, and `latest`. These release-facing documents record the finalized release state; they do not assert that a tag or GitHub Release was created by this documentation change.
 
-## 14. Live acceptance defects discovered before release
+## 14. Live acceptance defects found and resolved
 
 The first user-scoped v0.7.3 live acceptance exposed four cancellation/recovery defects that
-were not visible in the original fake-provider unit coverage. They are release blockers until
-the repaired code is committed, rebuilt, redeployed, and re-accepted against real providers.
+were not visible in the original fake-provider unit coverage. The defects were repaired,
+committed, rebuilt, redeployed, and re-accepted against real providers; they are retained here
+as historical acceptance evidence.
 
 ### 14.1 Cancel RPC could report terminal state before the store was terminal
 
@@ -519,7 +518,7 @@ Bridge background coroutine, then immediately returned `status=cancelled`. The p
 could remain `running`/`waiting_*` until asynchronous `_run_task` cancellation cleanup finished.
 A live Claude cancellation demonstrated this mismatch.
 
-Required semantics:
+Accepted semantics:
 
 - explicit cancellation persists `TaskStatus.CANCELLED` before the RPC returns;
 - pending interaction becomes stale through the normal terminal transition;
@@ -529,7 +528,7 @@ Required semantics:
 - background provider cleanup plus provider-aware reconciliation remain authoritative for
   lease/guard release.
 
-Regression evidence must deliberately delay provider cleanup and prove both conditions at once:
+Regression coverage deliberately delays provider cleanup and proves both conditions at once:
 `get_task` already reports `cancelled`, while the writer lease still reports `WORKDIR_BUSY` until
 cleanup finishes.
 
@@ -542,7 +541,7 @@ local subprocess stopped, but later `reconcile_task()` had no proof of that stop
 `provider_active=None`. Live lazy reconciliation then kept the workspace recovery guard
 fail-closed indefinitely.
 
-Required semantics:
+Accepted semantics:
 
 - remember whether cancellation was explicitly requested before clearing `_cancel_requested`;
 - after a successful local SDK `disconnect()`, record `_locally_stopped` when cancellation had
@@ -556,7 +555,7 @@ Several lifecycle paths awaited `adapter.cancel()` directly: explicit cancel, in
 task deadline, approval-driven cancellation, and Bridge shutdown. A provider interrupt call that
 stalls could therefore hold the cancellation RPC or cleanup path past the MCP caller's own timeout.
 
-Required semantics:
+Accepted semantics:
 
 - provider cancellation is best-effort and internally bounded to 10 seconds;
 - when that bound expires, Bridge-side background cancellation still proceeds;
@@ -575,7 +574,7 @@ provider cancellation directly without immediately terminalizing the ServerFS ta
 the Bridge background coroutine. That left approval-driven cancellation with weaker semantics than
 the public `cancel_agent_task` path.
 
-Required semantics:
+Accepted semantics:
 
 - resolve and audit the approval response first;
 - then delegate cancellation to the same `cancel_task()` implementation used by the public tool;
@@ -583,12 +582,6 @@ Required semantics:
 - provider interruption stays bounded and writer lease/recovery-guard release still waits for safe
   background cleanup and reconciliation.
 
-Local post-fix verification copied the exact modified Bridge modules/tests through ServerFS's
-bounded binary channel into an isolated Python environment. The focused cancellation/recovery
-coverage passes, and the complete `test_service.py` + `test_claude_adapter.py` set passes 40/40
-using a minimal import-only Claude SDK stub while the repository's own FakeClaudeClient exercises
-adapter behavior. The complete Agent Bridge unit-test directory contains 130 tests; 129/129 pass
-when the single Python-3.13-specific UDS fixture is excluded. That fixture manually unlinks a test
-socket after `asyncio.start_unix_server()` has already removed it under Python 3.13, so it is not a
-ServerFS protocol failure. The repository's authoritative Python 3.12/uv CI remains required, as
-does real-provider live acceptance after redeployment.
+The cancellation/recovery regression coverage, complete root and Agent Bridge gates, deployment
+and E2E checks, documentation/site gate, and real-provider live acceptance all passed. This
+release record is frozen; no acceptance gates remain outstanding.
