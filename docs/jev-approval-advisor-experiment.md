@@ -7,8 +7,8 @@ an Approval Advisor for provider-originated approval requests.
 
 ## Goal
 
-When Codex or Claude pauses an active task and asks the user to approve a command, file
-change, tool call, provider permission, or similar capability, the Bridge may ask Jev for a
+When Codex, Claude or Qoder pauses an active task and asks the user to approve a command,
+file change, tool call, provider permission, or similar capability, the Bridge may ask Jev for a
 structured risk/fit assessment before exposing the pending approval to the user.
 
 The Advisor is **advisory only**. It does not:

@@ -8,7 +8,7 @@ it as a subprocess and speaks to it over a real AF_UNIX socket:
 
 This is an integration harness, not production behaviour. It maps the public
 runtime name ``codex`` onto the deterministic ``FakeAdapter`` so the MCP
-surface -- whose public allowlist is exactly codex/claude -- can be driven end
+surface -- whose public allowlist is exactly codex/claude/qoder -- can be driven end
 to end without a provider. The production ``FakeAdapter`` keeps
 ``name == "fake"`` and is never added to the MCP runtime allowlist.
 """

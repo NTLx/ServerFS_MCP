@@ -38,6 +38,11 @@ class FakeAgentClient:
                         "available": True,
                         "capabilities": {"persistent_session": True, "live_steer": False},
                     },
+                    {
+                        "name": "qoder",
+                        "available": True,
+                        "capabilities": {"persistent_session": True, "live_steer": False},
+                    },
                     {"name": "fake", "available": True},
                 ]
             },
@@ -82,7 +87,7 @@ def agent_workdir(tmp_path: Path, *, enabled: bool = True) -> Workdir:
         description="Agent test workdir",
         read_only=not enabled,
         agent_mode=AGENT_MODE_WORKSPACE_WRITE if enabled else AGENT_MODE_DISABLED,
-        agent_runtimes=frozenset({"codex", "claude"}) if enabled else frozenset(),
+        agent_runtimes=frozenset({"codex", "claude", "qoder"}) if enabled else frozenset(),
     )
 
 
@@ -265,7 +270,7 @@ def test_list_agent_runtimes_filters_non_public_or_unallowlisted_runtime(tmp_pat
     client = FakeAgentClient()
     server = server_with_client(tmp_path, client)
     result = call_success(server, "list_agent_runtimes", {})
-    assert [item["name"] for item in result["runtimes"]] == ["codex", "claude"]
+    assert [item["name"] for item in result["runtimes"]] == ["codex", "claude", "qoder"]
     assert client.calls == [("runtime.list", {})]
 
 

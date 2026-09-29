@@ -7,18 +7,19 @@ Router layered on the existing Agent Task Preflight.
 
 ## Goal
 
-For every Jev-enabled `submit_agent_task`, recommend one of four execution routes:
+For every Jev-enabled `submit_agent_task`, recommend one execution route. The v0.7.3 stable release has four choices; the v0.8.0 development line adds `qoder` as a fifth:
 
 - `direct_serverfs_tool`
 - `codex`
 - `claude`
+- `qoder`
 - `human_review`
 
 The recommendation is advisory only. It does not change the submitted runtime, authorize
 anything, block the task, rewrite the prompt, invoke a different MCP tool, or create a
 human approval request.
 
-The existing explicit `runtime=codex|claude` public contract remains unchanged. There is
+The explicit `runtime=codex|claude|qoder` public contract on the v0.8.0 development line remains unchanged. There is
 no `runtime=auto`.
 
 ## Why the router shares the Preflight request
@@ -57,6 +58,10 @@ Recommend the Claude Code native Agent route when the task explicitly requests C
 Claude Code, or requires Claude-specific sessions, settings, skills, or provider-native
 behavior.
 
+### qoder
+
+Recommend the Qoder native Agent route when the task explicitly requests Qoder/Qoder CLI or depends on Qoder-specific sessions, settings, skills, plugins, or provider-native behavior.
+
 ### human_review
 
 Recommend human review when an automated route should not be chosen yet because the task
@@ -82,6 +87,7 @@ A Jev-enabled `submit_agent_task` keeps the existing `preflight` field and adds:
         "direct_serverfs_tool": 0.91,
         "codex": 0.05,
         "claude": 0.01,
+        "qoder": 0.00,
         "human_review": 0.03
       }
     },
@@ -111,7 +117,7 @@ The Runtime Router has no authority over:
 - writer leases;
 - provider approvals or questions;
 - MCP filesystem mutations;
-- Codex/Claude settings or credentials;
+- Codex/Claude/Qoder settings or credentials;
 - provider safety checks.
 
 A recommendation that disagrees with the requested runtime is evidence for evaluation only.
@@ -125,6 +131,7 @@ Router evaluation should cover at least:
 - Git/test/build/deployment tasks;
 - explicit Codex requests;
 - explicit Claude/Claude Code requests;
+- explicit Qoder/Qoder CLI requests;
 - tasks requiring human authorization or business judgment;
 - intentionally vague/open-ended tasks;
 - Chinese and English prompts.

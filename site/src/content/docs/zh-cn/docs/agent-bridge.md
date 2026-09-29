@@ -1,9 +1,9 @@
 ---
 title: Agent Bridge
-description: 可选的结构化 Codex 与 Claude 原生运行时委派。
+description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时委派。
 ---
 
-Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex 或 Claude 放进 MCP 容器。
+Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.7.3 仍是当前稳定版本；v0.8.0 开发线在同一 provider-neutral 工具/RPC 契约下新增 Qoder。
 
 ```text
 ChatGPT
@@ -17,7 +17,8 @@ Unix socket
   ▼
 宿主机 Agent Bridge
   ├── Codex
-  └── Claude Code
+  ├── Claude Code
+  └── Qoder
 ```
 
 ## 为什么要独立存在
@@ -41,6 +42,12 @@ Unix socket
 
 - 20 个工具：文件系统 + Agent
 - 22 个工具：文件系统 + 二进制 + Agent
+
+## v0.8 Qoder runtime 开发
+
+v0.8.0 开发线把 `qoder` 加为第三个 production runtime。它使用官方 Qoder Agent SDK 和服务器现有的 `qodercli`，支持原生 session continuation、approval/`AskUserQuestion` brokerage，以及通过 `interrupt()` 取消任务。Production ServerFS **不会**增加模型选择字段：Qoder 的模型选择仍由 provider 原生环境负责；只有专门的 live-smoke 脚本可以固定一个测试模型，而且不会改变 MCP schema。
+
+Qoder 的重启语义保持保守：已经持久化的 native session 可以由新 task 继续，但 ServerFS 不宣称 Bridge 重启后可以重新附着到旧的 in-flight qodercli 进程。Live steering 也明确保持关闭：2026-09-29 的真实 SDK/CLI 探针证明，`priority="now"` 会先让当前 `receive_response()` 以 `error_during_execution` Result 结束，而真正的 steer 成功结果只会在第二次 response 迭代中出现；这与当前 one-task/one-terminal-Result 的 Bridge 契约不兼容。
 
 ## v0.7 Runtime Reliability
 
@@ -68,7 +75,7 @@ workspace-write 任务还会在现有 `flock` 之外发布持久化的 slot reco
 python3 deployment/agent-bridge/verify_host.py --require-runtimes
 ```
 
-严格模式先验证用户级 Bridge 部署，再对所有已启用原生 runtime 做有界、只读的 `runtime.list` 重试。它不会启动、重启、bootstrap、update、kill 或以其它方式管理 Codex/Claude；如果 retry 窗口结束后 runtime 仍不可用，验收失败，provider 生命周期诊断仍由运维人员通过原生工具完成。对 Codex 而言，如果 `codex app-server daemon update` 成功但返回 `runningVersion: null`，同时 managed control socket 不存在，应先确认没有活动 Agent task，再执行不带 `--remote-control` 的 `codex app-server daemon bootstrap`，随后重新核对 `daemon version` 并再次运行严格验收。
+严格模式先验证用户级 Bridge 部署，再对所有已启用原生 runtime 做有界、只读的 `runtime.list` 重试。它不会启动、重启、bootstrap、update、kill 或以其它方式管理 Codex/Claude/Qoder；如果 retry 窗口结束后 runtime 仍不可用，验收失败，provider 生命周期诊断仍由运维人员通过原生工具完成。对 Codex 而言，如果 `codex app-server daemon update` 成功但返回 `runningVersion: null`，同时 managed control socket 不存在，应先确认没有活动 Agent task，再执行不带 `--remote-control` 的 `codex app-server daemon bootstrap`，随后重新核对 `daemon version` 并再次运行严格验收。
 
 重建 MCP 容器时必须同时保留 `-f compose.yml -f compose.agent.yml`；如果只使用基础 Compose，即使 `.env` 中仍保留 Agent 策略，也会丢失 Agent socket/lock 挂载。
 

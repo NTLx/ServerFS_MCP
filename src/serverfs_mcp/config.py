@@ -124,7 +124,7 @@ def _get_agent_runtimes(
 ) -> frozenset[str]:
     raw = env.get(key, "")
     values = [item.strip().lower() for item in raw.split(",") if item.strip()]
-    if len(values) != len(set(values)) or set(values) - {"codex", "claude"}:
+    if len(values) != len(set(values)) or set(values) - {"codex", "claude", "qoder"}:
         raise ValueError(f"invalid {key} value {raw!r}")
     return frozenset(values)
 

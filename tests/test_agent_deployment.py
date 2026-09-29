@@ -75,6 +75,7 @@ def test_build_config_uses_same_user_identity_and_user_paths(tmp_path: Path) -> 
     }
     assert config["codex"]["enabled"] is True
     assert config["claude"]["enabled"] is False
+    assert config["qoder"]["enabled"] is False
     assert "jev" not in config
     assert config["workdirs"] == [
         {
@@ -86,6 +87,25 @@ def test_build_config_uses_same_user_identity_and_user_paths(tmp_path: Path) -> 
             "agent_runtimes": ["codex"],
         }
     ]
+
+
+def test_build_config_enables_qoder_with_absolute_host_binary(tmp_path: Path) -> None:
+    values = valid_env(tmp_path)
+    qoder = make_executable(tmp_path / "qodercli")
+    values["WORKDIR_01_AGENT_RUNTIMES"] = "qoder"
+    values["SERVERFS_QODER_BIN"] = str(qoder)
+
+    config = render.build_config(values)
+
+    assert config["codex"]["enabled"] is False
+    assert config["claude"]["enabled"] is False
+    assert config["qoder"] == {
+        "enabled": True,
+        "qoder_bin": str(qoder),
+        "probe_timeout_seconds": 5.0,
+        "event_idle_timeout_seconds": None,
+    }
+    assert config["workdirs"][0]["agent_runtimes"] == ["qoder"]
 
 
 @pytest.mark.parametrize(
@@ -637,6 +657,7 @@ def test_single_env_example_contains_user_scoped_agent_deployment() -> None:
         "SERVERFS_AGENT_BRIDGE_STATE_DIR=",
         "SERVERFS_CODEX_BIN=",
         "SERVERFS_CLAUDE_BIN=",
+        "SERVERFS_QODER_BIN=",
     ):
         assert key in text
     assert re.search(r"(?m)^SERVERFS_AGENT_PEER_UID=$", text)

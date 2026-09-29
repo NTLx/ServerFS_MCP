@@ -21,7 +21,7 @@ ChatGPT
        /run/serverfs-agent-locks   <- user-owned host runtime dir, bind RO
   -> host Unix socket
   -> systemctl --user serverfs-agent-bridge.service
-  -> native Codex / Claude Code environment of the SAME login user
+  -> native Codex / Claude Code / Qoder environment of the SAME login user
 ```
 
 The base `compose.yml` remains Agent-unaware. Agent deployment is opt-in via
@@ -159,10 +159,10 @@ WORKDIR_01_ALIAS=ServerFS
 WORKDIR_01_PATH=/srv/ServerFS_MCP
 WORKDIR_01_READ_ONLY=false
 WORKDIR_01_AGENT_MODE=workspace-write
-WORKDIR_01_AGENT_RUNTIMES=codex,claude
+WORKDIR_01_AGENT_RUNTIMES=codex,claude,qoder
 ```
 
-Native Codex/Claude currently require `workspace-write`, therefore the same
+Native Codex/Claude/Qoder currently require `workspace-write`, therefore the same
 workdir must have `READ_ONLY=false`.
 
 Leave Agent mode disabled for workdirs that should not delegate Agents.
@@ -214,6 +214,7 @@ executable paths:
 ```bash
 command -v codex
 command -v claude
+command -v qodercli
 ```
 
 Example:
@@ -221,10 +222,11 @@ Example:
 ```env
 SERVERFS_CODEX_BIN=/home/me/.local/bin/codex
 SERVERFS_CLAUDE_BIN=/home/me/.local/bin/claude
+SERVERFS_QODER_BIN=/home/me/.local/bin/qodercli
 ```
 
 Provider authentication/settings remain the same user's native files. Jev is not an
-Agent runtime and does not inherit Codex/Claude credentials. For the experimental advisory
+Agent runtime and does not inherit Codex/Claude/Qoder credentials. For the experimental advisory
 Jev features, put the TypeSafe key only in the repository `.env` as
 `SERVERFS_JEV_API_KEY=<key>`; an empty value means all Jev advisory features are absent. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) for the model contract, request economy, and authority boundary.
 
@@ -329,7 +331,7 @@ It verifies:
 - a real `runtime.list` RPC succeeds over the Unix socket;
 - with `--require-runtimes`, every enabled native runtime reports `available=true` within a bounded 10-second retry window.
 
-The strict mode is read-only with respect to provider lifecycle: it does not start, restart, bootstrap, update, kill, or otherwise manage Codex/Claude. A runtime that remains unavailable at the deadline fails verification and must be diagnosed through its provider-native lifecycle.
+The strict mode is read-only with respect to provider lifecycle: it does not start, restart, bootstrap, update, kill, or otherwise manage Codex/Claude/Qoder. A runtime that remains unavailable at the deadline fails verification and must be diagnosed through its provider-native lifecycle.
 
 Because the user unit is `Type=simple`, systemd can report the service started just
 before the Bridge binds `bridge.sock`. Verification waits briefly for that startup-only
@@ -398,6 +400,7 @@ Compare the same user's direct CLIs:
 ```bash
 "$SERVERFS_CODEX_BIN" --version
 "$SERVERFS_CLAUDE_BIN" --version
+"$SERVERFS_QODER_BIN" --version
 ```
 
 with `list_agent_runtimes`.

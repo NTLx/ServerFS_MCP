@@ -13,7 +13,7 @@ The experiment does **not** change:
 - workdir/path authorization;
 - runtime allowlists;
 - writer-lease semantics;
-- Codex/Claude adapters or native provider settings;
+- Codex/Claude/Qoder adapters or native provider settings;
 - approval/question brokerage;
 - the MCP container's no-Internet-egress invariant.
 

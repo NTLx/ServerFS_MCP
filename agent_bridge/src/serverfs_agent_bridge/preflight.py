@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 JEV_MODEL = "jev-1.13.0"
 _EXECUTION_FIT_CHOICES = ("structured_serverfs", "native_agent", "unclear")
-_ROUTE_CHOICES = ("direct_serverfs_tool", "codex", "claude", "human_review")
+_ROUTE_CHOICES = ("direct_serverfs_tool", "codex", "claude", "qoder", "human_review")
 _APPROVAL_RECOMMENDATIONS = (
     "approve_once",
     "approve_session",
@@ -410,8 +410,12 @@ class JevTaskPreflight:
                     "claude": (
                         "Use the Claude Code native Agent route. Choose this when the task "
                         "explicitly requests Claude/Claude Code or requires Claude-specific "
-                        "sessions, settings, "
-                        "skills, or provider-native behavior."
+                        "sessions, settings, skills, or provider-native behavior."
+                    ),
+                    "qoder": (
+                        "Use the Qoder native Agent route. Choose this when the task explicitly "
+                        "requests Qoder/Qoder CLI or requires Qoder-specific sessions, settings, "
+                        "skills, plugins, or provider-native behavior."
                     ),
                     "human_review": (
                         "Do not choose an automated execution route yet. Choose this when the task "

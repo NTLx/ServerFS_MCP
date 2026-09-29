@@ -59,13 +59,14 @@ TypeSafe 当前文档说明 Jev 1.13 只接受文本输入，总请求预算为 
 - `direct_serverfs_tool`
 - `codex`
 - `claude`
+- `qoder`（v0.8.0 开发线）
 - `human_review`
 
 它**不会**增加 `runtime=auto`。调用者显式选择的 runtime，以及 workdir 上的确定性 runtime allowlist，仍然具有最终约束力。
 
 ### Approval Advisor
 
-如果 Codex 或 Claude 后续真的生成 provider approval request，ServerFS 才可能针对这个具体 approval 再发起一次 Jev 请求。
+如果 Codex、Claude 或 Qoder 后续真的生成 provider approval request，ServerFS 才可能针对这个具体 approval 再发起一次 Jev 请求。
 
 它评估：
 
@@ -124,6 +125,7 @@ Preflight 与 Runtime Router 共用一次 `system_one`，因为 Jev 可以针对
 - 有界文件读取；
 - Git / pytest 任务；
 - 明确的 Codex / Claude provider 选择错误；
+- Qoder 路由由 v0.8.0 确定性测试覆盖，在补充真实 router 验证前仍只作为 advisory 能力；
 - 应交由人工判断的任务；
 - 故意捆绑或宽泛的 prompt；
 - 一次性有界写入；

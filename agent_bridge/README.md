@@ -1,6 +1,6 @@
-# ServerFS Agent Bridge — v0.7.3
+# ServerFS Agent Bridge — v0.7.3 stable / v0.8.0 development
 
-This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.7.3 release. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability, recovery evidence, immutable execution manifests and bounded large-result retrieval, v0.7.1 added a targeted Codex reconciliation hotfix, v0.7.2 closed stale non-terminal recovery state, and v0.7.3 adds retry-safe submission plus bounded task/interaction lifetime without turning the Bridge into a scheduler.
+This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.7.3 release. Development on `main` is preparing v0.8.0 with Qoder as the third production native runtime; the provider-neutral Bridge RPC and nine MCP Agent tools remain unchanged. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability, recovery evidence, immutable execution manifests and bounded large-result retrieval, v0.7.1 added a targeted Codex reconciliation hotfix, v0.7.2 closed stale non-terminal recovery state, and v0.7.3 adds retry-safe submission plus bounded task/interaction lifetime without turning the Bridge into a scheduler.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
@@ -45,6 +45,18 @@ Phase C is frozen and provides **Claude Code native-mode delegation**:
 - `interrupt()` cancellation
 - live steer disabled until real installed-SDK behavior proves the intended semantics
 
+The v0.8.0 development line adds **Qoder native-mode delegation** under the same adapter contract:
+
+- official Python Qoder Agent SDK / `QoderSDKClient`;
+- existing system-installed `qodercli` through `cli_path` and the current user's native Qoder login;
+- explicit `user/project/local` setting sources;
+- native session-ID persistence and continuation through `resume`;
+- native `can_use_tool` approval and `AskUserQuestion` brokerage;
+- `interrupt()` cancellation;
+- Qoder's provider-native model selection remains outside the public ServerFS API; production tasks do not receive a ServerFS model override;
+- live steering is deliberately disabled: the 2026-09-29 installed-SDK/CLI probe showed `priority="now"` ends the first `receive_response()` with `error_during_execution`, while the steered success arrives only from a second response iteration, which does not fit the current one-task/one-terminal-Result Bridge contract;
+- restart recovery is declared only as `session-resume`: a persisted Qoder session does not prove that an old in-flight process can be reattached.
+
 Phase D is complete and frozen. It provides the ServerFS MCP client/tool surface and the
 shared writer-lease integration. Phase E is also complete and frozen: production
 Compose/systemd wiring, runtime permissions and ChatGPT end-to-end deployment were
@@ -86,7 +98,7 @@ never encode, disguise, split or rewrite prompts in order to evade provider safe
 
 When the opt-in Jev advisor is configured, one advisory call evaluates those properties before
 the writer lease is acquired and also produces a Runtime Router recommendation among
-`direct_serverfs_tool`, `codex`, `claude`, and `human_review`. Successful quality results are
+`direct_serverfs_tool`, `codex`, `claude`, `qoder`, and `human_review` on the v0.8.0 development line (v0.7.3 stable has the original four-way vocabulary). Successful quality results are
 persisted as `task.preflight`; the derived router object is persisted as `task.routing_advice`.
 Both are deliberately fail-open: an unavailable Jev evaluation is reported as
 `{"status": "unavailable"}` and the authorized task still runs on the explicitly requested
@@ -99,8 +111,8 @@ runtime/workdir/profile, mutate files, or rewrite the prompt. The current experi
 
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
 paths must already be real directories, aliases and slots are validated, and unknown
-runtime names are rejected. The development `fake` runtime remains test-only; Codex and
-Claude are available only when their explicit provider enable setting and workdir
+runtime names are rejected. The development `fake` runtime remains test-only; Codex,
+Claude and Qoder are available only when their explicit provider enable setting and workdir
 allowlist both permit them. Native provider modes currently require
 `agent_mode=workspace-write` so the Bridge holds the writer lease; this does not impose
 a provider permission mode. If both peer credential fields are `null`, the UDS accepts
@@ -135,7 +147,7 @@ uv run python tests/e2e/run_e2e.py      # from the repository root
 It launches the Bridge over a real Unix socket and drives the published MCP surface
 against it, covering runtime listing, submit/poll/events, approval and question
 round-trips, steering, cancellation and the shared cross-process writer lease. The MCP
-public runtime allowlist is only `codex`/`claude`, so the harness supplies the
+public runtime allowlist is `codex`/`claude`/`qoder`, so the harness supplies the
 deterministic `FakeAdapter` under the name `codex` on the Bridge side; the production
 adapter keeps `name == "fake"` and never enters that allowlist.
 
@@ -236,11 +248,36 @@ cleanup. If the installed Claude/Agent SDK auto-resolves `AskUserQuestion` witho
 waiting for the Bridge, Phase C is blocked on that provider behavior; do not hide the
 failure by changing the user's native permission configuration.
 
+## v0.8 Qoder live smoke
+
+The deterministic suite uses a Qoder SDK test double. The real smoke uses the installed
+`qodercli` and the same login/configuration as the server user, but its model override is
+deliberately test-only: normal ServerFS submissions still expose no model parameter.
+
+Prepare a development-only Bridge config that enables `qoder`, points `qoder.qoder_bin`
+at the existing system `qodercli`, and allowlists `qoder` on a writable/workspace-write
+workdir. Then run:
+
+```bash
+uv sync --frozen
+uv run python scripts/qoder_live_smoke.py \
+  --config /path/to/development-agent-bridge.json \
+  --workdir ServerFS \
+  --model Qwen3.8-Flash \
+  --timeout 300
+```
+
+The smoke script currently refuses any model other than the explicitly approved
+`Qwen3.8-Flash` test model. It verifies provider probing, a new native session, explicit
+session continuation, a real `AskUserQuestion` round-trip, a real file write and cleanup.
+This model pin is validation policy only and is not part of production Bridge config or MCP
+schema.
+
 ## Security
 
-- The Bridge runs non-root. Phase E production deployment uses the same normal login user whose native Codex/Claude environment it delegates to; it does not create a dedicated system account.
+- The Bridge runs non-root. Phase E production deployment uses the same normal login user whose native Codex/Claude/Qoder environment it delegates to; it does not create a dedicated system account.
 - The socket is local-only; there is no TCP listener.
-- `workspace-write` must be explicitly enabled per workdir for Codex native mode.
+- `workspace-write` must be explicitly enabled per workdir for every production native runtime.
 - A Codex task holds the exclusive workdir lease for its active turn.
 - The selected ServerFS workdir is the Codex starting `cwd` and lease unit, not a Codex
   sandbox boundary.
@@ -259,4 +296,7 @@ failure by changing the user's native permission configuration.
 - Do not add generic shell/argv/environment RPC methods.
 - Do not place provider credentials in the existing ServerFS MCP container.
 
-The architecture contract is `../dev_plan_v0.3.md`.
+- Qoder uses the existing system CLI/login and official Agent SDK. Production ServerFS does not expose a Qoder model selector; the dedicated live-smoke script alone may pin an explicit disposable test model.
+- Qoder `approve_session` may echo only provider-supplied permission suggestions; the Bridge does not invent or persist permission rules.
+
+The frozen provider-neutral architecture contract is `../dev_plan_v0.3.md`; the Qoder extension is specified in `../dev_plan_v0.8.md`, with real validation evidence in `../docs/qoder-runtime-validation-2026-09-29.md`.

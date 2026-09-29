@@ -59,13 +59,14 @@ The same task-submission Jev request also recommends one route:
 - `direct_serverfs_tool`
 - `codex`
 - `claude`
+- `qoder` (v0.8.0 development line)
 - `human_review`
 
 This does **not** add `runtime=auto`. The explicitly requested runtime and deterministic per-workdir runtime policy remain authoritative.
 
 ### Approval Advisor
 
-If Codex or Claude later produces a real provider approval request, ServerFS may make one additional Jev request for that concrete approval.
+If Codex, Claude or Qoder later produces a real provider approval request, ServerFS may make one additional Jev request for that concrete approval.
 
 It evaluates:
 
@@ -124,6 +125,7 @@ The current integration has been live-tested with:
 - bounded filesystem reads;
 - Git/test tasks;
 - explicit Codex/Claude provider mismatches;
+- Qoder routing is covered by the v0.8.0 deterministic tests and must remain advisory until additional live-router validation is recorded;
 - human-review decisions;
 - intentionally bundled or vague prompts;
 - bounded one-time writes;

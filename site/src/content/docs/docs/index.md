@@ -7,7 +7,7 @@ ServerFS MCP exposes explicitly configured Linux directories as **controlled wor
 
 Current stable release: **v0.7.3**.
 
-It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations, bounded whole-file binary transfer, and an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge for Codex or Claude remains optional, and can itself opt into advisory-only TypeSafe Jev support without changing the MCP tool surface.
+It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations, bounded whole-file binary transfer, and an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge remains optional; the v0.8.0 development line adds Qoder beside Codex and Claude without changing the provider-neutral MCP tool surface, and the Bridge can itself opt into advisory-only TypeSafe Jev support.
 
 ## Capability surfaces
 
@@ -27,7 +27,7 @@ There is no shell, generic command executor, recursive delete, or unguarded over
 - [Architecture](./architecture/) — understand the container, tunnel, and Agent Bridge boundaries.
 - [Security Model](./security/) — review the defense-in-depth model.
 - [Binary Transfer](./binary-transfer/) — enable bounded download/upload, including optional ChatGPT file-parameter ingress.
-- [Agent Bridge](./agent-bridge/) — opt into structured Codex/Claude delegation.
+- [Agent Bridge](./agent-bridge/) — opt into structured Codex/Claude/Qoder delegation.
 - [Jev Advisors](./jev-advisors/) — optional experimental task preflight, runtime routing advice, and approval advice included in the v0.7.3 host Bridge.
 
 For implementation detail and the complete operational reference, see the repository [README](https://github.com/NTLx/ServerFS_MCP#readme).

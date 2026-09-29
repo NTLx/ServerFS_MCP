@@ -262,14 +262,18 @@ def verify(*, require_runtimes: bool = False) -> None:
         raise VerifyError("installed Agent Bridge entrypoint is missing or not executable")
 
     enabled_runtimes: set[str] = set()
-    for provider in ("codex", "claude"):
+    provider_binaries = {
+        "codex": "codex_bin",
+        "claude": "claude_bin",
+        "qoder": "qoder_bin",
+    }
+    for provider, key in provider_binaries.items():
         section = config.get(provider)
         if not isinstance(section, dict):
             raise VerifyError(f"missing {provider} config section")
         if not section.get("enabled"):
             continue
         enabled_runtimes.add(provider)
-        key = "codex_bin" if provider == "codex" else "claude_bin"
         raw = section.get(key)
         if not isinstance(raw, str) or not raw:
             raise VerifyError(f"enabled {provider} has no executable path")

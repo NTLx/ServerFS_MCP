@@ -23,6 +23,7 @@ _CONFIG_KEYS = frozenset(
         "limits",
         "codex",
         "claude",
+        "qoder",
         "jev",
         "workdirs",
     }
@@ -47,6 +48,14 @@ _CODEX_KEYS = frozenset(
         "request_timeout_seconds",
         "event_idle_timeout_seconds",
         "max_message_bytes",
+    }
+)
+_QODER_KEYS = frozenset(
+    {
+        "enabled",
+        "qoder_bin",
+        "probe_timeout_seconds",
+        "event_idle_timeout_seconds",
     }
 )
 _JEV_KEYS = frozenset({"api_key"})
@@ -88,6 +97,14 @@ class ClaudeSettings:
 
 
 @dataclass(frozen=True)
+class QoderSettings:
+    enabled: bool = False
+    qoder_bin: str = "qodercli"
+    probe_timeout_seconds: float = 5.0
+    event_idle_timeout_seconds: float | None = None
+
+
+@dataclass(frozen=True)
 class LifecycleLimits:
     task_timeout_seconds: int = 7200
     interaction_timeout_seconds: int = 1800
@@ -115,6 +132,7 @@ class BridgeConfig:
     limits: LifecycleLimits
     codex: CodexSettings
     claude: ClaudeSettings
+    qoder: QoderSettings
     jev: JevSettings
     policies: PolicyRegistry
 
@@ -189,6 +207,7 @@ class BridgeConfig:
         limits = _load_lifecycle_limits(data.get("limits"))
         codex = _load_codex_settings(data.get("codex"))
         claude = _load_claude_settings(data.get("claude"))
+        qoder = _load_qoder_settings(data.get("qoder"))
         jev = _load_jev_settings(data.get("jev"))
         codex_policies = [policy for policy in policies if "codex" in policy.runtimes]
         if not codex.enabled and codex_policies:
@@ -205,6 +224,15 @@ class BridgeConfig:
         if any(policy.mode is not AgentMode.WORKSPACE_WRITE for policy in claude_policies):
             raise ValueError(
                 "claude native mode requires agent_mode=workspace-write "
+                "for every allowlisted workdir"
+            )
+
+        qoder_policies = [policy for policy in policies if "qoder" in policy.runtimes]
+        if not qoder.enabled and qoder_policies:
+            raise ValueError("qoder runtime is allowlisted but qoder.enabled is false")
+        if any(policy.mode is not AgentMode.WORKSPACE_WRITE for policy in qoder_policies):
+            raise ValueError(
+                "qoder native mode requires agent_mode=workspace-write "
                 "for every allowlisted workdir"
             )
 
@@ -225,6 +253,7 @@ class BridgeConfig:
             limits=limits,
             codex=codex,
             claude=claude,
+            qoder=qoder,
             jev=jev,
             policies=PolicyRegistry(policies),
         )
@@ -292,6 +321,38 @@ def _load_claude_settings(value: Any) -> ClaudeSettings:
     return ClaudeSettings(
         enabled=enabled,
         claude_bin=claude_bin,
+        probe_timeout_seconds=probe_timeout,
+        event_idle_timeout_seconds=event_idle_timeout,
+    )
+
+
+def _load_qoder_settings(value: Any) -> QoderSettings:
+    if value is None:
+        return QoderSettings()
+    if not isinstance(value, dict):
+        raise ValueError("qoder must be an object")
+    _reject_unknown_keys(value, _QODER_KEYS, "qoder")
+
+    enabled = _strict_bool(value.get("enabled", False), "qoder.enabled")
+    qoder_bin = _strict_string(value.get("qoder_bin", "qodercli"), "qoder.qoder_bin")
+    if any(char in qoder_bin for char in ("\x00", "\n", "\r")):
+        raise ValueError("qoder.qoder_bin contains an invalid character")
+    probe_timeout = _strict_positive_number(
+        value.get("probe_timeout_seconds", 5.0),
+        "qoder.probe_timeout_seconds",
+    )
+    event_idle_timeout_value = value.get("event_idle_timeout_seconds")
+    event_idle_timeout = (
+        None
+        if event_idle_timeout_value is None
+        else _strict_positive_number(
+            event_idle_timeout_value,
+            "qoder.event_idle_timeout_seconds",
+        )
+    )
+    return QoderSettings(
+        enabled=enabled,
+        qoder_bin=qoder_bin,
         probe_timeout_seconds=probe_timeout,
         event_idle_timeout_seconds=event_idle_timeout,
     )

@@ -28,7 +28,7 @@ _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 _AGENT_MODES = {"disabled", "review", "workspace-write"}
-_RUNTIMES = {"codex", "claude"}
+_RUNTIMES = {"codex", "claude", "qoder"}
 
 
 class ConfigRenderError(ValueError):
@@ -259,7 +259,7 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         if mode == "workspace-write" and read_only:
             raise ConfigRenderError(f"{prefix}: workspace-write requires READ_ONLY=false")
         if runtimes and mode != "workspace-write":
-            raise ConfigRenderError(f"{prefix}: native Codex/Claude require workspace-write")
+            raise ConfigRenderError(f"{prefix}: native Codex/Claude/Qoder require workspace-write")
 
         host_path = Path(host_path_raw)
         if not host_path.is_absolute():
@@ -284,10 +284,13 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         enabled_runtimes.update(runtimes)
 
     if not enabled_runtimes:
-        raise ConfigRenderError("at least one workdir must explicitly enable codex or claude")
+        raise ConfigRenderError(
+            "at least one workdir must explicitly enable codex, claude or qoder"
+        )
 
     codex_enabled = "codex" in enabled_runtimes
     claude_enabled = "claude" in enabled_runtimes
+    qoder_enabled = "qoder" in enabled_runtimes
     codex_bin = _provider_binary(
         values,
         "SERVERFS_CODEX_BIN",
@@ -297,6 +300,11 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         values,
         "SERVERFS_CLAUDE_BIN",
         enabled=claude_enabled,
+    )
+    qoder_bin = _provider_binary(
+        values,
+        "SERVERFS_QODER_BIN",
+        enabled=qoder_enabled,
     )
     jev_api_key = _optional_api_key(
         values.get("SERVERFS_JEV_API_KEY", ""),
@@ -360,6 +368,16 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
             "probe_timeout_seconds": _positive_float(
                 values.get("SERVERFS_CLAUDE_PROBE_TIMEOUT_SECONDS", ""),
                 "SERVERFS_CLAUDE_PROBE_TIMEOUT_SECONDS",
+                5.0,
+            ),
+            "event_idle_timeout_seconds": None,
+        },
+        "qoder": {
+            "enabled": qoder_enabled,
+            "qoder_bin": qoder_bin,
+            "probe_timeout_seconds": _positive_float(
+                values.get("SERVERFS_QODER_PROBE_TIMEOUT_SECONDS", ""),
+                "SERVERFS_QODER_PROBE_TIMEOUT_SECONDS",
                 5.0,
             ),
             "event_idle_timeout_seconds": None,

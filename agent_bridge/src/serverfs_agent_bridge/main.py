@@ -7,7 +7,7 @@ import asyncio
 import signal
 from pathlib import Path
 
-from .adapters import ClaudeAdapter, CodexAdapter, FakeAdapter
+from .adapters import ClaudeAdapter, CodexAdapter, FakeAdapter, QoderAdapter
 from .config import BridgeConfig
 from .leases import LeaseManager
 from .preflight import JevTaskPreflight
@@ -31,6 +31,9 @@ async def _serve(
     if config.claude.enabled:
         claude = ClaudeAdapter(config.claude)
         adapters[claude.name] = claude
+    if config.qoder.enabled:
+        qoder = QoderAdapter(config.qoder)
+        adapters[qoder.name] = qoder
 
     preflight = (
         JevTaskPreflight.from_api_key(config.jev.api_key)

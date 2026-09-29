@@ -40,9 +40,9 @@ class AgentMode(StrEnum):
     WORKSPACE_WRITE = "workspace-write"
 
 
-# The v0.3 configuration validates provider names centrally. Phase A supplies
-# the deterministic ``fake`` runtime; Phase B adds Codex and Phase C adds Claude.
-KNOWN_RUNTIME_NAMES = frozenset({"fake", "codex", "claude"})
+# Runtime names are validated centrally. Phase A supplies the deterministic
+# ``fake`` runtime; production runtimes are Codex, Claude and Qoder.
+KNOWN_RUNTIME_NAMES = frozenset({"fake", "codex", "claude", "qoder"})
 
 
 class RequestKind(StrEnum):

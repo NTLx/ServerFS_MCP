@@ -26,6 +26,12 @@
     "probe_timeout_seconds": 5,
     "event_idle_timeout_seconds": null
   },
+  "qoder": {
+    "enabled": false,
+    "qoder_bin": "qodercli",
+    "probe_timeout_seconds": 5,
+    "event_idle_timeout_seconds": null
+  },
   "workdirs": [
     {
       "slot": 1,

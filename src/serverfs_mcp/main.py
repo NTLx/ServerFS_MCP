@@ -40,7 +40,7 @@ require the revision returned by a previous read or stat. ServerFS never \
 executes commands itself and exposes \
 no generic shell or arbitrary command-execution tool. When explicitly \
 enabled by the administrator, Agent tools may delegate a task to configured \
-native Codex or Claude runtimes through the local Agent Bridge. Delegation \
+native Codex, Claude or Qoder runtimes through the local Agent Bridge. Delegation \
 is separately authorized per workdir and is disabled by default.\
 """
 

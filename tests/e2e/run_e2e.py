@@ -12,7 +12,7 @@ the published MCP surface with the root environment. Nothing is mocked: the
 socket hop, the strict request/response envelope, SQLite task persistence and
 the cross-process ``flock`` are all exercised as they are in a deployment.
 
-The MCP public runtime allowlist is exactly ``codex``/``claude``, so the harness
+The MCP public runtime allowlist is exactly ``codex``/``claude``/``qoder``, so the harness
 exposes the deterministic ``FakeAdapter`` under the name ``codex`` on the bridge
 side only (see ``bridge_harness.py``). The production adapter keeps
 ``name == "fake"`` and never appears in the MCP allowlist.

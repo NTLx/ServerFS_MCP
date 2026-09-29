@@ -277,7 +277,9 @@ class TestAgentConfig:
             parse_agent_mode(2, "write-all")
 
     def test_agent_runtime_parser(self) -> None:
-        assert parse_agent_runtimes(1, " codex,claude ") == frozenset({"codex", "claude"})
+        assert parse_agent_runtimes(1, " codex,claude,qoder ") == frozenset(
+            {"codex", "claude", "qoder"}
+        )
 
     def test_unknown_agent_runtime_fails(self) -> None:
         with pytest.raises(WorkdirError, match="unknown"):
@@ -321,12 +323,12 @@ class TestAgentConfig:
             descriptions,
             read_only_env({1: "false"}),
             {1: "workspace-write"},
-            {1: "codex,claude"},
+            {1: "codex,claude,qoder"},
             workdir_root=root,
         )
         wd = reg.get("projects")
         assert wd.agent_mode == AGENT_MODE_WORKSPACE_WRITE
-        assert wd.agent_runtimes == frozenset({"codex", "claude"})
+        assert wd.agent_runtimes == frozenset({"codex", "claude", "qoder"})
 
     def test_enabled_agent_mode_requires_runtimes(self, tmp_path: Path) -> None:
         root = make_root(tmp_path, {1: True})

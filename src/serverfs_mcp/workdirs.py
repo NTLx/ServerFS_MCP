@@ -34,7 +34,7 @@ AGENT_MODE_DISABLED = "disabled"
 AGENT_MODE_REVIEW = "review"
 AGENT_MODE_WORKSPACE_WRITE = "workspace-write"
 AGENT_MODES = frozenset({AGENT_MODE_DISABLED, AGENT_MODE_REVIEW, AGENT_MODE_WORKSPACE_WRITE})
-PUBLIC_AGENT_RUNTIMES = frozenset({"codex", "claude"})
+PUBLIC_AGENT_RUNTIMES = frozenset({"codex", "claude", "qoder"})
 
 SENTINEL_CONFLICT_MSG = (
     "workdir root for slot {slot} contains the reserved file "
@@ -270,11 +270,11 @@ def _build_registry(
                 f"WORKDIR_{slot:02d}_READ_ONLY=false"
             )
         if (
-            policy.agent_runtimes & {"codex", "claude"}
+            policy.agent_runtimes & {"codex", "claude", "qoder"}
             and policy.agent_mode != AGENT_MODE_WORKSPACE_WRITE
         ):
             raise WorkdirError(
-                f"slot {slot:02d}: Codex/Claude native mode currently requires "
+                f"slot {slot:02d}: Codex/Claude/Qoder native mode currently requires "
                 "WORKDIR_XX_AGENT_MODE=workspace-write"
             )
 

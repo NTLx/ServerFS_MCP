@@ -64,14 +64,14 @@ AGENT_CANCEL_ANNOTATIONS = ToolAnnotations(
 )
 
 RuntimeArg = Annotated[
-    Literal["codex", "claude"],
+    Literal["codex", "claude", "qoder"],
     Field(description="Configured native Agent runtime"),
 ]
 AgentProfileArg = Annotated[
     Literal["review", "workspace-write"],
     Field(
         description=(
-            "Provider-neutral execution profile; native Codex/Claude require workspace-write"
+            "Provider-neutral execution profile; native Codex/Claude/Qoder require workspace-write"
         )
     ),
 ]
@@ -375,7 +375,7 @@ def register_agent_tools(
         Keep steering within the task's existing authorized objective and mutation scope.
         If the requested work is a distinct objective, submit a new atomic task instead.
         For a terminal task, submit a new task with continue_from_task_id. Runtimes such as
-        Claude may reject live steering even while active.
+        Claude or Qoder may reject live steering even while active.
         """
         return await _simple_agent_call(
             client,
@@ -451,7 +451,7 @@ def _authorize_submit(
         raise ToolError(
             f"AGENT_PROFILE_NOT_ALLOWED: profile {profile!r} is not allowed for {workdir}"
         )
-    if runtime in {"codex", "claude"} and profile != AGENT_MODE_WORKSPACE_WRITE:
+    if runtime in {"codex", "claude", "qoder"} and profile != AGENT_MODE_WORKSPACE_WRITE:
         raise ToolError(
             f"AGENT_PROFILE_NOT_ALLOWED: native {runtime} currently requires workspace-write"
         )

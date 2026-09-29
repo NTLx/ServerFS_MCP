@@ -4,6 +4,7 @@ from .base import AdapterResult, AgentAdapter, TaskContext
 from .claude import ClaudeAdapter
 from .codex import CodexAdapter
 from .fake import FakeAdapter
+from .qoder import QoderAdapter
 
 __all__ = [
     "AdapterResult",
@@ -11,5 +12,6 @@ __all__ = [
     "ClaudeAdapter",
     "CodexAdapter",
     "FakeAdapter",
+    "QoderAdapter",
     "TaskContext",
 ]
