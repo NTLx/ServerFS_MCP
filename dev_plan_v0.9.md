@@ -1,6 +1,6 @@
-# ServerFS v0.9.0 Release Plan — Runtime Model Discovery, Advisory & Per-Task Selection
+# ServerFS v0.9.0 Release Record — Runtime Model Discovery, Advisory & Per-Task Selection
 
-Status: implementation complete / release candidate ready; not yet tagged
+Status: released / frozen; v0.9.0 is the current stable release
 Baseline: v0.8.0 / main
 Scope: add provider-neutral model discovery, optional Jev-backed pre-submit model advice, and an optional per-task model override without adding model defaults to ServerFS configuration or modifying users' native Agent configuration; also make `SERVERFS_MAX_BINARY_TRANSFER_BYTES` the single public global size limit for both native binary transfer and file-ingress fetches.
 
@@ -564,7 +564,7 @@ Prove:
 
 ## 14. Live validation
 
-Before release, perform provider-specific validation without modifying native Agent configuration. The 2026-09-30 release-candidate evidence is frozen in `docs/v0.9.0-release-validation-2026-09-30.md`.
+Provider-specific release validation was completed without modifying native Agent configuration. The 2026-09-30 acceptance evidence is frozen in `docs/v0.9.0-release-validation-2026-09-30.md` and `docs/model-selection-validation-2026-09-30.md`.
 
 ### Codex
 
@@ -595,7 +595,7 @@ No release test should pick an arbitrary paid model merely because it appears in
 
 ## 15. Documentation/release alignment
 
-During implementation update:
+The released v0.9.0 line updates:
 
 - `README.md`
 - `AGENTS.md`
@@ -619,7 +619,7 @@ During implementation update:
 8. **Deterministic gates** — Bridge suite + root suite + lint/format + Compose rendering checks.
 9. **Live provider validation** — read-only/config-preserving discovery/advice and explicit-model smokes.
 10. **Docs/site/version alignment** — only after behavior is frozen.
-11. **Release preparation** — final clean-tree/full gates, then tag/release in a separate explicitly authorized step.
+11. **Release publication** — final clean-tree/full gates completed; the release commit was published to `main`, then the immutable `v0.9.0` tag and GitHub Release were published from the final documentation-aligned commit.
 
 ## 17. Acceptance criteria
 

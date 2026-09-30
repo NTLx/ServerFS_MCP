@@ -1,6 +1,6 @@
 # v0.9.0 Model Selection & Advisor Validation — 2026-09-30
 
-Status: release-candidate acceptance evidence; **ready-to-tag validation only**. This record does not create or publish `v0.9.0`.
+Status: historical pre-release acceptance evidence for the **published v0.9.0 stable release**. This validation record itself predates tag publication; the final documentation-aligned commit was subsequently tagged and released as `v0.9.0`.
 
 ## Scope
 
@@ -147,4 +147,4 @@ The v0.9.0 model-control design remains request-scoped:
 - unavailable/invalid provider choices fail rather than silently falling back;
 - ServerFS does not become the owner of provider model defaults.
 
-The final repository-wide deterministic gates have passed. This record is ready to be included in the release-candidate commit that is ready for, but does not yet create, the `v0.9.0` tag.
+The final repository-wide deterministic gates passed, and this evidence was included in the v0.9.0 release line. The subsequent documentation-aligned commit was tagged and published as the stable `v0.9.0` release.
