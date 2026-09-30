@@ -47,6 +47,7 @@ from collections.abc import Iterator
 
 from . import fdio
 from . import logging as jsonlog
+from .backends import get_backend
 from .fdio import stat_at, unlink_at, walk_parent_dirs
 from .models import (
     CreateDirectoryResult,
@@ -207,8 +208,8 @@ def mutation_lock() -> Iterator[None]:
 
 
 def _root_fd(resolved: ResolvedPath):
-    """Root-FD context manager for a resolved workdir path (fdio.root_fd)."""
-    return fdio.root_fd(str(resolved.workdir.container_path))
+    """Root-FD context manager for a resolved workdir path (backend seam)."""
+    return get_backend().root_fd(resolved)
 
 
 @contextlib.contextmanager

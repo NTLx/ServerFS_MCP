@@ -262,6 +262,12 @@ class ResolvedPath:
 
     @property
     def container_path(self) -> Path:
+        """Legacy Linux container path (workdir root + rel parts).
+
+        Kept for the Linux Docker deployment and its Agent Bridge tooling
+        (§28). New code goes through the filesystem backend instead of
+        assembling host-side pathnames.
+        """
         path = self._workdir.container_path
         for seg in self._rel_parts:
             path = path / seg

@@ -43,10 +43,11 @@ from .agent_leases import (
     WorkdirRecoveryRequiredError,
     mutation_agent_lease,
 )
+from .backends import get_backend
 from .binary import BinaryTransferError, decode_base64_payload
 from .binary import read_binary_file as read_binary_file_impl
 from .config import Settings
-from .fdio import open_directory_fd, open_file_fd, root_fd
+from .fdio import open_directory_fd, open_file_fd
 from .file_ingress_client import FileIngressClient
 from .filesystem import find_files as find_files_impl
 from .filesystem import list_directory as list_directory_impl
@@ -133,8 +134,8 @@ def deny_policy_from_workdir(workdir) -> DenyPolicy:
 
 
 def _root_fd(resolved: ResolvedPath):
-    """Root-FD context manager for a resolved workdir path (fdio.root_fd)."""
-    return root_fd(str(resolved.workdir.container_path))
+    """Root-FD context manager for a resolved workdir path (backend seam)."""
+    return get_backend().root_fd(resolved)
 
 
 def _resolve(
