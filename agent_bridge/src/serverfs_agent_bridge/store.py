@@ -98,6 +98,7 @@ class TaskStore:
                     workdir_slot INTEGER NOT NULL,
                     relative_cwd TEXT NOT NULL,
                     profile TEXT NOT NULL,
+                    requested_model TEXT,
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     started_at TEXT,
@@ -162,6 +163,7 @@ class TaskStore:
                 "result_sha256": "ALTER TABLE tasks ADD COLUMN result_sha256 TEXT",
                 "manifest_json": "ALTER TABLE tasks ADD COLUMN manifest_json TEXT",
                 "manifest_sha256": "ALTER TABLE tasks ADD COLUMN manifest_sha256 TEXT",
+                "requested_model": "ALTER TABLE tasks ADD COLUMN requested_model TEXT",
             }
             for column, statement in task_migrations.items():
                 if column not in columns:
@@ -201,6 +203,7 @@ class TaskStore:
         relative_cwd: str,
         profile: str,
         continue_from_task_id: str | None,
+        requested_model: str | None = None,
         deadline_at: str | None = None,
         correlation_id: str | None = None,
         idempotency_key: str | None = None,
@@ -226,10 +229,10 @@ class TaskStore:
                     """
                     INSERT INTO tasks (
                         task_id, runtime, workdir_alias, workdir_slot, relative_cwd,
-                        profile, status, created_at, updated_at, deadline_at,
+                        profile, requested_model, status, created_at, updated_at, deadline_at,
                         continue_from_task_id, correlation_id, idempotency_key,
                         request_fingerprint, manifest_json, manifest_sha256
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         task_id,
@@ -238,6 +241,7 @@ class TaskStore:
                         workdir_slot,
                         relative_cwd,
                         profile,
+                        requested_model,
                         TaskStatus.QUEUED.value,
                         now,
                         now,
@@ -735,6 +739,7 @@ def _task_from_row(row: sqlite3.Row) -> TaskRecord:
         workdir_slot=row["workdir_slot"],
         relative_cwd=row["relative_cwd"],
         profile=row["profile"],
+        requested_model=row["requested_model"],
         status=row["status"],
         created_at=row["created_at"],
         started_at=row["started_at"],

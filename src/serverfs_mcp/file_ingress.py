@@ -99,10 +99,13 @@ def settings_from_env(env: dict[str, str] | os._Environ[str] | None = None) -> I
         raise ValueError(
             "file ingress requires exact allowed hosts or the constrained OpenAI Blob host family"
         )
+    binary_limit = env.get("SERVERFS_MAX_BINARY_TRANSFER_BYTES")
+    if binary_limit is None or not binary_limit.strip():
+        binary_limit = env.get("SERVERFS_FILE_INGRESS_MAX_BYTES")
     return IngressSettings(
         allowed_hosts=hosts,
         allow_openai_blob_hosts=allow_openai_blob_hosts,
-        max_bytes=_positive_int(env.get("SERVERFS_FILE_INGRESS_MAX_BYTES"), 8_388_608),
+        max_bytes=_positive_int(binary_limit, 8_388_608),
         timeout_seconds=_positive_float(
             env.get("SERVERFS_FILE_INGRESS_FETCH_TIMEOUT_SECONDS"), 30.0
         ),

@@ -10,7 +10,7 @@ from . import __version__
 from .models import RuntimeInfo
 from .policy import WorkdirAgentPolicy
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
 BRIDGE_PROTOCOL_VERSION = 1
 
 
@@ -47,6 +47,7 @@ def build_manifest(
     policy: WorkdirAgentPolicy,
     relative_cwd: str,
     profile: str,
+    requested_model: str | None,
     limits: dict[str, int],
     advisor: dict[str, Any],
     continue_from_task_id: str | None,
@@ -69,6 +70,7 @@ def build_manifest(
             "relative_cwd": relative_cwd,
             "profile": profile,
         },
+        "model": {"requested": requested_model},
         "policy": {
             "read_only": policy.read_only,
             "agent_mode": policy.mode.value,

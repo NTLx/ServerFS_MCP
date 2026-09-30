@@ -45,7 +45,9 @@ class MockCodexServer:
         self.socket_path.parent.mkdir(parents=True)
         self.server = None
         self.thread_starts = 0
+        self.thread_start_params: list[dict[str, Any]] = []
         self.thread_resumes: list[str] = []
+        self.thread_resume_params: list[dict[str, Any]] = []
         self.steers: list[str] = []
         self.interrupts = 0
         self.turn_starts: list[dict[str, Any]] = []
@@ -85,16 +87,48 @@ class MockCodexServer:
                 return
 
             method = message.get("method")
+            if method == "model/list":
+                await _respond(
+                    ws,
+                    message,
+                    {
+                        "data": [
+                            {
+                                "model": "gpt-5.6-codex",
+                                "displayName": "GPT-5.6 Codex",
+                                "description": "Coding model",
+                                "isDefault": True,
+                                "hidden": False,
+                                "inputModalities": ["text", "image"],
+                                "supportedReasoningEfforts": ["medium", "high"],
+                                "defaultReasoningEffort": "medium",
+                            },
+                            {
+                                "model": "gpt-5.6-mini",
+                                "displayName": "GPT-5.6 Mini",
+                                "description": "Fast coding model",
+                                "isDefault": False,
+                                "hidden": False,
+                            },
+                        ],
+                        "nextCursor": None,
+                    },
+                )
+                continue
             if method == "thread/start":
                 self.thread_starts += 1
-                assert set(message["params"]) == {"cwd", "serviceName"}
+                params = message["params"]
+                self.thread_start_params.append(dict(params))
+                assert {"cwd", "serviceName"} <= set(params) <= {"cwd", "serviceName", "model"}
                 assert "sandbox" not in message["params"]
                 assert "approvalPolicy" not in message["params"]
                 assert "config" not in message["params"]
                 await _respond(ws, message, {"thread": {"id": thread_id}})
                 continue
             if method == "thread/resume":
-                assert set(message["params"]) == {"threadId", "cwd"}
+                params = message["params"]
+                self.thread_resume_params.append(dict(params))
+                assert {"threadId", "cwd"} <= set(params) <= {"threadId", "cwd", "model"}
                 assert "sandbox" not in message["params"]
                 assert "approvalPolicy" not in message["params"]
                 assert "config" not in message["params"]
@@ -536,6 +570,52 @@ async def test_codex_normal_task_and_continuation(tmp_path: Path, codex_home: Pa
         assert mock.thread_starts == 1
         assert mock.thread_resumes == ["thread-1"]
         assert all(set(params) == {"threadId", "input", "cwd"} for params in mock.turn_starts)
+    finally:
+        await service.close()
+        await mock.close()
+
+
+@pytest.mark.asyncio
+async def test_codex_model_discovery_and_request_scoped_override(
+    tmp_path: Path, codex_home: Path
+) -> None:
+    mock = MockCodexServer(codex_home)
+    await mock.start()
+    service = make_service(tmp_path, codex_home)
+    await service.start()
+    try:
+        catalog = await service.list_models(runtime="codex")
+        assert catalog["status"] == "ok"
+        assert catalog["scope"] == "runtime_catalog"
+        assert [item["id"] for item in catalog["models"]] == [
+            "gpt-5.6-codex",
+            "gpt-5.6-mini",
+        ]
+        assert catalog["models"][0]["is_default"] is True
+        assert catalog["models"][0]["reasoning"]["default"] == "medium"
+
+        first = await service.submit_task(
+            runtime="codex",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="selected",
+            model="gpt-5.6-codex",
+        )
+        await wait_for_status(service, first["task_id"], "succeeded")
+        assert mock.thread_start_params[-1]["model"] == "gpt-5.6-codex"
+
+        second = await service.submit_task(
+            runtime="codex",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="continued",
+            model="gpt-5.6-mini",
+            continue_from_task_id=first["task_id"],
+        )
+        await wait_for_status(service, second["task_id"], "succeeded")
+        assert mock.thread_resume_params[-1]["model"] == "gpt-5.6-mini"
     finally:
         await service.close()
         await mock.close()

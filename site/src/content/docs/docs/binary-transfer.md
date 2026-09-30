@@ -43,4 +43,4 @@ Binary transfer never bypasses workdir authorization. Upload still requires a re
 
 ## Limits
 
-`SERVERFS_MAX_BINARY_TRANSFER_BYTES` and the per-workdir override bound both directions. The default is 8 MiB. The MCP HTTP request-body ceiling is derived from the largest enabled raw binary limit so the base64 compatibility path is not accidentally constrained by the SDK's smaller default body limit.
+`SERVERFS_MAX_BINARY_TRANSFER_BYTES` is the single public global size ceiling for native binary upload/download and the optional file-ingress fetch path. The default is 8 MiB. `WORKDIR_XX_MAX_BINARY_TRANSFER_BYTES` can further tighten final publication for one workdir, while the isolated ingress sidecar remains deliberately workdir-unaware and enforces only the global ceiling. The legacy `SERVERFS_FILE_INGRESS_MAX_BYTES` name is accepted only as an ingress compatibility fallback when the unified setting is absent. The MCP HTTP request-body ceiling is derived from the largest enabled raw binary limit so the base64 compatibility path is not accidentally constrained by the SDK's smaller default body limit.

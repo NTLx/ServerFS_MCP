@@ -30,6 +30,7 @@ from .store import TaskStore
 from .util import is_expired, new_id, seconds_until, utc_after, utc_before
 
 _PROVIDER_CANCEL_TIMEOUT_SECONDS = 10.0
+_MAX_MODEL_ID_BYTES = 512
 
 
 @dataclass(frozen=True)
@@ -166,6 +167,108 @@ class BridgeService:
                 runtimes.append(info.to_dict())
         return {"runtimes": runtimes}
 
+    async def list_models(
+        self,
+        *,
+        runtime: str,
+        workdir: str | None = None,
+        task_prompt: str | None = None,
+        path: str = "",
+        profile: str = AgentProfile.WORKSPACE_WRITE.value,
+    ) -> dict[str, Any]:
+        if self._closed:
+            raise BridgeError("BRIDGE_CLOSED", "bridge is closed")
+        if not isinstance(runtime, str) or not runtime:
+            raise BridgeError("INVALID_REQUEST", "runtime must be a non-empty string")
+        advice_mode = (
+            workdir is not None
+            or task_prompt is not None
+            or path != ""
+            or profile != AgentProfile.WORKSPACE_WRITE.value
+        )
+        if advice_mode and (
+            not isinstance(workdir, str) or not workdir or not isinstance(task_prompt, str)
+        ):
+            raise BridgeError("INVALID_REQUEST", "model advice requires workdir and task_prompt")
+        if not isinstance(path, str):
+            raise BridgeError("INVALID_REQUEST", "path must be a string")
+        adapter = self.adapters.get(runtime)
+        if adapter is None:
+            raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", f"runtime is unavailable: {runtime}")
+        try:
+            info = await adapter.probe()
+        except Exception:
+            info = None
+        if info is None or not info.available:
+            result: dict[str, Any] = {
+                "runtime": runtime,
+                "status": "unavailable",
+                "scope": "none",
+                "source": runtime,
+                "models": [],
+                "detail": "runtime is unavailable",
+            }
+        else:
+            try:
+                result = await adapter.list_models()
+            except Exception:
+                result = {
+                    "runtime": runtime,
+                    "status": "unavailable",
+                    "scope": "none",
+                    "source": runtime,
+                    "models": [],
+                    "detail": "model discovery failed",
+                }
+        if not advice_mode:
+            return result
+
+        assert workdir is not None and task_prompt is not None
+        try:
+            requested_profile = AgentProfile(profile)
+        except ValueError as exc:
+            raise BridgeError("AGENT_PROFILE_NOT_ALLOWED", "unknown agent profile") from exc
+        if (
+            runtime in {"codex", "claude", "qoder"}
+            and requested_profile is not AgentProfile.WORKSPACE_WRITE
+        ):
+            raise BridgeError(
+                "AGENT_PROFILE_NOT_ALLOWED",
+                f"native {runtime} currently requires workspace-write",
+            )
+        normalized_path = _normalize_submission_path(path)
+        self.policies.authorize(
+            workdir=workdir,
+            runtime=runtime,
+            profile=requested_profile,
+            relative_cwd=normalized_path,
+        )
+        if len(task_prompt.encode("utf-8")) > self.limits.max_prompt_bytes:
+            raise BridgeError("AGENT_PROMPT_TOO_LARGE", "agent prompt exceeds configured limit")
+
+        if (
+            result.get("status") != "ok"
+            or not isinstance(result.get("models"), list)
+            or not result["models"]
+        ):
+            result["model_advice"] = {"status": "not_applicable", "automatic": False}
+            return result
+        if self.preflight is None:
+            result["model_advice"] = {"status": "disabled", "automatic": False}
+            return result
+        try:
+            result["model_advice"] = await self.preflight.advise_model(
+                runtime=runtime,
+                workdir=workdir,
+                path=normalized_path,
+                profile=requested_profile.value,
+                prompt=task_prompt,
+                models=result["models"],
+            )
+        except Exception:
+            result["model_advice"] = {"status": "unavailable", "automatic": False}
+        return result
+
     async def submit_task(
         self,
         *,
@@ -174,6 +277,7 @@ class BridgeService:
         path: str,
         profile: str,
         prompt: str,
+        model: str | None = None,
         continue_from_task_id: str | None = None,
         correlation_id: str | None = None,
         idempotency_key: str | None = None,
@@ -190,6 +294,7 @@ class BridgeService:
             raise BridgeError("INVALID_REQUEST", "path must be a string")
         if continue_from_task_id is not None and not isinstance(continue_from_task_id, str):
             raise BridgeError("INVALID_REQUEST", "continue_from_task_id must be a string")
+        requested_model = _validate_requested_model(model)
         _validate_correlation_id(correlation_id)
         _validate_idempotency_key(idempotency_key)
         self._gc_retained()
@@ -206,6 +311,7 @@ class BridgeService:
             path=normalized_path,
             profile=requested_profile.value,
             prompt=prompt,
+            requested_model=requested_model,
             continue_from_task_id=continue_from_task_id,
             correlation_id=correlation_id,
         )
@@ -291,6 +397,7 @@ class BridgeService:
             policy=policy,
             relative_cwd=normalized_path,
             profile=requested_profile.value,
+            requested_model=requested_model,
             limits=asdict(self.limits),
             advisor=advisor_manifest,
             continue_from_task_id=continue_from_task_id,
@@ -329,6 +436,7 @@ class BridgeService:
                     workdir_slot=policy.slot,
                     relative_cwd=normalized_path,
                     profile=requested_profile.value,
+                    requested_model=requested_model,
                     deadline_at=deadline_at,
                     continue_from_task_id=continue_from_task_id,
                     correlation_id=correlation_id,
@@ -358,6 +466,7 @@ class BridgeService:
                         adapter=adapter,
                         cwd=cwd,
                         prompt=prompt,
+                        requested_model=requested_model,
                         continue_native_session_id=continue_native_session_id,
                     ),
                     name=f"serverfs-agent-{task_id}",
@@ -899,6 +1008,7 @@ class BridgeService:
         adapter: AgentAdapter,
         cwd: Path,
         prompt: str,
+        requested_model: str | None,
         continue_native_session_id: str | None,
     ) -> None:
         task = self.store.get_task(task_id)
@@ -917,6 +1027,7 @@ class BridgeService:
                 cwd=cwd,
                 profile=task.profile,
                 prompt=prompt,
+                requested_model=requested_model,
                 continue_native_session_id=continue_native_session_id,
                 emit_event=lambda event_type, payload: self._emit_event(
                     task_id, event_type, payload
@@ -1371,6 +1482,7 @@ def _submission_fingerprint(
     path: str,
     profile: str,
     prompt: str,
+    requested_model: str | None,
     continue_from_task_id: str | None,
     correlation_id: str | None,
 ) -> str:
@@ -1380,6 +1492,7 @@ def _submission_fingerprint(
         "path": path,
         "profile": profile,
         "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "requested_model": requested_model,
         "continue_from_task_id": continue_from_task_id,
         "correlation_id": correlation_id,
     }
@@ -1391,6 +1504,20 @@ def _submission_fingerprint(
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_requested_model(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise BridgeError("INVALID_REQUEST", "model must be a non-empty string")
+    if value != value.strip():
+        raise BridgeError("INVALID_REQUEST", "model must not contain surrounding whitespace")
+    if len(value.encode("utf-8")) > _MAX_MODEL_ID_BYTES:
+        raise BridgeError("INVALID_REQUEST", "model exceeds configured identifier limit")
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise BridgeError("INVALID_REQUEST", "model contains control characters")
+    return value
 
 
 def _idempotent_submission_result(task: Any, request_fingerprint: str) -> dict[str, Any]:

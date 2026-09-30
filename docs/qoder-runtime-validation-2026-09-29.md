@@ -3,7 +3,7 @@
 Status: PASS for the v0.8.0 release
 
 This record freezes the validation evidence for adding Qoder as the third
-production Agent Bridge runtime. v0.8.0 is the current stable release; this record is the pre-release validation evidence used to accept the Qoder runtime.
+production Agent Bridge runtime. v0.8.0 is now a prior stable release; this record is the historical pre-release validation evidence used to accept the Qoder runtime before v0.9.0.
 
 ## Scope
 

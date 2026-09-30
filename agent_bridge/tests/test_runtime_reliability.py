@@ -137,8 +137,9 @@ async def test_correlation_event_envelope_and_manifest_hash(tmp_path: Path) -> N
 
     task = await wait_for_status(service, submitted["task_id"], "succeeded")
     assert task["correlation_id"] == correlation_id
-    assert task["manifest"]["schema_version"] == 1
-    assert task["manifest"]["bridge_version"] == "0.8.0"
+    assert task["manifest"]["schema_version"] == 2
+    assert task["manifest"]["model"] == {"requested": None}
+    assert task["manifest"]["bridge_version"] == "0.9.0"
     assert task["manifest"]["protocol_version"] == 1
     assert task["manifest"]["correlation_id"] == correlation_id
     assert task["manifest"]["runtime"]["name"] == "fake"

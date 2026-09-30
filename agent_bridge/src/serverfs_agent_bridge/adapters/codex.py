@@ -50,7 +50,7 @@ class CodexAdapter(AgentAdapter):
         self,
         settings: CodexSettings,
         *,
-        client_version: str = "0.8.0",
+        client_version: str = "0.9.0",
     ) -> None:
         self.settings = settings
         self.client_version = client_version
@@ -76,6 +76,43 @@ class CodexAdapter(AgentAdapter):
                 available=True,
                 version=connection.server_version,
             )
+        finally:
+            await connection.close()
+
+    async def list_models(self) -> dict[str, Any]:
+        connection = self._new_connection()
+        try:
+            await connection.connect()
+            models: list[dict[str, Any]] = []
+            cursor: str | None = None
+            while len(models) < 64:
+                params: dict[str, Any] = {"limit": 64, "includeHidden": True}
+                if cursor is not None:
+                    params["cursor"] = cursor
+                result = await connection.request("model/list", params)
+                data = result.get("data") if isinstance(result, dict) else None
+                if not isinstance(data, list):
+                    raise BridgeError(
+                        "AGENT_PROVIDER_ERROR",
+                        "Codex returned an invalid model catalog",
+                    )
+                for item in data:
+                    normalized = _normalize_codex_model(item)
+                    if normalized is not None:
+                        models.append(normalized)
+                        if len(models) >= 64:
+                            break
+                next_cursor = result.get("nextCursor") if isinstance(result, dict) else None
+                if not isinstance(next_cursor, str) or not next_cursor or next_cursor == cursor:
+                    break
+                cursor = next_cursor
+            return {
+                "runtime": self.name,
+                "status": "ok",
+                "scope": "runtime_catalog",
+                "source": "codex_app_server",
+                "models": models,
+            }
         finally:
             await connection.close()
 
@@ -277,13 +314,13 @@ class CodexAdapter(AgentAdapter):
         connection: CodexConnection,
         context: TaskContext,
     ) -> str:
-        result = await connection.request(
-            "thread/start",
-            {
-                "cwd": str(context.cwd),
-                "serviceName": "serverfs-agent-bridge",
-            },
-        )
+        params: dict[str, Any] = {
+            "cwd": str(context.cwd),
+            "serviceName": "serverfs-agent-bridge",
+        }
+        if context.requested_model is not None:
+            params["model"] = context.requested_model
+        result = await connection.request("thread/start", params)
         return _thread_id_from_result(result)
 
     async def _resume_thread(
@@ -291,13 +328,13 @@ class CodexAdapter(AgentAdapter):
         connection: CodexConnection,
         context: TaskContext,
     ) -> str:
-        result = await connection.request(
-            "thread/resume",
-            {
-                "threadId": context.continue_native_session_id,
-                "cwd": str(context.cwd),
-            },
-        )
+        params: dict[str, Any] = {
+            "threadId": context.continue_native_session_id,
+            "cwd": str(context.cwd),
+        }
+        if context.requested_model is not None:
+            params["model"] = context.requested_model
+        result = await connection.request("thread/resume", params)
         resumed_id = _thread_id_from_result(result)
         if resumed_id != context.continue_native_session_id:
             raise BridgeError(
@@ -809,7 +846,46 @@ class CodexAdapter(AgentAdapter):
             interactive_approval=True,
             interactive_question=True,
             in_flight_recovery="session-resume",
+            model_override=True,
+            model_discovery="runtime_catalog",
         )
+
+
+def _normalize_codex_model(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    model_id = value.get("model")
+    if not isinstance(model_id, str) or not model_id:
+        return None
+    item: dict[str, Any] = {
+        "id": model_id,
+        "display_name": (
+            value.get("displayName") if isinstance(value.get("displayName"), str) else model_id
+        ),
+        "enabled": True,
+        "is_default": value.get("isDefault") if isinstance(value.get("isDefault"), bool) else None,
+        "hidden": value.get("hidden") if isinstance(value.get("hidden"), bool) else None,
+    }
+    description = value.get("description")
+    if isinstance(description, str):
+        item["description"] = description[:2048]
+    modalities = value.get("inputModalities")
+    if isinstance(modalities, list) and all(isinstance(entry, str) for entry in modalities):
+        item["input_modalities"] = modalities[:16]
+    reasoning = value.get("supportedReasoningEfforts")
+    default_reasoning = value.get("defaultReasoningEffort")
+    if isinstance(reasoning, list):
+        item["reasoning"] = {
+            "supported": [entry for entry in reasoning[:16] if isinstance(entry, str)],
+            "default": default_reasoning if isinstance(default_reasoning, str) else None,
+        }
+    context_window = value.get("contextWindow")
+    if isinstance(context_window, int) and not isinstance(context_window, bool):
+        item["context"] = {"window": context_window}
+    service_tiers = value.get("supportedServiceTiers")
+    if isinstance(service_tiers, list):
+        item["service_tiers"] = [entry for entry in service_tiers[:16] if isinstance(entry, str)]
+    return item
 
 
 def _thread_id_from_result(result: Any) -> str:

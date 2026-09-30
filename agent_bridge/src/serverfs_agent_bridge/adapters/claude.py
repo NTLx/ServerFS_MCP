@@ -105,6 +105,15 @@ class ClaudeAdapter(AgentAdapter):
         version = stdout.decode("utf-8", errors="replace").strip() or None
         return self._runtime_info(available=True, version=version)
 
+    async def list_models(self) -> dict[str, Any]:
+        return {
+            "runtime": self.name,
+            "status": "unsupported",
+            "scope": "none",
+            "source": "claude_code",
+            "models": [],
+        }
+
     async def run_task(self, context: TaskContext) -> AdapterResult:
         return await self._run(context, resume=False)
 
@@ -221,6 +230,7 @@ class ClaudeAdapter(AgentAdapter):
             system_prompt={"type": "preset", "preset": "claude_code"},
             can_use_tool=can_use_tool,
             resume=context.continue_native_session_id if resume else None,
+            model=context.requested_model,
         )
         client = self._client_factory(options)
         active = _ActiveClaudeTask(context=context, client=client)
@@ -531,6 +541,8 @@ class ClaudeAdapter(AgentAdapter):
             interactive_approval=True,
             interactive_question=True,
             in_flight_recovery="session-resume",
+            model_override=True,
+            model_discovery="unsupported",
         )
 
 

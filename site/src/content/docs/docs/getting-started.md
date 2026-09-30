@@ -77,14 +77,14 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](./binary-transfer/) and [Security Model](./security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
-## Current stable release: v0.8.0
+## Current stable release: v0.9.0
 
-The v0.8.0 release uses immutable tag `v0.8.0` and publishes these stable GHCR tags:
+The v0.9.0 release uses immutable tag `v0.9.0` and publishes these stable GHCR tags:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.7
-ghcr.io/ntlx/serverfs_mcp:0.8.0
+ghcr.io/ntlx/serverfs_mcp:0.9
+ghcr.io/ntlx/serverfs_mcp:0.9.0
 ```
 
-For production deployments, pin `0.8.0` rather than following `latest` or `edge`.
+For production deployments, pin `0.9.0` rather than following `latest` or `edge`.

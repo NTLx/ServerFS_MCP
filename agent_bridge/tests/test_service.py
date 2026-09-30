@@ -56,6 +56,7 @@ class FakePreflight:
         self.fail_approval = fail_approval
         self.calls: list[dict] = []
         self.approval_calls: list[dict] = []
+        self.model_calls: list[dict] = []
         self.closed = False
 
     async def evaluate(self, **kwargs) -> dict:
@@ -78,6 +79,17 @@ class FakePreflight:
                     },
                 },
             },
+        }
+
+    async def advise_model(self, **kwargs) -> dict:
+        self.model_calls.append(kwargs)
+        return {
+            "status": "completed",
+            "advisor_model": "jev-1.13.0",
+            "recommended_model": "fast-model",
+            "confidence": 0.8,
+            "probabilities": {"fast-model": 0.8, "deep-model": 0.2},
+            "automatic": False,
         }
 
     async def advise_approval(self, **kwargs) -> dict:
@@ -113,6 +125,20 @@ class FakePreflight:
         self.closed = True
 
 
+class CatalogFakeAdapter(FakeAdapter):
+    async def list_models(self) -> dict:
+        return {
+            "runtime": "fake",
+            "status": "ok",
+            "scope": "runtime_catalog",
+            "source": "fake",
+            "models": [
+                {"id": "fast-model", "enabled": True},
+                {"id": "deep-model", "enabled": True},
+            ],
+        }
+
+
 async def wait_for_status(service: BridgeService, task_id: str, *statuses: str) -> dict:
     for _ in range(500):
         task = service.get_task(task_id)
@@ -140,6 +166,96 @@ async def test_submit_returns_before_completion_and_finishes(tmp_path: Path) -> 
     assert service.store.get_task(submitted["task_id"]).native_session_id
     assert "native_session_id" not in task
     await service.close()
+
+
+@pytest.mark.asyncio
+async def test_list_models_with_optional_jev_advice_is_pre_submit_only(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.adapters["fake"] = CatalogFakeAdapter()
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+    try:
+        discovery = await service.list_models(runtime="fake")
+        assert [item["id"] for item in discovery["models"]] == ["fast-model", "deep-model"]
+        assert "model_advice" not in discovery
+        assert preflight.model_calls == []
+
+        advised = await service.list_models(
+            runtime="fake",
+            workdir="repo",
+            task_prompt="complete:hello",
+            path="",
+            profile="review",
+        )
+        assert advised["model_advice"]["recommended_model"] == "fast-model"
+        assert advised["model_advice"]["automatic"] is False
+        assert len(preflight.model_calls) == 1
+        assert service.store.list_nonterminal_tasks() == []
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_requested_model_is_persisted_and_part_of_idempotency(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        first = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:model",
+            model="model-a",
+            idempotency_key="model-key",
+        )
+        repeated = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:model",
+            model="model-a",
+            idempotency_key="model-key",
+        )
+        assert repeated["task_id"] == first["task_id"]
+        task = service.get_task(first["task_id"])
+        assert task["requested_model"] == "model-a"
+        assert task["manifest"]["model"] == {"requested": "model-a"}
+        with pytest.raises(BridgeError) as exc:
+            await service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="review",
+                prompt="complete:model",
+                model="model-b",
+                idempotency_key="model-key",
+            )
+        assert exc.value.code == "AGENT_IDEMPOTENCY_CONFLICT"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_submit_rejects_invalid_model_identifiers(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        for model in ("", " model", "model ", "bad\nmodel", "x" * 513):
+            with pytest.raises(BridgeError) as exc:
+                await service.submit_task(
+                    runtime="fake",
+                    workdir="repo",
+                    path="",
+                    profile="review",
+                    prompt="complete:hello",
+                    model=model,
+                )
+            assert exc.value.code == "INVALID_REQUEST"
+    finally:
+        await service.close()
 
 
 @pytest.mark.asyncio

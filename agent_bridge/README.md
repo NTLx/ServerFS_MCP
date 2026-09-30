@@ -1,12 +1,12 @@
-# ServerFS Agent Bridge — v0.8.0 stable
+# ServerFS Agent Bridge — v0.9.0 stable
 
-This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.8.0 release. v0.8.0 adds Qoder as the third production native runtime; the provider-neutral Bridge RPC and nine MCP Agent tools remain unchanged. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability, recovery evidence, immutable execution manifests and bounded large-result retrieval, v0.7.1 added a targeted Codex reconciliation hotfix, v0.7.2 closed stale non-terminal recovery state, and v0.7.3 adds retry-safe submission plus bounded task/interaction lifetime without turning the Bridge into a scheduler.
+This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.9.0 release. v0.9.0 adds provider-neutral runtime model discovery, advisory-only Jev pre-submit model advice, and request-scoped model overrides; the Agent MCP surface now contains ten tools. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability, recovery evidence, immutable execution manifests and bounded large-result retrieval, v0.7.1 added a targeted Codex reconciliation hotfix, v0.7.2 closed stale non-terminal recovery state, and v0.7.3 adds retry-safe submission plus bounded task/interaction lifetime without turning the Bridge into a scheduler.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
 while the base `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
-> The Jev-backed Preflight, Runtime Router, and Approval Advisor introduced in v0.6.0
+> The Jev-backed Preflight, Runtime Router, Model Advisor, and Approval Advisor
 > remain optional and advisory-only. The v0.7 release line does not turn Jev into a runtime,
 > authorization layer or safety authority; it preserves the explicit runtime/workdir/profile
 > and provider approval contracts.
@@ -45,7 +45,7 @@ Phase C is frozen and provides **Claude Code native-mode delegation**:
 - `interrupt()` cancellation
 - live steer disabled until real installed-SDK behavior proves the intended semantics
 
-v0.8.0 adds **Qoder native-mode delegation** under the same adapter contract:
+v0.8.0 added **Qoder native-mode delegation** under the same adapter contract:
 
 - official Python Qoder Agent SDK / `QoderSDKClient`;
 - existing system-installed `qodercli` through `cli_path` and the current user's native Qoder login;
@@ -53,7 +53,7 @@ v0.8.0 adds **Qoder native-mode delegation** under the same adapter contract:
 - native session-ID persistence and continuation through `resume`;
 - native `can_use_tool` approval and `AskUserQuestion` brokerage;
 - `interrupt()` cancellation;
-- Qoder's provider-native model selection remains outside the public ServerFS API; production tasks do not receive a ServerFS model override;
+- v0.9.0 may pass an explicit request-scoped model through `QoderAgentOptions.model`; omission still preserves Qoder's native default and ServerFS never writes a provider/default model configuration;
 - live steering is deliberately disabled: the 2026-09-29 installed-SDK/CLI probe showed `priority="now"` ends the first `receive_response()` with `error_during_execution`, while the steered success arrives only from a second response iteration, which does not fit the current one-task/one-terminal-Result Bridge contract;
 - restart recovery is declared only as `session-resume`: a persisted Qoder session does not prove that an old in-flight process can be reattached.
 
@@ -87,6 +87,8 @@ provider state remains fail-closed and preserves the guard.
 
 v0.7.3 adds lifecycle reliability for short-lived MCP/ChatGPT callers while preserving asynchronous Agent execution. `task.submit` accepts an optional opaque `idempotency_key` distinct from `correlation_id`. A retained task with the same key and semantic submission fingerprint is returned on retry without a second provider turn, lease, guard or Jev preflight; conflicting reuse fails with `AGENT_IDEMPOTENCY_CONFLICT`. The default task timeout is now 2 hours and each approval/question receives its own 30-minute bound, both administrator-configurable. Interaction expiry interrupts the task with `AGENT_INTERACTION_TIMED_OUT`; late answers are stale. Explicit cancellation, including an approval decision of `cancel_task`, is persisted as terminal before the RPC returns. Provider interrupt is best-effort and internally bounded to 10 seconds; a stalled interrupt cannot indefinitely block Bridge-side cancellation. A live writer lease is still released only after background cleanup, while a persistent recovery guard remains whenever provider stop cannot be proven. Disconnecting or ceasing to poll an MCP connection does not itself cancel an otherwise healthy task.
 
+v0.9.0 adds a narrow model-control layer without turning ServerFS into a model router. `runtime.models` normalizes Codex App Server `model/list` and Qoder Agent SDK `get_available_models()`; Claude returns an explicit `unsupported` discovery result until Claude Code exposes an equivalent stable native-account API. `task.submit` accepts optional `model`; omission sends no ServerFS override, while an explicit value is persisted as `requested_model`, included in the idempotency fingerprint and manifest schema v2, and forwarded to the provider-native start/resume path. The Bridge never silently falls back to another model and does not claim a cross-provider `effective_model`.
+
 The four lifecycle policy values are `task_timeout_seconds`, `interaction_timeout_seconds`, `max_active_tasks`, and `retention_seconds` in the private Bridge JSON config. Production rendering derives them from `SERVERFS_AGENT_TASK_TIMEOUT_SECONDS`, `SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS`, `SERVERFS_AGENT_MAX_ACTIVE_TASKS`, and `SERVERFS_AGENT_TASK_RETENTION_HOURS` in the repository-root `.env`.
 
 Agent delegation should remain objective-level and capability-bounded. A submitted task
@@ -96,9 +98,9 @@ steering should stay within that objective; distinct work belongs in a new task.
 least-authority and clarity rule, not an instruction-obfuscation layer: the Bridge must
 never encode, disguise, split or rewrite prompts in order to evade provider safety checks.
 
-When the opt-in Jev advisor is configured, one advisory call evaluates those properties before
-the writer lease is acquired and also produces a Runtime Router recommendation among
-`direct_serverfs_tool`, `codex`, `claude`, `qoder`, and `human_review` in v0.8.0. Successful quality results are
+When the opt-in Jev advisor is configured, task submission still evaluates those properties before
+the writer lease is acquired and produces a Runtime Router recommendation among
+`direct_serverfs_tool`, `codex`, `claude`, `qoder`, and `human_review`. v0.9.0 also lets pre-submit `runtime.models` advice mode send the concrete task plus normalized currently exposed model candidates to the same Jev client and return `model_advice`; it never applies the recommendation automatically. Successful quality results are
 persisted as `task.preflight`; the derived router object is persisted as `task.routing_advice`.
 Both are deliberately fail-open: an unavailable Jev evaluation is reported as
 `{"status": "unavailable"}` and the authorized task still runs on the explicitly requested
@@ -106,7 +108,7 @@ runtime. When a provider actually asks for approval, the same Jev client may iss
 additional approval-specific request and attach its advisory result to the existing pending
 approval payload plus an `approval.advice` event. No additional request is made for ordinary
 turns or question prompts. None of the advisors can approve/deny permissions, change
-runtime/workdir/profile, mutate files, or rewrite the prompt. The current experiment pins
+runtime/workdir/profile, mutate files, rewrite the prompt, or populate/override the task's model. The current experiment pins
 `jev-1.13.0` for reproducible evaluation. The public operator-facing overview is the [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/).
 
 Configuration is fail-closed: security fields use their JSON types exactly, workdir
@@ -168,7 +170,7 @@ uv run serverfs-agent-bridge --config /tmp/serverfs-agent-bridge.json
 ```
 
 The protocol is newline-delimited JSON over the configured Unix socket. Phase D provides
-the thin ServerFS MCP client and nine provider-neutral Agent tools. The accepted Phase E
+the thin ServerFS MCP client and ten provider-neutral Agent tools. The accepted Phase E
 production deployment exposes the Bridge socket and shared lock directory to the MCP
 container through read-only bind mounts defined by `../compose.agent.yml`.
 

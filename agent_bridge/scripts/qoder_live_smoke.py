@@ -1,8 +1,8 @@
-"""Live Qoder smoke test for the ServerFS Agent Bridge v0.8.0 runtime.
+"""Live Qoder smoke test for the ServerFS Agent Bridge v0.9.0 runtime.
 
-The production adapter never selects a model. This smoke test is deliberately
-different: it pins an explicit disposable test model so validation cannot
-silently fall onto a paid model. The default is Qwen3.8-Flash.
+Production model selection is request-scoped. This smoke test deliberately pins
+one explicit disposable free model so validation cannot silently fall onto a paid
+model. The current provider-native ID is qfmodel (display name Qwen3.8-Flash).
 
 Requires:
 - an installed/authenticated system qodercli;
@@ -22,11 +22,11 @@ from typing import Any
 from serverfs_agent_bridge.adapters import QoderAdapter
 from serverfs_agent_bridge.config import BridgeConfig
 from serverfs_agent_bridge.leases import LeaseManager
-from serverfs_agent_bridge.service import BridgeService
+from serverfs_agent_bridge.service import BridgeLimits, BridgeService
 from serverfs_agent_bridge.store import TaskStore
 
 _TERMINAL = {"succeeded", "failed", "cancelled", "interrupted"}
-_DEFAULT_SMOKE_MODEL = "Qwen3.8-Flash"
+_DEFAULT_SMOKE_MODEL = "qfmodel"
 
 
 async def _wait_terminal(
@@ -132,6 +132,20 @@ def _require_success(task: dict[str, Any], marker: str) -> None:
         )
 
 
+def _require_model_evidence(task: dict[str, Any], expected: str | None) -> None:
+    if task.get("requested_model") != expected:
+        raise RuntimeError(
+            f"task {task['task_id']} requested_model mismatch: "
+            f"expected {expected!r}, got {task.get('requested_model')!r}"
+        )
+    manifest = task.get("manifest")
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2:
+        raise RuntimeError(f"task {task['task_id']} is missing manifest schema v2 evidence")
+    model = manifest.get("model")
+    if not isinstance(model, dict) or model.get("requested") != expected:
+        raise RuntimeError(f"task {task['task_id']} manifest model mismatch: expected {expected!r}")
+
+
 async def _run(args: argparse.Namespace) -> None:
     if args.model != _DEFAULT_SMOKE_MODEL:
         raise RuntimeError(
@@ -149,7 +163,7 @@ async def _run(args: argparse.Namespace) -> None:
     if policy.read_only or policy.mode.value != "workspace-write":
         raise RuntimeError("Qoder native-mode smoke requires a writable/workspace-write workdir")
 
-    runtime = QoderAdapter(config.qoder, model_override=args.model)
+    runtime = QoderAdapter(config.qoder)
     probe = await runtime.probe()
     if not probe.available:
         raise RuntimeError("Qoder CLI is not available through the configured qoder.qoder_bin")
@@ -165,15 +179,39 @@ async def _run(args: argparse.Namespace) -> None:
             policies=config.policies,
             adapters={"qoder": runtime},
             lease_manager=LeaseManager(temp_root / "locks"),
+            limits=BridgeLimits(
+                task_timeout_seconds=config.limits.task_timeout_seconds,
+                interaction_timeout_seconds=config.limits.interaction_timeout_seconds,
+                max_active_tasks=config.limits.max_active_tasks,
+                retention_seconds=config.limits.retention_seconds,
+            ),
         )
         await service.start()
         try:
+            catalog = await service.list_models(runtime="qoder")
+            smoke_model = next(
+                (
+                    item
+                    for item in catalog.get("models", [])
+                    if item.get("id") == args.model
+                    and item.get("enabled") is True
+                    and item.get("is_free") is True
+                ),
+                None,
+            )
+            if catalog.get("status") != "ok" or smoke_model is None:
+                raise RuntimeError(
+                    f"Qoder smoke model {args.model!r} is not currently exposed as enabled/free"
+                )
+            print(f"Qoder model discovery: PASS ({len(catalog['models'])} models)")
+
             first_marker = "SERVERFS_QODER_BRIDGE_OK"
             first = await service.submit_task(
                 runtime="qoder",
                 workdir=args.workdir,
                 path=smoke_dir.name,
                 profile="workspace-write",
+                model=args.model,
                 prompt=(
                     "Do not use tools. Reply with exactly this token and nothing else: "
                     f"{first_marker}"
@@ -186,6 +224,7 @@ async def _run(args: argparse.Namespace) -> None:
                 auto_approve_once=True,
             )
             _require_success(first_done, first_marker)
+            _require_model_evidence(first_done, args.model)
             first_record = service.store.get_task(first["task_id"])
             if not first_record.native_session_id:
                 raise RuntimeError("Qoder task succeeded without a persisted native session id")
@@ -198,6 +237,7 @@ async def _run(args: argparse.Namespace) -> None:
                 workdir=args.workdir,
                 path=smoke_dir.name,
                 profile="workspace-write",
+                model=args.model,
                 prompt=(
                     "Continue this same conversation. Do not use tools. Reply with exactly "
                     f"this token and nothing else: {continuation_marker}"
@@ -211,10 +251,34 @@ async def _run(args: argparse.Namespace) -> None:
                 auto_approve_once=True,
             )
             _require_success(second_done, continuation_marker)
+            _require_model_evidence(second_done, args.model)
             second_record = service.store.get_task(second["task_id"])
             if second_record.native_session_id != first_session_id:
                 raise RuntimeError("Qoder continuation did not preserve the native session id")
             print(f"session continuation: PASS ({second['task_id']})")
+
+            if args.check_native_default:
+                default_marker = "SERVERFS_QODER_DEFAULT_OK"
+                default_task = await service.submit_task(
+                    runtime="qoder",
+                    workdir=args.workdir,
+                    path=smoke_dir.name,
+                    profile="workspace-write",
+                    prompt=(
+                        "Do not use tools. Reply with exactly this token and nothing else: "
+                        f"{default_marker}"
+                    ),
+                )
+                default_done, _, _ = await _wait_terminal(
+                    service,
+                    default_task["task_id"],
+                    timeout_seconds=args.timeout,
+                    auto_approve_once=True,
+                )
+                _require_model_evidence(default_done, None)
+                print(f"native default omission evidence: PASS ({default_task['task_id']})")
+                _require_success(default_done, default_marker)
+                print(f"native default execution: PASS ({default_task['task_id']})")
 
             question_marker = "SERVERFS_QODER_QUESTION_OK"
             question = await service.submit_task(
@@ -222,6 +286,7 @@ async def _run(args: argparse.Namespace) -> None:
                 workdir=args.workdir,
                 path=smoke_dir.name,
                 profile="workspace-write",
+                model=args.model,
                 prompt=(
                     "Use AskUserQuestion exactly once. Ask 'Which option?' with header 'Choice', "
                     "single-select options A and B. Wait for the user's answer. If and only if the "
@@ -250,6 +315,7 @@ async def _run(args: argparse.Namespace) -> None:
                 workdir=args.workdir,
                 path=smoke_dir.name,
                 profile="workspace-write",
+                model=args.model,
                 prompt=(
                     "Create write-check.txt in the current working directory. "
                     f"Its exact UTF-8 content must be {write_marker} followed by one newline. "
@@ -278,11 +344,16 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the real Qoder v0.8.0 smoke test")
+    parser = argparse.ArgumentParser(description="Run the real Qoder v0.9.0 smoke test")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--workdir", required=True)
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--model", default=_DEFAULT_SMOKE_MODEL)
+    parser.add_argument(
+        "--check-native-default",
+        action="store_true",
+        help="Also submit one task without a model override and verify null model evidence",
+    )
     args = parser.parse_args()
     asyncio.run(_run(args))
 

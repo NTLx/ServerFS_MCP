@@ -54,11 +54,9 @@ class QoderAdapter(AgentAdapter):
         settings: QoderSettings,
         *,
         client_factory: _ClientFactory = QoderSDKClient,
-        model_override: str | None = None,
     ) -> None:
         self.settings = settings
         self._client_factory = client_factory
-        self._model_override = model_override
         self._active: dict[str, _ActiveQoderTask] = {}
         self._active_lock = asyncio.Lock()
         self._cancel_requested: set[str] = set()
@@ -105,6 +103,51 @@ class QoderAdapter(AgentAdapter):
             return self._runtime_info(available=False)
         version = stdout.decode("utf-8", errors="replace").strip() or None
         return self._runtime_info(available=True, version=version)
+
+    async def list_models(self) -> dict[str, Any]:
+        if self._closed or not self.settings.enabled:
+            return {
+                "runtime": self.name,
+                "status": "unavailable",
+                "scope": "none",
+                "source": "qoder_agent_sdk",
+                "models": [],
+            }
+        cli_path = _resolve_cli(self.settings.qoder_bin)
+        if cli_path is None:
+            raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", "configured Qoder CLI is unavailable")
+        options = QoderAgentOptions(
+            auth=qodercli_auth(),
+            cwd=Path.home(),
+            cli_path=cli_path,
+            setting_sources=["user"],
+        )
+        client = self._client_factory(options)
+        try:
+            async with asyncio.timeout(max(10.0, self.settings.probe_timeout_seconds * 2)):
+                await client.connect()
+                values = await client.get_available_models()
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+        if not isinstance(values, list) or not values:
+            raise BridgeError("AGENT_PROVIDER_ERROR", "Qoder returned no available models")
+        models: list[dict[str, Any]] = []
+        for value in values[:64]:
+            normalized = _normalize_qoder_model(value)
+            if normalized is not None:
+                models.append(normalized)
+        if not models:
+            raise BridgeError("AGENT_PROVIDER_ERROR", "Qoder returned an invalid model catalog")
+        return {
+            "runtime": self.name,
+            "status": "ok",
+            "scope": "current_account",
+            "source": "qoder_agent_sdk",
+            "models": models,
+        }
 
     async def run_task(self, context: TaskContext) -> AdapterResult:
         return await self._run(context, resume=False)
@@ -222,7 +265,7 @@ class QoderAdapter(AgentAdapter):
             setting_sources=["user", "project", "local"],
             can_use_tool=can_use_tool,
             resume=context.continue_native_session_id if resume else None,
-            model=self._model_override,
+            model=context.requested_model,
         )
         client = self._client_factory(options)
         active = _ActiveQoderTask(context=context, client=client)
@@ -552,7 +595,49 @@ class QoderAdapter(AgentAdapter):
             interactive_approval=True,
             interactive_question=True,
             in_flight_recovery="session-resume",
+            model_override=True,
+            model_discovery="current_account",
         )
+
+
+def _normalize_qoder_model(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        getter = value.get
+    else:
+
+        def getter(key: str, default: Any = None) -> Any:
+            return getattr(value, key, default)
+
+    model_id = getter("value")
+    if not isinstance(model_id, str) or not model_id:
+        return None
+    display_name = getter("displayName")
+    item: dict[str, Any] = {
+        "id": model_id,
+        "display_name": display_name if isinstance(display_name, str) else model_id,
+        "enabled": getter("isEnabled") if isinstance(getter("isEnabled"), bool) else None,
+        "hidden": None,
+        "is_default": None,
+    }
+    description = getter("description")
+    if isinstance(description, str):
+        item["description"] = description[:2048]
+    is_free = getter("isFree")
+    if isinstance(is_free, bool):
+        item["is_free"] = is_free
+    price_factor = getter("priceFactor")
+    if isinstance(price_factor, (int, float)) and not isinstance(price_factor, bool):
+        item["price_factor"] = price_factor
+    context = getter("context_config")
+    if isinstance(context, dict):
+        item["context"] = context
+    thinking = getter("thinking_config")
+    if isinstance(thinking, dict):
+        item["reasoning"] = thinking
+    is_new = getter("isNew")
+    if isinstance(is_new, bool):
+        item["is_new"] = is_new
+    return item
 
 
 def _resolve_cli(configured: str) -> str | None:

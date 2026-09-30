@@ -41,7 +41,7 @@ WORKDIR_02_READ_ONLY=false
 ## 重要默认值
 
 - Workdir 默认只读。
-- 二进制传输默认关闭。
+- 二进制传输默认关闭。`SERVERFS_MAX_BINARY_TRANSFER_BYTES` 是原生二进制传输与可选文件入口唯一公开的全局大小配置；workdir 覆盖值只能进一步收紧对应 workdir 的最终发布路径。
 - ChatGPT 文件入口默认关闭，并且需要同时设置 `SERVERFS_FILE_INGRESS_ENABLED=true` 与启用 `file-ingress` Compose profile。
 - 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
 - Agent 策略只有在显式配置后才启用。
@@ -57,6 +57,6 @@ WORKDIR_02_READ_ONLY=false
 SERVERFS_JEV_API_KEY=<your key>
 ```
 
-留空即可完全关闭 Agent Task Preflight、Runtime Router 与 Approval Advisor。正常 Agent Bridge 安装器只会把已配置的 Key 渲染到用户自有、权限为 `0600` 的配置中。运行行为与安全边界详见 [Jev Advisors](./jev-advisors/)。
+留空即可完全关闭 Agent Task Preflight、Runtime Router、Model Advisor 与 Approval Advisor。正常 Agent Bridge 安装器只会把已配置的 Key 渲染到用户自有、权限为 `0600` 的配置中。运行行为与安全边界详见 [Jev Advisors](./jev-advisors/)。
 
 完整环境变量参考请查看仓库 [README](https://github.com/NTLx/ServerFS_MCP#workdir-configuration)。

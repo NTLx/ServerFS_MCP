@@ -122,6 +122,17 @@ async def test_runtime_list_over_unix_socket(tmp_path: Path) -> None:
         assert response["request_id"] == "rpc_1"
         assert response["ok"] is True
         assert response["result"]["runtimes"][0]["name"] == "fake"
+
+        models = await rpc(reader, writer, "rpc_models", "runtime.models", {"runtime": "fake"})
+        assert models["ok"] is True
+        assert models["result"] == {
+            "runtime": "fake",
+            "status": "unsupported",
+            "scope": "none",
+            "source": "fake",
+            "models": [],
+        }
+
         bad = {
             "protocol_version": 1,
             "request_id": "rpc_2",
@@ -167,11 +178,13 @@ async def test_task_lifecycle_and_fake_interactions_over_uds(tmp_path: Path) -> 
                 "path": "",
                 "profile": "review",
                 "prompt": "complete:first",
+                "model": "test-model",
             },
         )
         complete_id = complete["result"]["task_id"]
         complete_task = await wait_for_rpc_status(reader, writer, complete_id, "succeeded")
         assert complete_task["final_response"] == "first"
+        assert complete_task["requested_model"] == "test-model"
         assert "native_session_id" not in complete_task
 
         events = await rpc(

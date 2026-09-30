@@ -2,7 +2,7 @@
 
 > ServerFS MCP is a secure MCP server that exposes explicitly configured Linux directories as controlled workdirs to AI agents, **read-only by default** with opt-in per-workdir file mutation.
 
-Current stable release: **v0.8.0**. v0.8.0 adds Qoder as the third native Agent Bridge runtime alongside Codex and Claude while preserving the provider-neutral Agent RPC/tool contract and the existing MCP tool counts. Production ServerFS does not add a model-selection parameter; Qoder keeps its native model/configuration ownership.
+Current stable release: **v0.9.0**. v0.9.0 adds provider-neutral Agent model discovery, optional advisory-only Jev model recommendations before submission, and an optional request-scoped `model` override on `submit_agent_task` while keeping runtime defaults/configuration provider-owned. It also makes `SERVERFS_MAX_BINARY_TRANSFER_BYTES` the single public global size limit for native binary transfer and ChatGPT file-parameter ingress.
 
 Agents reach your directories through the **OpenAI Secure MCP Tunnel**. They can list, find, search, read and stat files anywhere you mount; optionally transfer bounded whole binary files; and, in workdirs you explicitly mark read-write, create, edit, delete or revision-guarded replace files through narrow tools. Nothing else: no shell, no command execution, no unguarded overwrite, no recursive delete, no escape from the directories you configure.
 
@@ -35,17 +35,18 @@ Linux filesystem
         mutation tools: create / edit / delete (read-write workdirs only)
         optional binary path: download / upload / revision-guarded replace
         optional ChatGPT file ingress → isolated sidecar → temporary HTTPS file URL
-        optional Agent path: nine Agent tools → host Agent Bridge → Codex/Claude/Qoder
-          optional experimental Jev advisor → preflight + runtime routing + approval advice
+        optional Agent path: ten Agent tools → host Agent Bridge → Codex/Claude/Qoder
+          model discovery + request-scoped model override
+          optional experimental Jev advisor → preflight + runtime routing + model advice + approval advice
    → OpenAI Secure MCP Tunnel (official tunnel-client container, outbound-only)
    → ChatGPT
 ```
 
 The MCP server container has **no Internet egress** and no published ports. The tunnel reaches it over a Docker-internal network. v0.5.0 adds an optional, separately isolated `serverfs-file-ingress` sidecar for ChatGPT file parameters; only that sidecar receives file-download egress, it has no workdir mounts or OpenAI credentials, and the main MCP container remains internal-only. The container root filesystem stays read-only regardless of any workdir setting.
 
-The default `compose.yml` exposes the original 11 filesystem tools. Binary transfer is opt-in: when at least one workdir enables it, `download_binary_file` and `upload_binary_file` are added, producing a 13-tool filesystem surface. When the administrator also configures Agent policy and uses `compose.agent.yml`, the overlay adds nine structured Agent tools. The four supported surfaces are therefore 11 / 13 / 20 / 22 tools for filesystem-only / filesystem+binary / filesystem+Agent / filesystem+binary+Agent. Agent tools broker structured tasks through the host-side Bridge; they are not a shell, argv, or generic command executor. Delegated tasks should therefore stay objective-level and capability-bounded: one authorized goal, explicit mutation scope/stop conditions, and only the context/evidence needed for that goal. This improves clarity and reduces accidental ambiguity; it is not intended to bypass provider safety checks.
+The default `compose.yml` exposes the original 11 filesystem tools. Binary transfer is opt-in: when at least one workdir enables it, `download_binary_file` and `upload_binary_file` are added, producing a 13-tool filesystem surface. When the administrator also configures Agent policy and uses `compose.agent.yml`, the overlay adds ten structured Agent tools, including the read-only `list_agent_models`. The four supported surfaces are therefore 11 / 13 / 21 / 23 tools for filesystem-only / filesystem+binary / filesystem+Agent / filesystem+binary+Agent. Agent tools broker structured tasks through the host-side Bridge; they are not a shell, argv, or generic command executor. Delegated tasks should therefore stay objective-level and capability-bounded: one authorized goal, explicit mutation scope/stop conditions, and only the context/evidence needed for that goal. This improves clarity and reduces accidental ambiguity; it is not intended to bypass provider safety checks.
 
-The current v0.8.0 release includes an optional **advisory-only** Jev task advisor inside the host Agent Bridge. It does not add an MCP tool, runtime, permission, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and task submission follows the existing path unchanged. One pinned `jev-1.13.0` task-submission request evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a five-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, `qoder`, or `human_review`. The recommendation never overrides the caller's explicit runtime. If a native provider later creates an approval request, the same Jev client may make one additional approval-specific request that scores necessity, scope, destructive/irreversible risk, sensitive access and external side effects, then returns an advisory recommendation; identical approvals within the same task reuse task-local advice instead of calling Jev again. Ordinary turns and question prompts do not create that extra request. No Jev result blocks, rewrites, reroutes, approves, denies, or expands a task; the explicit runtime and approval contracts remain authoritative. The feature was introduced in v0.6.0 as an opt-in experimental capability. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository [Preflight note](docs/jev-agent-preflight-experiment.md), [Runtime Router note](docs/jev-runtime-router-experiment.md), and [Approval Advisor note](docs/jev-approval-advisor-experiment.md).
+The current v0.9.0 release includes an optional **advisory-only** Jev advisor inside the host Agent Bridge. It does not add a runtime, permission, automatic router, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and Agent submission/model discovery work without Jev. Task submission still evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a five-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, `qoder`, or `human_review`; that recommendation never overrides the caller's explicit runtime. v0.9.0 additionally lets `list_agent_models` accept the concrete task context and, when the selected runtime exposes a model catalog, ask the same pinned `jev-1.13.0` advisor which currently exposed model best fits the task. The returned `model_advice` is pre-submit evidence only: ServerFS never copies it into `submit_agent_task.model`, and ChatGPT/user decides whether to accept, ignore, or override it. Approval Advisor remains unchanged in authority: it may advise on a provider approval request but never approve/deny automatically. No Jev result blocks, rewrites, reroutes, selects a model automatically, approves, denies, or expands a task. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository experiment notes.
 
 v0.7.0 introduced the current Agent Bridge reliability layer without turning ServerFS into a workflow engine. Every new task freezes an immutable execution manifest and optional opaque `correlation_id`; normalized events use schema-versioned envelopes; the original v0.7.0 default task deadline was 24 hours and terminal state is retained for seven days by default. Workspace-write runs add a persistent active-slot recovery guard on top of the existing `flock`, so an abnormal Bridge exit fails closed with `WORKDIR_RECOVERY_REQUIRED` until provider state is reconciled. Final responses up to 256 KiB remain inline; responses above 256 KiB and up to 8 MiB are atomically spooled in private Bridge state and can be reconstructed exactly through the read-only `read_agent_task_result` tool. Results above 8 MiB still fail with `AGENT_RESULT_TOO_LARGE`. v0.7.1 added the narrow Codex pre-provider-start reconciliation hotfix. v0.7.2 was the previous stable maintenance release on that frozen surface: `find_files` keeps directory-FD usage bounded on wide trees and reports `EMFILE`/`ENFILE` as `RESOURCE_EXHAUSTED`; lazy Agent recovery terminalizes a stale non-terminal task when reconciliation proves its provider is inactive, while unknown provider state remains fail-closed.
 
@@ -94,8 +95,8 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.8.0` | `v0.8.0` |
-| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.8` | newest `v0.8.x` tag |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.9.0` | `v0.9.0` |
+| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.9` | newest `v0.9.x` tag |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
 Every image is multi-arch: `linux/amd64` and `linux/arm64`.
@@ -107,7 +108,7 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-The v0.8.0 release publishes immutable tag `v0.8.0` and stable GHCR tags `0.8.0`, `0.8` and `latest`. Earlier release tags remain immutable. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
+The v0.9.0 release publishes immutable tag `v0.9.0` and stable GHCR tags `0.9.0`, `0.9` and `latest`. Earlier release tags remain immutable. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
 
 ## Workdir Configuration
 
@@ -137,7 +138,7 @@ Rules:
 
 v0.4 resolves one immutable effective policy for every enabled workdir at startup. Global `SERVERFS_*` values are defaults; an explicit `WORKDIR_XX_*` scalar override wins for that slot, while an empty workdir value inherits the global default. This applies to hidden-file policy, read/write limits, binary transfer, and Agent policy. `EXTRA_DENY_GLOBS` is intentionally stricter: global and workdir deny globs are **unioned**, so a workdir can add restrictions but cannot remove the global deny floor.
 
-Binary transfer is disabled by default. Enable it globally with `SERVERFS_BINARY_TRANSFER_ENABLED=true` or for one slot with `WORKDIR_XX_BINARY_TRANSFER_ENABLED=true`. `SERVERFS_MAX_BINARY_TRANSFER_BYTES` / `WORKDIR_XX_MAX_BINARY_TRANSFER_BYTES` bound both upload and download; the default is 8 MiB. Enabling binary transfer does not release write authorization: uploads still require `WORKDIR_XX_READ_ONLY=false`.
+Binary transfer is disabled by default. Enable it globally with `SERVERFS_BINARY_TRANSFER_ENABLED=true` or for one slot with `WORKDIR_XX_BINARY_TRANSFER_ENABLED=true`. `SERVERFS_MAX_BINARY_TRANSFER_BYTES` is the single public global size ceiling for native binary upload/download and, when enabled, ChatGPT file-parameter ingress; `WORKDIR_XX_MAX_BINARY_TRANSFER_BYTES` may further tighten publication for one workdir. The default is 8 MiB. The legacy `SERVERFS_FILE_INGRESS_MAX_BYTES` name is accepted only as an ingress-side compatibility fallback when the unified setting is absent. Enabling binary transfer does not release write authorization: uploads still require `WORKDIR_XX_READ_ONLY=false`.
 
 v0.5.0 optionally accepts a ChatGPT/OpenAI file parameter as the upload source. This path is separately disabled by default. To enable it, set `SERVERFS_FILE_INGRESS_ENABLED=true` and start Compose with `--profile file-ingress`. The sidecar requires a narrow host policy: exact hosts may be listed in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; for real ChatGPT fileParams, set `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` to admit only the measured `oaisdmntpr<Azure-storage-account-suffix>.blob.core.windows.net` family. Generic `*.blob.core.windows.net` wildcards remain unsupported. `upload_binary_file` then advertises `_meta["openai/fileParams"] = ["file"]` and accepts exactly one of `data_base64` or `file`. The client-supplied `file_name`, `file_id` and temporary URL never select the ServerFS destination; the explicit `path` argument remains authoritative.
 
@@ -310,21 +311,29 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose up -d
 
 Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins and rebuilding along the source path. Avoid `latest`.
 
-For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. For v0.8.0, use:
+For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. For v0.9.0, use:
 
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.8.0
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.9.0
 ```
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
 
+### Upgrading to v0.9.0
+
+v0.9.0 extends the existing Codex/Claude/Qoder Bridge contract without moving model defaults into ServerFS configuration. The Agent surface gains one read-only tool, `list_agent_models`, and `submit_agent_task` gains an optional request-scoped `model` field. Omit `model` and the runtime keeps its native default/resumed-session behavior; provide it and ServerFS forwards that exact provider-native identifier for the current submission only. The requested value is stored as task/manifest evidence and participates in idempotency, but it is never written as a ServerFS or provider default.
+
+Codex model discovery uses App Server `model/list`; Qoder uses the structured Agent SDK current-account catalog; Claude explicitly reports discovery `unsupported` because the installed Claude Code/Agent SDK does not expose an equivalent stable native-account enumeration API. Discovery never starts inference. When Jev is configured, `list_agent_models` can also receive the proposed task context and return advisory `model_advice`; ServerFS never auto-applies that recommendation.
+
+The Agent-enabled MCP surface therefore grows from nine to ten Agent tools (21/23 total with filesystem-only/binary surfaces). Bridge UDS protocol remains version 1 because the new RPC/method fields are additive. Execution manifest schema advances to 2 to record `model.requested`; event schema remains unchanged. Qoder live steering remains deliberately disabled under the existing one-task/one-terminal-Result contract.
+
+v0.9.0 also unifies binary size configuration: set `SERVERFS_MAX_BINARY_TRANSFER_BYTES` once to control the global native binary and file-ingress fetch ceiling. The old `SERVERFS_FILE_INGRESS_MAX_BYTES` is no longer needed in `.env` and is only a backwards-compatible ingress fallback. Per-workdir binary limits continue to tighten final publication without making the isolated ingress sidecar workdir-aware.
+
+Before updating the host Bridge, confirm there are no active Agent tasks and use the existing user-scoped installer/update flow. Preserve the same Compose surface/profile combination during deployment. Production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.9.0`.
+
 ### Upgrading to v0.8.0
 
-v0.8.0 adds Qoder as the third production native Agent runtime beside Codex and Claude. The integration uses the official Qoder Agent SDK with the existing system `qodercli`, supports native session continuation, interactive approvals and `AskUserQuestion`, cancellation through `interrupt()`, strict deployment/runtime validation, and the existing provider-neutral workdir lease/lifecycle model. Production ServerFS does **not** expose a model selector: Qoder keeps its native model/settings ownership. A real `Qwen3.8-Flash` validation proved new-session, continuation, question brokerage and workspace-write behavior.
-
-Qoder live steering remains deliberately disabled. Real SDK testing showed that `priority="now"` first terminates the current Qoder response iteration with `error_during_execution`, while the steered success arrives only from a second response iteration; that does not fit the current one-task/one-terminal-Result Bridge contract. v0.8.0 therefore reports `live_steer=false` rather than emulating provider-specific multi-Result orchestration.
-
-The MCP tool count, Bridge protocol version, manifest/event schemas, result spool, writer lease, provider authorization and Jev advisory-only contract remain unchanged. Jev Runtime Router now understands `qoder` as a fifth advisory route but still never overrides the explicitly requested runtime. Before updating the host Bridge, confirm there are no active Agent tasks and use the existing user-scoped installer/update flow. For Agent-enabled deployments, preserve `-f compose.yml -f compose.agent.yml`, set the desired workdir runtime allowlists to include `qoder`, and run `python3 deployment/agent-bridge/verify_host.py --require-runtimes` after the host Bridge is active. Production container deployments should pin `SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.8.0`.
+v0.8.0 added Qoder as the third production native Agent runtime beside Codex and Claude under the same provider-neutral execution/approval/lease lifecycle contract. Qoder live steering remained deliberately disabled after native testing showed multi-Result semantics incompatible with the current task contract.
 
 ### Upgrading to v0.7.3
 

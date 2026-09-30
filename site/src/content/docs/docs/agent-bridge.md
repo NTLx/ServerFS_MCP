@@ -3,7 +3,7 @@ title: Agent Bridge
 description: Optional structured delegation to native Codex, Claude and Qoder runtimes.
 ---
 
-The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.8.0 is the current stable release and includes Qoder under the same provider-neutral tool/RPC contract.
+The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.9.0 is the current stable release and adds provider-neutral model discovery plus request-scoped model overrides while keeping runtime defaults provider-owned.
 
 ```text
 ChatGPT
@@ -34,18 +34,24 @@ This keeps:
 
 ## Runtime behavior
 
-ServerFS exposes nine structured Agent tools when Agent policy is enabled. They cover runtime discovery, task submission, status/events, exact retrieval of spooled final results, approval/question handling, steering where supported, and cancellation.
+ServerFS exposes ten structured Agent tools when Agent policy is enabled. They cover runtime/model discovery, task submission, status/events, exact retrieval of spooled final results, approval/question handling, steering where supported, and cancellation.
 
 They are **not** a shell, argv passthrough, or generic command executor.
 
 Current deployments can expose:
 
-- 20 tools: filesystem + Agent
-- 22 tools: filesystem + binary + Agent
+- 21 tools: filesystem + Agent
+- 23 tools: filesystem + binary + Agent
+
+## v0.9 model discovery and selection
+
+`list_agent_models` is the one new read-only Agent tool. Codex uses App Server `model/list`; Qoder uses the structured Agent SDK current-account catalog; Claude returns `model_discovery=unsupported` because the installed Claude Code/Agent SDK does not expose an equivalent stable native-account enumeration API. Discovery never starts an inference turn.
+
+`submit_agent_task` accepts optional `model`. Omitting it preserves the runtime's native default or resumed-session behavior. An explicit provider-native ID applies only to that submission; ServerFS stores it as task/manifest evidence and includes it in idempotency identity, but never writes it as a runtime/workdir/user default. Unknown/unavailable models fail through the provider path; ServerFS never silently falls back.
 
 ## v0.8 Qoder runtime
 
-v0.8.0 adds `qoder` as the third production runtime. It uses the official Qoder Agent SDK with the existing system `qodercli`, supports native session continuation, approval and `AskUserQuestion` brokerage, and cancellation through `interrupt()`. Production ServerFS does **not** add a model-selection field: Qoder model choice remains provider-native. The dedicated live-smoke script may pin an explicit validation model without changing the MCP schema.
+v0.8.0 added `qoder` as the third production runtime. It uses the official Qoder Agent SDK with the existing system `qodercli`, supports native session continuation, approval and `AskUserQuestion` brokerage, and cancellation through `interrupt()`.
 
 Qoder restart semantics are conservative: a persisted native session can be resumed by a new task, but ServerFS does not claim that an old in-flight qodercli process can be reattached after Bridge restart. Live steering is also deliberately disabled: a 2026-09-29 real SDK/CLI probe showed that `priority="now"` first ends the current `receive_response()` with an `error_during_execution` Result, while the steered success arrives only from a second response iteration. That does not fit the current one-task/one-terminal-Result Bridge contract.
 
@@ -81,11 +87,11 @@ When recreating the MCP container, always preserve both `-f compose.yml -f compo
 
 ## Optional Jev advisors
 
-The host Bridge can optionally use TypeSafe Jev as an **advisory-only** decision layer. It does not add any MCP tool or Agent runtime.
+The host Bridge can optionally use TypeSafe Jev as an **advisory-only** decision layer. It does not become an Agent runtime or automatic router.
 
-With `SERVERFS_JEV_API_KEY` configured, one task-submission request provides both Agent Task Preflight and Runtime Router advice. If the native provider later creates a concrete approval request, Approval Advisor may make one additional Jev request; identical approvals within the same task reuse cached advice. With no key, none of these Jev paths exist.
+With `SERVERFS_JEV_API_KEY` configured, one task-submission request provides Agent Task Preflight and Runtime Router advice. v0.9.0 also lets `list_agent_models` include a concrete proposed task: after successful native model discovery, Model Advisor may recommend one of the currently exposed candidates before submission. ServerFS returns that advice with `automatic=false` and never copies it into `submit_agent_task.model`. If the native provider later creates a concrete approval request, Approval Advisor may make one additional Jev request; identical approvals within the same task reuse cached advice. With no key, model discovery/submission still work and no Jev requests occur.
 
-Jev never overrides the explicit runtime, workdir policy, writer lease, provider approval state, or `respond_agent_approval`. See [Jev Advisors](./jev-advisors/) for the model contract, request flow, data minimization, and failure behavior.
+Jev never overrides the explicit runtime/model, workdir policy, writer lease, provider approval state, or `respond_agent_approval`. See [Jev Advisors](./jev-advisors/) for the model contract, request flow, data minimization, and failure behavior.
 
 ## Delegation hygiene
 

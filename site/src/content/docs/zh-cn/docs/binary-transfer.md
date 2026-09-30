@@ -43,4 +43,4 @@ description: 有界整文件下载与基于 revision 的受保护上传。
 
 ## 限制
 
-`SERVERFS_MAX_BINARY_TRANSFER_BYTES` 以及每个 workdir 的覆盖值同时约束上传和下载。默认上限为 8 MiB。MCP HTTP request body 上限会根据启用 workdir 中最大的原始二进制上限计算，避免 Base64 兼容通道被 SDK 更小的默认请求体限制提前截断。
+`SERVERFS_MAX_BINARY_TRANSFER_BYTES` 是原生二进制上传/下载以及可选 file-ingress 获取路径唯一公开的全局大小上限，默认 8 MiB。`WORKDIR_XX_MAX_BINARY_TRANSFER_BYTES` 可以进一步收紧某个 workdir 的最终发布上限；隔离的 ingress sidecar 刻意保持 workdir-unaware，只执行全局上限。旧的 `SERVERFS_FILE_INGRESS_MAX_BYTES` 仅在统一变量缺失时作为 ingress 兼容 fallback。MCP HTTP request body 上限会根据启用 workdir 中最大的原始二进制上限计算，避免 Base64 兼容通道被 SDK 更小的默认请求体限制提前截断。

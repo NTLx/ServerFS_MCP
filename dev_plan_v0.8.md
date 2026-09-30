@@ -1,6 +1,6 @@
 # ServerFS v0.8.0 Release Plan — Qoder Native Runtime
 
-Status: frozen/released; v0.8.0 is the current stable release
+Status: frozen/released; v0.8.0 is a prior stable release, superseded by v0.9.0
 Baseline: v0.7.3 / main
 Scope: add Qoder as the third production Agent runtime without changing the public Bridge RPC protocol.
 

@@ -79,6 +79,26 @@ class FakeQoderClient:
     async def disconnect(self) -> None:
         self.connected = False
 
+    async def get_available_models(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "value": "qfmodel",
+                "displayName": "Qwen3.8-Flash",
+                "description": "Fast model",
+                "isEnabled": True,
+                "isFree": True,
+                "priceFactor": 0,
+            },
+            {
+                "value": "qmodel_38max",
+                "displayName": "Qwen3.8-Max",
+                "description": "Deep model",
+                "isEnabled": True,
+                "isFree": False,
+                "priceFactor": 1,
+            },
+        ]
+
     async def receive_response(self):
         assert self.prompt is not None
         session_id = self.options.resume or "qoder-session-1"
@@ -231,6 +251,11 @@ def make_service(
         ),
         client_factory=factory,
     )
+
+    async def available_probe():
+        return adapter._runtime_info(available=True, version="test")
+
+    monkeypatch.setattr(adapter, "probe", available_probe)
     service = BridgeService(
         store=TaskStore(tmp_path / "state"),
         policies=PolicyRegistry(
@@ -301,6 +326,42 @@ async def test_qoder_uses_native_server_environment_without_model_override_and_r
         second_done = await wait_for_status(service, second["task_id"], "succeeded")
         assert second_done["final_response"] == "second"
         assert factory.options[1].resume == "qoder-session-1"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_qoder_discovers_models_and_accepts_request_scoped_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, factory = make_service(tmp_path, monkeypatch)
+    await service.start()
+    try:
+        catalog = await service.list_models(runtime="qoder")
+        assert catalog["status"] == "ok"
+        assert catalog["scope"] == "current_account"
+        assert [item["id"] for item in catalog["models"]] == [
+            "qfmodel",
+            "qmodel_38max",
+        ]
+        assert catalog["models"][0]["is_free"] is True
+        discovery_options = factory.options[-1]
+        assert discovery_options.setting_sources == ["user"]
+        assert discovery_options.model is None
+        assert factory.clients[-1].connected is False
+
+        submitted = await service.submit_task(
+            runtime="qoder",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="selected",
+            model="qfmodel",
+        )
+        done = await wait_for_status(service, submitted["task_id"], "succeeded")
+        assert done["requested_model"] == "qfmodel"
+        assert factory.options[-1].model == "qfmodel"
     finally:
         await service.close()
 

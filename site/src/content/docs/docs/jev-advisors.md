@@ -1,6 +1,6 @@
 ---
 title: Jev Advisors
-description: Optional TypeSafe Jev decision support for Agent task quality, routing, and provider approvals.
+description: Optional TypeSafe Jev decision support for Agent task quality, runtime routing, model choice, and provider approvals.
 ---
 
 ServerFS can optionally use [TypeSafe Jev](https://docs.typesafe.ai/introduction) inside the **host-side Agent Bridge** as a structured decision-support layer.
@@ -9,7 +9,7 @@ Jev is a System One model: instead of generating prose, it evaluates typed quest
 
 The integration is **opt-in, advisory-only, and fail-open**. Jev is not an Agent runtime, authorization source, or security boundary.
 
-> **Status:** this opt-in experimental capability was introduced in v0.6.0 and remains included in the current v0.8.0 release. It changes the host Agent Bridge only and does not change the MCP public tool schema.
+> **Status:** this opt-in experimental capability was introduced in v0.6.0 and remains included in the current v0.9.0 release. v0.9.0 adds Model Advisor behind the new `list_agent_models` tool; Jev itself remains an internal host-Bridge advisor and never gains execution authority.
 
 ## Enable it
 
@@ -40,7 +40,7 @@ The version is pinned instead of using `jev-latest` so evaluation behavior can b
 
 TypeSafe currently documents Jev 1.13 as text-only with a 64k total request budget and an additional 32k limit for the state plus the single longest question. English is its strongest language; CJK is supported but should be validated on the application's own data. ServerFS therefore treats all scores and recommendations as evidence, never as authority.
 
-## Three advisory capabilities
+## Four advisory capabilities
 
 ### Agent Task Preflight
 
@@ -64,6 +64,20 @@ The same task-submission Jev request also recommends one route:
 
 This does **not** add `runtime=auto`. The explicitly requested runtime and deterministic per-workdir runtime policy remain authoritative.
 
+### Model Advisor
+
+`list_agent_models` can optionally include the exact task ChatGPT is considering. When the selected runtime successfully exposes a native model catalog and Jev is enabled, ServerFS sends the sanitized task context plus the normalized eligible model metadata to Jev before any Agent task is submitted.
+
+Model Advisor:
+
+- considers only currently exposed candidates that are not explicitly disabled/hidden;
+- uses runtime-provided reasoning/context/modalities/free/price metadata when present;
+- does not infer quality or cost from a model name alone;
+- returns an exact provider-native `recommended_model`, confidence/probabilities, and `automatic=false`;
+- never writes or forwards that recommendation into `submit_agent_task.model` automatically.
+
+ChatGPT or the user remains responsible for the later submission choice. Claude model advice is currently `not_applicable` because Claude Code does not expose the same stable native-account model-enumeration capability as Codex/Qoder.
+
 ### Approval Advisor
 
 If Codex, Claude or Qoder later produces a real provider approval request, ServerFS may make one additional Jev request for that concrete approval.
@@ -84,6 +98,10 @@ The provider request remains blocked until the caller explicitly responds throug
 ServerFS deliberately minimizes Jev traffic:
 
 ```text
+list_agent_models + task context
+  └─ up to 1 Jev request
+       └─ Model Advisor
+
 submit_agent_task
   └─ 1 Jev request
        ├─ Preflight
@@ -95,13 +113,13 @@ provider approval?
               └─ identical approval in the same task -> reuse cached advice
 ```
 
-Preflight and Runtime Router share one `system_one` request because Jev can evaluate multiple typed questions independently against the same state. Approval Advisor runs later only because the concrete provider approval object does not exist at task-submission time.
+Model Advisor is deliberately a separate pre-submit request because ChatGPT must receive its recommendation before deciding whether to pass a `model`. Preflight and Runtime Router then share one `system_one` request at actual submission because Jev can evaluate multiple typed questions independently against the same state. Approval Advisor runs later only because the concrete provider approval object does not exist at task-submission time.
 
 ## Data minimization
 
 ServerFS does not send the workdir contents to Jev just because the advisor is enabled.
 
-Task-level evaluation receives the submitted task context needed for the advisory questions. Approval evaluation uses the existing redacted approval object, restricts it to an allowlisted field set, and applies another sanitizer for obvious secret/token/password/credential fields and patterns.
+Task-level evaluation receives only the task context needed for the advisory questions. Model Advisor additionally receives the normalized model metadata already returned by native discovery; raw provider payloads and provider credentials are never sent. Approval evaluation uses the existing redacted approval object, restricts it to an allowlisted field set, and applies another sanitizer for obvious secret/token/password/credential fields and patterns.
 
 No Jev result may weaken:
 
@@ -125,14 +143,14 @@ The current integration has been live-tested with:
 - bounded filesystem reads;
 - Git/test tasks;
 - explicit Codex/Claude provider mismatches;
-- Qoder routing is included in v0.8.0 and remains advisory-only, like every Runtime Router recommendation;
+- Qoder routing and pre-submit model advice are included in v0.9.0 and remain advisory-only;
 - human-review decisions;
 - intentionally bundled or vague prompts;
 - bounded one-time writes;
 - repeated session-scoped writes;
 - outside-workdir approval requests.
 
-The project intentionally does **not** use automatic routing or automatic approval thresholds yet.
+The project intentionally does **not** use automatic runtime routing, automatic model selection, or automatic approval thresholds.
 
 Upstream references: [Introduction](https://docs.typesafe.ai/introduction), [Models](https://docs.typesafe.ai/models), and [API reference](https://docs.typesafe.ai/api).
 

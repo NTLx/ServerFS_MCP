@@ -41,7 +41,7 @@ Extra deny globs are stricter: global and workdir rules are **unioned**, so a wo
 ## Important defaults
 
 - Workdirs are read-only by default.
-- Binary transfer is disabled by default.
+- Binary transfer is disabled by default. `SERVERFS_MAX_BINARY_TRANSFER_BYTES` is the single public global size setting for native binary transfer and optional file ingress; workdir overrides can only further constrain their own publication path.
 - ChatGPT file ingress is disabled by default and requires both `SERVERFS_FILE_INGRESS_ENABLED=true` and the `file-ingress` Compose profile.
 - The constrained OpenAI Blob host-family policy is separately disabled by default; enable it with `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` only when ChatGPT file parameters are required. Exact additional hosts belong in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
 - Agent policy is disabled unless explicitly configured.
@@ -57,6 +57,6 @@ To enable the host-side advisory suite, set the TypeSafe API key in the existing
 SERVERFS_JEV_API_KEY=<your key>
 ```
 
-Leave it empty to disable Agent Task Preflight, Runtime Router, and Approval Advisor completely. The normal Agent Bridge installer renders a configured key only into its user-owned `0600` config. See [Jev Advisors](./jev-advisors/) for the runtime behavior and security boundary.
+Leave it empty to disable Agent Task Preflight, Runtime Router, Model Advisor, and Approval Advisor completely. The normal Agent Bridge installer renders a configured key only into its user-owned `0600` config. See [Jev Advisors](./jev-advisors/) for the runtime behavior and security boundary.
 
 See the repository [README](https://github.com/NTLx/ServerFS_MCP#workdir-configuration) for the complete environment-variable reference.

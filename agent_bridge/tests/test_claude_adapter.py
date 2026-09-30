@@ -219,6 +219,11 @@ def make_service(
         ),
         client_factory=factory,
     )
+
+    async def available_probe():
+        return adapter._runtime_info(available=True, version="test")
+
+    monkeypatch.setattr(adapter, "probe", available_probe)
     service = BridgeService(
         store=TaskStore(tmp_path / "state"),
         policies=PolicyRegistry(
@@ -292,6 +297,36 @@ async def test_claude_uses_native_server_environment_and_resumes_session(
         second_done = await wait_for_status(service, second["task_id"], "succeeded")
         assert second_done["final_response"] == "second"
         assert factory.options[1].resume == "claude-session-1"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_claude_reports_discovery_unsupported_and_accepts_explicit_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, factory = make_service(tmp_path, monkeypatch)
+    await service.start()
+    try:
+        catalog = await service.list_models(runtime="claude")
+        assert catalog == {
+            "runtime": "claude",
+            "status": "unsupported",
+            "scope": "none",
+            "source": "claude_code",
+            "models": [],
+        }
+        submitted = await service.submit_task(
+            runtime="claude",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="selected",
+            model="claude-sonnet-4-5",
+        )
+        done = await wait_for_status(service, submitted["task_id"], "succeeded")
+        assert done["requested_model"] == "claude-sonnet-4-5"
+        assert factory.options[-1].model == "claude-sonnet-4-5"
     finally:
         await service.close()
 

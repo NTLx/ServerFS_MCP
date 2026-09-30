@@ -46,6 +46,13 @@ class FakeAgentClient:
                     {"name": "fake", "available": True},
                 ]
             },
+            "runtime.models": {
+                "runtime": "qoder",
+                "status": "ok",
+                "scope": "current_account",
+                "source": "qoder_agent_sdk",
+                "models": [{"id": "Qwen3.8-Flash", "enabled": True}],
+            },
             "task.submit": {"task_id": "agt_test", "status": "queued"},
             "task.get": {"task_id": "agt_test", "status": "running"},
             "task.events": {"events": [], "next_after_event_id": 0},
@@ -134,11 +141,12 @@ def test_enabled_server_requires_explicit_bridge_client(tmp_path: Path) -> None:
         create_server(settings, WorkdirRegistry([wd]))
 
 
-def test_enabled_surface_adds_exactly_nine_agent_tools(tmp_path: Path) -> None:
+def test_enabled_surface_adds_exactly_ten_agent_tools(tmp_path: Path) -> None:
     client = FakeAgentClient()
     names = tool_names(server_with_client(tmp_path, client))
     expected = {
         "list_agent_runtimes",
+        "list_agent_models",
         "submit_agent_task",
         "get_agent_task",
         "read_agent_task_events",
@@ -149,7 +157,7 @@ def test_enabled_surface_adds_exactly_nine_agent_tools(tmp_path: Path) -> None:
         "cancel_agent_task",
     }
     assert expected <= names
-    assert len(names) == 20
+    assert len(names) == 21
 
 
 def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
@@ -162,12 +170,14 @@ def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
     tools = asyncio.run(_tools())
     expected_properties = {
         "list_agent_runtimes": set(),
+        "list_agent_models": {"runtime", "workdir", "task_prompt", "path", "profile"},
         "submit_agent_task": {
             "runtime",
             "workdir",
             "prompt",
             "path",
             "profile",
+            "model",
             "continue_from_task_id",
             "correlation_id",
             "idempotency_key",
@@ -187,6 +197,7 @@ def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
     }
     expected_annotations = {
         "list_agent_runtimes": (True, None, None, False),
+        "list_agent_models": (True, None, None, True),
         "get_agent_task": (True, None, None, False),
         "read_agent_task_events": (True, None, None, False),
         "read_agent_task_result": (True, None, None, False),
@@ -274,6 +285,51 @@ def test_list_agent_runtimes_filters_non_public_or_unallowlisted_runtime(tmp_pat
     assert client.calls == [("runtime.list", {})]
 
 
+def test_list_agent_models_maps_discovery_and_advice_to_bridge_rpc(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    wd = agent_workdir(tmp_path)
+    (wd.container_path / "src").mkdir()
+    server = server_with_client(tmp_path, client, workdirs=[wd])
+
+    result = call_success(server, "list_agent_models", {"runtime": "qoder"})
+    assert result["models"][0]["id"] == "Qwen3.8-Flash"
+    assert client.calls[-1] == ("runtime.models", {"runtime": "qoder"})
+
+    call_success(
+        server,
+        "list_agent_models",
+        {
+            "runtime": "qoder",
+            "workdir": "repo",
+            "task_prompt": "Fix the failing test",
+            "path": "src",
+            "profile": "workspace-write",
+        },
+    )
+    assert client.calls[-1] == (
+        "runtime.models",
+        {
+            "runtime": "qoder",
+            "workdir": "repo",
+            "task_prompt": "Fix the failing test",
+            "path": "src",
+            "profile": "workspace-write",
+        },
+    )
+
+
+def test_list_agent_models_rejects_partial_advice_context_before_rpc(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    server = server_with_client(tmp_path, client)
+    message = call_error(
+        server,
+        "list_agent_models",
+        {"runtime": "qoder", "workdir": "repo"},
+    )
+    assert error_code(message) == "INVALID_REQUEST"
+    assert client.calls == []
+
+
 def test_submit_agent_task_maps_flat_arguments_to_bridge_rpc(tmp_path: Path) -> None:
     client = FakeAgentClient()
     wd = agent_workdir(tmp_path)
@@ -302,6 +358,23 @@ def test_submit_agent_task_maps_flat_arguments_to_bridge_rpc(tmp_path: Path) -> 
             "prompt": "Fix the failing test",
         },
     )
+
+
+def test_submit_forwards_explicit_model(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    server = server_with_client(tmp_path, client)
+    call_success(
+        server,
+        "submit_agent_task",
+        {
+            "runtime": "qoder",
+            "workdir": "repo",
+            "profile": "workspace-write",
+            "prompt": "Use the selected model",
+            "model": "Qwen3.8-Flash",
+        },
+    )
+    assert client.calls[-1][1]["model"] == "Qwen3.8-Flash"
 
 
 def test_submit_forwards_opaque_correlation_id(tmp_path: Path) -> None:

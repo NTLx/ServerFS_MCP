@@ -289,16 +289,34 @@ class BridgeProtocolServer:
         if method == "runtime.list":
             _require_keys(params, set())
             return await self.service.list_runtimes()
+        if method == "runtime.models":
+            _require_keys(
+                params,
+                {"runtime"},
+                optional={"workdir", "task_prompt", "path", "profile"},
+            )
+            _require_types(
+                params,
+                {"runtime": str},
+                optional={
+                    "workdir": (str, type(None)),
+                    "task_prompt": (str, type(None)),
+                    "path": str,
+                    "profile": str,
+                },
+            )
+            return await self.service.list_models(**params)
         if method == "task.submit":
             _require_keys(
                 params,
                 {"runtime", "workdir", "path", "profile", "prompt"},
-                optional={"continue_from_task_id", "correlation_id", "idempotency_key"},
+                optional={"model", "continue_from_task_id", "correlation_id", "idempotency_key"},
             )
             _require_types(
                 params,
                 {"runtime": str, "workdir": str, "path": str, "profile": str, "prompt": str},
                 optional={
+                    "model": (str, type(None)),
                     "continue_from_task_id": (str, type(None)),
                     "correlation_id": (str, type(None)),
                     "idempotency_key": (str, type(None)),

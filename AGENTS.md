@@ -1,12 +1,12 @@
 # AGENTS.md
 
-For the current stable release, read `dev_plan_v0.8.md` first. v0.8.0 adds Qoder as the third production native Agent runtime under the existing provider-neutral Bridge RPC/tool contract; it does not add public model selection or provider-specific MCP methods. v0.8.0 is the current stable release.
+For the current stable release, read `dev_plan_v0.9.md` first. v0.9.0 adds provider-neutral runtime model discovery, optional pre-submit Jev model advice, and request-scoped Agent model overrides without moving provider defaults/configuration into ServerFS. It also makes `SERVERFS_MAX_BINARY_TRANSFER_BYTES` the single public global limit for native binary transfer and file ingress. v0.9.0 is the current stable release.
 
-Read `dev_plan_v0.7.3.md` for the frozen prior v0.7.3 release record: retry-safe Agent submission with a distinct `idempotency_key`, configurable bounded task/interaction lifetimes, terminal-first explicit cancellation, bounded provider interrupt, and lifecycle cleanup/recovery evidence. v0.8.0 is the current stable release. Read `dev_plan_v0.7.2.md` for the frozen prior release's bounded-FD filesystem traversal, proven-inactive Agent task reconciliation, and bounded native-runtime readiness verification. Read `dev_plan_v0.7.md` for the frozen v0.7.0 Runtime Reliability & Observability baseline: schema-versioned event envelopes, opaque correlation IDs, immutable execution manifests, task deadline/retention, provider-aware restart reconciliation, persistent active-slot recovery guards, and bounded large-result spooling/retrieval.
+Read `dev_plan_v0.8.md` for the frozen prior v0.8.0 release record: Qoder as the third native runtime under the existing provider-neutral Bridge contract. Read `dev_plan_v0.7.3.md` for the frozen prior v0.7.3 release record: retry-safe Agent submission with a distinct `idempotency_key`, configurable bounded task/interaction lifetimes, terminal-first explicit cancellation, bounded provider interrupt, and lifecycle cleanup/recovery evidence. v0.9.0 is the current stable release. Read `dev_plan_v0.7.2.md` for the frozen prior release's bounded-FD filesystem traversal, proven-inactive Agent task reconciliation, and bounded native-runtime readiness verification. Read `dev_plan_v0.7.md` for the frozen v0.7.0 Runtime Reliability & Observability baseline: schema-versioned event envelopes, opaque correlation IDs, immutable execution manifests, task deadline/retention, provider-aware restart reconciliation, persistent active-slot recovery guards, and bounded large-result spooling/retrieval.
 
 Read `dev_plan_v0.5.md` for the released/frozen v0.5.0 line: ChatGPT/OpenAI file-parameter ingress, the isolated file-ingress sidecar, MCP request-body sizing, and release closure. For every v0.5.0 change, that plan plus executed tests and implementation are authoritative over older binary-transfer assumptions.
 
-Read `README.md` for the current stable v0.8.0 deployment/release contract. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
+Read `README.md` for the current stable v0.9.0 deployment/release contract. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
 acceptance baseline for hierarchical workdir policy, binary file transfer and the Issue #10
 transport-security fix.
 Read `dev_plan_v0.3.md` for the frozen v0.3 Agent Bridge contract: provider-neutral
@@ -24,29 +24,29 @@ reliability/evidence features without changing runtime authorization, provider a
 semantics, or writer-lease authority. v0.7.1 is the targeted Codex reconciliation hotfix;
 v0.7.2 was the previous stable release and added maintenance-only filesystem/recovery/readiness
 fixes on the same contract. The v0.7.3 release adds lifecycle reliability without changing
-provider authorization or writer-lease authority. v0.8.0 adds the Qoder Agent SDK adapter, Qoder deployment/config validation, and advisory router vocabulary without changing the provider-neutral RPC or tool count.
+provider authorization or writer-lease authority. v0.8.0 added the Qoder Agent SDK adapter, Qoder deployment/config validation, and advisory router vocabulary. v0.9.0 additively extends that contract with `runtime.models`, `list_agent_models`, optional `task.submit.model`, task evidence for the requested model, and one extra read-only Agent MCP tool; it does not change runtime authorization, approval semantics, or writer-lease authority.
 Phases A (provider-neutral core), B (Codex native-mode adapter), C (Claude Code native-mode
 adapter), D (Agent MCP surface) and E (production deployment) are complete and frozen on
 `main`. Production Agent delegation remains opt-in through `compose.agent.yml`; the base
 `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
 
 The Jev advisory suite is an explicitly opt-in experimental capability included in the
-current v0.8.0 release over that frozen baseline. It adds advisory task-quality Preflight, Runtime Router, and Approval
-Advisor results inside the host Bridge, but it must not change the MCP tool surface, Bridge
-RPC, runtime allowlists, provider adapters, authorization, approval/question decision
-semantics, or writer-lease semantics. Jev is not an Agent runtime or a safety authority.
+current v0.9.0 release over that frozen baseline. It provides advisory task-quality Preflight, Runtime Router, Model Advisor, and Approval
+Advisor results inside the host Bridge. Model Advisor is invoked only through pre-submit `list_agent_models` advice mode, only when a runtime exposes a usable model catalog, and it must never populate/override `submit_agent_task.model`. Jev must not change runtime allowlists, provider authorization, approval/question decision semantics, or writer-lease semantics. Jev is not an Agent runtime or a safety authority.
 With no `SERVERFS_JEV_API_KEY`, ServerFS must construct no Jev client, make no Jev request,
-emit no advisor result, and preserve baseline behavior. With a key, all Jev features remain
+and preserve baseline discovery/submission behavior. With a key, all Jev features remain
 fail-open and advisory only. The router must not add `runtime=auto`, invoke a different
-runtime/tool, or override the explicitly requested runtime. Approval Advisor may make one
+runtime/tool, or override the explicitly requested runtime. Model Advisor may rank only the currently normalized runtime candidates supplied to it and must return `automatic=false`; ChatGPT/user remains responsible for any later model argument. Approval Advisor may make one
 extra Jev request only after a provider creates an approval request; it must not auto-approve,
 auto-deny, alter available decisions, grant permission IDs, or bypass the existing
 `respond_agent_approval` validation path.
 
-**Phase D is frozen except for the explicit v0.7.0 additive extension.** It originally added eight provider-neutral Agent MCP tools, a thin
+**v0.9 model-selection invariant.** ServerFS configures whether a runtime may be used, not which model it uses by default. `model=None` means no ServerFS override. Explicit model IDs are request-scoped, included in idempotency/task/manifest evidence, and forwarded only through the provider-native runtime API. Do not add `SERVERFS_*_MODEL`, per-workdir default models, automatic fallback, static model catalogs for unsupported providers, or a cross-provider `effective_model` claim. Codex discovery uses App Server `model/list`; Qoder discovery uses its structured Agent SDK; Claude returns discovery `unsupported` until a stable native Claude Code account enumeration API exists.
+
+**Phase D is frozen except for explicit additive extensions.** It originally added eight provider-neutral Agent MCP tools, a thin
 stdlib Unix-socket Bridge client, fail-closed global/per-workdir Agent configuration,
 audit records, and the shared cross-process writer lease consumed by existing mutation
-tools. v0.7.0 added exactly one read-only public tool, `read_agent_task_result`, plus additive protocol fields/RPC needed for correlation metadata and spooled-result retrieval. v0.7.1 and v0.7.2 do not add or remove any public tool or RPC. v0.7.3 also keeps the tool count unchanged but additively extends `submit_agent_task` / `task.submit` with optional `idempotency_key` retry semantics and adds administrator-controlled lifecycle limits. Do not otherwise modify the MCP public surface, UDS protocol, local authorization model or shared writer-lease contract except to fix a demonstrated defect. Phase D kept
+tools. v0.7.0 added exactly one read-only public tool, `read_agent_task_result`, plus additive protocol fields/RPC needed for correlation metadata and spooled-result retrieval. v0.7.1 and v0.7.2 do not add or remove any public tool or RPC. v0.7.3 also kept the tool count unchanged but additively extended `submit_agent_task` / `task.submit` with optional `idempotency_key` retry semantics and administrator-controlled lifecycle limits. v0.9.0 adds exactly one read-only public Agent tool, `list_agent_models`, plus additive `runtime.models` and optional `task.submit.model` fields while keeping UDS `PROTOCOL_VERSION=1`. Do not otherwise modify the MCP public surface, UDS protocol, local authorization model or shared writer-lease contract except to fix a demonstrated defect. Phase D kept
 `SERVERFS_AGENT_BRIDGE_ENABLED=false` as the default, so an upgrade retains the 11-tool
 v0.2 surface unless the administrator explicitly enables Agent delegation. Agent tools
 talk only to the Bridge RPC contract; they never import provider adapters or provider
@@ -104,6 +104,8 @@ measured and regression-tested first. Evidence is in
 
 **ChatGPT file ingress is a v0.5 security boundary.** `serverfs-mcp` must retain no Internet egress. Its client is hard-wired to the internal `serverfs-file-ingress:8081/fetch` endpoint through plain `HTTPConnection` and must not gain configurable destination URLs or redirect following. The optional `serverfs-file-ingress` sidecar has no workdir mounts, no tunnel/OpenAI credentials and no published port. It accepts HTTPS/443 only and requires either exact administrator-configured hosts or the explicit constrained OpenAI Azure Blob family measured from real fileParams: storage-account label starts `oaisdmntpr`, uses only lowercase ASCII letters/digits, fits Azure's 24-character account limit, and ends with exactly `.blob.core.windows.net`. Generic `*.blob.core.windows.net` or other wildcards remain forbidden. Every accepted hostname still goes through all-global DNS validation, IP-pinned connection, original-host TLS verification, and per-redirect revalidation. Never turn it into a generic URL fetcher, broad wildcard proxy, workdir-aware service, or credential-bearing component. Network retrieval happens before the existing mutation lock/writer lease; publication still uses the frozen binary mutation primitives. See `dev_plan_v0.5.md`.
 
+`SERVERFS_MAX_BINARY_TRANSFER_BYTES` is the single public global binary-size setting in v0.9.0. The file-ingress sidecar reads it first; legacy `SERVERFS_FILE_INGRESS_MAX_BYTES` is compatibility fallback only when the unified setting is absent. Per-workdir `WORKDIR_XX_MAX_BINARY_TRANSFER_BYTES` may further tighten final publication, but the isolated ingress sidecar must remain workdir-unaware.
+
 OpenAI file-parameter schema is part of the public tool contract: `upload_binary_file` advertises `_meta["openai/fileParams"]=["file"]` only when ingress is enabled; the file object declares string properties `download_url`, `file_id`, `mime_type`, `file_name`, with only `download_url` and `file_id` required. The upload accepts exactly one payload source (`data_base64` XOR `file`). Never derive the destination path from `file_name` or log the URL/file ID.
 
 systemd user mode is a lifecycle manager only: do not add provider sandbox/hardening that
@@ -111,7 +113,7 @@ changes the native provider capability model frozen in Phases B/C. Do not auto-e
 login lingering; whether the user's systemd manager persists after logout is an
 environment/administrator policy outside this project.
 
-Do not add a generic shell/argv/env MCP tool. Do not replace the nine tools with the MCP
+Do not add a generic shell/argv/env MCP tool. Do not replace the ten Agent tools with the MCP
 Tasks extension yet: as of 2026-09-20 the official Python SDK still lists
 `io.modelcontextprotocol/tasks` as not implemented. Keep the backend compatible with a
 future Tasks adapter instead.

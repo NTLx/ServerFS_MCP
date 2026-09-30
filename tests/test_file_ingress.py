@@ -41,7 +41,7 @@ def test_settings_parse_exact_hosts_and_limits() -> None:
     settings = ingress.settings_from_env(
         {
             "SERVERFS_FILE_INGRESS_ALLOWED_HOSTS": "Files.Example.com,cdn.example.com",
-            "SERVERFS_FILE_INGRESS_MAX_BYTES": "1234",
+            "SERVERFS_MAX_BINARY_TRANSFER_BYTES": "1234",
             "SERVERFS_FILE_INGRESS_FETCH_TIMEOUT_SECONDS": "4.5",
             "SERVERFS_FILE_INGRESS_MAX_REDIRECTS": "2",
         }
@@ -51,6 +51,32 @@ def test_settings_parse_exact_hosts_and_limits() -> None:
     assert settings.max_bytes == 1234
     assert settings.timeout_seconds == 4.5
     assert settings.max_redirects == 2
+
+
+def test_settings_legacy_ingress_limit_is_fallback_only() -> None:
+    legacy = ingress.settings_from_env(
+        {
+            "SERVERFS_FILE_INGRESS_ALLOWED_HOSTS": "files.example.com",
+            "SERVERFS_FILE_INGRESS_MAX_BYTES": "2345",
+        }
+    )
+    assert legacy.max_bytes == 2345
+
+    preferred = ingress.settings_from_env(
+        {
+            "SERVERFS_FILE_INGRESS_ALLOWED_HOSTS": "files.example.com",
+            "SERVERFS_MAX_BINARY_TRANSFER_BYTES": "3456",
+            "SERVERFS_FILE_INGRESS_MAX_BYTES": "2345",
+        }
+    )
+    assert preferred.max_bytes == 3456
+
+
+def test_settings_binary_limit_defaults_to_eight_mib() -> None:
+    settings = ingress.settings_from_env(
+        {"SERVERFS_FILE_INGRESS_ALLOWED_HOSTS": "files.example.com"}
+    )
+    assert settings.max_bytes == 8_388_608
 
 
 @pytest.mark.parametrize(

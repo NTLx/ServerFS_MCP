@@ -51,7 +51,8 @@ ServerFS MCP container
 Host Agent Bridge
    │
    ├── Codex
-   └── Claude Code
+   ├── Claude Code
+   └── Qoder
 ```
 
 The Bridge runs as a user-scoped host service and owns its runtime socket, locks, installed releases, configuration, and state outside the repository checkout.
@@ -59,7 +60,7 @@ The Bridge runs as a user-scoped host service and owns its runtime socket, locks
 ### Optional Jev advisory path
 
 ```text
-Agent task / provider approval
+Agent task / model-advice request / provider approval
    │
    ▼
 Host Agent Bridge
@@ -71,7 +72,7 @@ TypeSafe Jev API
 Advisory result only
 ```
 
-Jev runs from the host Bridge, not the MCP container. Task Preflight and Runtime Router share one task-submission request; Approval Advisor runs only after a provider creates an approval request. These outputs never become authorization or runtime-selection authority.
+Jev runs from the host Bridge, not the MCP container. Task Preflight and Runtime Router share one task-submission request; Model Advisor can run before submission only after native model discovery; Approval Advisor runs only after a provider creates an approval request. These outputs never become authorization, runtime-selection, or model-selection authority.
 
 ## Capability boundaries
 
@@ -81,7 +82,7 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - guarded file mutations
 - bounded whole-file binary transfer
 - optional isolated ChatGPT file ingress
-- structured Agent task RPC
+- structured Agent task RPC, model discovery and request-scoped model override
 - optional host-side Jev advisory decisions
 
-In the current v0.8.0 release, the supported MCP surfaces are 11 / 13 / 20 / 22 tools. Every optional capability is separately gated; Jev does not change those counts because it is an internal Agent Bridge advisor, not an MCP capability surface.
+In the current v0.9.0 release, the supported MCP surfaces are 11 / 13 / 21 / 23 tools. Every optional capability is separately gated; Jev does not change those counts because it is an internal Agent Bridge advisor, not an MCP capability surface.

@@ -25,6 +25,7 @@ class TaskContext:
     cwd: Path
     profile: str
     prompt: str
+    requested_model: str | None
     continue_native_session_id: str | None
     emit_event: EmitEvent
     request_approval: RequestApproval
@@ -56,6 +57,16 @@ class AgentAdapter(ABC):
     @abstractmethod
     async def probe(self) -> RuntimeInfo:
         raise NotImplementedError
+
+    async def list_models(self) -> dict[str, Any]:
+        """Return a normalized model catalog without starting inference."""
+        return {
+            "runtime": self.name,
+            "status": "unsupported",
+            "scope": "none",
+            "source": self.name,
+            "models": [],
+        }
 
     @abstractmethod
     async def run_task(self, context: TaskContext) -> AdapterResult:

@@ -1,6 +1,6 @@
 # Phase E — user-scoped Agent Bridge deployment
 
-Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.8.0 is the current stable release, adding Qoder as the third production native Agent runtime.** The deployment topology and user-scoped security boundary are unchanged.
+Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.9.0 is the current stable release, adding provider-neutral runtime model discovery, request-scoped model overrides and optional Jev model advice on top of the Codex/Claude/Qoder runtime set.** The deployment topology and user-scoped security boundary are unchanged.
 
 The deployment has one non-negotiable rule:
 
@@ -120,7 +120,7 @@ SERVERFS_GID=<id -g>
 SERVERFS_AGENT_BRIDGE_ENABLED=false
 # MCP container -> Bridge RPC timeout; not the lifetime of an Agent task.
 SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS=30
-# v0.8.0 lifecycle policy, enforced by the host Bridge.
+# v0.9.0 lifecycle policy, enforced by the host Bridge.
 SERVERFS_AGENT_TASK_TIMEOUT_SECONDS=7200
 SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS=1800
 SERVERFS_AGENT_MAX_ACTIVE_TASKS=4
@@ -143,8 +143,8 @@ Agent settings into the container, so these values remain inert without
 Provider secrets and shell-only environment are intentionally **not** stored in
 `.env`; they remain in the user-owned `provider.env` described in step 4. The experimental
 Jev advisory features are the one explicit exception: `SERVERFS_JEV_API_KEY` is their opt-in
-master gate in the current v0.8.0 release. Leave it empty to disable Preflight,
-Runtime Router, and Approval Advisor functionality. When non-empty, the installer renders
+master gate in the current v0.9.0 release. Leave it empty to disable Preflight,
+Runtime Router, Model Advisor, and Approval Advisor functionality. When non-empty, the installer renders
 the key only into the user-owned
 `0600` Bridge `config.json`; it is never passed into the MCP container.
 
@@ -496,7 +496,7 @@ Before host acceptance, run both independent code gates: the repository-root gat
 `bash -n deployment/agent-bridge/*.sh` for deployment shell syntax. Root `pytest`
 collects only `tests/` and does not validate `agent_bridge/tests/`.
 
-For the current ServerFS v0.8.0 package, verify the target host proves:
+For the current ServerFS v0.9.0 package, verify the target host proves:
 
 - install/update/rollback require no sudo/root;
 - real peer UID/GID equal the current login user;
@@ -507,13 +507,16 @@ For the current ServerFS v0.8.0 package, verify the target host proves:
 - provider environment parity holds;
 - Codex managed-daemon version matches the selected direct CLI after upgrades;
 - `verify_host.py --require-runtimes` proves every enabled runtime becomes available without ServerFS taking provider lifecycle ownership;
-- Codex, Claude and Qoder runtime discovery works;
-- Agent mode exposes 20 tools without binary transfer and 22 tools with binary transfer;
+- Codex, Claude and Qoder runtime availability discovery works;
+- `list_agent_models` returns Codex/Qoder normalized catalogs and Claude's explicit unsupported model-discovery contract without starting inference;
+- explicit per-task model overrides and omission/native-default behavior are both verified without changing provider configuration;
+- Jev model advice is advisory-only when enabled and absent from execution authority;
+- Agent mode exposes 21 tools without binary transfer and 23 tools with binary transfer;
 - real submit/poll/HITL/cancel works;
 - shared writer lease works across host/container;
 - rollback implementation and recovery tests remain green; the live base
   11-tool rollback/re-cutover drill was **WAIVED BY MAINTAINER for v0.3.0**
-  (2026-09-20) as a historical release decision and is not repeated as a v0.8.0
+  (2026-09-20) as a historical release decision and is not repeated as a v0.9.0
   verification requirement;
 - no provider credentials enter the MCP container;
 - MCP container still has no Internet egress;
@@ -526,5 +529,5 @@ to the default 11-tool surface. Workdir `AGENT_MODE/RUNTIMES` values in
 container.
 
 If post-release verification fails, use the documented rollback script to restore the
-previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The v0.8.0 release uses an immutable
+previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The v0.9.0 release uses an immutable
 tag; earlier release tags remain immutable as well.

@@ -5,9 +5,9 @@ description: Secure, scoped Linux filesystem access for ChatGPT and AI agents.
 
 ServerFS MCP exposes explicitly configured Linux directories as **controlled workdirs** through the Model Context Protocol.
 
-Current stable release: **v0.8.0**.
+Current stable release: **v0.9.0**.
 
-It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations, bounded whole-file binary transfer, and an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge remains optional; v0.8.0 adds Qoder beside Codex and Claude without changing the provider-neutral MCP tool surface, and the Bridge can itself opt into advisory-only TypeSafe Jev support.
+It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations, bounded whole-file binary transfer, and an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge remains optional; v0.9.0 supports Codex, Claude and Qoder with provider-neutral model discovery/request-scoped model overrides where the native runtime supports them, plus advisory-only TypeSafe Jev support.
 
 ## Capability surfaces
 
@@ -15,8 +15,8 @@ It is **read-only by default**. Administrators can opt individual workdirs into 
 | --- | ---: | --- |
 | Filesystem | 11 | Base deployment |
 | Filesystem + binary | 13 | Binary transfer enabled |
-| Filesystem + Agent | 20 | Agent overlay enabled |
-| Full capability | 22 | Binary + Agent enabled |
+| Filesystem + Agent | 21 | Agent overlay enabled |
+| Full capability | 23 | Binary + Agent enabled |
 
 There is no shell, generic command executor, recursive delete, or unguarded overwrite.
 
@@ -28,6 +28,6 @@ There is no shell, generic command executor, recursive delete, or unguarded over
 - [Security Model](./security/) — review the defense-in-depth model.
 - [Binary Transfer](./binary-transfer/) — enable bounded download/upload, including optional ChatGPT file-parameter ingress.
 - [Agent Bridge](./agent-bridge/) — opt into structured Codex/Claude/Qoder delegation.
-- [Jev Advisors](./jev-advisors/) — optional experimental task preflight, five-way runtime routing advice, and approval advice included in the v0.8.0 host Bridge.
+- [Jev Advisors](./jev-advisors/) — optional experimental task preflight, five-way runtime routing, pre-submit model advice, and approval advice included in the v0.9.0 host Bridge.
 
 For implementation detail and the complete operational reference, see the repository [README](https://github.com/NTLx/ServerFS_MCP#readme).

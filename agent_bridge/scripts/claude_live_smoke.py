@@ -22,7 +22,7 @@ from typing import Any
 from serverfs_agent_bridge.adapters import ClaudeAdapter
 from serverfs_agent_bridge.config import BridgeConfig
 from serverfs_agent_bridge.leases import LeaseManager
-from serverfs_agent_bridge.service import BridgeService
+from serverfs_agent_bridge.service import BridgeLimits, BridgeService
 from serverfs_agent_bridge.store import TaskStore
 
 _TERMINAL = {"succeeded", "failed", "cancelled", "interrupted"}
@@ -131,6 +131,20 @@ def _require_success(task: dict[str, Any], marker: str) -> None:
         )
 
 
+def _require_model_evidence(task: dict[str, Any], expected: str | None) -> None:
+    if task.get("requested_model") != expected:
+        raise RuntimeError(
+            f"task {task['task_id']} requested_model mismatch: "
+            f"expected {expected!r}, got {task.get('requested_model')!r}"
+        )
+    manifest = task.get("manifest")
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2:
+        raise RuntimeError(f"task {task['task_id']} is missing manifest schema v2 evidence")
+    model = manifest.get("model")
+    if not isinstance(model, dict) or model.get("requested") != expected:
+        raise RuntimeError(f"task {task['task_id']} manifest model mismatch: expected {expected!r}")
+
+
 async def _run(args: argparse.Namespace) -> None:
     config = BridgeConfig.load(args.config)
     if not config.claude.enabled:
@@ -159,6 +173,12 @@ async def _run(args: argparse.Namespace) -> None:
             policies=config.policies,
             adapters={"claude": runtime},
             lease_manager=LeaseManager(temp_root / "locks"),
+            limits=BridgeLimits(
+                task_timeout_seconds=config.limits.task_timeout_seconds,
+                interaction_timeout_seconds=config.limits.interaction_timeout_seconds,
+                max_active_tasks=config.limits.max_active_tasks,
+                retention_seconds=config.limits.retention_seconds,
+            ),
         )
         await service.start()
         try:
@@ -168,6 +188,7 @@ async def _run(args: argparse.Namespace) -> None:
                 workdir=args.workdir,
                 path=smoke_dir.name,
                 profile="workspace-write",
+                model=args.model,
                 prompt=(
                     "Do not use tools. Reply with exactly this token and nothing else: "
                     f"{first_marker}"
@@ -180,7 +201,11 @@ async def _run(args: argparse.Namespace) -> None:
                 auto_approve_once=True,
             )
             _require_success(first_done, first_marker)
-            print(f"new session: PASS ({first['task_id']}, approval={first_approval})")
+            _require_model_evidence(first_done, args.model)
+            print(
+                f"new session: PASS ({first['task_id']}, approval={first_approval}, "
+                f"model={args.model or 'native-default'})"
+            )
 
             continuation_marker = "SERVERFS_CLAUDE_CONTINUE_OK"
             second = await service.submit_task(
@@ -188,6 +213,7 @@ async def _run(args: argparse.Namespace) -> None:
                 workdir=args.workdir,
                 path=smoke_dir.name,
                 profile="workspace-write",
+                model=args.model,
                 prompt=(
                     "Continue this same conversation. Do not use tools. Reply with exactly "
                     f"this token and nothing else: {continuation_marker}"
@@ -201,7 +227,29 @@ async def _run(args: argparse.Namespace) -> None:
                 auto_approve_once=True,
             )
             _require_success(second_done, continuation_marker)
+            _require_model_evidence(second_done, args.model)
             print(f"session continuation: PASS ({second['task_id']})")
+
+            default_marker = "SERVERFS_CLAUDE_DEFAULT_OK"
+            default_task = await service.submit_task(
+                runtime="claude",
+                workdir=args.workdir,
+                path=smoke_dir.name,
+                profile="workspace-write",
+                prompt=(
+                    "Do not use tools. Reply with exactly this token and nothing else: "
+                    f"{default_marker}"
+                ),
+            )
+            default_done, _, _ = await _wait_terminal(
+                service,
+                default_task["task_id"],
+                timeout_seconds=args.timeout,
+                auto_approve_once=True,
+            )
+            _require_success(default_done, default_marker)
+            _require_model_evidence(default_done, None)
+            print(f"native default omission: PASS ({default_task['task_id']})")
 
             question_marker = "SERVERFS_CLAUDE_QUESTION_OK"
             question = await service.submit_task(
@@ -269,6 +317,11 @@ def main() -> None:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--workdir", required=True)
     parser.add_argument("--timeout", type=float, default=300.0)
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Optional provider-native model ID/alias for the explicit-model smoke",
+    )
     args = parser.parse_args()
     asyncio.run(_run(args))
 

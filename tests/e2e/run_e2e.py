@@ -51,6 +51,7 @@ WORKDIR_ALIAS = "repo"
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted"}
 AGENT_TOOLS = {
     "list_agent_runtimes",
+    "list_agent_models",
     "submit_agent_task",
     "get_agent_task",
     "read_agent_task_events",
@@ -226,8 +227,8 @@ async def run(report: Report, base: Path) -> None:
             f"{len(default_names)} tools",
         )
         report.check(
-            "global + per-workdir enablement yields 20 tools",
-            len(enabled_names) == 20,
+            "global + per-workdir enablement yields 21 tools",
+            len(enabled_names) == 21,
             f"{len(enabled_names)} tools",
         )
 
@@ -237,6 +238,12 @@ async def run(report: Report, base: Path) -> None:
         listing = await low.call("runtime.list", {})
         names = [item["name"] for item in listing["runtimes"]]
         report.check("runtime.list over AF_UNIX", names == ["codex"], f"runtimes={names}")
+        low_models = await low.call("runtime.models", {"runtime": "codex"})
+        report.check(
+            "runtime.models over AF_UNIX returns a normalized discovery contract",
+            low_models.get("status") == "unsupported" and low_models.get("models") == [],
+            f"status={low_models.get('status')}",
+        )
 
         submission = await low.call(
             "task.submit",
@@ -293,6 +300,12 @@ async def run(report: Report, base: Path) -> None:
             "MCP list_agent_runtimes hides test-only runtimes",
             advertised == ["codex"],
             f"runtimes={advertised}",
+        )
+        models = await probe.ok("list_agent_models", {"runtime": "codex"})
+        report.check(
+            "MCP list_agent_models preserves the normalized unsupported contract",
+            models.get("status") == "unsupported" and models.get("models") == [],
+            f"status={models.get('status')}",
         )
 
         holder = await probe.ok(

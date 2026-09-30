@@ -32,6 +32,7 @@ from .workdirs import (
 )
 
 AGENT_READ_ANNOTATIONS = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+AGENT_MODEL_READ_ANNOTATIONS = ToolAnnotations(read_only_hint=True, open_world_hint=True)
 AGENT_SUBMIT_ANNOTATIONS = ToolAnnotations(
     read_only_hint=False,
     destructive_hint=True,
@@ -83,7 +84,7 @@ def register_agent_tools(
     settings: Settings,
     client: AgentBridgeClient,
 ) -> None:
-    """Register the nine v0.7 Agent delegation tools."""
+    """Register the ten v0.9 Agent delegation tools."""
 
     @mcp.tool(annotations=AGENT_READ_ANNOTATIONS)
     async def list_agent_runtimes() -> dict[str, Any]:
@@ -127,6 +128,90 @@ def register_agent_tools(
         )
         return output
 
+    @mcp.tool(annotations=AGENT_MODEL_READ_ANNOTATIONS)
+    async def list_agent_models(
+        runtime: RuntimeArg,
+        workdir: Annotated[
+            str | None,
+            Field(default=None, description="Optional workdir for pre-submit model advice"),
+        ] = None,
+        task_prompt: Annotated[
+            str | None,
+            Field(
+                default=None,
+                description=(
+                    "Optional exact Agent objective being considered. Provide together with "
+                    "workdir to request Jev model advice when enabled."
+                ),
+            ),
+        ] = None,
+        path: Annotated[
+            str,
+            Field(default="", description="Relative starting directory for advisory task context"),
+        ] = "",
+        profile: AgentProfileArg = "workspace-write",
+    ) -> dict[str, Any]:
+        """Discover provider-native models and optionally return pre-submit Jev advice.
+
+        Discovery never submits an Agent task. A model recommendation is advisory only;
+        ChatGPT decides whether to pass it later as submit_agent_task.model.
+        """
+        t0 = time.monotonic()
+        try:
+            if runtime not in _allowed_runtimes(registry):
+                raise ToolError(
+                    f"AGENT_RUNTIME_NOT_ALLOWED: runtime {runtime!r} is not allowlisted"
+                )
+            params: dict[str, Any] = {"runtime": runtime}
+            advice_mode = (
+                workdir is not None
+                or task_prompt is not None
+                or path != ""
+                or profile != "workspace-write"
+            )
+            if advice_mode:
+                if workdir is None or task_prompt is None:
+                    raise ToolError(
+                        "INVALID_REQUEST: model advice requires workdir and task_prompt"
+                    )
+                wd = _authorize_submit(registry, workdir, runtime, profile)
+                normalized_path = _validate_agent_cwd(wd, path, settings)
+                params.update(
+                    {
+                        "workdir": workdir,
+                        "task_prompt": task_prompt,
+                        "path": normalized_path,
+                        "profile": profile,
+                    }
+                )
+            result = await client.call("runtime.models", params)
+        except Exception as exc:
+            err = _agent_tool_error(exc)
+            _audit_agent(
+                "list_agent_models",
+                t0,
+                success=False,
+                runtime=runtime,
+                workdir=workdir,
+                error_code=_tool_error_code(err),
+            )
+            raise err from exc
+        _audit_agent(
+            "list_agent_models",
+            t0,
+            success=True,
+            runtime=runtime,
+            workdir=workdir,
+            status=result.get("status"),
+            model_count=len(result["models"]) if isinstance(result.get("models"), list) else None,
+            advice_status=(
+                result["model_advice"].get("status")
+                if isinstance(result.get("model_advice"), dict)
+                else None
+            ),
+        )
+        return result
+
     @mcp.tool(annotations=AGENT_SUBMIT_ANNOTATIONS)
     async def submit_agent_task(
         runtime: RuntimeArg,
@@ -146,6 +231,17 @@ def register_agent_tools(
             str, Field(default="", description="Relative starting directory inside the workdir")
         ] = "",
         profile: AgentProfileArg = "workspace-write",
+        model: Annotated[
+            str | None,
+            Field(
+                default=None,
+                max_length=512,
+                description=(
+                    "Optional provider-native model identifier for this task only. Omit it to "
+                    "preserve the runtime's native default or resumed-session model."
+                ),
+            ),
+        ] = None,
         continue_from_task_id: Annotated[
             str | None,
             Field(
@@ -199,6 +295,8 @@ def register_agent_tools(
                 "profile": profile,
                 "prompt": prompt,
             }
+            if model is not None:
+                params["model"] = model
             if continue_from_task_id is not None:
                 params["continue_from_task_id"] = continue_from_task_id
             if correlation_id is not None:
@@ -216,6 +314,7 @@ def register_agent_tools(
                 path=path,
                 runtime=runtime,
                 profile=profile,
+                model=model,
                 correlation_id=correlation_id,
                 idempotency_key=idempotency_key,
                 error_code=_tool_error_code(err),
@@ -229,6 +328,7 @@ def register_agent_tools(
             path=normalized_path,
             runtime=runtime,
             profile=profile,
+            model=model,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             task_id=result.get("task_id"),

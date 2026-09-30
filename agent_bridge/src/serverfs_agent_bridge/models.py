@@ -80,6 +80,8 @@ class RuntimeInfo:
     interactive_approval: bool = False
     interactive_question: bool = False
     in_flight_recovery: str = "none"
+    model_override: bool = False
+    model_discovery: str = "unsupported"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -93,6 +95,7 @@ class TaskRecord:
     workdir_slot: int
     relative_cwd: str
     profile: str
+    requested_model: str | None
     status: str
     created_at: str
     started_at: str | None

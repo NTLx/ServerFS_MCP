@@ -3,7 +3,7 @@ title: Agent Bridge
 description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时委派。
 ---
 
-Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.8.0 是当前稳定版本，并在同一 provider-neutral 工具/RPC 契约下包含 Qoder。
+Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.9.0 是当前稳定版本，在保持 runtime 默认配置归 provider 所有的前提下新增 provider-neutral 模型发现与单次任务模型覆盖。
 
 ```text
 ChatGPT
@@ -34,18 +34,24 @@ Unix socket
 
 ## Runtime 行为
 
-启用 Agent 策略后，ServerFS 会暴露 9 个结构化 Agent 工具，覆盖 runtime 发现、任务提交、状态/事件、spool 最终结果的精确读取、approval/question 处理、受支持 runtime 的 steering，以及任务取消。
+启用 Agent 策略后，ServerFS 会暴露 10 个结构化 Agent 工具，覆盖 runtime/模型发现、任务提交、状态/事件、spool 最终结果的精确读取、approval/question 处理、受支持 runtime 的 steering，以及任务取消。
 
 这些工具**不是** Shell、argv 透传或通用命令执行器。
 
 当前部署可形成：
 
-- 20 个工具：文件系统 + Agent
-- 22 个工具：文件系统 + 二进制 + Agent
+- 21 个工具：文件系统 + Agent
+- 23 个工具：文件系统 + 二进制 + Agent
+
+## v0.9 模型发现与选择
+
+`list_agent_models` 是唯一新增的只读 Agent 工具。Codex 使用 App Server `model/list`；Qoder 使用结构化 Agent SDK 的当前账户模型目录；Claude 因当前 Claude Code/Agent SDK 没有等价、稳定的原生账户枚举 API，因此明确返回 `model_discovery=unsupported`。模型发现不会启动推理任务。
+
+`submit_agent_task` 新增可选 `model`。省略时继续使用 runtime 原生默认或续接 session 的模型行为；显式传入 provider-native ID 时只影响本次提交。ServerFS 会把它作为 task/manifest 证据持久化并纳入 idempotency identity，但绝不会写成 runtime/workdir/user 默认配置；模型不可用时由 provider 正常报错，不做静默 fallback。
 
 ## v0.8 Qoder runtime
 
-v0.8.0 把 `qoder` 加为第三个 production runtime。它使用官方 Qoder Agent SDK 和服务器现有的 `qodercli`，支持原生 session continuation、approval/`AskUserQuestion` brokerage，以及通过 `interrupt()` 取消任务。Production ServerFS **不会**增加模型选择字段：Qoder 的模型选择仍由 provider 原生环境负责；只有专门的 live-smoke 脚本可以固定一个测试模型，而且不会改变 MCP schema。
+v0.8.0 把 `qoder` 加为第三个 production runtime。它使用官方 Qoder Agent SDK 和服务器现有的 `qodercli`，支持原生 session continuation、approval/`AskUserQuestion` brokerage，以及通过 `interrupt()` 取消任务。
 
 Qoder 的重启语义保持保守：已经持久化的 native session 可以由新 task 继续，但 ServerFS 不宣称 Bridge 重启后可以重新附着到旧的 in-flight qodercli 进程。Live steering 也明确保持关闭：2026-09-29 的真实 SDK/CLI 探针证明，`priority="now"` 会先让当前 `receive_response()` 以 `error_during_execution` Result 结束，而真正的 steer 成功结果只会在第二次 response 迭代中出现；这与当前 one-task/one-terminal-Result 的 Bridge 契约不兼容。
 
@@ -81,11 +87,11 @@ python3 deployment/agent-bridge/verify_host.py --require-runtimes
 
 ## 可选 Jev Advisors
 
-宿主机 Bridge 可以按需使用 TypeSafe Jev 作为 **advisory-only** 决策辅助层。它不会新增 MCP 工具，也不会成为新的 Agent runtime。
+宿主机 Bridge 可以按需使用 TypeSafe Jev 作为 **advisory-only** 决策辅助层。它不会成为新的 Agent runtime 或自动路由器。
 
-配置 `SERVERFS_JEV_API_KEY` 后，任务提交阶段的一次请求会同时给出 Agent Task Preflight 与 Runtime Router 建议；如果原生 provider 后续真的生成 approval request，Approval Advisor 才可能再发起一次 Jev 请求，同一 task 内完全相同的 approval 会复用缓存。未配置 Key 时，这些 Jev 路径完全不存在。
+配置 `SERVERFS_JEV_API_KEY` 后，任务提交阶段的一次请求会给出 Agent Task Preflight 与 Runtime Router 建议。v0.9.0 还允许 `list_agent_models` 携带即将提交的任务上下文：原生模型发现成功后，Model Advisor 可以在提交前从当前暴露的候选模型中给出建议；返回值始终 `automatic=false`，ServerFS 不会把建议自动填入 `submit_agent_task.model`。如果原生 provider 后续真的生成 approval request，Approval Advisor 才可能再发起一次 Jev 请求，同一 task 内完全相同的 approval 会复用缓存。未配置 Key 时，模型发现和任务提交照常工作，但不会发生 Jev 请求。
 
-Jev 不会覆盖显式 runtime、workdir policy、writer lease、provider approval 状态或 `respond_agent_approval`。模型契约、请求流、数据最小化与失败行为详见 [Jev Advisors](./jev-advisors/)。
+Jev 不会覆盖显式 runtime/model、workdir policy、writer lease、provider approval 状态或 `respond_agent_approval`。模型契约、请求流、数据最小化与失败行为详见 [Jev Advisors](./jev-advisors/)。
 
 ## 委派任务编排规范
 

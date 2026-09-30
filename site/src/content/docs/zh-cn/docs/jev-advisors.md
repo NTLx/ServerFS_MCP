@@ -1,6 +1,6 @@
 ---
 title: Jev Advisors
-description: 在 Agent 任务质量、运行时路由和 provider 审批中按需使用 TypeSafe Jev 提供结构化建议。
+description: 在 Agent 任务质量、运行时路由、模型选择和 provider 审批中按需使用 TypeSafe Jev 提供结构化建议。
 ---
 
 ServerFS 可以在**宿主机 Agent Bridge** 中按需启用 [TypeSafe Jev](https://docs.typesafe.ai/introduction)，作为结构化的决策辅助层。
@@ -9,7 +9,7 @@ Jev 属于 System One 模型：它不是生成面向人类阅读的长文本，�
 
 这套集成始终是 **opt-in、advisory-only、fail-open**。Jev 不是 Agent runtime，不是授权源，也不是安全边界。
 
-> **状态：**这套 opt-in 实验能力在 v0.6.0 引入，并继续包含在当前 v0.8.0 稳定版中；它只修改宿主机 Agent Bridge，不改变 MCP 公共工具 schema。
+> **状态：**这套 opt-in 实验能力在 v0.6.0 引入，并继续包含在当前 v0.9.0 稳定版中。v0.9.0 在新的 `list_agent_models` 工具后增加 Model Advisor；Jev 本身仍只是宿主机 Bridge 内部 advisor，不获得执行权。
 
 ## 启用方式
 
@@ -40,7 +40,7 @@ typesafe-sdk==0.7.1
 
 TypeSafe 当前文档说明 Jev 1.13 只接受文本输入，总请求预算为 64k，同时 state + 单个最长 question 还有 32k 上限；英语是主要训练语言、准确性最好，CJK 可以处理但应在自己的真实数据上验证。因此 ServerFS 始终把这些分数和推荐视为“证据”，而不是“权限”。
 
-## 三项 advisory 能力
+## 四项 advisory 能力
 
 ### Agent Task Preflight
 
@@ -64,6 +64,20 @@ TypeSafe 当前文档说明 Jev 1.13 只接受文本输入，总请求预算为 
 
 它**不会**增加 `runtime=auto`。调用者显式选择的 runtime，以及 workdir 上的确定性 runtime allowlist，仍然具有最终约束力。
 
+### Model Advisor
+
+`list_agent_models` 可以选择性携带 ChatGPT 正准备交给 Agent 的具体任务。当所选 runtime 能成功返回原生模型目录且 Jev 已启用时，ServerFS 会在真正提交 Agent task 之前，把经过清洗的任务上下文与标准化候选模型 metadata 交给 Jev。
+
+Model Advisor：
+
+- 只考虑当前已暴露且未明确 disabled/hidden 的候选模型；
+- 仅在 runtime 明确提供时使用 reasoning/context/modalities/free/price 等 metadata；
+- 不根据模型名称自行推断质量或成本；
+- 返回精确 provider-native `recommended_model`、置信度/概率以及 `automatic=false`；
+- 永远不会自动写入或转发到 `submit_agent_task.model`。
+
+后续是否采纳仍由 ChatGPT 或用户决定。Claude 当前无法通过同等级的原生账户模型枚举接口发现候选，因此其模型建议为 `not_applicable`。
+
 ### Approval Advisor
 
 如果 Codex、Claude 或 Qoder 后续真的生成 provider approval request，ServerFS 才可能针对这个具体 approval 再发起一次 Jev 请求。
@@ -84,6 +98,10 @@ TypeSafe 当前文档说明 Jev 1.13 只接受文本输入，总请求预算为 
 ServerFS 刻意减少 Jev 请求：
 
 ```text
+list_agent_models + task context
+  └─ 最多 1 次 Jev 请求
+       └─ Model Advisor
+
 submit_agent_task
   └─ 1 次 Jev 请求
        ├─ Preflight
@@ -95,13 +113,13 @@ submit_agent_task
               └─ 同一 task 内完全相同 approval -> 复用缓存
 ```
 
-Preflight 与 Runtime Router 共用一次 `system_one`，因为 Jev 可以针对同一 state 独立并行评估多个 typed question。Approval Advisor 必须稍后运行，是因为任务提交时具体的 provider approval 对象还不存在。
+Model Advisor 刻意使用独立的提交前请求，因为 ChatGPT 必须先看到模型建议，再决定是否向 `submit_agent_task` 传入 `model`。真正提交时，Preflight 与 Runtime Router 共用一次 `system_one`，因为 Jev 可以针对同一 state 独立并行评估多个 typed question。Approval Advisor 必须更晚运行，因为任务提交时具体的 provider approval 对象还不存在。
 
 ## 数据最小化
 
 启用 Jev 并不意味着 ServerFS 会把 workdir 内容发送给 Jev。
 
-任务级评估只提供 advisory question 所需的任务上下文。Approval 评估使用已经过 Bridge redaction 的 approval 对象，只保留 allowlist 字段，并再次清洗明显的 secret/token/password/credential 字段和常见模式。
+任务级评估只提供 advisory question 所需的任务上下文。Model Advisor 额外接收原生模型发现已经返回的标准化 metadata，不发送 provider raw payload 或凭据。Approval 评估使用已经过 Bridge redaction 的 approval 对象，只保留 allowlist 字段，并再次清洗明显的 secret/token/password/credential 字段和常见模式。
 
 任何 Jev 结果都不能削弱：
 
@@ -125,14 +143,14 @@ Preflight 与 Runtime Router 共用一次 `system_one`，因为 Jev 可以针对
 - 有界文件读取；
 - Git / pytest 任务；
 - 明确的 Codex / Claude provider 选择错误；
-- Qoder 路由已包含在 v0.8.0 中，并与其它 Runtime Router 推荐一样保持 advisory-only；
+- Qoder 路由与提交前模型建议已包含在 v0.9.0 中，并保持 advisory-only；
 - 应交由人工判断的任务；
 - 故意捆绑或宽泛的 prompt；
 - 一次性有界写入；
 - 重复的 session 范围写入；
 - workdir 外部读取 approval。
 
-项目目前仍然**没有**启用自动路由或自动 approval threshold。
+项目目前仍然**没有**启用自动 runtime 路由、自动模型选择或自动 approval threshold。
 
 上游资料：[Introduction](https://docs.typesafe.ai/introduction)、[Models](https://docs.typesafe.ai/models) 与 [API reference](https://docs.typesafe.ai/api)。
 

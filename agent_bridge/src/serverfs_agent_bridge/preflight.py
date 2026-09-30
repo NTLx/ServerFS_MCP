@@ -45,6 +45,7 @@ _SENSITIVE_KEY_FRAGMENTS = (
 )
 _MAX_ADVISOR_TEXT_CHARS = 4096
 _MAX_ADVISOR_LIST_ITEMS = 50
+_MAX_MODEL_ADVISOR_CHOICES = 32
 _AUTHORIZATION_HEADER_RE = re.compile(r"(?i)(authorization\s*:\s*)([^\r\n'\";]+)")
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?i)\b(api[_-]?key|token|password|passwd|secret)\b"
@@ -64,6 +65,17 @@ class TaskPreflight(Protocol):
         profile: str,
         prompt: str,
         is_continuation: bool,
+    ) -> dict[str, Any]: ...
+
+    async def advise_model(
+        self,
+        *,
+        runtime: str,
+        workdir: str,
+        path: str,
+        profile: str,
+        prompt: str,
+        models: list[dict[str, Any]],
     ) -> dict[str, Any]: ...
 
     async def advise_approval(
@@ -101,6 +113,91 @@ class JevTaskPreflight:
 
     async def close(self) -> None:
         await self._client.aclose()
+
+    async def advise_model(
+        self,
+        *,
+        runtime: str,
+        workdir: str,
+        path: str,
+        profile: str,
+        prompt: str,
+        models: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        candidates: list[tuple[str, dict[str, Any]]] = []
+        seen: set[str] = set()
+        for item in models:
+            if (
+                not isinstance(item, dict)
+                or item.get("enabled") is False
+                or item.get("hidden") is True
+            ):
+                continue
+            model_id = item.get("id")
+            if not isinstance(model_id, str) or not model_id or model_id in seen:
+                continue
+            seen.add(model_id)
+            candidates.append((model_id, item))
+        if not candidates or len(candidates) > _MAX_MODEL_ADVISOR_CHOICES:
+            return {"status": "unavailable", "automatic": False}
+
+        label_to_id: dict[str, str] = {}
+        criteria: dict[str, str] = {}
+        normalized_models: list[dict[str, Any]] = []
+        for index, (model_id, item) in enumerate(candidates):
+            label = f"model_{index:02d}"
+            label_to_id[label] = model_id
+            sanitized = _sanitize_advisor_value(item)
+            normalized_models.append(sanitized)
+            criteria[label] = (
+                "Choose this exact runtime model when its exposed capabilities and metadata best "
+                f"fit the task. Candidate metadata: {sanitized!r}"
+            )
+
+        state = {
+            "task": {
+                "runtime": runtime,
+                "workdir": workdir,
+                "path": path,
+                "profile": profile,
+                "prompt": _sanitize_advisor_value(prompt),
+            },
+            "models": normalized_models,
+        }
+        questions = {
+            "model_recommendation": {
+                "type": "choice",
+                "instructions": (
+                    "Recommend exactly one of the currently available runtime models for the task. "
+                    "This is advisory only. Base the choice on the concrete task and metadata "
+                    "provided here. Do not assume that a larger, newer, or more expensive model "
+                    "is better when the metadata does not support that conclusion."
+                ),
+                "criteria": criteria,
+            }
+        }
+        response = await self._client.system_one(
+            state=state,
+            questions=questions,
+            model=self.model,
+        )
+        choice = _choice_value(
+            response.answers["model_recommendation"],
+            allowed_choices=tuple(label_to_id),
+            label="model recommendation",
+        )
+        probabilities = {
+            label_to_id[label]: probability
+            for label, probability in choice["probabilities"].items()
+        }
+        return {
+            "status": "completed",
+            "advisor_model": response.model,
+            "recommended_model": label_to_id[choice["choice"]],
+            "confidence": choice["confidence"],
+            "probabilities": probabilities,
+            "automatic": False,
+        }
 
     async def advise_approval(
         self,

@@ -21,7 +21,15 @@ class FakeClient:
     async def system_one(self, **kwargs):
         self.calls.append(kwargs)
         questions = kwargs["questions"]
-        if "necessary_for_objective" in questions:
+        if "model_recommendation" in questions:
+            answers = {
+                "model_recommendation": SimpleNamespace(
+                    choice="model_00",
+                    confidence=0.75,
+                    probabilities={"model_00": 0.75, "model_01": 0.25},
+                )
+            }
+        elif "necessary_for_objective" in questions:
             answers = {
                 "necessary_for_objective": SimpleNamespace(noul=0.92),
                 "scope_bounded": SimpleNamespace(noul=0.88),
@@ -145,6 +153,60 @@ async def test_jev_preflight_returns_normalized_advisory_result() -> None:
 
     await preflight.close()
     assert client.closed is True
+
+
+@pytest.mark.asyncio
+async def test_jev_model_advisor_maps_dynamic_choices_back_to_model_ids() -> None:
+    client = FakeClient()
+    advisor = JevTaskPreflight(client)
+
+    result = await advisor.advise_model(
+        runtime="qoder",
+        workdir="ServerFS",
+        path="agent_bridge",
+        profile="workspace-write",
+        prompt="Fix one failing unit test with minimal edits.",
+        models=[
+            {"id": "Qwen3.8-Flash", "enabled": True, "is_free": True},
+            {"id": "Qwen3.8-Max", "enabled": True, "is_free": False},
+            {"id": "hidden", "enabled": True, "hidden": True},
+        ],
+    )
+
+    assert result == {
+        "status": "completed",
+        "advisor_model": "jev-1.13.0",
+        "recommended_model": "Qwen3.8-Flash",
+        "confidence": 0.75,
+        "probabilities": {"Qwen3.8-Flash": 0.75, "Qwen3.8-Max": 0.25},
+        "automatic": False,
+    }
+    call = client.calls[0]
+    assert call["state"]["task"]["prompt"] == "Fix one failing unit test with minimal edits."
+    assert [item["id"] for item in call["state"]["models"]] == [
+        "Qwen3.8-Flash",
+        "Qwen3.8-Max",
+    ]
+    assert set(call["questions"]["model_recommendation"]["criteria"]) == {
+        "model_00",
+        "model_01",
+    }
+
+
+@pytest.mark.asyncio
+async def test_jev_model_advisor_rejects_unbounded_candidate_set_without_request() -> None:
+    client = FakeClient()
+    advisor = JevTaskPreflight(client)
+    result = await advisor.advise_model(
+        runtime="qoder",
+        workdir="ServerFS",
+        path="",
+        profile="workspace-write",
+        prompt="Task",
+        models=[{"id": f"model-{index}", "enabled": True} for index in range(33)],
+    )
+    assert result == {"status": "unavailable", "automatic": False}
+    assert client.calls == []
 
 
 @pytest.mark.asyncio
