@@ -14,7 +14,8 @@ import mimetypes
 import os
 from dataclasses import dataclass
 
-from .fdio import open_file_fd, root_fd
+from .backends import get_backend
+from .fdio import open_file_fd
 from .mutations import compute_revision
 from .paths import ResolvedPath
 
@@ -76,7 +77,7 @@ def read_binary_file(resolved: ResolvedPath, *, max_bytes: int) -> BinaryRead:
     The same open file descriptor is fstat'ed before and after reading. If its
     revision changes, no bytes are returned to the caller.
     """
-    with root_fd(str(resolved.workdir.container_path)) as root:
+    with get_backend().root_fd(resolved) as root:
         with open_file_fd(root, resolved.rel_parts) as fd:
             before = os.fstat(fd)
             revision = compute_revision(before)

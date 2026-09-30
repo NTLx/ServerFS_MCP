@@ -14,7 +14,7 @@ import fnmatch
 import os
 import stat as stat_module
 
-from . import fdio
+from .backends import get_backend
 from .fdio import open_directory_fd, stat_final
 from .models import EntryInfo, StatFileResult
 from .mutations import compute_revision
@@ -65,8 +65,8 @@ def check_supported_file_type(resolved: ResolvedPath) -> None:
 
 
 def _root_fd(resolved: ResolvedPath):
-    """Root-FD context manager for a resolved workdir path (fdio.root_fd)."""
-    return fdio.root_fd(str(resolved.workdir.container_path))
+    """Root-FD context manager for a resolved workdir path (backend seam)."""
+    return get_backend().root_fd(resolved)
 
 
 def list_directory(
@@ -118,9 +118,7 @@ def stat_file(resolved: ResolvedPath) -> StatFileResult:
     if etype == _ENTRY_TYPE_FILE:
         import mimetypes
 
-        mime_type = (
-            mimetypes.guess_type(resolved.container_path.name)[0] or "application/octet-stream"
-        )
+        mime_type = mimetypes.guess_type(resolved.rel_path)[0] or "application/octet-stream"
     return StatFileResult(
         workdir=resolved.workdir.alias,
         path=resolved.rel_path,
@@ -150,7 +148,8 @@ def find_files(
     ``limit`` matches were collected or ``max_walk_entries`` was hit — so
     the result set is not guaranteed to be complete.
     """
-    root = fdio.open_root(str(resolved.workdir.container_path))
+    root_cm = get_backend().root_fd(resolved)
+    root = root_cm.__enter__()
     matches: list[str] = []
     visited = 0
     truncated = False
@@ -204,7 +203,7 @@ def find_files(
                             return matches, truncated
     finally:
         try:
-            os.close(root)
+            root_cm.__exit__(None, None, None)
         except OSError:
             pass
     return matches, truncated
