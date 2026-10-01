@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import errno
+import sys
 import time
 from pathlib import Path
 from typing import Annotated
@@ -115,6 +116,10 @@ def deny_policy_from_workdir(workdir) -> DenyPolicy:
     return DenyPolicy(
         extra_globs=workdir.policy.extra_deny_globs,
         default_deny_enabled=not workdir.policy.disable_default_deny,
+        # credential-rule matching follows the platform's own name
+        # comparison: on Windows SECRET.PEM and secret.pem name the same
+        # object, so the deny rules must too; Linux keeps exact-case
+        case_insensitive=sys.platform == "win32",
     )
 
 

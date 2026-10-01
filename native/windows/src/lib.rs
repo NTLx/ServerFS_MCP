@@ -29,11 +29,13 @@
 //! shape. No Python boundary exists in this crate yet; handles must never
 //! be exposed past it when the PyO3 layer lands.
 
+pub mod enumerate;
 pub mod error;
 pub mod ffi;
 pub mod handle;
 pub mod metadata;
 pub mod path;
+pub mod read;
 pub mod traversal;
 
 #[cfg(feature = "pyo3")]

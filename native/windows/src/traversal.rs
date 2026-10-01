@@ -44,6 +44,35 @@ pub fn open_component(
     Ok(handle)
 }
 
+/// Open one component relative to a trusted parent WITHOUT the refusal
+/// filters: the caller classifies the object from its own handle
+/// attributes. Used for report channels (stat/list entries) where a
+/// reparse point is a legitimate reported type — and for nothing else.
+/// Reads, resolution through intermediates and future mutations must keep
+/// using `open_component`/`resolve`, which refuse reparse objects.
+pub fn open_component_raw(parent: &Handle, name: &str) -> Result<Handle, NativeError> {
+    let mut nt_name = NtName::new(name)?;
+    let mut unicode = nt_name.unicode_string();
+    ffi::open_relative(
+        parent,
+        &mut unicode,
+        ffi::READ_ATTRIBUTES_ONLY,
+        OpenKind::Any,
+    )
+}
+
+/// Resolve a chain for reporting: every intermediate must be a real
+/// non-reparse directory; the final component is opened as itself so the
+/// caller can classify it (file/directory/reparse_point).
+pub fn resolve_for_report(root: &Handle, components: &[&str]) -> Result<Handle, NativeError> {
+    let (last, intermediates) = components.split_last().ok_or(NativeError::InvalidName)?;
+    if intermediates.is_empty() {
+        return open_component_raw(root, last);
+    }
+    let current = resolve(root, intermediates, OpenKind::Directory)?;
+    open_component_raw(&current, last)
+}
+
 /// Resolve a full component chain from the root, opening each component
 /// relative to the previous one.
 ///

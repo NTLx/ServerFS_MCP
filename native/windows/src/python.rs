@@ -34,11 +34,16 @@ fn error_pair(err: &NativeError) -> (&'static str, String) {
             "NOT_A_DIRECTORY",
             "component is not a directory".to_string(),
         ),
-        NativeError::IsADirectory => ("IS_A_DIRECTORY", "target is a directory".to_string()),
+        // Linux file contexts render "target is a directory" as NOT_A_FILE
+        // (open-by-name on a directory yields EISDIR); keep the code identical
+        NativeError::IsADirectory => ("NOT_A_FILE", "target is a directory".to_string()),
         NativeError::ReparsePoint => ("REPARSE_POINT", "reparse point refused".to_string()),
         NativeError::AccessDenied => ("ACCESS_DENIED", "access denied".to_string()),
         NativeError::InvalidName => ("INVALID_NAME", "invalid component name".to_string()),
         NativeError::InvalidRoot => ("INVALID_ROOT", "invalid workdir root".to_string()),
+        NativeError::FileTooLarge => ("FILE_TOO_LARGE", err.to_string()),
+        NativeError::ChangedDuringRead => ("FILE_CHANGED_DURING_READ", err.to_string()),
+        NativeError::LineTooLarge { .. } => ("LINE_TOO_LARGE", err.to_string()),
         NativeError::Unexpected { .. } => (
             "NATIVE_IO_ERROR",
             "native filesystem operation failed".to_string(),
@@ -75,7 +80,7 @@ mod tests {
         let cases = [
             (NativeError::PathNotFound, "PATH_NOT_FOUND"),
             (NativeError::NotADirectory, "NOT_A_DIRECTORY"),
-            (NativeError::IsADirectory, "IS_A_DIRECTORY"),
+            (NativeError::IsADirectory, "NOT_A_FILE"),
             (NativeError::ReparsePoint, "REPARSE_POINT"),
             (NativeError::AccessDenied, "ACCESS_DENIED"),
             (NativeError::InvalidName, "INVALID_NAME"),
@@ -86,6 +91,12 @@ mod tests {
         }
     }
 }
+
+/// One reported directory row: (name, type, size|None, last-write 100ns).
+type ListedRow = (String, String, Option<u64>, i64);
+
+/// The backend-neutral TextPage contract as a plain tuple.
+type PageTuple = (String, Vec<Vec<u8>>, u64, u64, bool, bool, bool);
 
 /// A retained workdir-root directory HANDLE with the thread contract
 /// proven for exactly that role.
@@ -129,6 +140,140 @@ impl NativeWorkdirSession {
         metadata::object_id(&self.root.0)
             .map(|id| id.token())
             .map_err(map_error)
+    }
+
+    /// Report the target object: (type, size|None, last-write 100ns,
+    /// revision). Intermediates must be real non-reparse directories;
+    /// the final component is classified from its own handle (§14).
+    fn stat(&self, parts: Vec<String>) -> Result<(String, Option<u64>, i64, String), PyErr> {
+        let md = self.with_target(&parts, metadata::collect)?;
+        Ok((
+            md.type_label().to_string(),
+            md.size,
+            md.last_write_100ns,
+            md.revision(),
+        ))
+    }
+
+    /// Candidate names from one batched scan of the directory at `parts`
+    /// (empty = the retained root), each verified by a HANDLE-relative
+    /// re-open; raced-away entries are skipped like Linux `scandir`.
+    /// Returns (name, type, size|None, last-write 100ns) tuples in scan
+    /// order — sorting and policy filtering are the session layer's job.
+    fn list(&self, parts: Vec<String>) -> Result<Vec<ListedRow>, PyErr> {
+        let listed = if parts.is_empty() {
+            crate::enumerate::list_directory(&self.root.0)
+        } else {
+            let dir = self
+                .resolve_strict(&parts, crate::ffi::OpenKind::Directory)
+                .map_err(map_error)?;
+            crate::enumerate::list_directory(&dir)
+        };
+        let listed = listed.map_err(map_error)?;
+        Ok(listed
+            .into_iter()
+            .map(|e| {
+                (
+                    e.name,
+                    e.metadata.type_label().to_string(),
+                    e.metadata.size,
+                    e.metadata.last_write_100ns,
+                )
+            })
+            .collect())
+    }
+
+    /// Open-and-close one directory to surface PATH/NOT_DIRECTORY before
+    /// channel work (the v0.9 find/search pre-open contract).
+    fn validate_directory(&self, parts: Vec<String>) -> Result<(), PyErr> {
+        if parts.is_empty() {
+            return Ok(()); // the retained root was validated at open
+        }
+        self.resolve_strict(&parts, crate::ffi::OpenKind::Directory)
+            .map(|_validated_and_dropped| ())
+            .map_err(map_error)
+    }
+
+    /// Paginated UTF-8 text read with before/after revision stability;
+    /// returns (revision, lines, bytes_returned, end_line, has_more,
+    /// has_nul, has_bom) for the backend-neutral TextPage contract.
+    #[allow(clippy::too_many_arguments)]
+    fn read_text_page(
+        &self,
+        parts: Vec<String>,
+        start_line: u64,
+        max_lines: u64,
+        max_read_bytes: u64,
+        binary_sample: u64,
+    ) -> Result<PageTuple, PyErr> {
+        if parts.is_empty() {
+            return Err(map_error(NativeError::IsADirectory));
+        }
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        let page = crate::read::read_text_page(
+            &self.root.0,
+            &refs,
+            start_line,
+            max_lines,
+            max_read_bytes,
+            binary_sample,
+        )
+        .map_err(map_error)?;
+        Ok((
+            page.revision,
+            page.lines,
+            page.bytes_returned,
+            page.end_line,
+            page.has_more,
+            page.has_nul,
+            page.has_bom,
+        ))
+    }
+
+    /// Bounded whole-file read with integrity: (data, sha256, revision).
+    /// The consistency transaction and hash are computed in the kernel.
+    fn read_bounded(
+        &self,
+        parts: Vec<String>,
+        max_bytes: u64,
+    ) -> Result<(Vec<u8>, String, String), PyErr> {
+        if parts.is_empty() {
+            return Err(map_error(NativeError::IsADirectory));
+        }
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        let read = crate::read::read_bounded(&self.root.0, &refs, max_bytes).map_err(map_error)?;
+        let sha = crate::read::sha256_hex(&read.data);
+        Ok((read.data, sha, read.metadata.revision()))
+    }
+}
+
+impl NativeWorkdirSession {
+    /// Resolve `parts` strictly (reparse refused on every component,
+    /// empty = the retained root itself) and run `body` on the handle.
+    fn with_target<T>(
+        &self,
+        parts: &[String],
+        body: impl FnOnce(&crate::Handle) -> Result<T, NativeError>,
+    ) -> Result<T, PyErr> {
+        if parts.is_empty() {
+            return body(&self.root.0).map_err(map_error);
+        }
+        let handle = self.resolve_for_report_handle(parts).map_err(map_error)?;
+        body(&handle).map_err(map_error)
+    }
+
+    fn resolve_for_report_handle(&self, parts: &[String]) -> Result<crate::Handle, NativeError> {
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        traversal::resolve_for_report(&self.root.0, &refs)
+    }
+
+    fn resolve_strict(
+        &self,
+        parts: &[String],
+        kind: crate::ffi::OpenKind,
+    ) -> Result<crate::Handle, NativeError> {
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        traversal::resolve(&self.root.0, &refs, kind)
     }
 }
 

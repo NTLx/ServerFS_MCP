@@ -160,15 +160,23 @@ class DenyPolicy:
     entry filtering (list/find/search) and path resolution both consult
     this one matcher, so no configuration can expose a temp artifact or
     the disabled-slot sentinel.
+
+    ``case_insensitive`` aligns rule matching with the platform's own
+    name comparison (Windows treats ``SECRET.PEM`` and ``secret.pem``
+    as the same name). It is a platform fact wired by the tool layer,
+    not an administrator knob; Linux keeps exact-case semantics.
     """
 
     extra_globs: tuple[str, ...] = ()
     default_deny_enabled: bool = True
+    case_insensitive: bool = False
 
     def is_denied(self, rel_parts: tuple[str, ...]) -> bool:
         """True when the relative path (or a single basename) is denied."""
         if not rel_parts:
             return False
+        if self.case_insensitive:
+            rel_parts = tuple(c.lower() for c in rel_parts)
         if is_reserved_path(rel_parts):
             return True
         *dirs, base = rel_parts
@@ -181,11 +189,12 @@ class DenyPolicy:
             if any(fnmatch.fnmatchcase(base, g) for g in DEFAULT_DENY_GLOBS):
                 return True
         for g in self.extra_globs:
-            if g.endswith("/**"):
-                head = g[:-3]
+            glob = g.lower() if self.case_insensitive else g
+            if glob.endswith("/**"):
+                head = glob[:-3]
                 if head and any(fnmatch.fnmatchcase(c, head) for c in components):
                     return True
-            elif fnmatch.fnmatchcase(base, g):
+            elif fnmatch.fnmatchcase(base, glob):
                 return True
         return False
 
