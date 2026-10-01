@@ -19,6 +19,14 @@ pub enum NativeError {
     ReparsePoint,
     /// The filesystem refused access for the current process.
     AccessDenied,
+    /// A file exceeded a channel byte limit (the tool layer renders the
+    /// channel-specific agent code).
+    FileTooLarge,
+    /// The object's revision changed while it was being read; no mixed or
+    /// stale payload may be returned.
+    ChangedDuringRead,
+    /// One text line exceeded the page byte budget.
+    LineTooLarge { line: u64, max_bytes: u64 },
     /// A name is rejected by kernel-level validation before any syscall
     /// (empty, embedded NUL, path separators, `.`/`..`, trailing dots or
     /// spaces, oversized).
@@ -81,6 +89,11 @@ impl fmt::Display for NativeError {
             NativeError::IsADirectory => f.write_str("target is a directory"),
             NativeError::ReparsePoint => f.write_str("reparse point refused"),
             NativeError::AccessDenied => f.write_str("access denied"),
+            NativeError::FileTooLarge => f.write_str("file exceeds the byte limit"),
+            NativeError::ChangedDuringRead => f.write_str("file changed while it was being read"),
+            NativeError::LineTooLarge { line, max_bytes } => {
+                write!(f, "line {line} exceeds {max_bytes} bytes")
+            }
             NativeError::InvalidName => f.write_str("invalid component name"),
             NativeError::InvalidRoot => f.write_str("invalid workdir root"),
             NativeError::Unexpected { code, nt } => {

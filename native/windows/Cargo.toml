@@ -8,6 +8,7 @@ license = "MIT"
 
 [dependencies]
 pyo3 = { version = "0.23", features = ["abi3-py312", "extension-module"], optional = true }
+sha2 = "0.10"
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security",
@@ -19,10 +20,7 @@ windows-sys = { version = "0.61.2", features = [
 ] }
 
 [dev-dependencies]
-windows-sys = { version = "0.61.2", features = [
-    "Win32_Foundation",
-    "Win32_System_Threading",
-] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
 
 [lib]
 name = "serverfs_windows_native"

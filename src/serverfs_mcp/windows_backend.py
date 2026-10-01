@@ -10,25 +10,33 @@ v0.9 did — the Windows backend acquires the trusted root HANDLE once per
 workdir and retains it for the process lifetime. ``open_session`` returns
 the cached session; no MCP tool call ever reopens the root.
 
-Channel status: the retained-session wiring, root validation and error
-normalization are live; the read/enum/mutation channels are explicit
-pending stubs until the Phase B read kernel lands, each raising
+Channel status (Phase B read kernel): stat/list/read_text_page/
+read_binary/validate_directory are live against the retained root handle.
+find and search stay explicit pending stubs until Phase C, and all
+mutation channels until Phase D, each raising
 ``BackendError("WINDOWS_KERNEL_PENDING", ...)`` so a half-built Windows
 surface can never silently answer with wrong data.
 """
 
 from __future__ import annotations
 
+import datetime as _dt
+import mimetypes
 from typing import TYPE_CHECKING
 
 import serverfs_windows_native as native
 
-from .backends import BackendError
+from .backends import BackendError, TextPage
+from .binary_payload import BinaryRead, BinaryTransferError
+from .models import EntryInfo, StatFileResult
 
 if TYPE_CHECKING:
     from .models import TextEdit
     from .paths import ResolvedPath
     from .workdirs import Workdir
+
+# Windows FILETIME epoch offset (1601-01-01 to 1970-01-01, 100ns units).
+_UNIX_EPOCH_100NS = 116_444_736_000_000_000
 
 
 def _to_backend_error(exc: native.NativeSessionError) -> BackendError:
@@ -38,10 +46,24 @@ def _to_backend_error(exc: native.NativeSessionError) -> BackendError:
     return BackendError(str(code), str(message))
 
 
+def _call(fn, *args):
+    try:
+        return fn(*args)
+    except native.NativeSessionError as exc:
+        raise _to_backend_error(exc) from None
+
+
+def _rfc3339_from_100ns(ticks: int) -> str | None:
+    if ticks <= 0:
+        return None
+    seconds = (ticks - _UNIX_EPOCH_100NS) / 10_000_000
+    return _dt.datetime.fromtimestamp(seconds, tz=_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _pending(channel: str) -> BackendError:
     return BackendError(
         "WINDOWS_KERNEL_PENDING",
-        f"the Windows '{channel}' channel arrives with the Phase B read kernel",
+        f"the Windows '{channel}' channel arrives with a later phase",
     )
 
 
@@ -63,13 +85,109 @@ class WindowsWorkdirSession:
         except native.NativeSessionError as exc:
             raise _to_backend_error(exc) from None
 
-    # ---- read channels (pending: Phase B read kernel) ----
+    # ---- read channels (live since the Phase B read kernel) ----
 
-    def stat(self, resolved: ResolvedPath):
-        raise _pending("stat")
+    def stat(self, resolved: ResolvedPath) -> StatFileResult:
+        etype, size, modified_100ns, revision = _call(self._native.stat, list(resolved.rel_parts))
+        mime_type = None
+        if etype == "file":
+            mime_type = mimetypes.guess_type(resolved.rel_path, strict=False)[0]
+            mime_type = mime_type or "application/octet-stream"
+        return StatFileResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            type=etype,
+            size=size if etype == "file" else None,
+            modified_at=_rfc3339_from_100ns(modified_100ns),
+            mime_type=mime_type,
+            revision=revision,
+        )
 
     def list(self, resolved: ResolvedPath, *, offset: int, limit: int):
-        raise _pending("list")
+        rows = _call(self._native.list, list(resolved.rel_parts))
+        rel = resolved.rel_path
+        entries: list[EntryInfo] = []
+        for name, etype, size, modified_100ns in rows:
+            # one filter, same policy object as every other channel
+            if not resolved.allow_hidden and name.startswith("."):
+                continue
+            segs = (*resolved.rel_parts, name) if not rel else (*tuple(rel.split("/")), name)
+            if resolved.deny_policy.is_denied(segs):
+                continue
+            entries.append(
+                EntryInfo(
+                    name=name,
+                    path=f"{rel}/{name}" if rel else name,
+                    type=etype,
+                    size=size if etype == "file" else None,
+                    modified_at=_rfc3339_from_100ns(modified_100ns),
+                )
+            )
+        entries.sort(key=lambda x: x.name)
+        has_more = offset + limit < len(entries)
+        return entries[offset : offset + limit], has_more
+
+    def read_text_page(
+        self,
+        resolved: ResolvedPath,
+        *,
+        start_line: int,
+        max_lines: int,
+        max_read_bytes: int,
+        binary_sample: int,
+    ) -> TextPage:
+        revision, lines, bytes_returned, end_line, has_more, has_nul, has_bom = _call(
+            self._native.read_text_page,
+            list(resolved.rel_parts),
+            start_line,
+            max_lines,
+            max_read_bytes,
+            binary_sample,
+        )
+        return TextPage(
+            revision=revision,
+            lines=lines,
+            bytes_returned=bytes_returned,
+            end_line=end_line,
+            has_more=has_more,
+            has_nul=has_nul,
+            has_bom=has_bom,
+        )
+
+    def read_binary(self, resolved: ResolvedPath, *, max_bytes: int) -> BinaryRead:
+        try:
+            data, sha256, revision = self._native.read_bounded(list(resolved.rel_parts), max_bytes)
+        except native.NativeSessionError as exc:
+            code, message = exc.args
+            if code == "FILE_TOO_LARGE":
+                raise BinaryTransferError(
+                    "BINARY_FILE_TOO_LARGE",
+                    f"file exceeds the {max_bytes}-byte binary transfer limit",
+                ) from None
+            if code == "FILE_CHANGED_DURING_READ":
+                raise BinaryTransferError(
+                    "FILE_CHANGED_DURING_READ", "file changed while being read; retry"
+                ) from None
+            raise _to_backend_error(exc) from None
+        mime_type = mimetypes.guess_type(resolved.rel_path, strict=False)[0]
+        return BinaryRead(
+            data=data,
+            size=len(data),
+            mime_type=mime_type or "application/octet-stream",
+            sha256=sha256,
+            revision=revision,
+        )
+
+    def validate_directory(self, resolved: ResolvedPath) -> None:
+        # v0.9 pre-open contract: surface PATH_NOT_FOUND / NOT_A_DIRECTORY
+        # from this call, not from deep inside a walk. The retained root is
+        # already validated, so only sub-paths reopen.
+        parts = list(resolved.rel_parts)
+        if not parts:
+            return
+        _call(self._native.validate_directory, parts)
+
+    # ---- find/search (pending: Phase C native walk/search) ----
 
     def find(self, resolved: ResolvedPath, *, pattern: str, limit: int, max_walk_entries: int):
         raise _pending("find")
@@ -86,23 +204,6 @@ class WindowsWorkdirSession:
         max_file_bytes: int,
     ):
         raise _pending("search")
-
-    def read_text_page(
-        self,
-        resolved: ResolvedPath,
-        *,
-        start_line: int,
-        max_lines: int,
-        max_read_bytes: int,
-        binary_sample: int,
-    ):
-        raise _pending("read_text_page")
-
-    def read_binary(self, resolved: ResolvedPath, *, max_bytes: int):
-        raise _pending("read_binary")
-
-    def validate_directory(self, resolved: ResolvedPath) -> None:
-        raise _pending("validate_directory")
 
     # ---- mutation channels (pending: Phase D) ----
 

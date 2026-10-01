@@ -6,13 +6,15 @@
 
 use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows_sys::Wdk::Storage::FileSystem::{
-    NtCreateFile, FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT,
-    FILE_SYNCHRONOUS_IO_NONALERT,
+    NtCreateFile, FILE_DIRECTORY_FILE, FILE_ID_BOTH_DIR_INFORMATION, FILE_NON_DIRECTORY_FILE,
+    FILE_OPEN, FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT,
 };
 use windows_sys::Win32::Foundation::{GetLastError, HANDLE, UNICODE_STRING};
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, GetFileInformationByHandleEx, FILE_ATTRIBUTE_TAG_INFO, FILE_BASIC_INFO,
-    FILE_ID_INFO,
+    CreateFileW, FileAttributeTagInfo, FileBasicInfo, FileIdBothDirectoryInfo,
+    FileIdBothDirectoryRestartInfo, FileIdInfo, FileStandardInfo, GetFileInformationByHandleEx,
+    ReadFile, SetFilePointerEx, FILE_ATTRIBUTE_TAG_INFO, FILE_BASIC_INFO, FILE_BEGIN, FILE_ID_INFO,
+    FILE_STANDARD_INFO,
 };
 use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 
@@ -124,17 +126,169 @@ pub fn open_relative(
 /// Read the object's own attribute/reparse tag from the held handle.
 pub fn attribute_tag(handle: &Handle) -> Result<FILE_ATTRIBUTE_TAG_INFO, NativeError> {
     let mut info = FILE_ATTRIBUTE_TAG_INFO::default();
-    query(handle, 9 /* FileAttributeTagInfo */, &mut info)
+    query(handle, FileAttributeTagInfo, &mut info)
 }
 
 pub fn basic_info(handle: &Handle) -> Result<FILE_BASIC_INFO, NativeError> {
     let mut info = FILE_BASIC_INFO::default();
-    query(handle, 0 /* FileBasicInfo */, &mut info)
+    query(handle, FileBasicInfo, &mut info)
 }
 
 pub fn file_id(handle: &Handle) -> Result<FILE_ID_INFO, NativeError> {
     let mut info = FILE_ID_INFO::default();
-    query(handle, 18 /* FileIdInfo */, &mut info)
+    query(handle, FileIdInfo, &mut info)
+}
+
+pub fn standard_info(handle: &Handle) -> Result<FILE_STANDARD_INFO, NativeError> {
+    let mut info = FILE_STANDARD_INFO::default();
+    query(handle, FileStandardInfo, &mut info)
+}
+
+/// One batched handle-relative directory scan via the documented
+/// `GetFileInformationByHandleEx` restart/continue class pair
+/// (`FileIdBothDirectoryRestartInfo` first, then
+/// `FileIdBothDirectoryInfo`). `Ok(true)` means the buffer holds at
+/// least one raw entry (last one is terminator-linked); `Ok(false)` is
+/// `ERROR_NO_MORE_FILES` — end of list.
+pub fn query_directory_batch(
+    dir: &Handle,
+    buffer: &mut [u8],
+    restart_scan: bool,
+) -> Result<bool, NativeError> {
+    const ERROR_NO_MORE_FILES: u32 = 18;
+    let class = if restart_scan {
+        FileIdBothDirectoryRestartInfo
+    } else {
+        FileIdBothDirectoryInfo
+    };
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            dir.as_raw(),
+            class,
+            buffer.as_mut_ptr() as *mut core::ffi::c_void,
+            buffer.len() as u32,
+        )
+    };
+    if ok != 0 {
+        return Ok(true);
+    }
+    match unsafe { GetLastError() } {
+        ERROR_NO_MORE_FILES => Ok(false),
+        other => Err(NativeError::win32(other)),
+    }
+}
+
+/// Raw-directory-scan helper that owns an aligned batch buffer and
+/// yields parsed entry names per batch. Keeping the pointer parsing in
+/// this module is what lets `enumerate` stay safe code.
+pub struct DirectoryScan {
+    buffer: AlignedBuffer,
+    first: bool,
+}
+
+#[repr(align(8))]
+struct AlignedBuffer {
+    data: [u8; 64 * 1024],
+}
+
+impl Default for DirectoryScan {
+    fn default() -> Self {
+        DirectoryScan::new()
+    }
+}
+
+impl DirectoryScan {
+    pub fn new() -> DirectoryScan {
+        DirectoryScan {
+            buffer: AlignedBuffer {
+                data: [0u8; 64 * 1024],
+            },
+            first: true,
+        }
+    }
+
+    /// `Ok(Some(names))` — one batch of entry names (`.`/`..` removed);
+    /// `Ok(None)` — the scan is complete.
+    pub fn next_batch(&mut self, dir: &Handle) -> Result<Option<Vec<String>>, NativeError> {
+        let restart = self.first;
+        self.first = false;
+        let more = query_directory_batch(dir, &mut self.buffer.data, restart)?;
+        if !more {
+            return Ok(None);
+        }
+        let mut names = Vec::new();
+        let mut pos: usize = 0;
+        let name_offset = std::mem::offset_of!(FILE_ID_BOTH_DIR_INFORMATION, FileName);
+        loop {
+            let base = pos;
+            if base + name_offset > self.buffer.data.len() {
+                return Err(NativeError::Unexpected { code: 1, nt: false });
+            }
+            // The NT contract: batches start at 8-byte-aligned offsets and
+            // NextEntryOffset is a multiple of 8; our buffer is 8-aligned.
+            let raw = self.buffer.data[base..]
+                .as_ptr()
+                .cast::<FILE_ID_BOTH_DIR_INFORMATION>();
+            let name_bytes = unsafe { (*raw).FileNameLength as usize };
+            let end = base + name_offset + name_bytes;
+            if end > self.buffer.data.len() {
+                return Err(NativeError::Unexpected { code: 2, nt: false });
+            }
+            let units: Vec<u16> = self.buffer.data[base + name_offset..end]
+                .chunks_exact(2)
+                .map(|b| u16::from_le_bytes([b[0], b[1]]))
+                .collect();
+            let name = String::from_utf16_lossy(&units);
+            if name != "." && name != ".." {
+                names.push(name);
+            }
+            let next = unsafe { (*raw).NextEntryOffset };
+            if next == 0 {
+                break;
+            }
+            pos += next as usize;
+        }
+        Ok(Some(names))
+    }
+}
+
+/// Read the next chunk through a synchronous handle; `Ok(0)` is EOF.
+pub fn read_chunk(handle: &Handle, buffer: &mut [u8]) -> Result<usize, NativeError> {
+    const ERROR_HANDLE_EOF: u32 = 109;
+    let mut read: u32 = 0;
+    let ok = unsafe {
+        ReadFile(
+            handle.as_raw(),
+            buffer.as_mut_ptr(),
+            buffer.len() as u32,
+            &mut read,
+            std::ptr::null_mut(), // synchronous handle: system keeps position
+        )
+    };
+    if ok == 0 {
+        let last = unsafe { GetLastError() };
+        if last == ERROR_HANDLE_EOF {
+            return Ok(0);
+        }
+        return Err(NativeError::win32(last));
+    }
+    Ok(read as usize)
+}
+
+/// Reposition a synchronous handle for the second consistency pass.
+pub fn set_position(handle: &Handle, offset: u64) -> Result<(), NativeError> {
+    let ok = unsafe {
+        SetFilePointerEx(
+            handle.as_raw(),
+            offset as i64,
+            std::ptr::null_mut(),
+            FILE_BEGIN,
+        )
+    };
+    if ok == 0 {
+        return Err(NativeError::win32(unsafe { GetLastError() }));
+    }
+    Ok(())
 }
 
 fn query<T: Default>(handle: &Handle, class: i32, out: &mut T) -> Result<T, NativeError> {

@@ -204,3 +204,43 @@ class TestDisableDefaultDeny:
                 allow_hidden=True,
                 deny_policy=DenyPolicy(extra_globs=("*.sqlite",), default_deny_enabled=False),
             )
+
+
+class TestDenyPolicyCaseInsensitive:
+    """Windows name comparison axis: rules follow the platform, Linux stays exact."""
+
+    def test_default_exact_case_unchanged(self) -> None:
+        from serverfs_mcp.paths import DenyPolicy
+
+        policy = DenyPolicy()
+        assert policy.is_denied((".env",))
+        assert not policy.is_denied((".ENV",))
+        assert not policy.is_denied(("Secret.PEM",))
+        assert not policy.is_denied((".SSh", "key"))
+
+    def test_case_insensitive_denies_case_variants(self) -> None:
+        from serverfs_mcp.paths import DenyPolicy
+
+        policy = DenyPolicy(case_insensitive=True)
+        for name in [".ENV", ".Env", "secret.PEM", "SECRET.pem", "ID_RSA"]:
+            assert policy.is_denied((name,)), name
+        assert policy.is_denied((".SSh", "config"))
+        assert policy.is_denied(("prod", "KEYS", "Server.PEM"))
+
+    def test_case_insensitive_extra_globs(self) -> None:
+        from serverfs_mcp.paths import DenyPolicy
+
+        policy = DenyPolicy(extra_globs=("*.TOPSECRET",), case_insensitive=True)
+        assert policy.is_denied(("client.topsecret",))
+        exact = DenyPolicy(extra_globs=("*.topsecret",))
+        assert not exact.is_denied(("CLIENT.TOPSECRET",))
+        assert exact.is_denied(("client.topsecret",))
+
+    def test_reserved_names_denied_on_both_case_axes(self) -> None:
+        from serverfs_mcp.paths import DenyPolicy
+
+        # on Windows a case-variant names the SAME object as the kernel
+        # temp/sentinel name, so the reserved axis must fold case too
+        assert DenyPolicy(case_insensitive=True).is_denied((".SERVERFS-TMP-abc",))
+        assert DenyPolicy(case_insensitive=True).is_denied((".ServerFS-Disabled",))
+        assert DenyPolicy().is_denied((".serverfs-disabled",))
