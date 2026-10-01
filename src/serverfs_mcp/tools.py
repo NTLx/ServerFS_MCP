@@ -18,6 +18,7 @@ are independent layers.
 from __future__ import annotations
 
 import base64
+import contextlib
 import errno
 import time
 from pathlib import Path
@@ -35,15 +36,16 @@ from mcp.types import (
 from pydantic import Field
 
 from . import logging as jsonlog
-from .agent_leases import (
+from .backends import BackendError, get_backend
+from .binary_payload import BinaryTransferError, decode_base64_payload
+from .concurrency import mutation_lock
+from .config import Settings
+from .errors import (
     AgentLeaseError,
+    MutationError,
     WorkdirBusyError,
     WorkdirRecoveryRequiredError,
-    mutation_agent_lease,
 )
-from .backends import BackendError, get_backend
-from .binary import BinaryTransferError, decode_base64_payload
-from .config import Settings
 from .file_ingress_client import FileIngressClient
 from .models import (
     CreateDirectoryResult,
@@ -63,9 +65,7 @@ from .models import (
     TextEdit,
     UploadBinaryFileResult,
 )
-from .mutations import MutationError, mutation_lock
 from .paths import DenyPolicy, PathSecurityError, ResolvedPath, resolve_workdir_path
-from .search import SearchTimeout
 from .workdirs import WorkdirRegistry
 
 # read-only tools
@@ -121,6 +121,20 @@ def deny_policy_from_workdir(workdir) -> DenyPolicy:
 def _session(resolved: ResolvedPath):
     """Open the backend session for one resolved workdir path."""
     return get_backend().open_session(resolved.workdir)
+
+
+def _mutation_lease(settings: Settings, resolved: ResolvedPath):
+    """The shared cross-process Agent writer lease for this workdir slot.
+
+    The Unix lease manager is imported lazily and only on the Agent-enabled
+    path, so an Agent-disabled process (and the future non-Linux kernel)
+    never loads it and keeps the exact v0.2 no-op behaviour.
+    """
+    if not settings.agent_bridge_enabled:
+        return contextlib.nullcontext()
+    from .agent_leases import mutation_agent_lease
+
+    return mutation_agent_lease(Path(settings.agent_lock_dir), resolved.workdir.slot, enabled=True)
 
 
 def _resolve(
@@ -616,11 +630,6 @@ def register_tools(
                     timeout_seconds=settings.search_timeout_seconds,
                     max_file_bytes=settings.search_max_file_bytes,
                 )
-            except SearchTimeout:
-                raise ToolError(
-                    f"SEARCH_TIMEOUT: search in {workdir}:{path} exceeded "
-                    f"{settings.search_timeout_seconds}s"
-                ) from None
             except RuntimeError as exc:
                 raise ToolError(str(exc)) from None
         except ToolError as exc:
@@ -1010,11 +1019,7 @@ def register_tools(
                     data = decode_base64_payload(data_base64, max_bytes=max_bytes)
                 with (
                     mutation_lock(),
-                    mutation_agent_lease(
-                        Path(settings.agent_lock_dir),
-                        resolved.workdir.slot,
-                        enabled=settings.agent_bridge_enabled,
-                    ),
+                    _mutation_lease(settings, resolved),
                 ):
                     session = _session(resolved)
                     if overwrite:
@@ -1060,11 +1065,7 @@ def register_tools(
             resolved = _resolve_mutable(registry, workdir, path, settings)
             with (
                 mutation_lock(),
-                mutation_agent_lease(
-                    Path(settings.agent_lock_dir),
-                    resolved.workdir.slot,
-                    enabled=settings.agent_bridge_enabled,
-                ),
+                _mutation_lease(settings, resolved),
             ):
                 result = _session(resolved).create_file(
                     resolved,
@@ -1116,11 +1117,7 @@ def register_tools(
             resolved = _resolve_mutable(registry, workdir, path, settings)
             with (
                 mutation_lock(),
-                mutation_agent_lease(
-                    Path(settings.agent_lock_dir),
-                    resolved.workdir.slot,
-                    enabled=settings.agent_bridge_enabled,
-                ),
+                _mutation_lease(settings, resolved),
             ):
                 result = _session(resolved).replace_file(
                     resolved,
@@ -1168,11 +1165,7 @@ def register_tools(
             resolved = _resolve_mutable(registry, workdir, path, settings)
             with (
                 mutation_lock(),
-                mutation_agent_lease(
-                    Path(settings.agent_lock_dir),
-                    resolved.workdir.slot,
-                    enabled=settings.agent_bridge_enabled,
-                ),
+                _mutation_lease(settings, resolved),
             ):
                 result = _session(resolved).delete_file(resolved, expected_revision)
             return result, {
@@ -1203,11 +1196,7 @@ def register_tools(
             resolved = _resolve_mutable(registry, workdir, path, settings)
             with (
                 mutation_lock(),
-                mutation_agent_lease(
-                    Path(settings.agent_lock_dir),
-                    resolved.workdir.slot,
-                    enabled=settings.agent_bridge_enabled,
-                ),
+                _mutation_lease(settings, resolved),
             ):
                 result = _session(resolved).create_directory(resolved)
             return result, {"revision": result.revision}
@@ -1244,11 +1233,7 @@ def register_tools(
             resolved = _resolve_mutable(registry, workdir, path, settings)
             with (
                 mutation_lock(),
-                mutation_agent_lease(
-                    Path(settings.agent_lock_dir),
-                    resolved.workdir.slot,
-                    enabled=settings.agent_bridge_enabled,
-                ),
+                _mutation_lease(settings, resolved),
             ):
                 result = _session(resolved).delete_directory(resolved, expected_revision)
             return result, {"revision": result.revision_deleted}

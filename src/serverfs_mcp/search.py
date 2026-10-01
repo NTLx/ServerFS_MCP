@@ -20,6 +20,7 @@ import subprocess
 import time
 
 from . import logging as jsonlog
+from .backends import BackendError
 from .fdio import proc_fd_path
 from .models import TextMatch
 from .paths import RESERVED_RG_EXCLUDES, ResolvedPath, is_hidden_component
@@ -28,10 +29,6 @@ _RG_BENIGN_EXIT = {0, 1}
 _GRACE_SECONDS = 2.0
 _READ_CHUNK = 65536
 _REAP_SECONDS = 5.0
-
-
-class SearchTimeout(Exception):
-    """rg exceeded the wall-clock deadline; the process was reaped."""
 
 
 def _rg_args(
@@ -215,7 +212,8 @@ def run_search(
         sel.close()
 
     if timed_out:
-        raise SearchTimeout()
+        # the deadline is the session's search budget; rg was reaped above
+        raise BackendError("SEARCH_TIMEOUT", f"search exceeded the {timeout_seconds}s deadline")
     if truncated:
         # rg was deliberately terminated at the global limit; a negative or
         # non-zero exit code here is expected, not a failure

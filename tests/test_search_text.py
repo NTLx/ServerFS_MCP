@@ -14,8 +14,9 @@ import subprocess
 
 import pytest
 
+from serverfs_mcp.backends import BackendError
 from serverfs_mcp.paths import DenyPolicy, resolve_workdir_path
-from serverfs_mcp.search import SearchTimeout, run_search
+from serverfs_mcp.search import run_search
 
 pytestmark = pytest.mark.skipif(shutil.which("rg") is None, reason="ripgrep not installed")
 
@@ -348,8 +349,9 @@ class TestStreamingFakeRg:
         # stdout pipe never reaches EOF → select blocks → deadline fires
         Fake = self._fake_popen_factory(b"", never_eof=True)
         monkeypatch.setattr(search_mod.subprocess, "Popen", Fake)
-        with pytest.raises(SearchTimeout):
+        with pytest.raises(BackendError) as excinfo:
             _search(workdir, timeout=0.05)
+        assert excinfo.value.code == "SEARCH_TIMEOUT"
         proc = Fake.created[0]
         assert proc.terminated is True
         # streams must be closed by the cleanup path

@@ -13,7 +13,6 @@ from mcp.server.transport_security import DEFAULT_MAX_REQUEST_BODY_SIZE, Transpo
 from . import SERVER_VERSION
 from . import logging as jsonlog
 from .agent_client import AgentBridgeClient
-from .agent_tools import register_agent_tools
 from .config import Settings, settings_from_env
 from .file_ingress_client import FileIngressClient
 from .tools import READ_IMPL, register_tools
@@ -90,6 +89,10 @@ def create_server(
         workdir.agent_mode != "disabled" for workdir in registry.all_workdirs()
     )
     if agent_tools_enabled:
+        # the Agent tool surface is Linux/Bridge-side code (fdio/fcntl);
+        # import it only once the administrator has actually enabled it
+        from .agent_tools import register_agent_tools
+
         if agent_client is None:
             raise ValueError("Agent Bridge is enabled but no client was configured")
         register_agent_tools(mcp, registry, settings, agent_client)

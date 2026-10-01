@@ -19,8 +19,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from serverfs_mcp.backends import BackendError, LinuxBackend, get_backend
+from serverfs_mcp.backends import BackendError, WorkdirSession, get_backend
 from serverfs_mcp.config import Settings
+from serverfs_mcp.linux_backend import LinuxBackend, LinuxWorkdirSession
 from serverfs_mcp.main import create_server
 from serverfs_mcp.models import (
     CreateDirectoryResult,
@@ -442,3 +443,45 @@ class TestLinuxSessionContract:
         # The code travels structurally (code attribute), not inside the
         # message: the tool layer formats CODE: message itself.
         assert str(exc) == "plain words"
+
+
+def _protocol_methods() -> set[str]:
+    """Public method names declared by the WorkdirSession Protocol."""
+    return {
+        name
+        for name, member in vars(WorkdirSession).items()
+        if callable(member) and not name.startswith("_")
+    }
+
+
+class TestProtocolCompleteness:
+    """The declared Protocol is the full spec a new kernel implements."""
+
+    def test_binary_mutations_are_declared(self) -> None:
+        methods = _protocol_methods()
+        assert "create_binary_file" in methods
+        assert "replace_binary_file" in methods
+
+    def test_every_protocol_method_has_a_return_annotation(self) -> None:
+        # raw __annotations__ (strings under future-annotations): the check is
+        # that the contract states the type, not that it resolves here
+        missing = [
+            name
+            for name in _protocol_methods()
+            if getattr(WorkdirSession, name).__annotations__.get("return") is None
+        ]
+        assert not missing, f"unannotated session methods: {missing}"
+
+    def test_linux_session_covers_the_protocol(self) -> None:
+        missing = [
+            name
+            for name in _protocol_methods()
+            if not callable(getattr(LinuxWorkdirSession, name, None))
+        ]
+        assert not missing, f"LinuxWorkdirSession lacks protocol members: {missing}"
+
+    def test_fake_session_covers_the_protocol(self) -> None:
+        missing = [
+            name for name in _protocol_methods() if not callable(getattr(FakeSession, name, None))
+        ]
+        assert not missing, f"FakeSession lacks protocol members: {missing}"

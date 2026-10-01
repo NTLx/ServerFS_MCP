@@ -1,4 +1,9 @@
-"""Container-side reader of Bridge-owned cross-process workdir lease files."""
+"""Container-side reader of Bridge-owned cross-process workdir lease files.
+
+This module is Unix-only (fcntl). The product layer imports it lazily and
+only on the Agent-enabled path; the coded lease error contract lives in the
+platform-neutral ``errors.py``.
+"""
 
 from __future__ import annotations
 
@@ -9,20 +14,7 @@ import stat
 from collections.abc import Iterator
 from pathlib import Path
 
-
-class AgentLeaseError(Exception):
-    code = "AGENT_LOCK_UNAVAILABLE"
-    message = "shared Agent workdir lease is unavailable"
-
-
-class WorkdirBusyError(AgentLeaseError):
-    code = "WORKDIR_BUSY"
-    message = "workdir is busy with an active Agent task"
-
-
-class WorkdirRecoveryRequiredError(AgentLeaseError):
-    code = "WORKDIR_RECOVERY_REQUIRED"
-    message = "workdir has unresolved Agent recovery state"
+from .errors import AgentLeaseError, WorkdirBusyError, WorkdirRecoveryRequiredError
 
 
 @contextlib.contextmanager
