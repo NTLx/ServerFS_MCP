@@ -60,6 +60,20 @@ class TestDispatch:
         b = backend.open_session(make_workdir(tmp_path / "b", alias="b"))
         assert a is not b
 
+    def test_read_only_capability_is_part_of_session_identity(self, tmp_path: Path) -> None:
+        root = tmp_path / "cap"
+        rw = Workdir("cap", root, None, read_only=False)
+        ro = Workdir("cap", root, None, read_only=True)
+        backend = WindowsBackend()
+        with pytest.raises(BackendError):
+            backend.open_session(rw)  # root does not exist yet: fail before cache
+        root.mkdir()
+        session_ro = backend.open_session(ro)
+        session_rw = backend.open_session(rw)
+        assert session_ro is backend.open_session(ro)
+        assert session_rw is not session_ro
+        assert session_rw.workdir.read_only is False
+
     def test_identity_token_survives_external_root_rename(self, tmp_path: Path) -> None:
         # The session holds the object, not the path: renaming the root
         # directory from outside changes nothing for the retained handle.
