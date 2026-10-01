@@ -42,11 +42,12 @@ import errno
 import hashlib
 import os
 import stat as stat_module
-import threading
 from collections.abc import Iterator
 
 from . import fdio
 from . import logging as jsonlog
+from .concurrency import mutation_lock
+from .errors import MutationError
 from .fdio import stat_at, unlink_at, walk_parent_dirs
 from .models import (
     CreateDirectoryResult,
@@ -66,18 +67,6 @@ _READ_CHUNK = 1 << 20
 
 
 # ---- coded, agent-safe errors ----
-
-
-class MutationError(Exception):
-    """Base class for anticipated mutation failures (CODE: message)."""
-
-    code = "MUTATION_FAILED"
-    message = "mutation failed"
-
-    def __init__(self, message: str | None = None):
-        super().__init__(message or self.message)
-        if message is not None:
-            self.message = message
 
 
 class PathAlreadyExistsError(MutationError):
@@ -182,25 +171,6 @@ def compute_revision(st: os.stat_result) -> str:
     )
     digest = hashlib.sha256(material.encode("ascii")).hexdigest()
     return REVISION_PREFIX + digest[:_REVISION_HEX_CHARS]
-
-
-# ---- process-local serialization ----
-
-
-_MUTATION_LOCK = threading.RLock()
-
-
-@contextlib.contextmanager
-def mutation_lock() -> Iterator[None]:
-    """Serialize every mutation in this process.
-
-    Reads deliberately do not take this lock. One re-entrant lock, not a
-    per-path table: Phase D takes it once in the MCP tool layer before the
-    shared Agent lease, while the existing mutation implementation re-enters
-    it internally. Cross-thread serialization remains unchanged.
-    """
-    with _MUTATION_LOCK:
-        yield
 
 
 # ---- shared plumbing ----

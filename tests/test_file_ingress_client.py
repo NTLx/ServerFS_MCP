@@ -7,7 +7,7 @@ import json
 import pytest
 
 import serverfs_mcp.file_ingress_client as client_module
-from serverfs_mcp.binary import BinaryTransferError
+from serverfs_mcp.binary_payload import BinaryTransferError
 from serverfs_mcp.file_ingress_client import FileIngressClient
 
 

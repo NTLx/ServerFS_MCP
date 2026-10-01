@@ -5,7 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 
-from .binary import BinaryTransferError
+from .binary_payload import BinaryTransferError
 
 _MAX_ERROR_BODY = 4096
 _INGRESS_HOST = "serverfs-file-ingress"
