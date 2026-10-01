@@ -36,5 +36,8 @@ pub mod metadata;
 pub mod path;
 pub mod traversal;
 
+#[cfg(feature = "pyo3")]
+pub mod python;
+
 pub use error::NativeError;
 pub use handle::Handle;

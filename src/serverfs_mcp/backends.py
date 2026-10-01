@@ -38,6 +38,7 @@ Rules frozen here (§11):
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -194,13 +195,20 @@ class FilesystemBackend(Protocol):
 
 
 def get_backend() -> FilesystemBackend:
-    """Return the platform backend for this process (Phase A: Linux).
+    """Return the platform backend for this process (Phase B dispatch).
 
-    The kernel import is lazy so this contract module loads without touching
-    fdio on any platform. Phase B replaces the single Linux branch with
-    platform dispatch; until then every caller gets the Linux kernel so the
-    seam is exercised without changing behavior.
+    Each kernel module is imported lazily so this contract module loads on
+    every platform without touching the other platform's kernel: a Windows
+    process never imports fdio, and a Linux process never imports the
+    native extension. The Windows backend is a process singleton because
+    its sessions retain root capabilities for the process lifetime (§10.1);
+    the Linux backend is stateless and re-opened cheaply per call, matching
+    v0.9 behavior exactly.
     """
+    if sys.platform == "win32":
+        from .windows_backend import WindowsBackend
+
+        return WindowsBackend.shared()
     from .linux_backend import LinuxBackend
 
     return LinuxBackend()
