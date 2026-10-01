@@ -7,6 +7,7 @@ description = "ServerFS Windows native filesystem kernel (v0.10 Phase B)"
 license = "MIT"
 
 [dependencies]
+pyo3 = { version = "0.23", features = ["abi3-py312", "extension-module"], optional = true }
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security",
@@ -26,3 +27,7 @@ windows-sys = { version = "0.61.2", features = [
 [lib]
 name = "serverfs_windows_native"
 path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+pyo3 = ["dep:pyo3"]
