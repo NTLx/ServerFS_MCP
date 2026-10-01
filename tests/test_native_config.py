@@ -57,7 +57,7 @@ class TestValidConfig:
         # defaults apply to every workdir
         assert all(w.policy.max_read_bytes == 262144 for w in workdirs)
         # native workdirs carry no legacy slot
-        assert all(w.slot == 0 for w in workdirs)
+        assert all(w.legacy_slot is None for w in workdirs)
 
     def test_minimal_config_uses_safe_defaults(self, tmp_path: Path) -> None:
         config = _write(
@@ -237,7 +237,7 @@ class TestWindowsPathNeutrality:
             f'[[workdirs]]\nalias = "win"\npath = "{literal}"\nread_only = true\n',
         )
         workdirs, _ = load_native_config(config)
-        assert str(workdirs[0].container_path) == raw_path
+        assert str(workdirs[0].root) == raw_path
 
     def test_windows_root_with_parent_component_fails(self, tmp_path: Path) -> None:
         config = _write(

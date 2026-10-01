@@ -18,9 +18,7 @@ are independent layers.
 from __future__ import annotations
 
 import base64
-import contextlib
 import errno
-import os
 import time
 from pathlib import Path
 from typing import Annotated
@@ -43,15 +41,10 @@ from .agent_leases import (
     WorkdirRecoveryRequiredError,
     mutation_agent_lease,
 )
-from .backends import get_backend
+from .backends import BackendError, get_backend
 from .binary import BinaryTransferError, decode_base64_payload
-from .binary import read_binary_file as read_binary_file_impl
 from .config import Settings
-from .fdio import open_directory_fd, open_file_fd
 from .file_ingress_client import FileIngressClient
-from .filesystem import find_files as find_files_impl
-from .filesystem import list_directory as list_directory_impl
-from .filesystem import stat_file as stat_file_impl
 from .models import (
     CreateDirectoryResult,
     CreateTextFileResult,
@@ -71,16 +64,8 @@ from .models import (
     UploadBinaryFileResult,
 )
 from .mutations import MutationError, mutation_lock
-from .mutations import compute_revision as revision_of
-from .mutations import create_binary_file as create_binary_file_impl
-from .mutations import create_directory as create_directory_impl
-from .mutations import create_text_file as create_text_file_impl
-from .mutations import delete_directory as delete_directory_impl
-from .mutations import delete_file as delete_file_impl
-from .mutations import edit_text_file as edit_text_file_impl
-from .mutations import replace_binary_file as replace_binary_file_impl
 from .paths import DenyPolicy, PathSecurityError, ResolvedPath, resolve_workdir_path
-from .search import SearchTimeout, run_search
+from .search import SearchTimeout
 from .workdirs import WorkdirRegistry
 
 # read-only tools
@@ -133,9 +118,9 @@ def deny_policy_from_workdir(workdir) -> DenyPolicy:
     )
 
 
-def _root_fd(resolved: ResolvedPath):
-    """Root-FD context manager for a resolved workdir path (backend seam)."""
-    return get_backend().root_fd(resolved)
+def _session(resolved: ResolvedPath):
+    """Open the backend session for one resolved workdir path."""
+    return get_backend().open_session(resolved.workdir)
 
 
 def _resolve(
@@ -280,6 +265,10 @@ def _mutation_tool_error(exc: Exception, workdir: str, path: str) -> ToolError:
         )
     if isinstance(exc, BinaryTransferError):
         return ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
+    if isinstance(exc, BackendError):
+        # backend sessions already normalized the condition; the code and
+        # message are agent-facing by contract (§11 error normalization)
+        return ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
     if isinstance(exc, AgentLeaseError):
         return ToolError(f"AGENT_LOCK_UNAVAILABLE: shared Agent lease for {workdir} is unavailable")
     if isinstance(exc, MutationError):
@@ -334,71 +323,43 @@ def _read_text_file_impl(
     policy = resolved.workdir.policy
     max_lines = min(max_lines, policy.max_read_lines)
 
-    with contextlib.ExitStack() as stack:
-        root = stack.enter_context(_root_fd(resolved))
-        try:
-            fd = stack.enter_context(open_file_fd(root, resolved.rel_parts))
-        except FileNotFoundError:
-            raise ToolError(f"PATH_NOT_FOUND: {workdir}:{path} does not exist") from None
-        except NotADirectoryError:
-            raise ToolError(f"NOT_A_FILE: {workdir}:{path} is not a regular file") from None
-        except IsADirectoryError:
-            raise ToolError(f"NOT_A_FILE: {workdir}:{path} is a directory") from None
-        except PathSecurityError as exc:
-            code = getattr(exc, "code", "ACCESS_DENIED")
-            raise ToolError(f"{code}: {workdir}:{path} — {exc.message}") from exc
-        except OSError as exc:
-            raise ToolError(f"ACCESS_DENIED: {workdir}:{path} ({exc.strerror})") from None
+    session = _session(resolved)
+    try:
+        page = session.read_text_page(
+            resolved,
+            start_line=start_line,
+            max_lines=max_lines,
+            max_read_bytes=policy.max_read_bytes,
+            binary_sample=_BINARY_SAMPLE,
+        )
+    except FileNotFoundError:
+        raise ToolError(f"PATH_NOT_FOUND: {workdir}:{path} does not exist") from None
+    except NotADirectoryError:
+        raise ToolError(f"NOT_A_FILE: {workdir}:{path} is not a regular file") from None
+    except IsADirectoryError:
+        raise ToolError(f"NOT_A_FILE: {workdir}:{path} is a directory") from None
+    except PathSecurityError as exc:
+        code = getattr(exc, "code", "ACCESS_DENIED")
+        raise ToolError(f"{code}: {workdir}:{path} — {exc.message}") from exc
+    except BackendError as exc:
+        # file-operation codes from the backend: LINE_TOO_LARGE,
+        # FILE_CHANGED_DURING_READ — same shape as v0.9's inline errors
+        raise ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}") from exc
+    except OSError as exc:
+        raise ToolError(f"ACCESS_DENIED: {workdir}:{path} ({exc.strerror})") from None
 
-        # identity is checked on the FD we read, before and after: a file
-        # that changes underneath us must not yield a snapshot whose
-        # revision does not match the content we are returning
-        revision = revision_of(os.fstat(fd))
-        with open(fd, "rb", closefd=False) as fh:
-            sample = fh.read(_BINARY_SAMPLE)
-            if b"\x00" in sample:
-                raise ToolError(f"BINARY_FILE: {workdir}:{path} appears to be a binary file")
-            # BOM is stripped from the physical FIRST line of the file only
-            bom = sample.startswith(b"\xef\xbb\xbf")
-            fh.seek(0)
-            lines: list[bytes] = []
-            line_no = 0
-            bytes_returned = 0
-            end_line = start_line - 1
-            has_more = False
-            for raw in fh:
-                line_no += 1
-                if line_no == 1 and bom:
-                    raw = raw[3:]
-                if line_no < start_line:
-                    continue
-                if len(raw) > policy.max_read_bytes:
-                    raise ToolError(
-                        f"LINE_TOO_LARGE: {workdir}:{path} line {line_no} exceeds "
-                        f"{policy.max_read_bytes} bytes"
-                    )
-                if len(lines) >= max_lines:
-                    has_more = True
-                    break
-                if bytes_returned + len(raw) > policy.max_read_bytes:
-                    has_more = True
-                    break
-                lines.append(raw)
-                bytes_returned += len(raw)
-                end_line = line_no
+    if page.has_nul:
+        raise ToolError(f"BINARY_FILE: {workdir}:{path} appears to be a binary file")
+    try:
+        text = b"".join(page.lines).decode("utf-8")
+    except UnicodeDecodeError:
+        raise ToolError(f"UNSUPPORTED_TEXT_ENCODING: {workdir}:{path} is not valid UTF-8") from None
 
-        if revision_of(os.fstat(fd)) != revision:
-            raise ToolError(
-                f"FILE_CHANGED_DURING_READ: {workdir}:{path} changed while being read; retry"
-            )
-
-        try:
-            text = b"".join(lines).decode("utf-8")
-        except UnicodeDecodeError:
-            raise ToolError(
-                f"UNSUPPORTED_TEXT_ENCODING: {workdir}:{path} is not valid UTF-8"
-            ) from None
-
+    lines = page.lines
+    end_line = page.end_line
+    has_more = page.has_more
+    bytes_returned = page.bytes_returned
+    revision = page.revision
     next_start_line = end_line + 1 if has_more else None
     if not lines:
         end_line = start_line - 1
@@ -474,7 +435,7 @@ def register_tools(
         limit = min(limit, settings.max_list_entries)
         try:
             resolved = _resolve(registry, workdir, path, settings)
-            entries, has_more = list_directory_impl(resolved, offset=offset, limit=limit)
+            entries, has_more = _session(resolved).list(resolved, offset=offset, limit=limit)
         except ToolError as exc:
             _audit(
                 "list_directory",
@@ -495,6 +456,17 @@ def register_tools(
                 error_code=exc.code,
             )
             raise ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}") from exc
+        except BackendError as exc:
+            err = ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
+            _audit(
+                "list_directory",
+                t0,
+                success=False,
+                workdir=workdir,
+                path=path,
+                error_code=exc.code,
+            )
+            raise err from exc
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError, OSError) as exc:
             err = _fs_error(exc, workdir, path)
             _audit(
@@ -544,10 +516,9 @@ def register_tools(
         limit = min(limit, settings.max_search_results)
         try:
             resolved = _resolve(registry, workdir, path, settings)
-            with contextlib.ExitStack() as stack:
-                root = stack.enter_context(_root_fd(resolved))
-                stack.enter_context(open_directory_fd(root, resolved.rel_parts))
-            matches, truncated = find_files_impl(
+            session = _session(resolved)
+            session.validate_directory(resolved)
+            matches, truncated = session.find(
                 resolved,
                 pattern=pattern,
                 limit=limit,
@@ -573,6 +544,17 @@ def register_tools(
                 error_code=exc.code,
             )
             raise ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}") from exc
+        except BackendError as exc:
+            err = ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
+            _audit(
+                "find_files",
+                t0,
+                success=False,
+                workdir=workdir,
+                path=path,
+                error_code=exc.code,
+            )
+            raise err from exc
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError, OSError) as exc:
             err = _fs_error(exc, workdir, path)
             _audit(
@@ -623,27 +605,24 @@ def register_tools(
         limit = min(limit, settings.max_search_results)
         try:
             resolved = _resolve(registry, workdir, path, settings)
-            with contextlib.ExitStack() as stack:
-                root = stack.enter_context(_root_fd(resolved))
-                root_dir_fd = stack.enter_context(open_directory_fd(root, resolved.rel_parts))
-                try:
-                    matches, truncated = run_search(
-                        root_dir_fd,
-                        resolved,
-                        query=query,
-                        glob=glob,
-                        case_sensitive=case_sensitive,
-                        limit=limit,
-                        timeout_seconds=settings.search_timeout_seconds,
-                        max_file_bytes=settings.search_max_file_bytes,
-                    )
-                except SearchTimeout:
-                    raise ToolError(
-                        f"SEARCH_TIMEOUT: search in {workdir}:{path} exceeded "
-                        f"{settings.search_timeout_seconds}s"
-                    ) from None
-                except RuntimeError as exc:
-                    raise ToolError(str(exc)) from None
+            session = _session(resolved)
+            try:
+                matches, truncated = session.search(
+                    resolved,
+                    query=query,
+                    glob=glob,
+                    case_sensitive=case_sensitive,
+                    limit=limit,
+                    timeout_seconds=settings.search_timeout_seconds,
+                    max_file_bytes=settings.search_max_file_bytes,
+                )
+            except SearchTimeout:
+                raise ToolError(
+                    f"SEARCH_TIMEOUT: search in {workdir}:{path} exceeded "
+                    f"{settings.search_timeout_seconds}s"
+                ) from None
+            except RuntimeError as exc:
+                raise ToolError(str(exc)) from None
         except ToolError as exc:
             _audit(
                 "search_text",
@@ -664,6 +643,17 @@ def register_tools(
                 error_code=exc.code,
             )
             raise ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}") from exc
+        except BackendError as exc:
+            err = ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
+            _audit(
+                "search_text",
+                t0,
+                success=False,
+                workdir=workdir,
+                path=path,
+                error_code=exc.code,
+            )
+            raise err from exc
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError, OSError) as exc:
             err = _fs_error(exc, workdir, path)
             _audit(
@@ -747,7 +737,7 @@ def register_tools(
         t0 = time.monotonic()
         try:
             resolved = _resolve(registry, workdir, path, settings)
-            result = stat_file_impl(resolved)
+            result = _session(resolved).stat(resolved)
         except ToolError as exc:
             _audit(
                 "stat_file",
@@ -770,6 +760,17 @@ def register_tools(
             )
             raise err from exc
         except PathSecurityError as exc:
+            err = ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
+            _audit(
+                "stat_file",
+                t0,
+                success=False,
+                workdir=workdir,
+                path=path,
+                error_code=exc.code,
+            )
+            raise err from exc
+        except BackendError as exc:
             err = ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
             _audit(
                 "stat_file",
@@ -808,7 +809,7 @@ def register_tools(
             t0 = time.monotonic()
             try:
                 resolved = _resolve_binary_read(registry, workdir, path, settings)
-                binary = read_binary_file_impl(
+                binary = _session(resolved).read_binary(
                     resolved,
                     max_bytes=resolved.workdir.policy.max_binary_transfer_bytes,
                 )
@@ -834,6 +835,17 @@ def register_tools(
                 )
                 raise err from exc
             except PathSecurityError as exc:
+                err = ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
+                _audit(
+                    "download_binary_file",
+                    t0,
+                    success=False,
+                    workdir=workdir,
+                    path=path,
+                    error_code=exc.code,
+                )
+                raise err from exc
+            except BackendError as exc:
                 err = ToolError(f"{exc.code}: {workdir}:{path} — {exc.message}")
                 _audit(
                     "download_binary_file",
@@ -1004,15 +1016,16 @@ def register_tools(
                         enabled=settings.agent_bridge_enabled,
                     ),
                 ):
+                    session = _session(resolved)
                     if overwrite:
-                        result = replace_binary_file_impl(
+                        result = session.replace_binary_file(
                             resolved,
                             data,
                             expected_revision,
                             max_binary_bytes=resolved.workdir.policy.max_binary_transfer_bytes,
                         )
                     else:
-                        result = create_binary_file_impl(
+                        result = session.create_binary_file(
                             resolved,
                             data,
                             max_binary_bytes=resolved.workdir.policy.max_binary_transfer_bytes,
@@ -1053,7 +1066,7 @@ def register_tools(
                     enabled=settings.agent_bridge_enabled,
                 ),
             ):
-                result = create_text_file_impl(
+                result = _session(resolved).create_file(
                     resolved,
                     content,
                     max_write_bytes=resolved.workdir.policy.max_write_bytes,
@@ -1109,7 +1122,7 @@ def register_tools(
                     enabled=settings.agent_bridge_enabled,
                 ),
             ):
-                result = edit_text_file_impl(
+                result = _session(resolved).replace_file(
                     resolved,
                     expected_revision,
                     edits,
@@ -1161,7 +1174,7 @@ def register_tools(
                     enabled=settings.agent_bridge_enabled,
                 ),
             ):
-                result = delete_file_impl(resolved, expected_revision)
+                result = _session(resolved).delete_file(resolved, expected_revision)
             return result, {
                 "bytes_deleted": result.bytes_deleted,
                 "revision": result.revision_deleted,
@@ -1196,7 +1209,7 @@ def register_tools(
                     enabled=settings.agent_bridge_enabled,
                 ),
             ):
-                result = create_directory_impl(resolved)
+                result = _session(resolved).create_directory(resolved)
             return result, {"revision": result.revision}
 
         return _run_mutation("create_directory", workdir, path, t0, body)
@@ -1237,7 +1250,7 @@ def register_tools(
                     enabled=settings.agent_bridge_enabled,
                 ),
             ):
-                result = delete_directory_impl(resolved, expected_revision)
+                result = _session(resolved).delete_directory(resolved, expected_revision)
             return result, {"revision": result.revision_deleted}
 
         return _run_mutation("delete_directory", workdir, path, t0, body)

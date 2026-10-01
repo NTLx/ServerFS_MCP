@@ -28,11 +28,11 @@ def make_mutation_server(tmp_path: Path) -> tuple[Any, Workdir, Path]:
     lock_file.touch(mode=0o640)
 
     wd = Workdir(
-        slot=1,
         alias="repo",
-        container_path=repo,
+        root=repo,
         description=None,
         read_only=False,
+        legacy_slot=1,
     )
     settings = Settings(
         agent_bridge_enabled=True,
@@ -153,11 +153,11 @@ def test_agent_disabled_preserves_v02_mutation_without_lock_dir(tmp_path: Path) 
     repo = tmp_path / "repo"
     repo.mkdir()
     wd = Workdir(
-        slot=1,
         alias="repo",
-        container_path=repo,
+        root=repo,
         description=None,
         read_only=False,
+        legacy_slot=1,
     )
     server = create_server(Settings(), WorkdirRegistry([wd]))
     result = call_success(

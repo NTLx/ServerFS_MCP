@@ -193,14 +193,13 @@ def _parse_workdir(entry: object, index: int, defaults: NativeDefaults) -> Workd
 
     read_only = _require_strict_bool(where, "read_only", entry.get("read_only"), True)
 
-    # Native workdirs have no deployment slot; the legacy slot is an
-    # input-adapter concept (§6). slot=0 marks "not from the legacy adapter".
+    # Native workdirs carry no legacy slot (§6): the slot is an input-adapter
+    # concept belonging to the Compose/env adapter alone.
     # The root is stored as a plain Path; on POSIX a Windows-shaped root is
     # inert data until the backend that can open it exists.
     return Workdir(
-        slot=0,
         alias=alias,
-        container_path=Path(raw_path),
+        root=Path(raw_path),
         description=description,
         read_only=read_only,
         policy=EffectiveWorkdirPolicy(
