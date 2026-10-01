@@ -9,3 +9,6 @@ node_modules/
 dist/
 build/
 *.egg-info/
+
+# Rust build output for the Windows native kernel
+native/windows/target/
