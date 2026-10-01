@@ -17,17 +17,15 @@ def make_limit_server(tmp_path: Path):
     override_path.mkdir()
     inherited_path.mkdir()
     override = Workdir(
-        slot=1,
         alias="override",
-        container_path=override_path,
+        root=override_path,
         description=None,
         read_only=False,
         policy=dataclasses.replace(EffectiveWorkdirPolicy(), max_write_bytes=4),
     )
     inherited = Workdir(
-        slot=2,
         alias="inherited",
-        container_path=inherited_path,
+        root=inherited_path,
         description=None,
         read_only=False,
         policy=dataclasses.replace(EffectiveWorkdirPolicy(), max_write_bytes=100),

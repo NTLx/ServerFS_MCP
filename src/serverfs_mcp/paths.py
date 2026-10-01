@@ -268,7 +268,7 @@ class ResolvedPath:
         (§28). New code goes through the filesystem backend instead of
         assembling host-side pathnames.
         """
-        path = self._workdir.container_path
+        path = self._workdir.root
         for seg in self._rel_parts:
             path = path / seg
         return path

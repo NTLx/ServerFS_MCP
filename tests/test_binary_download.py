@@ -104,11 +104,11 @@ class TestBinaryToolRegistration:
         disabled = dataclasses.replace(workdir, alias="disabled")
         enabled = dataclasses.replace(
             _binary_workdir(workdir),
-            slot=2,
+            legacy_slot=2,
             alias="enabled",
-            container_path=workdir.container_path.parent / "02",
+            root=workdir.container_path.parent / "02",
         )
-        enabled.container_path.mkdir(exist_ok=True)
+        enabled.root.mkdir(exist_ok=True)
         server = create_server(Settings(), registry_for(disabled, enabled))
 
         msg = call_error(

@@ -86,9 +86,8 @@ class TestListWorkdirsAccess:
 
     def test_mixed_registry_reports_per_workdir(self, workdir) -> None:
         other = Workdir(
-            slot=2,
             alias="logs",
-            container_path=workdir.container_path.parent / "02",
+            root=workdir.container_path.parent / "02",
             description=None,
             read_only=False,
         )
@@ -100,9 +99,8 @@ class TestListWorkdirsAccess:
 
     def test_reports_effective_binary_and_agent_capabilities(self, workdir) -> None:
         capable = Workdir(
-            slot=2,
             alias="capable",
-            container_path=workdir.container_path.parent / "02",
+            root=workdir.container_path.parent / "02",
             description="effective policy probe",
             read_only=False,
             policy=EffectiveWorkdirPolicy(

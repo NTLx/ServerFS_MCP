@@ -88,9 +88,8 @@ def agent_workdir(tmp_path: Path, *, enabled: bool = True) -> Workdir:
     root = tmp_path / "repo"
     root.mkdir()
     return Workdir(
-        slot=1,
         alias="repo",
-        container_path=root,
+        root=root,
         description="Agent test workdir",
         read_only=not enabled,
         agent_mode=AGENT_MODE_WORKSPACE_WRITE if enabled else AGENT_MODE_DISABLED,
@@ -434,9 +433,8 @@ def test_submit_rejects_disabled_workdir_before_rpc(tmp_path: Path) -> None:
     # A second, enabled workdir: the Agent surface is only registered when one
     # exists, and this test is about the per-workdir authorization refusal.
     reachable = Workdir(
-        slot=2,
         alias="open",
-        container_path=tmp_path / "open",
+        root=tmp_path / "open",
         description=None,
         read_only=False,
         agent_mode=AGENT_MODE_WORKSPACE_WRITE,

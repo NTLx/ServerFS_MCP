@@ -210,18 +210,21 @@ class TestFileChangedDuringRead:
     def test_read_detects_a_change_mid_read(self, workdir, monkeypatch) -> None:
         """Simulated by making the second identity check disagree with the
         first — the real trigger is an external write during the read."""
-        from serverfs_mcp import tools
+        from serverfs_mcp import mutations
 
         srv = make_server(workdir)
         (workdir.container_path / "a.txt").write_text("content\n")
-        real = tools.revision_of
+        real = mutations.compute_revision
         calls = {"n": 0}
 
         def flaky(st):
             calls["n"] += 1
             return "v1:" + "0" * 16 if calls["n"] == 2 else real(st)
 
-        monkeypatch.setattr(tools, "revision_of", flaky)
+        # The revision computation now lives behind the backend session; the
+        # product layer (tools) no longer imports it. Patch it where the
+        # Linux session resolves it at call time (mutations module).
+        monkeypatch.setattr(mutations, "compute_revision", flaky)
         msg = call_error(srv, "read_text_file", {"workdir": "test", "path": "a.txt"})
         assert error_code(msg) == "FILE_CHANGED_DURING_READ"
         assert calls["n"] == 2

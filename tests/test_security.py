@@ -490,14 +490,12 @@ def test_effective_policy_is_selected_per_workdir_for_tools_and_resources(tmp_pa
     (first_root / "large.txt").write_text("123456789\n")
     (second_root / "large.txt").write_text("123456789\n")
     first = Workdir(
-        1,
         "first",
         first_root,
         None,
         policy=EffectiveWorkdirPolicy(allow_hidden=True, max_read_bytes=20, max_read_lines=1),
     )
     second = Workdir(
-        2,
         "second",
         second_root,
         None,

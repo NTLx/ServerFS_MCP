@@ -148,9 +148,8 @@ def build_server(socket_path: Path, lock_dir: Path, workdir: Path):
         agent_lock_dir=str(lock_dir),
     )
     policy_workdir = Workdir(
-        slot=1,
         alias=WORKDIR_ALIAS,
-        container_path=workdir,
+        root=workdir,
         description="Two-process E2E workdir",
         read_only=False,
         agent_mode=AGENT_MODE_WORKSPACE_WRITE,

@@ -14,7 +14,6 @@ import fnmatch
 import os
 import stat as stat_module
 
-from .backends import get_backend
 from .fdio import open_directory_fd, stat_final
 from .models import EntryInfo, StatFileResult
 from .mutations import compute_revision
@@ -65,8 +64,16 @@ def check_supported_file_type(resolved: ResolvedPath) -> None:
 
 
 def _root_fd(resolved: ResolvedPath):
-    """Root-FD context manager for a resolved workdir path (backend seam)."""
-    return get_backend().root_fd(resolved)
+    """Root anchor for filesystem.py's Linux implementation.
+
+    filesystem.py IS the Linux backend implementation now: tools.py reaches
+    it only through backends.LinuxWorkdirSession, but the module's own
+    functions (kept for the direct unit tests) still anchor on the root FD
+    via this helper.
+    """
+    from .fdio import root_fd as fdio_root_fd
+
+    return fdio_root_fd(str(resolved.workdir.root))
 
 
 def list_directory(
@@ -148,7 +155,7 @@ def find_files(
     ``limit`` matches were collected or ``max_walk_entries`` was hit — so
     the result set is not guaranteed to be complete.
     """
-    root_cm = get_backend().root_fd(resolved)
+    root_cm = _root_fd(resolved)
     root = root_cm.__enter__()
     matches: list[str] = []
     visited = 0

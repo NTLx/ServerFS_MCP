@@ -65,24 +65,34 @@ class EffectiveWorkdirPolicy:
 
 @dataclass(frozen=True, init=False)
 class Workdir:
-    slot: int
+    """One platform-neutral resolved workdir (v0.10 §6).
+
+    The public MCP identity is the alias. ``root`` is the operator-owned
+    trusted anchor (a POSIX container path on the legacy Docker deployment,
+    a native absolute path for native deployments). ``legacy_slot`` is
+    populated ONLY by the legacy Compose/env adapter: the filesystem core
+    never requires a numeric slot, and the Agent writer lease is the one
+    consumer that still keys on it (a frozen v0.9 contract).
+    """
+
     alias: str
-    container_path: Path
+    root: Path
     description: str | None
     read_only: bool = True
     policy: EffectiveWorkdirPolicy
+    legacy_slot: int | None = None
 
     def __init__(
         self,
-        slot: int,
         alias: str,
-        container_path: Path,
+        root: Path,
         description: str | None,
         read_only: bool = True,
         *,
         policy: EffectiveWorkdirPolicy | None = None,
         agent_mode: str | None = None,
         agent_runtimes: frozenset[str] | None = None,
+        legacy_slot: int | None = None,
     ) -> None:
         """Construct a workdir; legacy agent kwargs are folded into policy once."""
         effective_policy = policy or EffectiveWorkdirPolicy()
@@ -103,12 +113,39 @@ class Workdir:
                     else effective_policy.agent_runtimes
                 ),
             )
-        object.__setattr__(self, "slot", slot)
         object.__setattr__(self, "alias", alias)
-        object.__setattr__(self, "container_path", container_path)
+        object.__setattr__(self, "root", root)
         object.__setattr__(self, "description", description)
         object.__setattr__(self, "read_only", read_only)
         object.__setattr__(self, "policy", effective_policy)
+        object.__setattr__(self, "legacy_slot", legacy_slot)
+
+    @property
+    def container_path(self) -> Path:
+        """Legacy name for ``root`` (v0.9 Docker deployments).
+
+        Read-only compatibility alias: the frozen Agent Bridge tooling and
+        the existing tests address the root by this name. The v0.10 core
+        model and any new code use ``root``.
+        """
+        return self.root
+
+    @property
+    def slot(self) -> int:
+        """Legacy numeric slot (1..16) or a fail-closed sentinel for native
+        workdirs.
+
+        The Agent writer lease (agent_leases.mutation_agent_lease) rejects
+        anything outside 1..16, so a native workdir with no legacy slot can
+        never take the lease: mutations in Agent-integrated deployments are
+        a frozen Linux/Docker capability in v0.10. This property exists so
+        that failure stays a runtime rejection at the lease boundary rather
+        than an AttributeError in the mutation tools.
+        """
+        if self.legacy_slot is None:
+            # Not a real slot; agent_leases.mutation_agent_lease must refuse it.
+            return 0
+        return self.legacy_slot
 
     @property
     def access(self) -> str:
@@ -287,12 +324,12 @@ def _build_registry(
 
         workdirs.append(
             Workdir(
-                slot=slot,
                 alias=alias,
-                container_path=slot_path,
+                root=slot_path,
                 description=description,
                 read_only=read_only,
                 policy=policy,
+                legacy_slot=slot,
             )
         )
 
