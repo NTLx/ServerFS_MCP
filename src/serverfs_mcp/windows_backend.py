@@ -158,7 +158,9 @@ class WindowsBackend:
         return cls._shared
 
     def open_session(self, workdir: Workdir) -> WindowsWorkdirSession:
-        key = (workdir.alias, str(workdir.root))
+        # the native session holds root HANDLE + read-only capability, so
+        # capability mode is part of session identity, not just the path
+        key = (workdir.alias, str(workdir.root), workdir.read_only)
         session = self._sessions.get(key)
         if session is not None:
             return session

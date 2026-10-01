@@ -24,10 +24,11 @@ pyo3::create_exception!(
     "ServerFS Windows native kernel failure carrying an agent-safe code"
 );
 
-fn map_error(err: NativeError) -> PyErr {
-    // Codes are the stable Python-visible contract; details stay in the
-    // message and never include host paths.
-    let (code, message) = match err {
+/// Agent-visible (code, message) pairs. Raw NTSTATUS/DWORD values stay
+/// inside the Rust [`NativeError::Unexpected`] for debug evidence only:
+/// the frozen error boundary forbids native detail in MCP-visible text.
+fn error_pair(err: &NativeError) -> (&'static str, String) {
+    match err {
         NativeError::PathNotFound => ("PATH_NOT_FOUND", "path not found".to_string()),
         NativeError::NotADirectory => (
             "NOT_A_DIRECTORY",
@@ -38,15 +39,52 @@ fn map_error(err: NativeError) -> PyErr {
         NativeError::AccessDenied => ("ACCESS_DENIED", "access denied".to_string()),
         NativeError::InvalidName => ("INVALID_NAME", "invalid component name".to_string()),
         NativeError::InvalidRoot => ("INVALID_ROOT", "invalid workdir root".to_string()),
-        NativeError::Unexpected { code: raw, nt } => (
+        NativeError::Unexpected { .. } => (
             "NATIVE_IO_ERROR",
-            format!(
-                "native kernel failure ({raw:#010x} {})",
-                if nt { "ntstatus" } else { "win32" }
-            ),
+            "native filesystem operation failed".to_string(),
         ),
-    };
+    }
+}
+
+fn map_error(err: NativeError) -> PyErr {
+    let (code, message) = error_pair(&err);
     NativeSessionError::new_err((code, message))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unexpected_native_status_is_redacted_from_agent_visible_text() {
+        let err = NativeError::Unexpected {
+            code: 0xC000_006D,
+            nt: true,
+        };
+        // internal debug evidence keeps the raw value...
+        assert!(err.to_string().contains("0xc000006d"));
+        // ...the Python-visible pair never does
+        let (code, message) = error_pair(&err);
+        assert_eq!(code, "NATIVE_IO_ERROR");
+        assert_eq!(message, "native filesystem operation failed");
+        assert!(!message.contains("0x"));
+    }
+
+    #[test]
+    fn stable_codes_for_known_conditions() {
+        let cases = [
+            (NativeError::PathNotFound, "PATH_NOT_FOUND"),
+            (NativeError::NotADirectory, "NOT_A_DIRECTORY"),
+            (NativeError::IsADirectory, "IS_A_DIRECTORY"),
+            (NativeError::ReparsePoint, "REPARSE_POINT"),
+            (NativeError::AccessDenied, "ACCESS_DENIED"),
+            (NativeError::InvalidName, "INVALID_NAME"),
+            (NativeError::InvalidRoot, "INVALID_ROOT"),
+        ];
+        for (err, code) in cases {
+            assert_eq!(error_pair(&err).0, code);
+        }
+    }
 }
 
 /// A retained workdir-root directory HANDLE with the thread contract
