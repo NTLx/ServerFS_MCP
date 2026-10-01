@@ -35,8 +35,9 @@ impl Drop for Handle {
     }
 }
 
-// Kernel objects are process-global: a HANDLE moved across threads still
-// refers to the same object, and this crate never shares mutable state
-// through the handle itself.
-unsafe impl Send for Handle {}
-unsafe impl Sync for Handle {}
+// No Send/Sync is asserted for Handle: the prototype never moves a handle
+// across threads, and the thread-safety contract must be proven per role
+// (root vs directory vs synchronous-read handle) when the PyO3 session
+// model actually needs it. Synchronous file handles in particular carry
+// file-position context, so a blanket Sync would be an unsafe promise the
+// kernel has not earned.

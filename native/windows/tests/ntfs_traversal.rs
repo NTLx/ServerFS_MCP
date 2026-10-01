@@ -167,6 +167,24 @@ fn handle_relative_resolution_and_identity_survive_external_rename() {
 }
 
 #[test]
+fn workdir_root_that_is_itself_a_junction_fails_closed() {
+    let sandbox = Sandbox::new("rootjunction");
+    sandbox.write("real/inner.txt");
+    let link = sandbox.root.join("jroot");
+    if !make_junction(&link, &sandbox.root.join("real")) {
+        eprintln!("SKIPPED: could not create a junction with mklink /J");
+        return;
+    }
+
+    // §10/§13: the trusted anchor itself being a reparse point must be
+    // refused from the handle's own attributes, never opened through.
+    assert_eq!(
+        traversal::open_root(link.to_str().unwrap()).err(),
+        Some(NativeError::ReparsePoint)
+    );
+}
+
+#[test]
 fn symlink_directory_is_refused_and_never_followed() {
     let sandbox = Sandbox::new("symlinkdir");
     sandbox.write("real/inner.txt");

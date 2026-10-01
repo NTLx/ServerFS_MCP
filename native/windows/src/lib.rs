@@ -17,9 +17,12 @@
 //! - type expectations (`FILE_DIRECTORY_FILE` / `FILE_NON_DIRECTORY_FILE`)
 //!   are enforced by the kernel on the same open, and identity
 //!   (`FILE_ID_INFO`) is always read from the held handle;
-//! - raw FFI lives only in [`ffi`]; a successfully returned HANDLE is
+//! - raw FFI calls live only in [`ffi`] (plus the one ownership-guaranteed
+//!   `CloseHandle` in [`handle`]); a successfully returned HANDLE is
 //!   immediately owned by the RAII [`Handle`], which closes it on every
-//!   path including panics.
+//!   path including panics;
+//! - no thread-mobility contract is asserted on [`Handle`] yet: Send/Sync
+//!   must be proven per handle role when the session model needs it.
 //!
 //! This module currently proves the §13 traversal primitive. Enumeration,
 //! read, search and mutation kernels are additive follow-ups in the same
