@@ -342,6 +342,12 @@ fn replace_bytes_transaction(
     {
         return Err(NativeError::RevisionConflict);
     }
+    // NTFS replacement rename cannot replace a destination while our own
+    // verification handles keep that destination open. All checks are
+    // complete; closing them leaves only the documented external-writer
+    // race between this gate and the atomic rename.
+    drop(final_target);
+    drop(original);
     ffi::rename_relative(&temp.handle, parent, name, true)?;
     temp.published = true;
     metadata::revision_of(&temp.handle)
