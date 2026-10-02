@@ -86,10 +86,21 @@ pub fn create_file(root: &Handle, parts: &[&str], data: &[u8]) -> Result<String,
     let (parent_owned, leaf) = parent_and_leaf(root, parts)?;
     let parent = parent_owned.as_ref().unwrap_or(root);
     let mut temp = create_temp(parent)?;
-    write_all(&temp.handle, data)?;
-    ffi::flush_file(&temp.handle)?;
+    write_all(&temp.handle, data).map_err(|err| {
+        eprintln!("temporary write failed: {err:?}");
+        err
+    })?;
+    ffi::flush_file(&temp.handle).map_err(|err| {
+        eprintln!("temporary flush failed: {err:?}");
+        err
+    })?;
     let final_name: Vec<u16> = leaf.encode_utf16().collect();
-    if let Err(publication_error) = ffi::rename_no_replace(&temp.handle, parent, &final_name) {
+    if let Err(publication_error) =
+        ffi::rename_no_replace(&temp.handle, parent, &final_name).map_err(|err| {
+            eprintln!("temporary rename failed: {err:?}");
+            err
+        })
+    {
         // Windows filesystems can report a directory/reparse collision with
         // a generic access error. Re-open the single leaf relative to the
         // already-held parent only to normalize the result; publication is
@@ -109,7 +120,10 @@ pub fn create_file(root: &Handle, parts: &[&str], data: &[u8]) -> Result<String,
         return Err(publication_error);
     }
     temp.published = true;
-    metadata::revision_of(&temp.handle)
+    metadata::revision_of(&temp.handle).map_err(|err| {
+        eprintln!("published revision query failed: {err:?}");
+        err
+    })
 }
 
 /// Create one final directory relative to a retained parent HANDLE.
