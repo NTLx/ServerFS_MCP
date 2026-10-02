@@ -20,8 +20,14 @@ use crate::path::NtName;
 /// Open the workdir root by name (the only name-resolving open allowed)
 /// and prove it is a real directory, not a reparse point.
 pub fn open_root(path: &str) -> Result<Handle, NativeError> {
+    open_root_with_create_access(path, false)
+}
+
+/// Open the trusted root with the additional child-creation rights needed
+/// by a read-write native session.
+pub fn open_root_with_create_access(path: &str, create_capable: bool) -> Result<Handle, NativeError> {
     let wide = crate::path::encoded_root(path)?;
-    let handle = ffi::open_root_by_name(&wide)?;
+    let handle = ffi::open_root_by_name(&wide, create_capable)?;
     validate(&handle, OpenKind::Directory)?;
     Ok(handle)
 }
@@ -103,6 +109,27 @@ pub fn resolve(root: &Handle, components: &[&str], leaf: OpenKind) -> Result<Han
         current = next;
     }
     Ok(current)
+}
+
+/// Resolve an existing parent chain with the directory rights required to
+/// create a child at its leaf. Each component remains a HANDLE-relative
+/// open and is validated as a non-reparse directory.
+pub fn resolve_create_parent(root: &Handle, components: &[&str]) -> Result<Handle, NativeError> {
+    let mut current = None;
+    for component in components {
+        let mut name = NtName::new(component)?;
+        let mut unicode = name.unicode_string();
+        let parent = current.as_ref().unwrap_or(root);
+        let next = ffi::open_relative(
+            parent,
+            &mut unicode,
+            ffi::CREATE_PARENT_ACCESS,
+            OpenKind::Directory,
+        )?;
+        validate(&next, OpenKind::Directory)?;
+        current = Some(next);
+    }
+    current.ok_or(NativeError::InvalidName)
 }
 
 /// Post-open validation on the object itself: never a reparse point, and

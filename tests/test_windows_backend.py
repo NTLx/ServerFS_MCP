@@ -104,7 +104,7 @@ class TestErrorNormalization:
         assert excinfo.value.code == "INVALID_ROOT"
 
 
-class TestPendingChannels:
+class TestMutationChannelStatus:
     def test_windows_session_covers_the_protocol(self) -> None:
         missing = [
             name
@@ -113,10 +113,15 @@ class TestPendingChannels:
         ]
         assert not missing, f"WindowsWorkdirSession lacks protocol members: {missing}"
 
-    def test_pending_channel_reports_structured_code(self, tmp_path: Path) -> None:
-        session = WindowsBackend().open_session(make_workdir(tmp_path))
+    def test_replace_and_delete_remain_pending(self, tmp_path: Path) -> None:
+        session = WindowsBackend().open_session(Workdir("repo", tmp_path, None, read_only=False))
         with pytest.raises(BackendError) as excinfo:
-            session.create_file(None, "x", max_write_bytes=10)
+            session.replace_file(
+                None, "v1:0000000000000000", [], max_write_bytes=10, max_edits_per_call=1
+            )
+        assert excinfo.value.code == "WINDOWS_KERNEL_PENDING"
+        with pytest.raises(BackendError) as excinfo:
+            session.delete_file(None, "v1:0000000000000000")
         assert excinfo.value.code == "WINDOWS_KERNEL_PENDING"
 
 

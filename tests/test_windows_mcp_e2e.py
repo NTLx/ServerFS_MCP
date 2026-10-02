@@ -9,12 +9,15 @@ code Linux runs — only the backend session differs.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import subprocess
 import sys
+import threading
 
 import pytest
 
-from helpers import call_error, call_success, error_code
+from helpers import call_concurrently, call_error, call_success, error_code
 from serverfs_mcp.config import Settings
 from serverfs_mcp.workdirs import Workdir
 
@@ -44,6 +47,20 @@ def server(wd_root):
         wd_root,
         None,
         read_only=True,
+        policy=EffectiveWorkdirPolicy(binary_transfer_enabled=True),
+    )
+    return create_server(Settings(binary_transfer_enabled=True), WorkdirRegistry([wd]))
+
+
+@pytest.fixture()
+def rw_server(wd_root):
+    from serverfs_mcp.workdirs import EffectiveWorkdirPolicy
+
+    wd = Workdir(
+        "test",
+        wd_root,
+        None,
+        read_only=False,
         policy=EffectiveWorkdirPolicy(binary_transfer_enabled=True),
     )
     return create_server(Settings(binary_transfer_enabled=True), WorkdirRegistry([wd]))
@@ -256,6 +273,234 @@ class TestBinaryDownloadE2E:
             server, "download_binary_file", {"workdir": "test", "path": "empty.bin"}
         )
         assert result["size"] == 0
+
+
+class TestCreateOnlyMutationsE2E:
+    def test_text_empty_unicode_directory_and_revision(self, rw_server, wd_root) -> None:
+        text = call_success(
+            rw_server,
+            "create_text_file",
+            {"workdir": "test", "path": "文档.txt", "content": "hello 🐈\n"},
+        )
+        assert text["created"] is True
+        assert text["bytes_written"] == len("hello 🐈\n".encode())
+        assert (wd_root / "文档.txt").read_bytes() == "hello 🐈\n".encode()
+        assert (
+            call_success(
+                rw_server,
+                "stat_file",
+                {"workdir": "test", "path": "文档.txt"},
+            )["revision"]
+            == text["revision"]
+        )
+
+        empty = call_success(
+            rw_server,
+            "create_text_file",
+            {"workdir": "test", "path": "empty.txt", "content": ""},
+        )
+        assert empty["bytes_written"] == 0
+        directory = call_success(
+            rw_server, "create_directory", {"workdir": "test", "path": "new-dir"}
+        )
+        assert directory["created"] is True
+        assert (
+            directory["revision"]
+            == call_success(rw_server, "stat_file", {"workdir": "test", "path": "new-dir"})[
+                "revision"
+            ]
+        )
+
+    def test_binary_create_exact_bytes_and_sha(self, rw_server, wd_root) -> None:
+        payload = b"\x00\xffexact\x00bytes"
+        result = call_success(
+            rw_server,
+            "upload_binary_file",
+            {
+                "workdir": "test",
+                "path": "payload.bin",
+                "data_base64": base64.b64encode(payload).decode("ascii"),
+            },
+        )
+        assert (wd_root / "payload.bin").read_bytes() == payload
+        assert result["created"] is True and result["replaced"] is False
+        assert result["revision_before"] is None
+        assert result["sha256"] == hashlib.sha256(payload).hexdigest()
+        assert (
+            result["revision"]
+            == call_success(rw_server, "stat_file", {"workdir": "test", "path": "payload.bin"})[
+                "revision"
+            ]
+        )
+
+    def test_create_collision_and_missing_parent(self, rw_server, wd_root) -> None:
+        (wd_root / "occupied").write_bytes(b"original")
+        assert (
+            error_code(
+                call_error(
+                    rw_server,
+                    "create_text_file",
+                    {"workdir": "test", "path": "occupied", "content": "changed"},
+                )
+            )
+            == "PATH_ALREADY_EXISTS"
+        )
+        assert (wd_root / "occupied").read_bytes() == b"original"
+        assert (
+            error_code(
+                call_error(
+                    rw_server,
+                    "create_text_file",
+                    {"workdir": "test", "path": "absent/file", "content": "x"},
+                )
+            )
+            == "PARENT_NOT_FOUND"
+        )
+        assert not list(wd_root.glob(".serverfs-tmp-*"))
+
+    def test_directory_and_reparse_collisions_and_junction_parent(self, rw_server, wd_root) -> None:
+        (wd_root / "occupied-dir").mkdir()
+        assert (
+            error_code(
+                call_error(
+                    rw_server,
+                    "create_directory",
+                    {"workdir": "test", "path": "occupied-dir"},
+                )
+            )
+            == "PATH_ALREADY_EXISTS"
+        )
+        outside = wd_root.parent / "outside"
+        outside.mkdir()
+        if not make_junction(wd_root / "leaf-link", outside):
+            pytest.fail("junction creation with mklink /J failed on this host")
+        assert (
+            error_code(
+                call_error(
+                    rw_server,
+                    "create_text_file",
+                    {"workdir": "test", "path": "leaf-link", "content": "must-not-write"},
+                )
+            )
+            == "PATH_ALREADY_EXISTS"
+        )
+        if not make_junction(wd_root / "parent-link", outside):
+            pytest.fail("junction creation with mklink /J failed on this host")
+        assert (
+            error_code(
+                call_error(
+                    rw_server,
+                    "create_text_file",
+                    {"workdir": "test", "path": "parent-link/escaped.txt", "content": "x"},
+                )
+            )
+            == "REPARSE_POINT_NOT_ALLOWED"
+        )
+        assert not (outside / "escaped.txt").exists()
+        assert not list(wd_root.glob(".serverfs-tmp-*"))
+
+    def test_retained_root_handle_survives_external_rename(self, rw_server, wd_root) -> None:
+        call_success(rw_server, "stat_file", {"workdir": "test", "path": ""})
+        moved = wd_root.with_name(wd_root.name + "-moved")
+        wd_root.rename(moved)
+        try:
+            result = call_success(
+                rw_server,
+                "create_text_file",
+                {"workdir": "test", "path": "after-rename.txt", "content": "ok"},
+            )
+            assert (moved / "after-rename.txt").read_bytes() == b"ok"
+            assert (
+                result["revision"]
+                == call_success(
+                    rw_server,
+                    "stat_file",
+                    {"workdir": "test", "path": "after-rename.txt"},
+                )["revision"]
+            )
+        finally:
+            moved.rename(wd_root)
+
+    def test_read_only_tool_layer_and_pending_mutations(self, server, rw_server, wd_root) -> None:
+        assert (
+            error_code(
+                call_error(
+                    server,
+                    "create_text_file",
+                    {"workdir": "test", "path": "blocked.txt", "content": "x"},
+                )
+            )
+            == "WORKDIR_READ_ONLY"
+        )
+        assert not (wd_root / "blocked.txt").exists()
+        for tool, args in (
+            (
+                "edit_text_file",
+                {
+                    "expected_revision": "v1:0000000000000000",
+                    "edits": [{"old_text": "x", "new_text": "y"}],
+                },
+            ),
+            ("delete_file", {"expected_revision": "v1:0000000000000000"}),
+            ("delete_directory", {"expected_revision": "v1:0000000000000000"}),
+        ):
+            result = call_error(rw_server, tool, {"workdir": "test", "path": "missing", **args})
+            assert error_code(result) == "WINDOWS_KERNEL_PENDING"
+
+    def test_concurrent_creators_publish_one_complete_payload(self, rw_server, wd_root) -> None:
+        payloads = ["A" * 300_000, "B" * 300_000]
+
+        outcomes = call_concurrently(
+            rw_server,
+            [
+                (
+                    "create_text_file",
+                    {"workdir": "test", "path": "race.txt", "content": content},
+                )
+                for content in payloads
+            ],
+        )
+        successes = [payload for kind, payload in outcomes if kind == "ok"]
+        failures = [payload for kind, payload in outcomes if kind == "err"]
+        assert len(successes) == 1
+        assert len(failures) == 1 and error_code(failures[0]) == "PATH_ALREADY_EXISTS"
+        final = (wd_root / "race.txt").read_text(encoding="utf-8")
+        assert final in payloads
+        assert not list(wd_root.glob(".serverfs-tmp-*"))
+
+    def test_readers_never_observe_partial_final_content(self, rw_server, wd_root) -> None:
+        payload = "complete-payload\n" * 40_000
+        finished = threading.Event()
+        observations: list[str] = []
+
+        def read_until_done() -> None:
+            while not finished.is_set():
+                try:
+                    result = call_success(
+                        rw_server,
+                        "read_text_file",
+                        {"workdir": "test", "path": "atomic.txt"},
+                    )
+                    observations.append(result["content"])
+                except Exception as exc:
+                    # Absence before the atomic rename is allowed.
+                    assert error_code(str(exc)) == "PATH_NOT_FOUND"
+
+        reader = threading.Thread(target=read_until_done)
+        reader.start()
+        try:
+            call_success(
+                rw_server,
+                "create_text_file",
+                {"workdir": "test", "path": "atomic.txt", "content": payload},
+            )
+        finally:
+            finished.set()
+            reader.join(timeout=10)
+        assert not reader.is_alive()
+        assert all(value == payload for value in observations)
+        listing = call_success(rw_server, "list_directory", {"workdir": "test", "path": ""})
+        assert all(not entry["name"].startswith(".serverfs-tmp-") for entry in listing["entries"])
 
 
 class TestAcceptanceClosure:

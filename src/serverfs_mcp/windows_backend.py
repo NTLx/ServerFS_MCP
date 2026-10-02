@@ -10,17 +10,17 @@ v0.9 did — the Windows backend acquires the trusted root HANDLE once per
 workdir and retains it for the process lifetime. ``open_session`` returns
 the cached session; no MCP tool call ever reopens the root.
 
-Channel status (Phase B read kernel + Phase C find/search): all read,
-find and search channels are live against the retained root handle; all
-mutation channels stay explicit pending stubs until Phase D, each raising
-``BackendError("WINDOWS_KERNEL_PENDING", ...)`` so a half-built Windows
-surface can never silently answer with wrong data.
+Channel status (Phase B read kernel + Phase C find/search + Phase D1 create):
+all read, find and search channels and create-only file/directory mutations
+are live against retained handles. Replace/edit/delete channels remain
+explicit ``WINDOWS_KERNEL_PENDING`` stubs until later Phase D work.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
 import fnmatch
+import hashlib
 import mimetypes
 import time
 from typing import TYPE_CHECKING
@@ -29,7 +29,14 @@ import serverfs_windows_native as native
 
 from .backends import BackendError, TextPage
 from .binary_payload import BinaryRead, BinaryTransferError
-from .models import EntryInfo, StatFileResult, TextMatch
+from .models import (
+    CreateDirectoryResult,
+    CreateTextFileResult,
+    EntryInfo,
+    StatFileResult,
+    TextMatch,
+    UploadBinaryFileResult,
+)
 from .paths import is_hidden_component
 from .search_glob import glob_matches
 
@@ -350,10 +357,27 @@ class WindowsWorkdirSession:
                     break
         return matches[:limit], truncated
 
-    # ---- mutation channels (pending: Phase D) ----
+    # ---- create-only mutation channels (v0.10 Phase D1) ----
 
     def create_file(self, resolved: ResolvedPath, content: str, *, max_write_bytes: int):
-        raise _pending("create_file")
+        if "\x00" in content:
+            raise BackendError("BINARY_CONTENT_NOT_ALLOWED", "text content contains NUL")
+        try:
+            data = content.encode("utf-8")
+        except UnicodeEncodeError:
+            raise BackendError("BINARY_CONTENT_NOT_ALLOWED", "text is not valid UTF-8") from None
+        if len(data) > max_write_bytes:
+            raise BackendError("WRITE_TOO_LARGE", "content exceeds the configured byte limit")
+        revision = _call(
+            self._native.create_file, list(resolved.rel_parts), data, max_write_bytes, True
+        )
+        return CreateTextFileResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            created=True,
+            bytes_written=len(data),
+            revision=revision,
+        )
 
     def replace_file(
         self,
@@ -370,7 +394,27 @@ class WindowsWorkdirSession:
         raise _pending("delete_file")
 
     def create_binary_file(self, resolved: ResolvedPath, data: bytes, *, max_binary_bytes: int):
-        raise _pending("create_binary_file")
+        if len(data) > max_binary_bytes:
+            raise BackendError(
+                "WRITE_TOO_LARGE", "binary payload exceeds the configured byte limit"
+            )
+        revision = _call(
+            self._native.create_file,
+            list(resolved.rel_parts),
+            data,
+            max_binary_bytes,
+            False,
+        )
+        return UploadBinaryFileResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            created=True,
+            replaced=False,
+            bytes_written=len(data),
+            sha256=hashlib.sha256(data).hexdigest(),
+            revision_before=None,
+            revision=revision,
+        )
 
     def replace_binary_file(
         self,
@@ -383,7 +427,13 @@ class WindowsWorkdirSession:
         raise _pending("replace_binary_file")
 
     def create_directory(self, resolved: ResolvedPath):
-        raise _pending("create_directory")
+        revision = _call(self._native.create_directory, list(resolved.rel_parts))
+        return CreateDirectoryResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            created=True,
+            revision=revision,
+        )
 
     def delete_directory(self, resolved: ResolvedPath, expected_revision: str):
         raise _pending("delete_directory")

@@ -11,6 +11,16 @@ use std::fmt;
 pub enum NativeError {
     /// The object (or one intermediate directory) does not exist.
     PathNotFound,
+    /// A parent component for a create operation does not exist.
+    ParentNotFound,
+    /// An atomic create or no-replace publication found an occupied name.
+    AlreadyExists,
+    /// The retained native workdir session is read-only.
+    ReadOnlyCapability,
+    /// A bounded retry/write loop could not make progress.
+    ResourceExhausted,
+    /// Text content contains NUL or cannot be encoded as UTF-8.
+    BinaryContentNotAllowed,
     /// A component that must be a directory is not one.
     NotADirectory,
     /// The target must be a file but is a directory.
@@ -22,6 +32,8 @@ pub enum NativeError {
     /// A file exceeded a channel byte limit (the tool layer renders the
     /// channel-specific agent code).
     FileTooLarge,
+    /// Create payload exceeds its product-configured write limit.
+    WriteTooLarge,
     /// The object's revision changed while it was being read; no mixed or
     /// stale payload may be returned.
     ChangedDuringRead,
@@ -52,12 +64,14 @@ impl NativeError {
         const STATUS_NOT_A_DIRECTORY: u32 = 0xC000_0103;
         const STATUS_FILE_IS_A_DIRECTORY: u32 = 0xC000_00BA;
         const STATUS_BAD_NETWORK_NAME: u32 = 0xC000_00CC;
+        const STATUS_OBJECT_NAME_COLLISION: u32 = 0xC000_0035;
 
         match status {
             STATUS_OBJECT_NAME_NOT_FOUND | STATUS_OBJECT_PATH_NOT_FOUND | STATUS_NO_SUCH_FILE => {
                 NativeError::PathNotFound
             }
             STATUS_BAD_NETWORK_NAME => NativeError::PathNotFound,
+            STATUS_OBJECT_NAME_COLLISION => NativeError::AlreadyExists,
             STATUS_ACCESS_DENIED => NativeError::AccessDenied,
             STATUS_NOT_A_DIRECTORY => NativeError::NotADirectory,
             STATUS_FILE_IS_A_DIRECTORY => NativeError::IsADirectory,
@@ -72,10 +86,13 @@ impl NativeError {
         const ERROR_FILE_NOT_FOUND: u32 = 2;
         const ERROR_PATH_NOT_FOUND: u32 = 3;
         const ERROR_ACCESS_DENIED: u32 = 5;
+        const ERROR_ALREADY_EXISTS: u32 = 183;
+        const ERROR_FILE_EXISTS: u32 = 80;
 
         match code {
             ERROR_FILE_NOT_FOUND | ERROR_PATH_NOT_FOUND => NativeError::PathNotFound,
             ERROR_ACCESS_DENIED => NativeError::AccessDenied,
+            ERROR_ALREADY_EXISTS | ERROR_FILE_EXISTS => NativeError::AlreadyExists,
             _ => NativeError::Unexpected { code, nt: false },
         }
     }
@@ -85,11 +102,17 @@ impl fmt::Display for NativeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NativeError::PathNotFound => f.write_str("path not found"),
+            NativeError::ParentNotFound => f.write_str("parent directory not found"),
+            NativeError::AlreadyExists => f.write_str("path already exists"),
+            NativeError::ReadOnlyCapability => f.write_str("workdir is read-only"),
+            NativeError::ResourceExhausted => f.write_str("native filesystem resources exhausted"),
+            NativeError::BinaryContentNotAllowed => f.write_str("binary content is not allowed"),
             NativeError::NotADirectory => f.write_str("component is not a directory"),
             NativeError::IsADirectory => f.write_str("target is a directory"),
             NativeError::ReparsePoint => f.write_str("reparse point refused"),
             NativeError::AccessDenied => f.write_str("access denied"),
             NativeError::FileTooLarge => f.write_str("file exceeds the byte limit"),
+            NativeError::WriteTooLarge => f.write_str("content exceeds the byte limit"),
             NativeError::ChangedDuringRead => f.write_str("file changed while it was being read"),
             NativeError::LineTooLarge { line, max_bytes } => {
                 write!(f, "line {line} exceeds {max_bytes} bytes")

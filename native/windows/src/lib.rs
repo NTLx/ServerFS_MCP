@@ -24,16 +24,16 @@
 //! - no thread-mobility contract is asserted on [`Handle`] yet: Send/Sync
 //!   must be proven per handle role when the session model needs it.
 //!
-//! This module currently proves the §13 traversal primitive. Enumeration,
-//! read, search and mutation kernels are additive follow-ups in the same
-//! shape. No Python boundary exists in this crate yet; handles must never
-//! be exposed past it when the PyO3 layer lands.
+//! This module implements HANDLE-relative traversal, enumeration, reads,
+//! and Phase D1 create-only file/directory mutations. Replace/edit/delete
+//! remain later additive work. Handles never cross the PyO3 boundary.
 
 pub mod enumerate;
 pub mod error;
 pub mod ffi;
 pub mod handle;
 pub mod metadata;
+pub mod mutation;
 pub mod path;
 pub mod read;
 pub mod traversal;

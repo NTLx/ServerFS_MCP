@@ -7,14 +7,14 @@
 use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows_sys::Wdk::Storage::FileSystem::{
     NtCreateFile, FILE_DIRECTORY_FILE, FILE_ID_BOTH_DIR_INFORMATION, FILE_NON_DIRECTORY_FILE,
-    FILE_OPEN, FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT,
+    FILE_CREATE, FILE_OPEN, FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT,
 };
 use windows_sys::Win32::Foundation::{GetLastError, HANDLE, UNICODE_STRING};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FileAttributeTagInfo, FileBasicInfo, FileIdBothDirectoryInfo,
     FileIdBothDirectoryRestartInfo, FileIdInfo, FileStandardInfo, GetFileInformationByHandleEx,
-    ReadFile, SetFilePointerEx, FILE_ATTRIBUTE_TAG_INFO, FILE_BASIC_INFO, FILE_BEGIN, FILE_ID_INFO,
-    FILE_STANDARD_INFO,
+    FlushFileBuffers, ReadFile, SetFileInformationByHandle, SetFilePointerEx, WriteFile,
+    FILE_ATTRIBUTE_TAG_INFO, FILE_BASIC_INFO, FILE_BEGIN, FILE_ID_INFO, FILE_STANDARD_INFO,
 };
 use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 
@@ -34,8 +34,11 @@ const OBJ_CASE_INSENSITIVE: u32 = 0x0000_0040;
 
 /// Access masks used by the traversal kernel.
 pub const DIR_TRAVERSE_ACCESS: u32 = 0x0000_00A1; // FILE_LIST_DIRECTORY|FILE_TRAVERSE|FILE_READ_ATTRIBUTES
+pub const CREATE_PARENT_ACCESS: u32 = DIR_TRAVERSE_ACCESS | 0x0000_0006; // ADD_FILE|ADD_SUBDIRECTORY
 pub const FILE_READ_ACCESS: u32 = 0x0012_0089; // FILE_GENERIC_READ (includes READ_ATTRIBUTES)
 pub const READ_ATTRIBUTES_ONLY: u32 = 0x0000_0080;
+const FILE_WRITE_ACCESS: u32 = 0x4001_0080; // GENERIC_WRITE|DELETE|READ_ATTRIBUTES
+const FILE_CREATED_DIRECTORY_ACCESS: u32 = 0x0010_0080; // SYNCHRONIZE|READ_ATTRIBUTES
 
 const SHARE_ALL: u32 = 0x0000_0007; // READ|WRITE|DELETE
 
@@ -67,11 +70,16 @@ pub fn create_options_for(kind: OpenKind) -> u32 {
 /// `wide_root` must come from [`crate::path::encoded_root`] (`\\?\` literal
 /// namespace). The handle is opened for reparse inspection and validated
 /// by the caller.
-pub fn open_root_by_name(wide_root: &[u16]) -> Result<Handle, NativeError> {
+pub fn open_root_by_name(wide_root: &[u16], create_capable: bool) -> Result<Handle, NativeError> {
+    let access = if create_capable {
+        CREATE_PARENT_ACCESS
+    } else {
+        DIR_TRAVERSE_ACCESS
+    };
     let raw = unsafe {
         CreateFileW(
             wide_root.as_ptr(),
-            DIR_TRAVERSE_ACCESS,
+            access,
             SHARE_ALL,
             std::ptr::null(),
             OPEN_EXISTING,
@@ -121,6 +129,139 @@ pub fn open_relative(
         return Err(NativeError::nt(status as u32));
     }
     Handle::from_raw(handle).ok_or(NativeError::Unexpected { code: 0, nt: true })
+}
+
+/// Atomically create a single child relative to a retained parent handle.
+/// `directory` selects FILE_DIRECTORY_FILE; FILE_CREATE never opens or
+/// replaces an existing object. The returned HANDLE is immediately owned.
+pub fn create_relative(
+    parent: &Handle,
+    name: &mut UNICODE_STRING,
+    directory: bool,
+) -> Result<Handle, NativeError> {
+    let mut iosb = IO_STATUS_BLOCK::default();
+    let attrs = OBJECT_ATTRIBUTES {
+        Length: std::mem::size_of::<OBJECT_ATTRIBUTES>() as u32,
+        RootDirectory: parent.as_raw(),
+        ObjectName: name as *mut UNICODE_STRING,
+        Attributes: OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor: std::ptr::null(),
+        SecurityQualityOfService: std::ptr::null(),
+    };
+    let mut raw: HANDLE = std::ptr::null_mut();
+    let access = if directory {
+        FILE_CREATED_DIRECTORY_ACCESS
+    } else {
+        FILE_WRITE_ACCESS
+    };
+    let options = if directory {
+        FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT
+    } else {
+        FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT
+    };
+    let status = unsafe {
+        NtCreateFile(
+            &mut raw,
+            access,
+            &attrs,
+            &mut iosb,
+            std::ptr::null(),
+            0x0000_0080, // FILE_ATTRIBUTE_NORMAL
+            SHARE_ALL,
+            FILE_CREATE,
+            options,
+            std::ptr::null(),
+            0,
+        )
+    };
+    if status != 0 {
+        return Err(NativeError::nt(status as u32));
+    }
+    Handle::from_raw(raw).ok_or(NativeError::Unexpected { code: 0, nt: true })
+}
+
+/// Write one chunk to a synchronous file handle. The safe orchestration
+/// layer loops until the complete payload has been written.
+pub fn write_chunk(handle: &Handle, data: &[u8]) -> Result<usize, NativeError> {
+    let mut written = 0u32;
+    let ok = unsafe {
+        WriteFile(
+            handle.as_raw(),
+            data.as_ptr(),
+            data.len().min(u32::MAX as usize) as u32,
+            &mut written,
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0 {
+        return Err(NativeError::win32(unsafe { GetLastError() }));
+    }
+    Ok(written as usize)
+}
+
+pub fn flush_file(handle: &Handle) -> Result<(), NativeError> {
+    if unsafe { FlushFileBuffers(handle.as_raw()) } == 0 {
+        return Err(NativeError::win32(unsafe { GetLastError() }));
+    }
+    Ok(())
+}
+
+/// Publish by renaming the already-open source HANDLE to one simple name
+/// rooted at the retained parent HANDLE. FileRenameInfo is class 3 in the
+/// documented FILE_INFO_BY_HANDLE_CLASS enum. ReplaceIfExists is FALSE.
+pub fn rename_no_replace(
+    source: &Handle,
+    parent: &Handle,
+    final_name: &[u16],
+) -> Result<(), NativeError> {
+    let root_offset = align_up(1, std::mem::align_of::<HANDLE>());
+    let length_offset = root_offset + std::mem::size_of::<HANDLE>();
+    let name_offset = length_offset + std::mem::size_of::<u32>();
+    let total = name_offset + final_name.len() * std::mem::size_of::<u16>();
+    let mut info = vec![0u8; total];
+    info[0] = 0; // ReplaceIfExists = FALSE
+    let root = parent.as_raw() as usize;
+    info[root_offset..root_offset + std::mem::size_of::<HANDLE>()]
+        .copy_from_slice(&root.to_ne_bytes()[..std::mem::size_of::<HANDLE>()]);
+    info[length_offset..name_offset]
+        .copy_from_slice(&((final_name.len() * 2) as u32).to_ne_bytes());
+    for (index, unit) in final_name.iter().enumerate() {
+        let offset = name_offset + index * 2;
+        info[offset..offset + 2].copy_from_slice(&unit.to_ne_bytes());
+    }
+    if unsafe {
+        SetFileInformationByHandle(
+            source.as_raw(),
+            3, // FileRenameInfo
+            info.as_mut_ptr().cast(),
+            info.len() as u32,
+        )
+    } == 0
+    {
+        return Err(NativeError::win32(unsafe { GetLastError() }));
+    }
+    Ok(())
+}
+
+/// Mark an owned temporary object for deletion using its HANDLE.
+pub fn mark_for_delete(handle: &Handle) -> Result<(), NativeError> {
+    let delete_file = [1u8];
+    if unsafe {
+        SetFileInformationByHandle(
+            handle.as_raw(),
+            4, // FileDispositionInfo
+            delete_file.as_ptr().cast(),
+            delete_file.len() as u32,
+        )
+    } == 0
+    {
+        return Err(NativeError::win32(unsafe { GetLastError() }));
+    }
+    Ok(())
+}
+
+fn align_up(value: usize, alignment: usize) -> usize {
+    (value + alignment - 1) & !(alignment - 1)
 }
 
 /// Read the object's own attribute/reparse tag from the held handle.

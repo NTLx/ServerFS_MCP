@@ -30,6 +30,26 @@ pyo3::create_exception!(
 fn error_pair(err: &NativeError) -> (&'static str, String) {
     match err {
         NativeError::PathNotFound => ("PATH_NOT_FOUND", "path not found".to_string()),
+        NativeError::ParentNotFound => (
+            "PARENT_NOT_FOUND",
+            "parent directory not found".to_string(),
+        ),
+        NativeError::AlreadyExists => (
+            "PATH_ALREADY_EXISTS",
+            "path already exists".to_string(),
+        ),
+        NativeError::ReadOnlyCapability => (
+            "WORKDIR_READ_ONLY",
+            "workdir is read-only".to_string(),
+        ),
+        NativeError::ResourceExhausted => (
+            "RESOURCE_EXHAUSTED",
+            "native filesystem resources exhausted".to_string(),
+        ),
+        NativeError::BinaryContentNotAllowed => (
+            "BINARY_CONTENT_NOT_ALLOWED",
+            "text content contains NUL or is not valid UTF-8".to_string(),
+        ),
         NativeError::NotADirectory => (
             "NOT_A_DIRECTORY",
             "component is not a directory".to_string(),
@@ -48,6 +68,7 @@ fn error_pair(err: &NativeError) -> (&'static str, String) {
         NativeError::InvalidName => ("INVALID_NAME", "invalid component name".to_string()),
         NativeError::InvalidRoot => ("INVALID_ROOT", "invalid workdir root".to_string()),
         NativeError::FileTooLarge => ("FILE_TOO_LARGE", err.to_string()),
+        NativeError::WriteTooLarge => ("WRITE_TOO_LARGE", err.to_string()),
         NativeError::ChangedDuringRead => ("FILE_CHANGED_DURING_READ", err.to_string()),
         NativeError::LineTooLarge { .. } => ("LINE_TOO_LARGE", err.to_string()),
         NativeError::Unexpected { .. } => (
@@ -85,6 +106,11 @@ mod tests {
     fn stable_codes_for_known_conditions() {
         let cases = [
             (NativeError::PathNotFound, "PATH_NOT_FOUND"),
+            (NativeError::ParentNotFound, "PARENT_NOT_FOUND"),
+            (NativeError::AlreadyExists, "PATH_ALREADY_EXISTS"),
+            (NativeError::ReadOnlyCapability, "WORKDIR_READ_ONLY"),
+            (NativeError::ResourceExhausted, "RESOURCE_EXHAUSTED"),
+            (NativeError::WriteTooLarge, "WRITE_TOO_LARGE"),
             (NativeError::NotADirectory, "NOT_A_DIRECTORY"),
             (NativeError::IsADirectory, "NOT_A_FILE"),
             (NativeError::ReparsePoint, "REPARSE_POINT_NOT_ALLOWED"),
@@ -251,6 +277,40 @@ impl NativeWorkdirSession {
         let sha = crate::read::sha256_hex(&read.data);
         Ok((read.data, sha, read.metadata.revision()))
     }
+
+    /// Create-only regular-file publication. The session capability is
+    /// checked here as a second barrier, independently of Python policy.
+    fn create_file(
+        &self,
+        parts: Vec<String>,
+        data: Vec<u8>,
+        max_bytes: u64,
+        text: bool,
+    ) -> Result<String, PyErr> {
+        if self.read_only {
+            return Err(map_error(NativeError::ReadOnlyCapability));
+        }
+        if text && data.contains(&0) {
+            return Err(map_error(NativeError::BinaryContentNotAllowed));
+        }
+        if text && std::str::from_utf8(&data).is_err() {
+            return Err(map_error(NativeError::BinaryContentNotAllowed));
+        }
+        if data.len() as u64 > max_bytes {
+            return Err(map_error(NativeError::WriteTooLarge));
+        }
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        crate::mutation::create_file(&self.root.0, &refs, &data).map_err(map_error)
+    }
+
+    /// Create one directory atomically relative to its retained parent.
+    fn create_directory(&self, parts: Vec<String>) -> Result<String, PyErr> {
+        if self.read_only {
+            return Err(map_error(NativeError::ReadOnlyCapability));
+        }
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        crate::mutation::create_directory(&self.root.0, &refs).map_err(map_error)
+    }
 }
 
 impl NativeWorkdirSession {
@@ -290,7 +350,7 @@ impl NativeWorkdirSession {
 /// directories — is refused as `INVALID_ROOT` without any normalization.
 #[pyfunction]
 fn open_workdir(root: &str, read_only: bool) -> Result<NativeWorkdirSession, PyErr> {
-    let handle = traversal::open_root(root).map_err(map_error)?;
+    let handle = traversal::open_root_with_create_access(root, !read_only).map_err(map_error)?;
     Ok(NativeWorkdirSession {
         root: RootHandle(handle),
         read_only,
