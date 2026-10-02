@@ -400,6 +400,7 @@ mod mutation_read_only_tests {
 
     #[test]
     fn every_direct_session_mutation_refuses_read_only_workdir() {
+        pyo3::prepare_freethreaded_python();
         let path = std::env::temp_dir().join(format!(
             "serverfs_readonly_native_{}_{}",
             std::process::id(),
