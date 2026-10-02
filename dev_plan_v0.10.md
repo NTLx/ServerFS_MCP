@@ -273,19 +273,15 @@ the password may be empty. Password without username is invalid. Credentials
 are percent-encoded when deriving the tunnel client's internal
 `CONTROL_PLANE_HTTP_PROXY` URL.
 
-This PR lands the Linux Compose wiring first. Compose passes these values only
-to `openai-tunnel`; it must not pass proxy configuration or derived credentials
-to `serverfs-mcp`, Agent Bridge, or the v0.5 file-ingress sidecar. Phase E must
-implement the Windows-native launcher/tunnel-client wiring with these identical
-field names and semantics, and construct a sanitized child environment so proxy
-credentials are not inherited by ServerFS or Agent Bridge. Never log credentials
-or a credential-bearing URL. The default empty configuration leaves tunnel
-behavior equivalent to the current proxy-disabled deployment. This does not
-add SOCKS, PAC or system-proxy discovery, a generic proxy service, host ports,
-or TLS interception.
-
-The shared contract does not make the Windows implementation part of this PR;
-that wiring remains Phase E work.
+Linux Compose passes these values only to `openai-tunnel`; it does not pass raw
+proxy configuration or derived credentials to `serverfs-mcp`, Agent Bridge, or
+the v0.5 file-ingress sidecar. The Windows launcher uses the same four fields,
+places the derived URL only in tunnel-client's environment, and uses a
+supervisor to remove that environment before starting ServerFS. Never log
+credentials or a credential-bearing URL. The default empty configuration
+leaves tunnel behavior equivalent to the current proxy-disabled deployment.
+This does not add SOCKS, PAC or system-proxy discovery, a generic proxy
+service, host ports, or TLS interception.
 
 ## 6. Platform-neutral domain refactor
 
@@ -947,9 +943,14 @@ Target commands:
 ~~~text
 serverfs serve --config serverfs.toml
 serverfs doctor --config serverfs.toml
+serverfs tunnel --config serverfs.toml --env-file .env \
+  --tunnel-client C:\\tools\\tunnel-client.exe --tunnel-id tunnel_... \
+  --api-key-file C:\\Users\\me\\.config\\serverfs\\api-key
 ~~~
 
-Optional explicit transport selection may exist for development/legacy scenarios, but native default is stdio.
+Native `serve` and `tunnel` are Windows-only in v0.10 and fail closed on
+other platforms. Native default transport is stdio. Linux keeps its existing
+Docker deployment; Linux-native no-Docker service may reuse this work later.
 
 `serverfs doctor` is read-only and should report:
 
@@ -1230,6 +1231,28 @@ Exit criteria:
 - search early-stop/timeout are demonstrated;
 - no `rg.exe` dependency.
 
+### Windows connectivity prerequisite brought forward before Phase D
+
+The Windows development host cannot directly reach the OpenAI control plane.
+To unblock Windows development, this implementation-order change brings
+forward only the Phase E connectivity prerequisite: Windows-only native MCP
+stdio serving, the Windows native tunnel-client launcher using the frozen
+four-field HTTP proxy contract, and child-environment secret isolation. The
+launcher uses the official `file:` API-key reference and encodes its stdio
+command according to the current upstream tunnel-client parser.
+
+This subset is delivered before Phase D mutations and does not change overall
+phase ownership. It does not add Linux-native no-Docker service as a supported
+path. `serverfs serve` and `serverfs tunnel` fail closed unless
+`sys.platform == "win32"`; Linux continues to use its existing Docker profile.
+The ServerFS child is a separate process with a sanitized environment. MCP
+frames stay on stdout and diagnostics stay on stderr. Native Agent Bridge and
+file ingress remain disabled.
+
+This does not complete Phase E. Prebuilt wheel distribution, bootstrap, full
+doctor/root health checks, release documentation and release closure remain
+Phase E work.
+
 ### Phase D — Windows native mutation and binary transfer
 
 Objective: add safe writable workdirs.
@@ -1255,7 +1278,7 @@ Exit criteria:
 - no temp artifacts exposed through tools;
 - all mutation MCP tests pass on real NTFS.
 
-### Phase E — Native packaging and tunnel profile
+### Phase E — Native packaging and release operations
 
 Objective: make the implementation installable and usable without a developer toolchain.
 
@@ -1264,11 +1287,9 @@ Work:
 - prebuilt Windows x64 wheel;
 - uv dependency integration;
 - `serverfs.toml.example`;
-- `serverfs serve` and `serverfs doctor`;
+- full `serverfs doctor` root/backend health checks;
 - pinned project-local tunnel-client bootstrap/profile;
-- stdio launch;
-- file-backed tunnel credential guidance;
-- child-environment secret regression test;
+- clean install and upgrade guidance;
 - Windows documentation.
 
 Exit criteria:

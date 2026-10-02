@@ -190,8 +190,8 @@ CONTROL_PLANE_API_KEY=rtk_...
 The tunnel is **outbound-only**: no public domain, no TLS certificate, no inbound firewall rule, no reverse proxy. The container connects out to OpenAI's control plane and forwards MCP traffic to `http://serverfs-mcp:8000/mcp` over the internal Docker network.
 
 The v0.10 proxy configuration contract is shared across platforms and supports
-HTTP proxy only. This PR implements the Linux Compose wiring first; Windows
-native launcher and tunnel-client wiring with the same fields is Phase E work.
+HTTP proxy only. Linux Compose and the Windows native tunnel launcher use the
+same four fields.
 Set `SERVERFS_PROXY_HOST` and `SERVERFS_PROXY_PORT` in `.env`;
 leave both empty to disable the proxy. Set both `SERVERFS_PROXY_USERNAME` and
 `SERVERFS_PROXY_PASSWORD` empty for no authentication. A non-empty username
@@ -203,6 +203,13 @@ the internal Docker network.
 A proxy bound only to the host's `127.0.0.1` is normally unreachable from a
 container. Do not set `CONTROL_PLANE_HTTP_PROXY` in `.env`; it is an internal
 derived value used only by the tunnel client.
+
+The Windows native launcher reads these same fields from `.env` (or an
+explicit `--env-file`). It passes the derived URL only in tunnel-client's
+environment and removes proxy, OpenAI and tunnel binding variables before
+starting ServerFS. Supply the control-plane API key with `--api-key-file`; the
+launcher passes only the official `file:` reference, and the key file must be
+outside every configured workdir.
 
 To troubleshoot the tunnel, use the official client's own diagnostics (`tunnel-client doctor`, `/readyz`) rather than guessing.
 
