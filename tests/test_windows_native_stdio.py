@@ -23,7 +23,7 @@ def test_native_serverfs_stdio_initialize_tools_read_and_stat(tmp_path: Path) ->
     async def exercise() -> None:
         root = tmp_path / "Windows Native Workdir"
         root.mkdir()
-        (root / "hello.txt").write_bytes(b"native stdio works\n")
+        (root / "hello.txt").write_bytes(b"native stdio works\r\n")
         config = tmp_path / "serverfs.toml"
         config.write_text(
             f'[[workdirs]]\nalias = "repo"\npath = {json.dumps(str(root))}\nread_only = true\n',
@@ -105,7 +105,7 @@ def test_native_serverfs_stdio_initialize_tools_read_and_stat(tmp_path: Path) ->
                     "read_text_file", {"workdir": "repo", "path": "hello.txt"}
                 )
                 assert not read.is_error
-                assert read.structured_content["content"] == "native stdio works\n"
+                assert read.structured_content["content"] == "native stdio works\r\n"
                 stat = await session.call_tool(
                     "stat_file", {"workdir": "repo", "path": "hello.txt"}
                 )
