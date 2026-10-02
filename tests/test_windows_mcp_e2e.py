@@ -471,17 +471,27 @@ class TestCreateOnlyMutationsE2E:
     def test_readers_never_observe_partial_final_content(self, rw_server, wd_root) -> None:
         payload = "complete-payload\n" * 40_000
         finished = threading.Event()
-        observations: list[str] = []
+        observations: list[tuple[str, bool, int, str, str]] = []
+
+        def observe() -> tuple[str, bool, int, str, str]:
+            page = call_success(
+                rw_server,
+                "read_text_file",
+                {"workdir": "test", "path": "atomic.txt"},
+            )
+            stat = call_success(rw_server, "stat_file", {"workdir": "test", "path": "atomic.txt"})
+            return (
+                page["content"],
+                page["has_more"],
+                stat["size"],
+                page["revision"],
+                stat["revision"],
+            )
 
         def read_until_done() -> None:
             while not finished.is_set():
                 try:
-                    result = call_success(
-                        rw_server,
-                        "read_text_file",
-                        {"workdir": "test", "path": "atomic.txt"},
-                    )
-                    observations.append(result["content"])
+                    observations.append(observe())
                 except Exception as exc:
                     # Absence before the atomic rename is allowed.
                     assert error_code(str(exc)) == "PATH_NOT_FOUND"
@@ -498,7 +508,18 @@ class TestCreateOnlyMutationsE2E:
             finished.set()
             reader.join(timeout=10)
         assert not reader.is_alive()
-        assert all(value == payload for value in observations)
+        # read_text_file is paginated; pair its first page with stat so a
+        # visible prefix of the final object cannot pass as a complete file.
+        observations.append(observe())
+        expected_page = "complete-payload\n" * 200
+        assert observations
+        assert all(
+            content == expected_page
+            and has_more
+            and size == len(payload.encode("utf-8"))
+            and page_revision == stat_revision
+            for content, has_more, size, page_revision, stat_revision in observations
+        )
         listing = call_success(rw_server, "list_directory", {"workdir": "test", "path": ""})
         assert all(not entry["name"].startswith(".serverfs-tmp-") for entry in listing["entries"])
 
