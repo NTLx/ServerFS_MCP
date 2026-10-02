@@ -156,9 +156,9 @@ pub fn create_relative(
         FILE_WRITE_ACCESS
     };
     let options = if directory {
-        FILE_DIRECTORY_FILE
+        FILE_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT
     } else {
-        FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT
+        FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT
     };
     let status = unsafe {
         NtCreateFile(
