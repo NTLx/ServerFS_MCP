@@ -118,6 +118,6 @@ pub fn create_directory(root: &Handle, parts: &[&str]) -> Result<String, NativeE
     let parent = parent_owned.as_ref().unwrap_or(root);
     let mut nt_name = NtName::new(leaf)?;
     let mut unicode = nt_name.unicode_string();
-    let directory = ffi::create_relative(&parent, &mut unicode, true)?;
+    let directory = ffi::create_relative(parent, &mut unicode, true)?;
     metadata::revision_of(&directory)
 }

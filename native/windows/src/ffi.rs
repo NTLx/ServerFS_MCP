@@ -218,14 +218,14 @@ pub fn rename_no_replace(
     let root_offset = align_up(1, std::mem::align_of::<HANDLE>());
     let length_offset = root_offset + std::mem::size_of::<HANDLE>();
     let name_offset = length_offset + std::mem::size_of::<u32>();
-    let total = name_offset + final_name.len() * std::mem::size_of::<u16>();
+    let total = name_offset + std::mem::size_of_val(final_name);
     let mut info = vec![0u8; total];
     info[0] = 0; // ReplaceIfExists = FALSE
     let root = parent.as_raw() as usize;
     info[root_offset..root_offset + std::mem::size_of::<HANDLE>()]
         .copy_from_slice(&root.to_ne_bytes()[..std::mem::size_of::<HANDLE>()]);
     info[length_offset..name_offset]
-        .copy_from_slice(&((final_name.len() * 2) as u32).to_ne_bytes());
+        .copy_from_slice(&(std::mem::size_of_val(final_name) as u32).to_ne_bytes());
     for (index, unit) in final_name.iter().enumerate() {
         let offset = name_offset + index * 2;
         info[offset..offset + 2].copy_from_slice(&unit.to_ne_bytes());
