@@ -1,6 +1,6 @@
 # ServerFS v0.10.0 Development Plan — Native Windows Filesystem Backend
 
-Status: design / not yet implemented  
+Status: Phase A-D closed; Windows connectivity prerequisite delivered; Phase E1 native-wheel packaging merged; Phase E/F remaining  
 Baseline: v0.9.0 / main  
 Primary release target: Windows 11 x64 + local NTFS workdirs  
 Scope: add a first-class Windows-native ServerFS filesystem implementation with no Docker or WSL runtime dependency; keep the MCP/product layer in Python; implement the Windows filesystem security kernel as a small Rust/PyO3 native backend; preserve the existing public filesystem tool contract wherever platform semantics permit; leave Windows Agent Bridge and native file-parameter ingress for later releases.
@@ -218,10 +218,15 @@ ChatGPT
 OpenAI Tunnel
    |
 tunnel-client.exe
-   |
+   |   (started by `serverfs tunnel`; holds the `file:` API-key reference and
+   |    the derived CONTROL_PLANE_HTTP_PROXY — neither reaches ServerFS)
    | stdio (default native profile)
    v
-ServerFS MCP (Python)
+sanitizer supervisor (serverfs_mcp.supervisor)
+   |   forwards MCP stdin/stdout transparently and creates a sanitized
+   |   environment before spawning the real child
+   v
+ServerFS MCP child (Python)
    |
    +-- config / policy / limits / schemas / audit
    |
@@ -282,6 +287,17 @@ credentials or a credential-bearing URL. The default empty configuration
 leaves tunnel behavior equivalent to the current proxy-disabled deployment.
 This does not add SOCKS, PAC or system-proxy discovery, a generic proxy
 service, host ports, or TLS interception.
+
+Proxy credential rules (security requirements, frozen):
+
+1. proxy credentials are deployment secrets and never belong in `serverfs.toml`;
+2. no ServerFS filesystem backend reads or interprets proxy configuration;
+3. proxy settings never change workdir authorization, filesystem roots or MCP schemas, and grant `serverfs-mcp` no Internet egress;
+4. the derived credential-bearing URL must not be written back to `.env` or `serverfs.toml`, printed in logs, exposed by `serverfs doctor`, propagated into the ServerFS child environment, or included in MCP-visible errors;
+5. human-facing diagnostics may show only redacted state (enabled/protocol/host/port/`authentication: configured`), never username or password;
+6. tests must cover usernames/passwords containing URL-reserved characters to prove percent-encoding and redaction;
+7. the Linux file-ingress SSRF boundary is unchanged;
+8. malformed configuration (port outside 1..65535, password without username) fails before tunnel startup with an operator-recoverable coded error that does not echo the URL.
 
 ## 6. Platform-neutral domain refactor
 
@@ -380,8 +396,10 @@ Therefore the default Windows profile is:
 ~~~text
 tunnel-client
     |
-    +-- starts ServerFS once
-    +-- MCP over stdin/stdout
+    +-- starts the sanitizer supervisor once (as its MCP stdio command)
+         |
+         +-- supervisor spawns the ServerFS MCP child with a sanitized environment
+    +-- MCP over stdin/stdout (forwarded by the supervisor)
 ~~~
 
 Benefits:
@@ -398,17 +416,18 @@ The existing Streamable HTTP implementation remains for the Linux Docker profile
 
 ### 8.2 Tunnel credential inheritance is an explicit security concern
 
-The current tunnel-client stdio implementation starts its MCP child with Go `exec.Command` and does not supply a replacement child environment, so the child inherits the tunnel-client environment by default.
+The tunnel-client stdio implementation starts its MCP child with Go `exec.Command` and does not supply a replacement child environment, so the child inherits the tunnel-client environment by default.
 
 Source:
 
 https://github.com/openai/tunnel-client/blob/master/pkg/mcpclient/stdio_command.go
 
-Therefore the Windows native deployment **must not** use the old pattern of placing the Control Plane API key directly in the tunnel-client process environment when that would make the value visible to the ServerFS MCP child.
+The delivered native deployment therefore never places the Control Plane API key in an environment that reaches ServerFS. The mechanism (implemented and regression-tested):
 
-The supported native deployment should prefer tunnel-client file/profile-backed credential resolution. The tunnel-client documentation supports `file:/path/to/secret` for secret-bearing fields.
+- `serverfs tunnel` passes the key to tunnel-client only as a `file:` API-key reference; the credential file must live outside every configured ServerFS workdir.
+- tunnel-client's MCP command is the sanitizer supervisor (`serverfs_mcp.supervisor`), which may inherit the tunnel environment, but it constructs the ServerFS child environment by removing every `CONTROL_PLANE_*`, `TUNNEL_CLIENT_*`, `OPENAI_*`, `MCP_*` and `SERVERFS_PROXY_*` variable plus `HTTP(S)_PROXY`/`ALL_PROXY`/`NO_PROXY` before spawning `serverfs serve` and forwarding stdio.
 
-Acceptance must verify:
+Acceptance (proven by the Windows native stdio/supervisor tests; re-verified end-to-end in Phase F):
 
 - the ServerFS MCP child environment does not contain the Control Plane API key value;
 - the credential file is outside every configured ServerFS workdir;
@@ -969,7 +988,7 @@ The filesystem service itself must remain runnable/testable without tunnel-clien
 
 ## 26. CLI and native operations
 
-Add a minimal stdlib-`argparse` CLI rather than another CLI framework.
+A minimal stdlib-`argparse` CLI is delivered (`serverfs_mcp/cli.py`); no additional CLI framework was introduced.
 
 Target commands:
 
@@ -984,8 +1003,12 @@ serverfs tunnel --config serverfs.toml --env-file .env \
 Native `serve` and `tunnel` are Windows-only in v0.10 and fail closed on
 other platforms. Native default transport is stdio. Linux keeps its existing
 Docker deployment; Linux-native no-Docker service may reuse this work later.
+`serve` and `tunnel` are implemented and regression-tested (the `tunnel` path
+wires the §8.2 `file:`-reference credential boundary and the sanitizer
+supervisor). `serverfs doctor` is currently a config/platform-level skeleton
+only; the full health report below remains Phase E work:
 
-`serverfs doctor` is read-only and should report:
+`serverfs doctor` should report:
 
 - ServerFS version;
 - Python version;
@@ -1166,6 +1189,8 @@ Windows arm64 becomes supported only when build and runtime acceptance evidence 
 
 ### Phase A — Platform boundary refactor
 
+**Status: CLOSED.** Contract-only `backends.py` seam, kernel-free product imports (fdio/fcntl unimportable constraint test), `concurrency.py`/`binary_payload.py`/`errors.py` splits and the full `WorkdirSession` protocol landed via PR #13.
+
 Objective: create the backend/configuration seams without changing Linux behavior.
 
 Work:
@@ -1219,6 +1244,8 @@ Windows root HANDLE on every tool call.
 
 ### Phase B — Windows native read/security kernel
 
+**Status: CLOSED.** NtCreateFile HANDLE-relative traversal prototype hardened (strict `X:\` root namespace, trailing-separator fail-closed, per-role Send/Sync proof), PyO3 boundary with no raw HANDLE, process-lifetime retained roots and cached `WindowsWorkdirSession`, backend-owned `v1:<hex>` revisions frozen by real NTFS probes, and the stat/list/read-text/read-binary/validate-directory channels closed with the §30 Windows CI gate (PR #13/#15-era acceptance).
+
 Objective: prove the Windows security primitive before broad implementation.
 
 Work:
@@ -1246,6 +1273,8 @@ If Phase B cannot prove these invariants, stop and redesign before implementing 
 
 ### Phase C — Native find/search
 
+**Status: CLOSED.** HANDLE-relative recursive find walk and a native literal searcher (no `rg.exe`), frozen against a Linux-rg black-box parity table (glob pathname rules, 64 KiB-buffer binary suppression, undecodable lines never match, CRLF `\r` retained, `.git/.hg/.svn` always excluded from search but not from find), timeout/limit early-stop on wide trees, and a Linux/Windows agent-visible contract matrix (PR #18).
+
 Objective: complete the read-only six-tool surface without ripgrep.
 
 Work:
@@ -1266,27 +1295,45 @@ Exit criteria:
 
 ### Windows connectivity prerequisite brought forward before Phase D
 
-The Windows development host cannot directly reach the OpenAI control plane.
-To unblock Windows development, this implementation-order change brings
-forward only the Phase E connectivity prerequisite: Windows-only native MCP
-stdio serving, the Windows native tunnel-client launcher using the frozen
-four-field HTTP proxy contract, and child-environment secret isolation. The
-launcher uses the official `file:` API-key reference and encodes its stdio
-command according to the current upstream tunnel-client parser.
-
-This subset is delivered before Phase D mutations and does not change overall
-phase ownership. It does not add Linux-native no-Docker service as a supported
-path. `serverfs serve` and `serverfs tunnel` fail closed unless
-`sys.platform == "win32"`; Linux continues to use its existing Docker profile.
-The ServerFS child is a separate process with a sanitized environment. MCP
-frames stay on stdout and diagnostics stay on stderr. Native Agent Bridge and
-file ingress remain disabled.
-
-This does not complete Phase E. Prebuilt wheel distribution, bootstrap, full
-doctor/root health checks, release documentation and release closure remain
-Phase E work.
+**Status: DELIVERED.** Windows-only native MCP stdio serving (`serverfs serve`), the
+Windows native tunnel-client launcher (`serverfs tunnel`) using the frozen four-field
+HTTP proxy contract, the `file:`-reference API-key boundary, and the secret-isolating
+supervisor that strips the tunnel environment before spawning the ServerFS child. This
+was merged and regression-tested (PR #19) before Phase D mutations; it does not complete
+Phase E. Prebuilt-wheel distribution, `serverfs.toml.example`, full doctor/root health
+checks, tunnel-client bootstrap and release documentation and closure remain Phase E/F
+work.
 
 ### Phase D — Windows native mutation and binary transfer
+
+**Status: CLOSED (D1 + D2).** D1 delivered the native mutation kernel: HANDLE-relative
+create/replace/delete/mkdir/rmdir over the retained root with no request-derived host
+path, same-directory high-entropy reserved temps, exact write plus `FlushFileBuffers`,
+create-only atomic publication and atomic no-pre-delete `FileRenameInformationEx`
+(`REPLACE_IF_EXISTS|POSIX_SEMANTICS`) replacement, the final name-relative
+identity/public-revision/private-fingerprint gate, multi-hardlink and unsupported-NTFS
+fail-closed preservation (ADS/EA/object-ID/sparse/compressed/encrypted/integrity;
+query failure is a refusal, never absence), handle-only basic-metadata + owner/group/DACL
+preservation with `SE_DACL_AUTO_INHERITED` masked as recomputable, no SACL claim,
+kernel-side read-only enforcement and the approved §19.4 sharing boundary
+(delete-style targets and temps held `FILE_SHARE_READ`; replacement targets
+`FILE_SHARE_READ|FILE_SHARE_DELETE` because atomic publication cannot land on a
+destination whose open handles lack DELETE share — defense in depth, never an
+external-CAS claim). Deterministic final-gate fault hooks exist only under
+`#[cfg(test)]`; EA and object-ID fail-closed paths carry positive NTFS fixtures or
+pinned API-error evidence. D2 wired the seven `WorkdirSession` mutation channels to the
+kernel without changing the security model (except adding `FILE_READ_DATA` to the
+delete-target open so Windows keeps the Linux "unreadable file is not deletable"
+product property): v0.9 result models, backend-side code mapping
+(`PARENT_NOT_FOUND`, `WRITE_TOO_LARGE`), `WORKDIR_READ_ONLY` precedence, reentrant
+`mutation_lock`, and a single shared kernel-free `mutation_text` module so both
+platforms apply identical text/edit/BOM/NUL semantics. Platform-visible documented
+differences: reparse mutation targets report `REPARSE_POINT_NOT_ALLOWED` (Windows)
+where Linux reports `SYMLINK_NOT_ALLOWED`, and Windows directory revisions must not be
+assumed to move when children change — `delete_directory` correctness rests on the
+physical emptiness scan, not revision drift. Real-NTFS MCP E2E covers atomicity under
+concurrent readers, stale revisions, torn-write absence, temp invisibility through all
+channels, retained-root rename survival and bounded handle counts.
 
 Objective: add safe writable workdirs.
 
@@ -1313,11 +1360,29 @@ Exit criteria:
 
 ### Phase E — Native packaging and release operations
 
+**Status: IN PROGRESS — E1 (wheel packaging) CLOSED.** `native/windows/pyproject.toml`
++ maturin produce the separate `serverfs-windows-native` `cp312-abi3-win_amd64` wheel
+(Cargo owns the version; root package stays Hatchling); CI builds it and runs the native
++ backend + MCP E2E suites in a clean venv where the wheel is the only provider of the
+native module, and uploads the wheel artifact. `Private :: Do Not Upload` guards
+accidental publication until the release decision.
+
+Remaining work:
+
+- wheel publication + `uv` dependency integration so `uv sync` installs the usable
+  native backend from a prebuilt wheel;
+- `serverfs.toml.example`;
+- full `serverfs doctor` root/backend/filesystem/tunnel/proxy health checks;
+- pinned project-local tunnel-client bootstrap with published-SHA-256 verification and
+  profile;
+- clean install and upgrade guidance;
+- Windows operator documentation.
+
 Objective: make the implementation installable and usable without a developer toolchain.
 
 Work:
 
-- prebuilt Windows x64 wheel;
+- prebuilt Windows x64 wheel (delivered by E1; publication pending);
 - uv dependency integration;
 - `serverfs.toml.example`;
 - full `serverfs doctor` root/backend health checks;
@@ -1349,6 +1414,17 @@ Required acceptance:
 - clean-install wheel;
 - tunnel E2E;
 - restart/recovery of tunnel-created MCP child;
+- full proxy acceptance over real network paths: (1) direct/no-proxy, (2) HTTP proxy
+  without authentication, (3) HTTP proxy with username/password, (4) proxy credentials
+  containing URL-reserved characters (percent-encoding), (5) invalid credentials
+  producing a redacted actionable error, (6) unreachable proxy, (7) proxy dropping an
+  established connection with recovery/restart, (8) proof the ServerFS child/container
+  environment contains neither proxy credentials nor the Control Plane API key value,
+  (9) proof logs, doctor output and MCP errors contain no proxy or tunnel secret
+  values, (10) proxy-disabled deployment behaviorally identical to the direct path;
+- Python minor-version evidence for the abi3 claim: install/import/smoke the same
+  `cp312-abi3` wheel on at least one newer CPython minor (3.13+), or explicitly bound
+  v0.10 Windows native support to 3.12 in the release documentation;
 - documentation and website alignment.
 
 Release only after all required acceptance evidence is recorded.
