@@ -489,7 +489,7 @@ mod tests {
         let target = ffi::open_relative(
             root,
             &mut unicode,
-            ffi::WRITE_DAC_ACCESS,
+            ffi::WRITE_DAC_ACCESS | ffi::SYNCHRONIZE_ACCESS,
             ffi::OpenKind::File,
         )
         .unwrap();
