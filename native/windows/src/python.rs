@@ -307,7 +307,13 @@ impl NativeWorkdirSession {
     }
 
     /// Internal plain-data D1 primitive for the later Windows backend.
-    fn delete_file(&self, parts: Vec<String>, expected_revision: &str) -> Result<(), PyErr> {
+    /// Returns `(bytes_deleted, revision_deleted)` for the v0.2 delete
+    /// result contract.
+    fn delete_file(
+        &self,
+        parts: Vec<String>,
+        expected_revision: &str,
+    ) -> Result<(u64, String), PyErr> {
         self.ensure_mutable()?;
         let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
         crate::mutation::delete_file(&self.root.0, &refs, expected_revision).map_err(map_error)
@@ -415,7 +421,9 @@ mod mutation_read_only_tests {
                 session
                     .replace_bytes(vec!["a".into()], vec![], "v1:0000000000000000")
                     .map(|_| ()),
-                session.delete_file(vec!["a".into()], "v1:0000000000000000"),
+                session
+                    .delete_file(vec!["a".into()], "v1:0000000000000000")
+                    .map(|_| ()),
                 session.create_directory(vec!["a".into()]).map(|_| ()),
                 session.delete_directory(vec!["a".into()], "v1:0000000000000000"),
             ];

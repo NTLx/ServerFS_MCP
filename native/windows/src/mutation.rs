@@ -27,6 +27,28 @@ use crate::{ffi, metadata, traversal, Handle};
 const TEMP_ATTEMPTS: usize = 16;
 const WRITE_CHUNK: usize = 64 * 1024;
 pub const INTERNAL_TEMP_PREFIX: &str = ".serverfs-tmp-";
+/// Share mask for handles held across a mutation window (§19.4): others
+/// keep read access — every channel still filters identically and
+/// concurrent ServerFS readers are never blocked — while new WRITE opens
+/// and new DELETE opens (delete or ordinary path rename both require
+/// DELETE access) are refused while the handle lives. Used by the
+/// deletion paths, the created directory and every temp object.
+///
+/// This is defense in depth that narrows the final-check-to-commit
+/// interval. It is not proof against a POSIX-style rename primitive or
+/// an arbitrary hostile same-user process; the name-relative final
+/// identity/revision gate is what detects drift those paths can still
+/// cause, and neither backend claims compare-and-swap semantics.
+const MUTATION_HELD_SHARE: u32 = ffi::FILE_SHARE_READ;
+/// Replacement targets additionally share DELETE. Measured on real NTFS
+/// (WorkPC): the atomic `FileRenameInformationEx` publication cannot
+/// replace a destination whose open handles do not grant FILE_SHARE_DELETE
+/// — holding the strict read-only share mask to the commit would deadlock
+/// our own rename (STATUS_SHARING_VIOLATION). New external WRITERS are
+/// still refused across the whole window; an external delete or rename
+/// that exploits the retained DELETE share is detected by the
+/// name-relative final gate before publication.
+const REPLACEMENT_HELD_SHARE: u32 = ffi::FILE_SHARE_READ | ffi::FILE_SHARE_DELETE;
 const SAFE_BASIC_ATTRIBUTES: u32 = FILE_ATTRIBUTE_READONLY
     | FILE_ATTRIBUTE_HIDDEN
     | FILE_ATTRIBUTE_SYSTEM
@@ -60,6 +82,8 @@ struct UnsupportedState {
 struct PreservationSnapshot {
     id: metadata::ObjectId,
     basic: FILE_BASIC_INFO,
+    size: u64,
+    link_count: u32,
     security_descriptor: ffi::SecurityDescriptor,
     owner_sid: Vec<u8>,
     group_sid: Vec<u8>,
@@ -67,15 +91,23 @@ struct PreservationSnapshot {
 }
 
 impl PreservationSnapshot {
+    /// Private drift material for the replacement final gate. Unlike the
+    /// public revision tuple this never leaves the kernel, so it may carry
+    /// `ChangeTime` (we never rename the target ourselves) and carries
+    /// size/link count explicitly. `LastAccessTime` is deliberately
+    /// excluded: measured on WorkPC NTFS, pure concurrent READS move it,
+    /// and a read is not a mutation — including it made honest
+    /// read/write overlap fail with a spurious `RevisionConflict`.
     fn fingerprint(&self) -> [u8; 32] {
         let mut digest = Sha256::new();
         digest.update(self.id.volume_serial.to_le_bytes());
         digest.update(self.id.file_id.to_le_bytes());
         digest.update(self.basic.CreationTime.to_le_bytes());
-        digest.update(self.basic.LastAccessTime.to_le_bytes());
         digest.update(self.basic.LastWriteTime.to_le_bytes());
         digest.update(self.basic.ChangeTime.to_le_bytes());
         digest.update(self.basic.FileAttributes.to_le_bytes());
+        digest.update(self.size.to_le_bytes());
+        digest.update(self.link_count.to_le_bytes());
         digest.update((self.security_descriptor.bytes().len() as u64).to_le_bytes());
         digest.update(self.security_descriptor.bytes());
         digest.update([
@@ -140,12 +172,9 @@ fn open_leaf(
     name: &str,
     access: u32,
     kind: ffi::OpenKind,
+    share_mode: u32,
 ) -> Result<Handle, NativeError> {
-    let mut nt_name = crate::path::NtName::new(name)?;
-    let mut unicode = nt_name.unicode_string();
-    let handle = ffi::open_relative(parent, &mut unicode, access, kind)?;
-    traversal::validate(&handle, kind)?;
-    Ok(handle)
+    traversal::open_component_with_share(parent, name, kind, access, share_mode)
 }
 
 fn capture_snapshot(handle: &Handle) -> Result<PreservationSnapshot, NativeError> {
@@ -171,6 +200,8 @@ fn capture_snapshot(handle: &Handle) -> Result<PreservationSnapshot, NativeError
     Ok(PreservationSnapshot {
         id: md.id,
         basic,
+        size: md.size.unwrap_or(0),
+        link_count: md.link_count,
         security_descriptor,
         owner_sid,
         group_sid,
@@ -204,6 +235,7 @@ fn create_temp(parent: &Handle) -> Result<(TempFile, String), NativeError> {
             TEMP_ACCESS,
             false,
             FILE_ATTRIBUTE_NORMAL,
+            MUTATION_HELD_SHARE,
         ) {
             Ok(handle) => {
                 return Ok((
@@ -247,7 +279,12 @@ fn apply_snapshot(temp: &Handle, snapshot: &PreservationSnapshot) -> Result<(), 
         return Err(NativeError::MetadataPreservationFailed);
     }
     ffi::apply_dacl(temp, &snapshot.security_descriptor)?;
-    if ffi::security_descriptor(temp)? != snapshot.security_descriptor {
+    // Verify on the handle we are about to publish: the applied security
+    // must carry the same preservable material as the original. Raw byte
+    // equality would demand inheriting NTFS' AUTO_INHERITED marker, which
+    // an explicit DACL application legitimately re-records; `equivalent`
+    // masks only those recomputable control flags.
+    if !ffi::security_descriptor(temp)?.equivalent(&snapshot.security_descriptor) {
         return Err(NativeError::MetadataPreservationFailed);
     }
     let info = FILE_BASIC_INFO {
@@ -313,7 +350,13 @@ fn replace_bytes_transaction(
     let name = target_name(parts)?;
     let owned_parent = resolve_parent(root, parts)?;
     let parent = parent_handle(root, &owned_parent);
-    let original = open_leaf(parent, name, REPLACEMENT_ACCESS, ffi::OpenKind::File)?;
+    let original = open_leaf(
+        parent,
+        name,
+        REPLACEMENT_ACCESS,
+        ffi::OpenKind::File,
+        REPLACEMENT_HELD_SHARE,
+    )?;
     let initial_md = check_expected(&original, expected_revision)?;
     let snapshot = capture_snapshot(&original)?;
     if snapshot.id != initial_md.id || snapshot.has_unsupported_state() {
@@ -326,7 +369,12 @@ fn replace_bytes_transaction(
     ffi::flush_file(&temp.handle).map_err(|_| NativeError::MutationIoError)?;
 
     before_gate();
-    let final_target = match open_leaf(parent, name, REPLACEMENT_ACCESS, ffi::OpenKind::File) {
+    let final_target = match traversal::open_component_with_access(
+        parent,
+        name,
+        ffi::OpenKind::File,
+        REPLACEMENT_ACCESS,
+    ) {
         Ok(handle) => handle,
         Err(NativeError::PathNotFound) => return Err(NativeError::PathNotFound),
         Err(_) => return Err(NativeError::RevisionConflict),
@@ -341,9 +389,13 @@ fn replace_bytes_transaction(
     {
         return Err(NativeError::RevisionConflict);
     }
-    // POSIX replacement semantics let NTFS atomically replace an open name;
-    // existing handles continue to reference the old object. The documented
-    // non-cooperating-writer race remains between this gate and the rename.
+    // POSIX replacement semantics let NTFS atomically replace an open
+    // name; existing handles continue to reference the old object. The
+    // destination's open handles must grant FILE_SHARE_DELETE for the
+    // replacement to land (measured on WorkPC NTFS), which is why
+    // replacement targets hold READ|DELETE instead of the strict delete
+    // mask. The documented non-cooperating-writer race remains between
+    // this gate and the rename.
     ffi::rename_relative(&temp.handle, parent, name, true)?;
     temp.published = true;
     metadata::revision_of(&temp.handle)
@@ -353,28 +405,52 @@ pub fn delete_file(
     root: &Handle,
     parts: &[&str],
     expected_revision: &str,
-) -> Result<(), NativeError> {
+) -> Result<(u64, String), NativeError> {
     let name = target_name(parts)?;
     let owned_parent = resolve_parent(root, parts)?;
     let parent = parent_handle(root, &owned_parent);
-    let original = open_leaf(parent, name, DELETE_ACCESS, ffi::OpenKind::File)?;
+    let original = open_leaf(
+        parent,
+        name,
+        DELETE_ACCESS,
+        ffi::OpenKind::File,
+        MUTATION_HELD_SHARE,
+    )?;
     let initial = check_expected(&original, expected_revision)?;
-    let final_target =
-        open_leaf(parent, name, DELETE_ACCESS, ffi::OpenKind::File).map_err(|error| {
-            if error == NativeError::PathNotFound {
-                error
-            } else {
-                NativeError::RevisionConflict
-            }
-        })?;
+    // NT sharing is bidirectional (measured on WorkPC NTFS): a new open
+    // must ALSO grant sharing that covers every already-held handle's
+    // access, so the gate helper opens with the full SHARE_ALL mask even
+    // though only the holder's restrictive mask hardens the window. The
+    // holder still refuses new external WRITE (and, on the delete paths,
+    // DELETE) opens: every existing handle must consent, and the holder
+    // does not.
+    let final_target = traversal::open_component_with_access(
+        parent,
+        name,
+        ffi::OpenKind::File,
+        ffi::FILE_READ_ACCESS,
+    )
+    .map_err(|error| {
+        if error == NativeError::PathNotFound {
+            error
+        } else {
+            NativeError::RevisionConflict
+        }
+    })?;
     let final_md = metadata::collect(&final_target).map_err(|_| NativeError::RevisionConflict)?;
     if final_md.id != initial.id || final_md.revision() != expected_revision {
         return Err(NativeError::RevisionConflict);
     }
     // Deletion applies to the verified object handle. If a non-cooperating
     // writer renames it after the final gate, this removes that object at
-    // its new name rather than deleting an unverified replacement.
-    ffi::mark_delete(&original)
+    // its new name rather than deleting an unverified replacement. The
+    // gate handle must be released before returning: disposition executes
+    // at LAST close, so keeping any open handle on the object alive would
+    // leave the delete pending forever (measured on WorkPC NTFS).
+    let result = (final_md.size.unwrap_or(0), final_md.revision());
+    ffi::mark_delete(&original)?;
+    drop(final_target);
+    Ok(result)
 }
 
 pub fn create_directory(root: &Handle, parts: &[&str]) -> Result<String, NativeError> {
@@ -389,6 +465,7 @@ pub fn create_directory(root: &Handle, parts: &[&str]) -> Result<String, NativeE
         DIRECTORY_DELETE_ACCESS,
         true,
         FILE_ATTRIBUTE_NORMAL,
+        MUTATION_HELD_SHARE,
     )?;
     metadata::revision_of(&directory)
 }
@@ -417,16 +494,17 @@ pub fn delete_directory(
         name,
         DIRECTORY_DELETE_ACCESS,
         ffi::OpenKind::Directory,
+        MUTATION_HELD_SHARE,
     )?;
     let initial = check_expected(&original, expected_revision)?;
     if !is_empty(&original)? {
         return Err(NativeError::DirectoryNotEmpty);
     }
-    let final_target = open_leaf(
+    let final_target = traversal::open_component_with_access(
         parent,
         name,
-        DIRECTORY_DELETE_ACCESS,
         ffi::OpenKind::Directory,
+        ffi::DIR_TRAVERSE_ACCESS,
     )
     .map_err(|error| {
         if error == NativeError::PathNotFound {
@@ -568,12 +646,26 @@ mod tests {
 
     #[test]
     fn private_gate_detects_same_name_external_replacement() {
+        // Simulates the non-cooperating-writer class that sharing mode
+        // cannot block: an external process performing its own
+        // POSIX-style HANDLE-relative replacement of the name between
+        // our snapshot and the final gate. The final identity/revision/
+        // fingerprint gate must refuse publication (no temp debris, the
+        // external bytes stay), proving the gate — not that the race
+        // interval is closed.
         let sandbox = TestRoot::new("same_name_race");
         let root = sandbox.open();
         let expected = create_bytes(&root, &["target"], b"old bytes").unwrap();
         let error = replace_bytes_with_hook(&root, &["target"], b"agent bytes", &expected, || {
-            std::fs::remove_file(sandbox.0.join("target")).unwrap();
-            std::fs::write(sandbox.0.join("target"), b"host bytes").unwrap();
+            std::fs::write(sandbox.0.join("stager"), b"host bytes").unwrap();
+            let stager = traversal::open_component_with_access(
+                &root,
+                "stager",
+                ffi::OpenKind::File,
+                TEMP_ACCESS,
+            )
+            .unwrap();
+            ffi::rename_relative(&stager, &root, "target", true).unwrap();
         })
         .unwrap_err();
         assert_eq!(error, NativeError::RevisionConflict);
@@ -587,5 +679,34 @@ mod tests {
                 .iter()
                 .any(|name| name.starts_with(INTERNAL_TEMP_PREFIX)));
         }
+    }
+
+    #[test]
+    fn replacement_window_blocks_external_write_opens() {
+        // Sharing-mode defense in depth inside the real replacement
+        // window: while the replacement holds its target handles
+        // (READ|DELETE share), an ordinary external WRITE open is
+        // refused and read-style opens still succeed. The mutation then
+        // publishes normally. This is Win32-writer hardening evidence
+        // only — not a compare-and-swap claim against hostile
+        // same-user processes (see the POSIX-rename test above).
+        let sandbox = TestRoot::new("window_share");
+        let root = sandbox.open();
+        let expected = create_bytes(&root, &["win.txt"], b"old").unwrap();
+        let target = sandbox.0.join("win.txt");
+        let replacement = replace_bytes_with_hook(&root, &["win.txt"], b"new", &expected, || {
+            let denied = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&target)
+                .expect_err("external WRITE open must be refused mid-window");
+            assert_eq!(denied.raw_os_error(), Some(32)); // ERROR_SHARING_VIOLATION
+            assert_eq!(std::fs::read(&target).unwrap(), b"old");
+        });
+        replacement.unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&target)
+            .expect("WRITE open succeeds after the mutation released its handles");
     }
 }
