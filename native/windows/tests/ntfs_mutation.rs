@@ -543,3 +543,248 @@ fn held_mutation_target_share_blocks_ordinary_external_mutation_opens() {
     std::fs::remove_file(sandbox.root.join("moved.txt")).expect("delete after release");
     assert!(!target.exists());
 }
+
+fn open_raw_for_fixture(
+    path: &std::path::Path,
+    access: u32,
+) -> windows_sys::Win32::Foundation::HANDLE {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::CreateFileW;
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    unsafe {
+        CreateFileW(
+            wide.as_ptr(),
+            access,
+            7, // READ|WRITE|DELETE sharing: fixture opens must not interfere
+            std::ptr::null(),
+            3, // OPEN_EXISTING
+            0,
+            std::ptr::null_mut(),
+        )
+    }
+}
+
+#[test]
+fn replacement_refuses_file_with_real_extended_attributes_or_pins_volume_support() {
+    // Positive fail-closed fixture for the EA class, with a pinned
+    // fallback. NtSetEaFile on a self-created file needs no elevation.
+    // If the volume persists the EA (readable back through
+    // NtQueryEaFile), the replacement MUST refuse with
+    // METADATA_PRESERVATION_FAILED before creating any temp, leaving the
+    // destination untouched. Measured on Windows 11 WorkPC (both C: and
+    // D: NTFS volumes): NtSetEaFile returns warning
+    // STATUS_INVALID_DEVICE_REQUEST (0x80000014) and the EA never lands
+    // (query = STATUS_NO_EAS_ON_FILE) — this Windows generation does not
+    // support creating EAs at all. That branch is pinned here with the
+    // exact codes, and the ordinary replacement is verified to keep
+    // working on the clean no-EA system. Never a silent skip.
+    use windows_sys::Wdk::Storage::FileSystem::{NtQueryEaFile, NtSetEaFile};
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
+
+    const FILE_READ_EA: u32 = 0x0000_0008;
+    const FILE_WRITE_EA: u32 = 0x0000_0010;
+    const FILE_READ_ATTRIBUTES: u32 = 0x0000_0080;
+    const SYNCHRONIZE: u32 = 0x0010_0000;
+    const STATUS_INVALID_DEVICE_REQUEST_WARNING: i32 = 0x8000_0014u32 as i32;
+
+    let sandbox = Sandbox::new("ea_fixture");
+    let root = sandbox.open();
+    let revision = mutation::create_bytes(&root, &["ea.bin"], b"main data").unwrap();
+    let path = sandbox.root.join("ea.bin");
+
+    let name = b"serverfs.ea.probe";
+    let value = b"ea-value";
+    // FILE_FULL_EA_INFORMATION: NextEntryOffset(4) EaNameLength(1)
+    // EaValueLength(1) EaName[...] pad-to-4 EaValue[...]
+    let name_offset = 6usize;
+    let value_offset = (name_offset + name.len() + 3) & !3;
+    let mut buffer = vec![0u8; value_offset + value.len()];
+    buffer[4] = name.len() as u8;
+    buffer[5] = value.len() as u8;
+    buffer[name_offset..name_offset + name.len()].copy_from_slice(name);
+    buffer[value_offset..].copy_from_slice(value);
+
+    let writer = open_raw_for_fixture(&path, FILE_WRITE_EA | FILE_READ_ATTRIBUTES | SYNCHRONIZE);
+    assert_ne!(
+        writer,
+        INVALID_HANDLE_VALUE,
+        "EA writer open failed: {}",
+        unsafe { GetLastError() }
+    );
+    let mut iosb = IO_STATUS_BLOCK::default();
+    let set_status = unsafe {
+        NtSetEaFile(
+            writer,
+            &mut iosb,
+            buffer.as_ptr().cast(),
+            buffer.len() as u32,
+        )
+    };
+    unsafe { CloseHandle(writer) };
+
+    let reader = open_raw_for_fixture(&path, FILE_READ_EA | FILE_READ_ATTRIBUTES | SYNCHRONIZE);
+    assert_ne!(
+        reader,
+        INVALID_HANDLE_VALUE,
+        "EA reader open failed: {}",
+        unsafe { GetLastError() }
+    );
+    let mut query = vec![0u8; 4096];
+    let mut iosb = IO_STATUS_BLOCK::default();
+    let query_status = unsafe {
+        NtQueryEaFile(
+            reader,
+            &mut iosb,
+            query.as_mut_ptr().cast(),
+            query.len() as u32,
+            false,
+            std::ptr::null(),
+            0,
+            std::ptr::null(),
+            true,
+        )
+    };
+    let query_information = iosb.Information;
+    unsafe { CloseHandle(reader) };
+
+    if set_status == 0 && query_status == 0 && query_information > 0 {
+        eprintln!("EA FIXTURE: volume persisted the EA; positive coverage active");
+        assert_eq!(
+            mutation::replace_bytes(&root, &["ea.bin"], b"never published", &revision).unwrap_err(),
+            NativeError::MetadataPreservationFailed
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"main data");
+        assert!(
+            !names(&root)
+                .iter()
+                .any(|n| n.starts_with(mutation::INTERNAL_TEMP_PREFIX)),
+            "refusal must happen before any temp exists"
+        );
+        return;
+    }
+
+    assert_eq!(
+        set_status, STATUS_INVALID_DEVICE_REQUEST_WARNING,
+        "unexpected NtSetEaFile status {set_status:#010x} with query {query_status:#010x}"
+    );
+    assert_eq!(
+        query_status,
+        windows_sys::Win32::Foundation::STATUS_NO_EAS_ON_FILE,
+        "a refused EA set must leave the file EA-free"
+    );
+    eprintln!(
+        "EA FIXTURE: volume rejects EA creation (set {set_status:#010x}, query \
+         {query_status:#010x} = STATUS_NO_EAS_ON_FILE); EA positive coverage is \
+         release/manual privileged acceptance on an EA-capable volume"
+    );
+    // The production query must treat this environment as "no EAs" and
+    // the replacement must proceed normally.
+    let after = mutation::replace_bytes(&root, &["ea.bin"], b"published", &revision).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), b"published");
+    let recheck =
+        metadata::collect(&traversal::resolve(&root, &["ea.bin"], ffi::OpenKind::File).unwrap())
+            .unwrap();
+    assert_eq!(recheck.revision(), after);
+}
+
+#[test]
+fn object_id_fail_closed_path_is_positively_covered_or_privilege_pinned() {
+    // Positive fail-closed fixture for the NTFS object-ID class.
+    // FSCTL_CREATE_OR_GET_OBJECT_ID creates the ID when absent; if that
+    // succeeds unprivileged, the replacement MUST refuse with
+    // METADATA_PRESERVATION_FAILED and the read-back must confirm the
+    // ID. If the platform refuses the fixture itself, the exact API
+    // error is pinned as evidence and the item stands downgraded to
+    // release/manual privileged acceptance — never a silent skip.
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError};
+    use windows_sys::Win32::System::Ioctl::{
+        FILE_OBJECTID_BUFFER, FSCTL_CREATE_OR_GET_OBJECT_ID, FSCTL_GET_OBJECT_ID,
+    };
+    use windows_sys::Win32::System::IO::DeviceIoControl;
+
+    const FILE_READ_ATTRIBUTES: u32 = 0x0000_0080;
+    const SYNCHRONIZE: u32 = 0x0010_0000;
+
+    let sandbox = Sandbox::new("objid_fixture");
+    let root = sandbox.open();
+    let revision = mutation::create_bytes(&root, &["oid.bin"], b"main data").unwrap();
+    let path = sandbox.root.join("oid.bin");
+
+    let handle = open_raw_for_fixture(&path, FILE_READ_ATTRIBUTES | SYNCHRONIZE);
+    assert_ne!(
+        handle,
+        windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE,
+        "object-ID fixture open failed: {}",
+        unsafe { GetLastError() }
+    );
+
+    let mut buffer = FILE_OBJECTID_BUFFER::default();
+    let mut returned = 0;
+    let created = unsafe {
+        DeviceIoControl(
+            handle,
+            FSCTL_CREATE_OR_GET_OBJECT_ID,
+            std::ptr::null(),
+            0,
+            (&mut buffer as *mut FILE_OBJECTID_BUFFER).cast(),
+            std::mem::size_of::<FILE_OBJECTID_BUFFER>() as u32,
+            &mut returned,
+            std::ptr::null_mut(),
+        )
+    };
+    let created_error = if created == 0 {
+        unsafe { GetLastError() }
+    } else {
+        0
+    };
+
+    if created != 0 {
+        eprintln!("OBJECTID FIXTURE: created and read back unprivileged; positive coverage active");
+        let mut probe = FILE_OBJECTID_BUFFER::default();
+        let mut got = 0;
+        let read_back = unsafe {
+            DeviceIoControl(
+                handle,
+                FSCTL_GET_OBJECT_ID,
+                std::ptr::null(),
+                0,
+                (&mut probe as *mut FILE_OBJECTID_BUFFER).cast(),
+                std::mem::size_of::<FILE_OBJECTID_BUFFER>() as u32,
+                &mut got,
+                std::ptr::null_mut(),
+            )
+        };
+        unsafe { CloseHandle(handle) };
+        assert_ne!(read_back, 0, "created object ID must read back");
+        assert_eq!(
+            mutation::replace_bytes(&root, &["oid.bin"], b"never published", &revision)
+                .unwrap_err(),
+            NativeError::MetadataPreservationFailed
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"main data");
+        assert!(!names(&root)
+            .iter()
+            .any(|n| n.starts_with(mutation::INTERNAL_TEMP_PREFIX)));
+        return;
+    }
+
+    unsafe { CloseHandle(handle) };
+    eprintln!(
+        "OBJECTID FIXTURE: FSCTL_CREATE_OR_GET_OBJECT_ID refused unprivileged with \
+         Win32 error {created_error}; object-ID positive coverage is release/manual \
+         privileged acceptance"
+    );
+    assert!(
+        matches!(created_error, 1 | 5 | 163 | 1314),
+        "unexpected object-ID fixture failure: {created_error}"
+    );
+    // Without a fixtureable object ID the environment is a clean no-ID
+    // system: the ordinary replacement must keep working there.
+    let after = mutation::replace_bytes(&root, &["oid.bin"], b"published", &revision).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), b"published");
+    let recheck =
+        metadata::collect(&traversal::resolve(&root, &["oid.bin"], ffi::OpenKind::File).unwrap())
+            .unwrap();
+    assert_eq!(recheck.revision(), after);
+}
