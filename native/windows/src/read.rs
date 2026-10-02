@@ -16,6 +16,41 @@
 
 use sha2::{Digest, Sha256};
 
+// Deterministic test seam (§29.4: fault injection is a test-build
+// capability, never a production artifact one). The hook runs after the
+// content pass and before the after-revision recheck, so a test can
+// race an external write exactly where FILE_CHANGED_DURING_READ fires.
+// It is thread-local: cargo tests run in parallel without interference.
+#[cfg(test)]
+thread_local! {
+    static AFTER_PASS_HOOK: std::cell::RefCell<Option<Box<dyn Fn()>>> =
+        std::cell::RefCell::new(None);
+}
+
+#[cfg(test)]
+pub(crate) fn set_after_pass_hook(h: impl Fn() + 'static) {
+    AFTER_PASS_HOOK.with(|c| *c.borrow_mut() = Some(Box::new(h)));
+}
+
+#[cfg(test)]
+pub(crate) fn clear_after_pass_hook() {
+    AFTER_PASS_HOOK.with(|c| *c.borrow_mut() = None);
+}
+
+#[cfg(not(test))]
+#[inline]
+fn fire_after_pass_hook() {}
+
+#[cfg(test)]
+#[inline]
+fn fire_after_pass_hook() {
+    AFTER_PASS_HOOK.with(|c| {
+        if let Some(hook) = &*c.borrow() {
+            hook();
+        }
+    });
+}
+
 use crate::error::NativeError;
 use crate::metadata::{self, NativeMetadata};
 use crate::{ffi, traversal, Handle};
@@ -73,6 +108,7 @@ pub fn read_text_page(
         }
     }
 
+    fire_after_pass_hook();
     if metadata::collect(&file)?.revision() != before.revision() {
         return Err(NativeError::ChangedDuringRead);
     }
@@ -203,6 +239,7 @@ pub fn read_bounded(
         }
         data.extend_from_slice(&chunk);
     }
+    fire_after_pass_hook();
     if metadata::collect(&file)?.revision() != before.revision() {
         return Err(NativeError::ChangedDuringRead);
     }
@@ -234,4 +271,75 @@ fn read_up_to(file: &Handle, size: usize) -> Result<Vec<u8>, NativeError> {
     let read = ffi::read_chunk(file, &mut buffer)?;
     buffer.truncate(read);
     Ok(buffer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::traversal;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static N: AtomicUsize = AtomicUsize::new(0);
+
+    struct Dir(PathBuf);
+    impl Dir {
+        fn new() -> Dir {
+            let p = std::env::temp_dir().join(format!(
+                "serverfs_seam_{}_{:04}",
+                std::process::id(),
+                N.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(&p).unwrap();
+            Dir(p)
+        }
+    }
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn deterministic_file_changed_during_read_bounded() {
+        let dir = Dir::new();
+        let file = dir.0.join("a.bin");
+        std::fs::write(&file, b"x".repeat(64)).unwrap();
+        let root = traversal::open_root(dir.0.to_str().unwrap()).unwrap();
+        set_after_pass_hook({
+            let file = file.clone();
+            move || {
+                std::fs::write(&file, b"yy".repeat(64)).unwrap();
+            }
+        });
+        let result = read_bounded(&root, &["a.bin"], 1 << 20);
+        clear_after_pass_hook();
+        assert!(matches!(result, Err(NativeError::ChangedDuringRead)));
+    }
+
+    #[test]
+    fn deterministic_file_changed_during_read_page() {
+        let dir = Dir::new();
+        let file = dir.0.join("a.txt");
+        std::fs::write(&file, b"one\ntwo\n").unwrap();
+        let root = traversal::open_root(dir.0.to_str().unwrap()).unwrap();
+        set_after_pass_hook({
+            let file = file.clone();
+            move || {
+                std::fs::write(&file, b"one-MUTATED\ntwo-three\n").unwrap();
+            }
+        });
+        let result = read_text_page(&root, &["a.txt"], 1, 10, 4096, 1024);
+        clear_after_pass_hook();
+        assert!(matches!(result, Err(NativeError::ChangedDuringRead)));
+    }
+
+    #[test]
+    fn hook_absent_means_normal_read() {
+        let dir = Dir::new();
+        std::fs::write(dir.0.join("a.bin"), b"stable").unwrap();
+        let root = traversal::open_root(dir.0.to_str().unwrap()).unwrap();
+        let out = read_bounded(&root, &["a.bin"], 1 << 20).unwrap();
+        assert_eq!(out.data, b"stable");
+    }
 }

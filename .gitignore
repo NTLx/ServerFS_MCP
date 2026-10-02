@@ -12,3 +12,4 @@ build/
 
 # Rust build output for the Windows native kernel
 native/windows/target/
+native/windows/pyd-staging/
