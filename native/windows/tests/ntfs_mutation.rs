@@ -22,11 +22,8 @@ impl Sandbox {
     }
 
     fn root_handle(&self) -> serverfs_windows_native::Handle {
-        traversal::open_root_with_create_access(
-            self.0.to_str().expect("UTF-8 sandbox path"),
-            true,
-        )
-        .expect("open retained root")
+        traversal::open_root_with_create_access(self.0.to_str().expect("UTF-8 sandbox path"), true)
+            .expect("open retained root")
     }
 }
 
@@ -42,7 +39,10 @@ fn create_file_and_directory_are_handle_relative_and_create_only() {
     let root = sandbox.root_handle();
     let revision = mutation::create_file(&root, &["created.txt"], b"complete")
         .unwrap_or_else(|err| panic!("create file failed: {err:?}"));
-    assert_eq!(std::fs::read(sandbox.0.join("created.txt")).unwrap(), b"complete");
+    assert_eq!(
+        std::fs::read(sandbox.0.join("created.txt")).unwrap(),
+        b"complete"
+    );
     let created = traversal::resolve(
         &root,
         &["created.txt"],
@@ -54,7 +54,10 @@ fn create_file_and_directory_are_handle_relative_and_create_only() {
         mutation::create_file(&root, &["created.txt"], b"replacement"),
         Err(NativeError::AlreadyExists)
     );
-    assert_eq!(std::fs::read(sandbox.0.join("created.txt")).unwrap(), b"complete");
+    assert_eq!(
+        std::fs::read(sandbox.0.join("created.txt")).unwrap(),
+        b"complete"
+    );
 
     let directory_revision = mutation::create_directory(&root, &["created-dir"])
         .unwrap_or_else(|err| panic!("create directory failed: {err:?}"));
@@ -64,7 +67,10 @@ fn create_file_and_directory_are_handle_relative_and_create_only() {
         serverfs_windows_native::ffi::OpenKind::Directory,
     )
     .expect("resolve created directory");
-    assert_eq!(metadata::revision_of(&directory).unwrap(), directory_revision);
+    assert_eq!(
+        metadata::revision_of(&directory).unwrap(),
+        directory_revision
+    );
     assert_eq!(
         mutation::create_directory(&root, &["created-dir"]),
         Err(NativeError::AlreadyExists)
@@ -73,7 +79,12 @@ fn create_file_and_directory_are_handle_relative_and_create_only() {
         std::fs::read_dir(&sandbox.0)
             .unwrap()
             .filter_map(Result::ok)
-            .filter(|entry| entry.file_name().to_string_lossy().starts_with(".serverfs-tmp-"))
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".serverfs-tmp-")
+            })
             .count(),
         0
     );
