@@ -776,6 +776,14 @@ Delete remains:
 - no “force” option;
 - reparse objects rejected.
 
+### 19.4 Concurrency boundary
+
+Windows and Linux make the same concurrency claim. ServerFS-coordinated mutations are serialized by the process-global mutation lock; a held target object is revision/identity checked again immediately before publication or deletion; and publication itself is atomic. Neither backend claims an atomic compare-and-swap against arbitrary non-cooperating same-user processes across the final-check-to-commit interval: POSIX rename and ordinary Windows rename do not accept an expected destination file ID or revision as a commit condition. This is the existing Linux `mutations.py` boundary as well as the Windows boundary; neither may be described as providing the stronger guarantee.
+
+Windows should narrow this interval where practical. Mutation target handles should use restrictive sharing that denies new ordinary WRITE and DELETE/rename sharing while the target is held, remain open through publication, and receive the final name-relative identity/revision check immediately adjacent to commit. Replacement uses a HANDLE-relative `FileRenameInformationEx` or equivalent operation with the required atomic replacement semantics and no pre-delete. Sharing-mode hardening is defense in depth only: it is not proof against every possible POSIX-style rename primitive or an arbitrary hostile same-user process, and it does not remove the final-check-to-commit limitation.
+
+Phase D1 implementation note (measured on WorkPC and Windows CI NTFS): delete-style targets, created directories and every temp are held with `FILE_SHARE_READ` only — new external WRITE opens and new DELETE opens (plain delete and path rename both require DELETE access) are refused while the handle lives. Replacement targets must be held with `FILE_SHARE_READ | FILE_SHARE_DELETE`: the atomic `FileRenameInformationEx` replacement cannot land on a destination whose open handles do not grant `FILE_SHARE_DELETE`, so the strict read-only mask would deadlock our own publication. Replacement therefore refuses new external WRITERS across the whole held window; an external delete or rename that exploits the retained DELETE share is caught by the name-relative final gate. ServerFS helper/gate opens keep the full sharing mask because NT sharing is checked in both directions: a new open must also cover the access already held.
+
 ## 20. Windows metadata preservation
 
 Windows metadata is not mapped to POSIX fields.
@@ -805,6 +813,8 @@ Conservative initial policy:
 - EFS or other semantics that cannot be safely preserved in the first release may be read-only/unsupported for mutation.
 
 The acceptance suite, not optimistic documentation, decides which metadata classes are writable in v0.10.0.
+
+Replacement metadata inspection and copying are handle-only. The implementation must fail closed before publication when it cannot establish that the target's named streams and other significant NTFS state are preserved. The ordinary edit contract includes supported basic metadata and owner/group/DACL when safely available without privileged SACL access; it does not claim SACL preservation unless SACL data was actually obtained and copied.
 
 Phase D1 keeps the public Windows `v1:<16hex>` revision material frozen. Replacement
 captures a separate internal preservation snapshot from the held target handle and
