@@ -151,3 +151,31 @@ jobs:
           tests/test_paths.py
           tests/test_config.py
           tests/test_workdirs.py -q
+
+      # dev_plan §30: "Release CI must additionally test the wheel as an
+      # artifact rather than only testing an in-tree debug build." The wheel
+      # is built with maturin (abi3-py312, Cargo owns the version), then
+      # installed into a CLEAN uv venv together with the project. No
+      # PYTHONPATH and no pyd-staging: only the wheel provides the native
+      # module, proving end users get a usable backend from the wheel alone.
+      - name: maturin wheel build (release, abi3, locked)
+        working-directory: native/windows
+        run: uv tool run --from maturin==1.8.2 maturin build --release --features pyo3 --locked
+        shell: pwsh
+
+      - name: wheel artifact acceptance (clean env, no PYTHONPATH)
+        run: |
+          $wheel = (Get-ChildItem native/windows/target/wheels/*.whl).FullName
+          uv venv --python 3.12 .venv-wheel
+          uv pip install --python .venv-wheel/Scripts/python.exe $wheel pytest
+          uv pip install --python .venv-wheel/Scripts/python.exe -e .
+          Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+          .venv-wheel/Scripts/python.exe -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py -q
+        shell: pwsh
+
+      - name: upload native wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: serverfs-windows-native-wheel
+          path: native/windows/target/wheels/*.whl
+          if-no-files-found: error
