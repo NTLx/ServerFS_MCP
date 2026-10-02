@@ -23,7 +23,7 @@ def test_native_serverfs_stdio_initialize_tools_read_and_stat(tmp_path: Path) ->
     async def exercise() -> None:
         root = tmp_path / "Windows Native Workdir"
         root.mkdir()
-        (root / "hello.txt").write_text("native stdio works\n", encoding="utf-8")
+        (root / "hello.txt").write_bytes(b"native stdio works\n")
         config = tmp_path / "serverfs.toml"
         config.write_text(
             f'[[workdirs]]\nalias = "repo"\npath = {json.dumps(str(root))}\nread_only = true\n',
