@@ -6,7 +6,7 @@
 
 use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows_sys::Wdk::Storage::FileSystem::{
-    NtCreateFile, NtSetInformationFile, FileRenameInformation, FILE_CREATE, FILE_DIRECTORY_FILE,
+    FileRenameInformation, NtCreateFile, NtSetInformationFile, FILE_CREATE, FILE_DIRECTORY_FILE,
     FILE_ID_BOTH_DIR_INFORMATION, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT,
     FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT,
 };
@@ -234,8 +234,7 @@ pub fn rename_no_replace(
     let root = parent.as_raw() as usize;
     info[root_offset..root_offset + std::mem::size_of::<HANDLE>()]
         .copy_from_slice(&root.to_ne_bytes()[..std::mem::size_of::<HANDLE>()]);
-    info[length_offset..name_offset]
-        .copy_from_slice(&(file_name_bytes as u32).to_ne_bytes());
+    info[length_offset..name_offset].copy_from_slice(&(file_name_bytes as u32).to_ne_bytes());
     for (index, unit) in final_name.iter().enumerate() {
         let offset = name_offset + index * 2;
         info[offset..offset + 2].copy_from_slice(&unit.to_ne_bytes());
