@@ -788,3 +788,65 @@ fn object_id_fail_closed_path_is_positively_covered_or_privilege_pinned() {
             .unwrap();
     assert_eq!(recheck.revision(), after);
 }
+
+#[test]
+fn delete_file_refuses_a_target_the_process_cannot_read_like_linux() {
+    // Product-property parity (mutations contract): "delete_file refuses a
+    // file the process cannot read — directory write permission alone must
+    // not delete it". The delete open carries FILE_READ_DATA, so a
+    // read-denied file is refused at open with ACCESS_DENIED and nothing
+    // is marked for deletion. The DACL is changed with icacls on the
+    // sandbox file only (owner keeps implicit WRITE_DAC, so the entry is
+    // restored and removed inside the sandbox afterwards).
+    let sandbox = Sandbox::new("delete_readability");
+    let root = sandbox.open();
+    let revision = mutation::create_bytes(&root, &["unreadable.bin"], b"data").unwrap();
+    let path = sandbox.root.join("unreadable.bin");
+
+    let user = String::from_utf8(
+        std::process::Command::new("whoami")
+            .output()
+            .expect("whoami")
+            .stdout,
+    )
+    .expect("ascii user")
+    .trim()
+    .to_string();
+    let outcome = std::process::Command::new("icacls")
+        .arg(&path)
+        .arg("/deny")
+        .arg(format!("{user}:(RD)"))
+        .output()
+        .expect("icacls deny");
+    assert!(
+        outcome.status.success(),
+        "icacls deny failed: {}",
+        String::from_utf8_lossy(&outcome.stdout)
+    );
+
+    let denial = mutation::delete_file(&root, &["unreadable.bin"], &revision).unwrap_err();
+    assert_eq!(
+        denial,
+        NativeError::AccessDenied,
+        "an unreadable file must not be deletable (Linux parity)"
+    );
+    // the test process cannot read the denied file either: existence only
+    assert!(path.exists(), "nothing was deleted");
+
+    let cleared = std::process::Command::new("icacls")
+        .arg(&path)
+        .arg("/remove:d")
+        .arg(&user)
+        .output()
+        .expect("icacls restore");
+    assert!(
+        cleared.status.success(),
+        "icacls restore failed: {}",
+        String::from_utf8_lossy(&cleared.stdout)
+    );
+    let (bytes, deleted_revision) =
+        mutation::delete_file(&root, &["unreadable.bin"], &revision).unwrap();
+    assert_eq!(bytes, 4);
+    assert_eq!(deleted_revision, revision);
+    assert!(!path.exists());
+}
