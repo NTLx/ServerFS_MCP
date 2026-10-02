@@ -13,6 +13,9 @@ dependencies = [
     "pydantic>=2.7",
 ]
 
+[project.scripts]
+serverfs = "serverfs_mcp.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",

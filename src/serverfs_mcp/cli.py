@@ -1,15 +1,13 @@
-"""serverfs CLI skeleton (v0.10 Phase A, §26).
+"""Native ServerFS CLI (v0.10, §26).
 
 Minimal stdlib-argparse command line for native deployments:
 
     serverfs serve --config serverfs.toml
     serverfs doctor --config serverfs.toml
 
-Phase A provides config parsing, startup wiring and the doctor skeleton on
-the Linux platform only; the native stdio transport and Windows backend
-arrive in later phases. ``serve`` intentionally refuses to start a native
-listener until the platform dispatch exists — a half-wired native service
-would silently run the wrong filesystem kernel.
+Native serving uses the same MCP tools and platform backend dispatch as the
+Docker service. Agent Bridge and file ingress remain disabled in this native
+profile.
 
 Output discipline (§27): MCP frames only on stdout; all structured logs go
 to stderr. Doctor prints a human report to stderr so stdout stays reserved
@@ -45,6 +43,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor", help="Report configuration/platform diagnostics (read-only)")
     doctor.add_argument("--config", required=True, type=Path, help="Path to serverfs.toml")
+
+    tunnel = sub.add_parser("tunnel", help="Run the official tunnel-client with native ServerFS")
+    tunnel.add_argument("--config", required=True, type=Path, help="Path to serverfs.toml")
+    tunnel.add_argument(
+        "--env-file", type=Path, help="Proxy settings file (default: sibling .env, if present)"
+    )
+    tunnel.add_argument(
+        "--tunnel-client", required=True, type=Path, help="Path to official tunnel-client.exe"
+    )
+    tunnel.add_argument("--tunnel-id", required=True, help="OpenAI tunnel_... identifier")
+    tunnel.add_argument("--api-key-file", required=True, type=Path, help="Control-plane key file")
     return parser
 
 
@@ -62,24 +71,41 @@ def _load(path: Path):
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    """Serve entry point: parse config, then run the platform dispatch.
+    """Run the shared MCP tool registration over native stdio."""
+    if sys.platform != "win32":
+        return _fail("native serve is supported only on Windows")
+    workdirs, native_settings = _load(args.config)
+    from .config import Settings
+    from .main import create_server
+    from .workdirs import WorkdirRegistry
 
-    Phase A stops after parsing: the native stdio transport (Phase E) and
-    the Windows backend (Phase B+) do not exist yet, and silently serving
-    the Linux streamable-HTTP topology from a native config would be a
-    different, undocumented deployment.
-    """
-    workdirs, server_settings = _load(args.config)
-    jsonlog.set_level(server_settings.log_level)
+    settings = Settings(log_level=native_settings.log_level)
+    registry = WorkdirRegistry(workdirs)
+    jsonlog.set_level(settings.log_level)
     jsonlog.info(
         "native_serve_requested",
         workdirs=len(workdirs),
         read_write_workdirs=sum(1 for w in workdirs if not w.read_only),
         platform=sys.platform,
     )
-    return _fail(
-        "native serve is not available in Phase A; use the Linux Docker deployment (compose.yml)"
-    )
+    server = create_server(settings, registry)
+    server.run("stdio")
+    return 0
+
+
+def cmd_tunnel(args: argparse.Namespace) -> int:
+    from .native_tunnel import run_native_tunnel
+
+    try:
+        return run_native_tunnel(
+            config_path=args.config,
+            env_file=args.env_file,
+            tunnel_client=args.tunnel_client,
+            tunnel_id=args.tunnel_id,
+            api_key_file=args.api_key_file,
+        )
+    except (OSError, ValueError) as exc:
+        return _fail(str(exc))
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
@@ -98,12 +124,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"config: FAIL — {exc}", file=sys.stderr)
         return 2
     print(f"config: OK ({args.config})", file=sys.stderr)
-    print("backend: linux (Phase A seam; no platform dispatch yet)", file=sys.stderr)
+    backend = {"win32": "windows", "linux": "linux"}.get(sys.platform, "unsupported")
+    print(f"backend: {backend}", file=sys.stderr)
     for wd in workdirs:
         access = "read-write" if not wd.read_only else "read-only"
         print(f"workdir: {wd.alias} ({access})", file=sys.stderr)
     print(
-        "doctor: config-level checks only in Phase A (root probes: not implemented)",
+        "doctor: config-level checks only (root probes: not implemented)",
         file=sys.stderr,
     )
     return 0
@@ -116,6 +143,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_serve(args)
     if args.command == "doctor":
         return cmd_doctor(args)
+    if args.command == "tunnel":
+        return cmd_tunnel(args)
     parser.error(f"unknown command {args.command!r}")
 
 

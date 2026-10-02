@@ -1,8 +1,7 @@
-"""Tests for the serverfs CLI skeleton (v0.10 Phase A, §26).
+"""Tests for native CLI argument wiring and fail-closed behavior.
 
-Focus: argument wiring, fail-closed config errors, the Phase A serve
-refusal, and the stdout/stderr discipline (§27) — doctor diagnostics go to
-stderr so stdout remains protocol-clean for the future stdio transport.
+Focus: argument wiring, unsupported-platform refusal, config errors and
+stdout/stderr discipline — doctor diagnostics never enter protocol stdout.
 """
 
 from __future__ import annotations
@@ -35,16 +34,16 @@ def config_path(tmp_path: Path) -> Path:
 
 
 class TestServe:
-    def test_serve_refuses_in_phase_a(self, config_path: Path) -> None:
-        # Phase A must not silently serve the Linux streamable-HTTP topology
-        # under a native config: that would be an undocumented deployment.
+    def test_serve_refuses_on_non_windows(self, config_path: Path, monkeypatch) -> None:
+        monkeypatch.setattr("serverfs_mcp.cli.sys.platform", "linux")
         err = io.StringIO()
         with redirect_stderr(err):
             code = main(["serve", "--config", str(config_path)])
         assert code == 2
-        assert "not available in Phase A" in err.getvalue()
+        assert "supported only on Windows" in err.getvalue()
 
-    def test_serve_bad_config_fails_closed(self, tmp_path: Path) -> None:
+    def test_serve_bad_config_fails_closed(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setattr("serverfs_mcp.cli.sys.platform", "win32")
         bad = tmp_path / "bad.toml"
         bad.write_text('[[workdirs]]\nalias = "x"\npath = "relative"\n', encoding="utf-8")
         err = io.StringIO()
@@ -54,7 +53,8 @@ class TestServe:
         assert excinfo.value.code == 2
         assert "configuration error" in err.getvalue()
 
-    def test_serve_missing_config_fails_closed(self, tmp_path: Path) -> None:
+    def test_serve_missing_config_fails_closed(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setattr("serverfs_mcp.cli.sys.platform", "win32")
         err = io.StringIO()
         with redirect_stderr(err):
             with pytest.raises(SystemExit) as excinfo:
