@@ -370,6 +370,8 @@ fn concurrent_readers_never_observe_partial_replacement() {
     let mut revision = mutation::create_bytes(&root, &["large.bin"], &first).unwrap();
     let stop = Arc::new(AtomicBool::new(false));
     let reader_stop = Arc::clone(&stop);
+    let stable_reads = Arc::new(AtomicUsize::new(0));
+    let reader_stable_reads = Arc::clone(&stable_reads);
     let root_path = sandbox.root.clone();
     let first_reader = first.clone();
     let second_reader = second.clone();
@@ -381,9 +383,17 @@ fn concurrent_readers_never_observe_partial_replacement() {
                 &read_root,
                 &["large.bin"],
                 2 * 1024 * 1024,
-            )
-            .unwrap();
-            assert!(read.data == first_reader || read.data == second_reader);
+            );
+            match read {
+                Ok(read) => {
+                    assert!(read.data == first_reader || read.data == second_reader);
+                    reader_stable_reads.fetch_add(1, Ordering::Relaxed);
+                }
+                // The read API refuses to return bytes when its revision
+                // changes during the read transaction.
+                Err(NativeError::ChangedDuringRead) => {}
+                Err(error) => panic!("unexpected concurrent read error: {error:?}"),
+            }
         }
     });
     for index in 0..50 {
@@ -392,6 +402,7 @@ fn concurrent_readers_never_observe_partial_replacement() {
     }
     stop.store(true, Ordering::Relaxed);
     reader.join().unwrap();
+    assert!(stable_reads.load(Ordering::Relaxed) > 0);
 }
 
 #[test]
