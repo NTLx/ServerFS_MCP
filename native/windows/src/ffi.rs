@@ -6,8 +6,9 @@
 
 use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows_sys::Wdk::Storage::FileSystem::{
-    NtCreateFile, NtQueryEaFile, FILE_CREATE, FILE_DIRECTORY_FILE, FILE_ID_BOTH_DIR_INFORMATION,
-    FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT,
+    FileRenameInformation, NtCreateFile, NtQueryEaFile, NtSetInformationFile, FILE_CREATE,
+    FILE_DIRECTORY_FILE, FILE_ID_BOTH_DIR_INFORMATION, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
+    FILE_OPEN_REPARSE_POINT, FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT,
 };
 use windows_sys::Win32::Foundation::{GetLastError, HANDLE, UNICODE_STRING};
 use windows_sys::Win32::Security::Cryptography::{
@@ -22,10 +23,10 @@ use windows_sys::Win32::Security::{
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FileAttributeTagInfo, FileBasicInfo, FileDispositionInfo, FileIdBothDirectoryInfo,
-    FileIdBothDirectoryRestartInfo, FileIdInfo, FileRenameInfo, FileStandardInfo, FileStreamInfo,
+    FileIdBothDirectoryRestartInfo, FileIdInfo, FileStandardInfo, FileStreamInfo,
     GetFileInformationByHandleEx, ReadFile, SetFileInformationByHandle, SetFilePointerEx,
     WriteFile, FILE_ATTRIBUTE_TAG_INFO, FILE_BASIC_INFO, FILE_BEGIN, FILE_DISPOSITION_INFO,
-    FILE_ID_INFO, FILE_RENAME_INFO, FILE_STANDARD_INFO,
+    FILE_ID_INFO, FILE_STANDARD_INFO,
 };
 use windows_sys::Win32::System::Ioctl::{FILE_OBJECTID_BUFFER, FSCTL_GET_OBJECT_ID};
 use windows_sys::Win32::System::IO::{DeviceIoControl, IO_STATUS_BLOCK};
@@ -316,11 +317,11 @@ pub fn rename_relative(
     replace: bool,
 ) -> Result<(), NativeError> {
     let wide: Vec<u16> = name.encode_utf16().collect();
-    let prefix = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
+    let prefix = std::mem::offset_of!(FILE_RENAME_INFORMATION, FileName);
     let size = prefix + wide.len() * std::mem::size_of::<u16>();
     let words = size.div_ceil(std::mem::size_of::<u64>());
     let mut storage = vec![0u64; words];
-    let info = storage.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+    let info = storage.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
     unsafe {
         (*info).Anonymous.ReplaceIfExists = replace as u8 != 0;
         (*info).RootDirectory = parent.as_raw();
@@ -331,12 +332,18 @@ pub fn rename_relative(
             wide.len(),
         );
     }
-    let result = unsafe {
-        SetFileInformationByHandle(source.as_raw(), FileRenameInfo, info.cast(), size as u32)
+    let mut iosb = IO_STATUS_BLOCK::default();
+    let status = unsafe {
+        NtSetInformationFile(
+            source.as_raw(),
+            &mut iosb,
+            info.cast(),
+            size as u32,
+            FileRenameInformation,
+        )
     };
-    if result == 0 {
-        let code = unsafe { GetLastError() };
-        return Err(NativeError::win32(code));
+    if status != 0 {
+        return Err(NativeError::nt(status as u32));
     }
     Ok(())
 }
