@@ -104,6 +104,13 @@ jobs:
         run: cargo test --locked
         shell: pwsh
 
+      - name: mutation metadata-fixture evidence (disclose fixture branch taken)
+        working-directory: native/windows
+        run: >
+          cargo test --locked --test ntfs_mutation -- --nocapture --test-threads=1
+          extended_attributes object_id_fail
+        shell: pwsh
+
       - name: cargo test (python-boundary unit tests)
         working-directory: native/windows
         run: cargo test --locked --features pyo3
