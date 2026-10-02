@@ -167,7 +167,7 @@ pub fn create_relative(
             &attrs,
             &mut iosb,
             std::ptr::null(),
-            0x0000_0080, // FILE_ATTRIBUTE_NORMAL
+            0, // default file attributes
             SHARE_ALL,
             FILE_CREATE,
             options,
