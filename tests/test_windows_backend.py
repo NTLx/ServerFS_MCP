@@ -240,14 +240,16 @@ class TestSessionMutations:
         stat = session.stat(self._resolve(wd, "dir"))
         assert stat.revision == created.revision
         (root / "dir" / ".serverfs-tmp-sentinel").write_bytes(b"x")
+        # whether adding a child moves a directory revision is a platform
+        # setting (measured to differ between NTFS hosts), so the emptiness
+        # gate is probed with the CURRENT revision, isolating that contract
+        current = session.stat(self._resolve(wd, "dir")).revision
         with pytest.raises((BackendError, MutationError)) as excinfo:
-            session.delete_directory(self._resolve(wd, "dir"), created.revision)
+            session.delete_directory(self._resolve(wd, "dir"), current)
         assert excinfo.value.code == "DIRECTORY_NOT_EMPTY"
         os.remove(root / "dir" / ".serverfs-tmp-sentinel")
-        # Windows directory revisions do not move when children change
-        # (frozen platform semantics), so the create-time revision is
-        # still the current one and the delete now succeeds
-        session.delete_directory(self._resolve(wd, "dir"), created.revision)
+        current = session.stat(self._resolve(wd, "dir")).revision
+        session.delete_directory(self._resolve(wd, "dir"), current)
         assert not (root / "dir").exists()
 
     def test_binary_channels_report_sha_and_revision(self, tmp_path: Path) -> None:
