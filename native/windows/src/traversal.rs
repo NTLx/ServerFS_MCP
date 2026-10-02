@@ -25,7 +25,10 @@ pub fn open_root(path: &str) -> Result<Handle, NativeError> {
 
 /// Open the trusted root with the additional child-creation rights needed
 /// by a read-write native session.
-pub fn open_root_with_create_access(path: &str, create_capable: bool) -> Result<Handle, NativeError> {
+pub fn open_root_with_create_access(
+    path: &str,
+    create_capable: bool,
+) -> Result<Handle, NativeError> {
     let wide = crate::path::encoded_root(path)?;
     let handle = ffi::open_root_by_name(&wide, create_capable)?;
     validate(&handle, OpenKind::Directory)?;

@@ -38,11 +38,12 @@ fn parent_and_leaf<'a>(
     let parent = if parents.is_empty() {
         None
     } else {
-        Some(traversal::resolve_create_parent(root, parents)
-            .map_err(|err| match err {
+        Some(
+            traversal::resolve_create_parent(root, parents).map_err(|err| match err {
                 NativeError::PathNotFound => NativeError::ParentNotFound,
                 other => other,
-            })?)
+            })?,
+        )
     };
     Ok((parent, leaf))
 }

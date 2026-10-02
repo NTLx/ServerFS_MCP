@@ -30,18 +30,13 @@ pyo3::create_exception!(
 fn error_pair(err: &NativeError) -> (&'static str, String) {
     match err {
         NativeError::PathNotFound => ("PATH_NOT_FOUND", "path not found".to_string()),
-        NativeError::ParentNotFound => (
-            "PARENT_NOT_FOUND",
-            "parent directory not found".to_string(),
-        ),
-        NativeError::AlreadyExists => (
-            "PATH_ALREADY_EXISTS",
-            "path already exists".to_string(),
-        ),
-        NativeError::ReadOnlyCapability => (
-            "WORKDIR_READ_ONLY",
-            "workdir is read-only".to_string(),
-        ),
+        NativeError::ParentNotFound => {
+            ("PARENT_NOT_FOUND", "parent directory not found".to_string())
+        }
+        NativeError::AlreadyExists => ("PATH_ALREADY_EXISTS", "path already exists".to_string()),
+        NativeError::ReadOnlyCapability => {
+            ("WORKDIR_READ_ONLY", "workdir is read-only".to_string())
+        }
         NativeError::ResourceExhausted => (
             "RESOURCE_EXHAUSTED",
             "native filesystem resources exhausted".to_string(),
