@@ -19,13 +19,24 @@ pub struct ListedEntry {
     pub metadata: NativeMetadata,
 }
 
-/// Enumerate one directory handle into report entries (unsorted,
-/// unfiltered: policy filtering and pagination stay in the session
-/// layer, mirroring the Linux backend split).
+/// Enumerate one directory handle into report entries (unsorted, with the
+/// internal mutation-temp prefix always hidden; other policy filtering and
+/// pagination stay in the session layer, mirroring the Linux backend split).
 pub fn list_directory(dir: &Handle) -> Result<Vec<ListedEntry>, NativeError> {
     let names = candidate_names(dir)?;
     let mut entries = Vec::with_capacity(names.len());
     for name in names {
+        // Mutation scratch files are internal even when hidden files are
+        // explicitly allowed. DirectoryScan itself stays raw so physical
+        // emptiness checks still count every entry.
+        if name
+            .get(..crate::mutation::INTERNAL_TEMP_PREFIX.len())
+            .is_some_and(|prefix| {
+                prefix.eq_ignore_ascii_case(crate::mutation::INTERNAL_TEMP_PREFIX)
+            })
+        {
+            continue;
+        }
         // Authoritative reopen. The link itself is opened as an object,
         // never followed: type comes from the reopened handle.
         let Ok(handle) = traversal::open_component_raw(dir, &name) else {

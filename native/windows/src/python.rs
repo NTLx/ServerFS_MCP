@@ -45,6 +45,27 @@ fn error_pair(err: &NativeError) -> (&'static str, String) {
             "reparse point is not allowed on this channel".to_string(),
         ),
         NativeError::AccessDenied => ("ACCESS_DENIED", "access denied".to_string()),
+        NativeError::PathAlreadyExists => {
+            ("PATH_ALREADY_EXISTS", "path already exists".to_string())
+        }
+        NativeError::DirectoryNotEmpty => {
+            ("DIRECTORY_NOT_EMPTY", "directory is not empty".to_string())
+        }
+        NativeError::MultipleHardlinksNotSupported => (
+            "MULTIPLE_HARDLINKS_NOT_SUPPORTED",
+            "multiple hard links are not supported".to_string(),
+        ),
+        NativeError::MetadataPreservationFailed => (
+            "METADATA_PRESERVATION_FAILED",
+            "file metadata cannot be safely preserved".to_string(),
+        ),
+        NativeError::RootMutationRefused => (
+            "ROOT_MUTATION_REFUSED",
+            "workdir root cannot be mutated".to_string(),
+        ),
+        NativeError::MutationIoError => ("MUTATION_IO_ERROR", "mutation I/O failed".to_string()),
+        NativeError::WorkdirReadOnly => ("WORKDIR_READ_ONLY", "workdir is read-only".to_string()),
+        NativeError::RevisionConflict => ("REVISION_CONFLICT", "file revision changed".to_string()),
         NativeError::InvalidName => ("INVALID_NAME", "invalid component name".to_string()),
         NativeError::InvalidRoot => ("INVALID_ROOT", "invalid workdir root".to_string()),
         NativeError::FileTooLarge => ("FILE_TOO_LARGE", err.to_string()),
@@ -89,6 +110,19 @@ mod tests {
             (NativeError::IsADirectory, "NOT_A_FILE"),
             (NativeError::ReparsePoint, "REPARSE_POINT_NOT_ALLOWED"),
             (NativeError::AccessDenied, "ACCESS_DENIED"),
+            (NativeError::PathAlreadyExists, "PATH_ALREADY_EXISTS"),
+            (NativeError::DirectoryNotEmpty, "DIRECTORY_NOT_EMPTY"),
+            (
+                NativeError::MultipleHardlinksNotSupported,
+                "MULTIPLE_HARDLINKS_NOT_SUPPORTED",
+            ),
+            (
+                NativeError::MetadataPreservationFailed,
+                "METADATA_PRESERVATION_FAILED",
+            ),
+            (NativeError::MutationIoError, "MUTATION_IO_ERROR"),
+            (NativeError::WorkdirReadOnly, "WORKDIR_READ_ONLY"),
+            (NativeError::RevisionConflict, "REVISION_CONFLICT"),
             (NativeError::InvalidName, "INVALID_NAME"),
             (NativeError::InvalidRoot, "INVALID_ROOT"),
         ];
@@ -251,9 +285,57 @@ impl NativeWorkdirSession {
         let sha = crate::read::sha256_hex(&read.data);
         Ok((read.data, sha, read.metadata.revision()))
     }
+
+    /// Internal plain-data D1 primitive for the later Windows backend.
+    fn create_bytes(&self, parts: Vec<String>, bytes: Vec<u8>) -> Result<String, PyErr> {
+        self.ensure_mutable()?;
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        crate::mutation::create_bytes(&self.root.0, &refs, &bytes).map_err(map_error)
+    }
+
+    /// Internal plain-data D1 primitive for the later Windows backend.
+    fn replace_bytes(
+        &self,
+        parts: Vec<String>,
+        bytes: Vec<u8>,
+        expected_revision: &str,
+    ) -> Result<String, PyErr> {
+        self.ensure_mutable()?;
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        crate::mutation::replace_bytes(&self.root.0, &refs, &bytes, expected_revision)
+            .map_err(map_error)
+    }
+
+    /// Internal plain-data D1 primitive for the later Windows backend.
+    fn delete_file(&self, parts: Vec<String>, expected_revision: &str) -> Result<(), PyErr> {
+        self.ensure_mutable()?;
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        crate::mutation::delete_file(&self.root.0, &refs, expected_revision).map_err(map_error)
+    }
+
+    /// Internal plain-data D1 primitive for the later Windows backend.
+    fn create_directory(&self, parts: Vec<String>) -> Result<String, PyErr> {
+        self.ensure_mutable()?;
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        crate::mutation::create_directory(&self.root.0, &refs).map_err(map_error)
+    }
+
+    /// Internal plain-data D1 primitive for the later Windows backend.
+    fn delete_directory(&self, parts: Vec<String>, expected_revision: &str) -> Result<(), PyErr> {
+        self.ensure_mutable()?;
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        crate::mutation::delete_directory(&self.root.0, &refs, expected_revision).map_err(map_error)
+    }
 }
 
 impl NativeWorkdirSession {
+    fn ensure_mutable(&self) -> Result<(), PyErr> {
+        if self.read_only {
+            Err(map_error(NativeError::WorkdirReadOnly))
+        } else {
+            Ok(())
+        }
+    }
     /// Resolve `parts` strictly (reparse refused on every component,
     /// empty = the retained root itself) and run `body` on the handle.
     fn with_target<T>(
@@ -290,7 +372,12 @@ impl NativeWorkdirSession {
 /// directories — is refused as `INVALID_ROOT` without any normalization.
 #[pyfunction]
 fn open_workdir(root: &str, read_only: bool) -> Result<NativeWorkdirSession, PyErr> {
-    let handle = traversal::open_root(root).map_err(map_error)?;
+    let access = if read_only {
+        crate::ffi::DIR_TRAVERSE_ACCESS
+    } else {
+        crate::ffi::DIR_MUTATION_ACCESS
+    };
+    let handle = traversal::open_root_with_access(root, access).map_err(map_error)?;
     Ok(NativeWorkdirSession {
         root: RootHandle(handle),
         read_only,
@@ -305,4 +392,38 @@ fn serverfs_windows_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.py().get_type::<NativeSessionError>(),
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod mutation_read_only_tests {
+    use super::*;
+
+    #[test]
+    fn every_direct_session_mutation_refuses_read_only_workdir() {
+        let path = std::env::temp_dir().join(format!(
+            "serverfs_readonly_native_{}_{}",
+            std::process::id(),
+            std::sync::atomic::AtomicUsize::new(0)
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        let session = open_workdir(path.to_str().unwrap(), true).unwrap();
+        Python::with_gil(|_| {
+            let errors = [
+                session.create_bytes(vec!["a".into()], vec![]).map(|_| ()),
+                session
+                    .replace_bytes(vec!["a".into()], vec![], "v1:0000000000000000")
+                    .map(|_| ()),
+                session.delete_file(vec!["a".into()], "v1:0000000000000000"),
+                session.create_directory(vec!["a".into()]).map(|_| ()),
+                session.delete_directory(vec!["a".into()], "v1:0000000000000000"),
+            ];
+            for error in errors {
+                let error = error.unwrap_err();
+                assert!(error.to_string().contains("WORKDIR_READ_ONLY"));
+            }
+        });
+        drop(session);
+        std::fs::remove_dir_all(path).unwrap();
+    }
 }

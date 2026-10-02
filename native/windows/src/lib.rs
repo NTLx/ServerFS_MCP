@@ -34,6 +34,7 @@ pub mod error;
 pub mod ffi;
 pub mod handle;
 pub mod metadata;
+pub mod mutation;
 pub mod path;
 pub mod read;
 pub mod traversal;

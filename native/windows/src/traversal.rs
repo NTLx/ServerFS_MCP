@@ -20,8 +20,15 @@ use crate::path::NtName;
 /// Open the workdir root by name (the only name-resolving open allowed)
 /// and prove it is a real directory, not a reparse point.
 pub fn open_root(path: &str) -> Result<Handle, NativeError> {
+    open_root_with_access(path, ffi::DIR_TRAVERSE_ACCESS)
+}
+
+/// Open the single trusted root anchor with the exact access needed by the
+/// session role. Writable sessions include only the directory add rights
+/// used by relative create/publication operations.
+pub fn open_root_with_access(path: &str, access: u32) -> Result<Handle, NativeError> {
     let wide = crate::path::encoded_root(path)?;
-    let handle = ffi::open_root_by_name(&wide)?;
+    let handle = ffi::open_root_by_name(&wide, access)?;
     validate(&handle, OpenKind::Directory)?;
     Ok(handle)
 }
@@ -38,6 +45,19 @@ pub fn open_component(
         OpenKind::File => ffi::FILE_READ_ACCESS,
         OpenKind::Any => ffi::READ_ATTRIBUTES_ONLY,
     };
+    let mut unicode = nt_name.unicode_string();
+    let handle = ffi::open_relative(parent, &mut unicode, access, expect)?;
+    validate(&handle, expect)?;
+    Ok(handle)
+}
+
+pub fn open_component_with_access(
+    parent: &Handle,
+    name: &str,
+    expect: OpenKind,
+    access: u32,
+) -> Result<Handle, NativeError> {
+    let mut nt_name = NtName::new(name)?;
     let mut unicode = nt_name.unicode_string();
     let handle = ffi::open_relative(parent, &mut unicode, access, expect)?;
     validate(&handle, expect)?;
