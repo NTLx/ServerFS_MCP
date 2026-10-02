@@ -1,0 +1,28 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+# The Windows native kernel ships as its own wheel (dev_plan §24.2):
+# serverfs-mcp stays a pure Python product package and is never converted
+# to a maturin build. End users install this prebuilt wheel and need no
+# Rust, Cargo, MSVC Build Tools or Windows SDK.
+
+[project]
+name = "serverfs-windows-native"
+description = "ServerFS Windows native filesystem kernel (handle-capable read/mutation engine)"
+requires-python = ">=3.12"
+license = "MIT"
+classifiers = [
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Rust",
+    "Private :: Do Not Upload",
+]
+
+# The version is owned by Cargo.toml (0.10.0-dev normalizes to
+# 0.10.0.dev0); maturity, not duplication, keeps the two in step.
+
+[tool.maturin]
+features = ["pyo3"]
+module-name = "serverfs_windows_native"
+python-source = ""
+strip = true

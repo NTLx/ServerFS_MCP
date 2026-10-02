@@ -1,5 +1,6 @@
 .env
 .venv/
+.venv-wheel/
 __pycache__/
 .pytest_cache/
 .coverage
