@@ -119,13 +119,31 @@ def test_bad_quoting_errors_do_not_include_values(tmp_path: Path) -> None:
         [r"C:\Program Files\Python\python.exe", "-m", "serverfs_mcp.supervisor"],
         [r"C:\Users\A B\Python 3.12\python.exe", "a b", r"x\y\z"],
         [r"C:\Users\A B\Python,Tools\python.exe", "-c", "print(1,2,3)", r"D:\A B\x"],
+        [
+            (
+                r"C:\Program Files\bin,channel=main,http-proxy=x,url=x,"
+                r"unix-socket=x,client-cert=x,client-key=x.exe"
+            ),
+            "--config",
+            (
+                r"D:\Work Dir\cfg,channel=tools,http-proxy=p,url=u,"
+                r"unix-socket=s,client-cert=c,client-key=k.toml"
+            ),
+        ],
+        [
+            r"C:\Python 3.12\python.exe",
+            "-c",
+            "print(',channel=main,http-proxy=x,url=x,unix-socket=x,client-cert=x,client-key=x')",
+        ],
         [r"C:\a\quoted\app.exe", 'argument with "quotes"', "trailing\\"],
         [r"\\server\share\Program Files\python.exe", "--config", r"D:\Work Dir\serverfs.toml"],
     ],
 )
 def test_tunnel_command_encoder_round_trips_upstream_parser(argv: list[str]) -> None:
-    entry = "command=" + encode_tunnel_command_argv(argv)
-    assert _parse_upstream_stdio_argv(_parse_upstream_mcp_command_entry(entry)) == argv
+    # Upstream pkg/runtimeconfig/config.go sends unqualified values directly
+    # to parseCommandArgv; qualified entries scan raw commas before parsing.
+    encoded = encode_tunnel_command_argv(argv)
+    assert _parse_upstream_stdio_argv(encoded) == argv
 
 
 def _parse_upstream_stdio_argv(raw: str) -> list[str]:
@@ -165,17 +183,6 @@ def _parse_upstream_stdio_argv(raw: str) -> list[str]:
     if builder:
         args.append("".join(builder))
     return args
-
-
-def _parse_upstream_mcp_command_entry(entry: str) -> str:
-    """Port the current command= branch of tunnel-client's outer MCP parser."""
-    assert entry.startswith("command=")
-    raw_command = entry.removeprefix("command=").strip()
-    channel_marker = raw_command.rfind(",channel=")
-    if channel_marker >= 0:
-        raw_command = raw_command[:channel_marker].strip()
-    assert raw_command
-    return raw_command
 
 
 def test_native_proxy_url_matches_linux_percent_encoding_contract() -> None:
@@ -249,6 +256,9 @@ def test_tunnel_gets_proxy_only_in_internal_env_not_argv(tmp_path: Path, monkeyp
     env = captured["env"]
     assert isinstance(argv, list) and isinstance(env, dict)
     assert "--control-plane.http-proxy" not in argv
+    command_index = argv.index("--mcp.command")
+    assert argv[command_index + 1].startswith('"')
+    assert not argv[command_index + 1].startswith("command=")
     assert "pw#secret" not in " ".join(argv)
     assert "user@name" not in " ".join(argv)
     assert (

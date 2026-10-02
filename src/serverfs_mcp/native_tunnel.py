@@ -183,7 +183,7 @@ def run_native_tunnel(
         "--config",
         str(config_path.resolve()),
     ]
-    command_entry = "command=" + encode_tunnel_command_argv(child)
+    command_entry = encode_tunnel_command_argv(child)
     tunnel_argv = [
         str(tunnel_client),
         "run",
