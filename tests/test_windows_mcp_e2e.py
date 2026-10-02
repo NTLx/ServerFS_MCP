@@ -297,7 +297,11 @@ class TestAcceptanceClosure:
                     )
                 except AssertionError as exc:
                     text = str(exc)
-                    if "PATH_NOT_FOUND:" not in text:
+                    # both designed race outcomes are acceptable: the name
+                    # can vanish mid-round, and a read straddling an
+                    # external rewrite must abort with FILE_CHANGED (the
+                    # consistency guarantee itself — CI proved it fires)
+                    if "PATH_NOT_FOUND:" not in text and "FILE_CHANGED_DURING_READ:" not in text:
                         unexpected.append(text)
                     continue
                 # every successful read must describe ONE object snapshot.
@@ -502,7 +506,10 @@ class TestFindSearchE2E:
                 glob=None,
                 case_sensitive=True,
                 limit=10,
-                timeout_seconds=0.0,
+                # strictly past deadline: Windows time.monotonic() can have
+                # ~16ms granularity, so timeout_seconds=0 is only a coin
+                # flip; a negative budget makes the first check certain
+                timeout_seconds=-1.0,
                 max_file_bytes=1 << 20,
             )
         assert excinfo.value.code == "SEARCH_TIMEOUT"
