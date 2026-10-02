@@ -6,9 +6,10 @@
 
 use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows_sys::Wdk::Storage::FileSystem::{
-    FileRenameInformation, NtCreateFile, NtQueryEaFile, NtSetInformationFile, FILE_CREATE,
-    FILE_DIRECTORY_FILE, FILE_ID_BOTH_DIR_INFORMATION, FILE_NON_DIRECTORY_FILE, FILE_OPEN,
-    FILE_OPEN_REPARSE_POINT, FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT,
+    FileRenameInformation, FileRenameInformationEx, NtCreateFile, NtQueryEaFile,
+    NtSetInformationFile, FILE_CREATE, FILE_DIRECTORY_FILE, FILE_ID_BOTH_DIR_INFORMATION,
+    FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT, FILE_RENAME_INFORMATION,
+    FILE_RENAME_POSIX_SEMANTICS, FILE_RENAME_REPLACE_IF_EXISTS, FILE_SYNCHRONOUS_IO_NONALERT,
 };
 use windows_sys::Win32::Foundation::{GetLastError, HANDLE, UNICODE_STRING};
 use windows_sys::Win32::Security::Cryptography::{
@@ -322,8 +323,18 @@ pub fn rename_relative(
     let words = size.div_ceil(std::mem::size_of::<u64>());
     let mut storage = vec![0u64; words];
     let info = storage.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+    let information_class = if replace {
+        unsafe {
+            (*info).Anonymous.Flags = FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS;
+        }
+        FileRenameInformationEx
+    } else {
+        unsafe {
+            (*info).Anonymous.ReplaceIfExists = false;
+        }
+        FileRenameInformation
+    };
     unsafe {
-        (*info).Anonymous.ReplaceIfExists = replace as u8 != 0;
         (*info).RootDirectory = parent.as_raw();
         (*info).FileNameLength = (wide.len() * 2) as u32;
         std::ptr::copy_nonoverlapping(
@@ -339,7 +350,7 @@ pub fn rename_relative(
             &mut iosb,
             info.cast(),
             size as u32,
-            FileRenameInformation,
+            information_class,
         )
     };
     if status != 0 {
