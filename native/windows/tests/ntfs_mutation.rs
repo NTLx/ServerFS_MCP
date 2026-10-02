@@ -230,7 +230,10 @@ fn plain_ntfs_file_and_ordinary_security_metadata_are_preserved() {
     let replaced = traversal::resolve(&root, &["plain"], ffi::OpenKind::File).unwrap();
     let replaced_security = ffi::security_descriptor(&replaced).unwrap();
     assert_eq!(replaced_security.owner_group().unwrap(), original_sids);
-    assert_eq!(replaced_security, original_security);
+    // Semantic preservation, not raw byte identity: an inherited DACL that
+    // is re-applied as explicit DACL material legitimately loses NTFS'
+    // AUTO_INHERITED control marker (measured on WorkPC %TEMP%).
+    assert!(replaced_security.equivalent(&original_security));
     let replaced_basic = ffi::basic_info(&replaced).unwrap();
     assert_eq!(replaced_basic.CreationTime, original_basic.CreationTime);
     assert_eq!(replaced_basic.LastAccessTime, original_basic.LastAccessTime);
@@ -282,6 +285,23 @@ fn delete_and_directory_mutations_are_revision_guarded_and_nonrecursive() {
         NativeError::PathAlreadyExists
     );
     std::fs::write(sandbox.root.join("new-dir").join("child"), b"x").unwrap();
+    // Platform semantics, measured on WorkPC NTFS: unlike the POSIX line,
+    // adding a child does NOT move a directory's LastWriteTime, so a child
+    // write cannot make a stored directory revision stale here. Produce
+    // the staleness the same way an explicit metadata change would.
+    let touch = traversal::open_component_with_access(
+        &root,
+        "new-dir",
+        ffi::OpenKind::Directory,
+        // READ_ATTRIBUTES is required by the traversal validator on the
+        // handle it just opened, on top of the writer right under test.
+        ffi::FILE_WRITE_ATTRIBUTES_ACCESS | ffi::FILE_READ_ATTRIBUTES_ACCESS,
+    )
+    .unwrap();
+    let mut current_basic = ffi::basic_info(&touch).unwrap();
+    current_basic.LastWriteTime += 10_000_000;
+    ffi::set_basic(&touch, &current_basic).unwrap();
+    drop(touch);
     assert_eq!(
         mutation::delete_directory(&root, &["new-dir"], &dir_rev).unwrap_err(),
         NativeError::RevisionConflict
@@ -458,4 +478,68 @@ fn required_symlink_cases_are_executed_by_windows_ci() {
     );
     assert_eq!(std::fs::read(external.join("outside")).unwrap(), b"safe");
     assert!(Path::new(&external).exists());
+}
+
+#[test]
+fn held_mutation_target_share_blocks_ordinary_external_mutation_opens() {
+    // Windows sharing-mode defense-in-depth evidence against ordinary
+    // Win32 writers (dev_plan §19.4): while the mutation kernel holds a
+    // delete-style target open with FILE_SHARE_READ, new ordinary WRITE
+    // opens and new DELETE opens (both plain deletion and path-based
+    // rename require DELETE access) are refused, while ServerFS read
+    // channels keep serving the object. After the handle is released the
+    // same operations succeed.
+    //
+    // This does NOT prove atomic compare-and-swap against every hostile
+    // same-user process or every POSIX-style rename primitive; the
+    // name-relative final gate is what detects drift those paths cause.
+    let sandbox = Sandbox::new("held_share");
+    let root = sandbox.open();
+    let target = sandbox.root.join("h.txt");
+    std::fs::write(&target, b"payload").unwrap();
+    let held = traversal::open_component_with_share(
+        &root,
+        "h.txt",
+        ffi::OpenKind::File,
+        ffi::FILE_DELETE_ACCESS | ffi::FILE_READ_ATTRIBUTES_ACCESS | ffi::SYNCHRONIZE_ACCESS,
+        ffi::FILE_SHARE_READ,
+    )
+    .expect("mutation-style held open");
+
+    // Ordinary external programs are simulated with path-based Win32
+    // APIs here deliberately: that is the test stimulus, not the
+    // production kernel.
+    let write_open = std::fs::OpenOptions::new().write(true).open(&target);
+    assert_eq!(
+        write_open.err().and_then(|e| e.raw_os_error()),
+        Some(32), // ERROR_SHARING_VIOLATION
+        "new external WRITE must be refused while the target is held"
+    );
+    let rename = std::fs::rename(&target, sandbox.root.join("moved.txt"));
+    assert_eq!(
+        rename.err().and_then(|e| e.raw_os_error()),
+        Some(32),
+        "ordinary external rename must be refused while the target is held"
+    );
+    let delete = std::fs::remove_file(&target);
+    assert_eq!(
+        delete.err().and_then(|e| e.raw_os_error()),
+        Some(32),
+        "ordinary external delete must be refused while the target is held"
+    );
+
+    // The read channels stay compatible with the held restrictive share.
+    let read = serverfs_windows_native::read::read_bounded(&root, &["h.txt"], 64).unwrap();
+    assert_eq!(read.data, b"payload");
+
+    drop(held);
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&target)
+        .expect("WRITE open succeeds after release")
+        .set_len(0)
+        .unwrap();
+    std::fs::rename(&target, sandbox.root.join("moved.txt")).expect("rename after release");
+    std::fs::remove_file(sandbox.root.join("moved.txt")).expect("delete after release");
+    assert!(!target.exists());
 }

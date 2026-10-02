@@ -73,6 +73,36 @@ impl SecurityDescriptor {
         unsafe { std::slice::from_raw_parts(self.words.as_ptr().cast(), self.byte_len) }
     }
 
+    /// True when both descriptors carry the same owner, group, DACL
+    /// content, SACL presence and DACL-protection state, ignoring only
+    /// the control flags NTFS recomputes when a DACL is re-applied
+    /// (owner/group/DACL/SACL *DEFAULTED and AUTO_INHERIT(ED) markers).
+    ///
+    /// A file created through inheritance stores its inherited ACL with
+    /// `SE_DACL_AUTO_INHERITED`; re-applying byte-identical ACL material
+    /// legitimately records it as explicit instead. Comparing the raw
+    /// security-descriptor bytes without this mask would refuse every
+    /// replacement on such volumes (measured on WorkPC %TEMP% parents),
+    /// so equality here means "no preservable material was lost".
+    pub fn equivalent(&self, other: &Self) -> bool {
+        let a = self.bytes();
+        let b = other.bytes();
+        if a.len() != b.len() {
+            return false;
+        }
+        // Self-relative SD: control is the little-endian u16 at offset 2.
+        const VOLATILE_LOW: u8 = 0x01 | 0x02 | 0x08 | 0x20;
+        const VOLATILE_HIGH: u8 = 0x01 | 0x02 | 0x04 | 0x08;
+        a.iter().zip(b).enumerate().all(|(index, (x, y))| {
+            let mask = match index {
+                2 => VOLATILE_LOW,
+                3 => VOLATILE_HIGH,
+                _ => 0,
+            };
+            (x & !mask) == (y & !mask)
+        })
+    }
+
     pub fn owner_group(&self) -> Result<(Vec<u8>, Vec<u8>), NativeError> {
         let mut owner: PSID = std::ptr::null_mut();
         let mut group: PSID = std::ptr::null_mut();
@@ -119,7 +149,15 @@ pub const DIR_TRAVERSE_ACCESS: u32 = 0x0000_00A1; // FILE_LIST_DIRECTORY|FILE_TR
 pub const FILE_READ_ACCESS: u32 = 0x0012_0089; // FILE_GENERIC_READ (includes READ_ATTRIBUTES)
 pub const READ_ATTRIBUTES_ONLY: u32 = 0x0000_0080;
 
-const SHARE_ALL: u32 = 0x0000_0007; // READ|WRITE|DELETE
+// Win32 share-mode bits (dev_plan §19.4): ordinary traversal opens keep
+// SHARE_ALL so concurrent ServerFS readers never block each other, while
+// held mutation targets restrict sharing to deny new external WRITE and
+// DELETE/rename opens for as long as the target handle is kept.
+pub const FILE_SHARE_READ: u32 = 0x0000_0001;
+pub const FILE_SHARE_WRITE: u32 = 0x0000_0002;
+pub const FILE_SHARE_DELETE: u32 = 0x0000_0004;
+
+const SHARE_ALL: u32 = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
 /// Create-options combinations for the three component expectations.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -166,12 +204,28 @@ pub fn open_root_by_name(wide_root: &[u16], access: u32) -> Result<Handle, Nativ
 
 /// Open one already-validated component relative to a trusted parent
 /// directory handle. The prototype surface opens existing objects only;
-/// creation dispositions arrive with the mutation kernel.
+/// creation dispositions arrive with the mutation kernel. Ordinary
+/// traversal keeps the full SHARE_ALL semantics so concurrent ServerFS
+/// readers never block each other.
 pub fn open_relative(
     parent: &Handle,
     name: &mut UNICODE_STRING,
     access: u32,
     kind: OpenKind,
+) -> Result<Handle, NativeError> {
+    open_relative_with_share(parent, name, access, kind, SHARE_ALL)
+}
+
+/// Share-mode variant used by the mutation kernel for handles it holds
+/// across a mutation window. The share mask is chosen by the caller, not
+/// defaulted: held mutation targets deliberately restrict sharing
+/// (§19.4 defense in depth).
+pub fn open_relative_with_share(
+    parent: &Handle,
+    name: &mut UNICODE_STRING,
+    access: u32,
+    kind: OpenKind,
+    share_mode: u32,
 ) -> Result<Handle, NativeError> {
     let mut iosb = IO_STATUS_BLOCK::default();
     let attrs = OBJECT_ATTRIBUTES {
@@ -192,7 +246,7 @@ pub fn open_relative(
             &mut iosb,
             std::ptr::null(), // AllocationSize: ignored for open
             0,                // FileAttributes
-            SHARE_ALL,
+            share_mode,
             FILE_OPEN,
             create_options_for(kind),
             std::ptr::null(), // EaBuffer
@@ -207,12 +261,15 @@ pub fn open_relative(
 
 /// Create one new file or directory relative to a verified parent handle.
 /// `FILE_CREATE` is atomic and fails if any object already has the name.
+/// The caller supplies the share mask: mutation temps are held with the
+/// same restrictive semantics as replacement targets.
 pub fn create_relative(
     parent: &Handle,
     name: &mut UNICODE_STRING,
     access: u32,
     directory: bool,
     attributes: u32,
+    share_mode: u32,
 ) -> Result<Handle, NativeError> {
     let mut iosb = IO_STATUS_BLOCK::default();
     let attrs = OBJECT_ATTRIBUTES {
@@ -239,7 +296,7 @@ pub fn create_relative(
             &mut iosb,
             std::ptr::null(),
             attributes,
-            SHARE_ALL,
+            share_mode,
             FILE_CREATE,
             options,
             std::ptr::null(),

@@ -64,6 +64,24 @@ pub fn open_component_with_access(
     Ok(handle)
 }
 
+/// Mutation-kernel variant: same strict validation, but the caller fixes
+/// the share mode because held targets harden the mutation window
+/// (§19.4). Ordinary traversal never calls this with anything but the
+/// full sharing mask.
+pub fn open_component_with_share(
+    parent: &Handle,
+    name: &str,
+    expect: OpenKind,
+    access: u32,
+    share_mode: u32,
+) -> Result<Handle, NativeError> {
+    let mut nt_name = NtName::new(name)?;
+    let mut unicode = nt_name.unicode_string();
+    let handle = ffi::open_relative_with_share(parent, &mut unicode, access, expect, share_mode)?;
+    validate(&handle, expect)?;
+    Ok(handle)
+}
+
 /// Open one component relative to a trusted parent WITHOUT the refusal
 /// filters: the caller classifies the object from its own handle
 /// attributes. Used for report channels (stat/list entries) where a
