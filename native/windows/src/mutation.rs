@@ -59,8 +59,12 @@ const SAFE_BASIC_ATTRIBUTES: u32 = FILE_ATTRIBUTE_READONLY
 // The original is opened only for revision and preservation queries. The
 // temporary source handle carries DELETE for the relative replacement rename.
 const REPLACEMENT_ACCESS: u32 = ffi::FILE_READ_ACCESS | ffi::FILE_READ_ATTRIBUTES_ACCESS;
-const DELETE_ACCESS: u32 =
-    ffi::FILE_READ_ATTRIBUTES_ACCESS | ffi::FILE_DELETE_ACCESS | ffi::SYNCHRONIZE_ACCESS;
+// Linux `delete_file` opens the target read-only (fdio open_regular_at) and
+// refuses a file the process cannot read before unlinking it — directory
+// write permission alone must never delete an unreadable file. FILE_READ_DATA
+// rides on the Windows delete open to enforce the same product property;
+// ACCESS_DENIED at open is the refusal, and nothing else is attempted.
+const DELETE_ACCESS: u32 = ffi::FILE_READ_ACCESS | ffi::FILE_DELETE_ACCESS;
 const DIRECTORY_DELETE_ACCESS: u32 = DELETE_ACCESS | 0x0000_0001;
 const TEMP_ACCESS: u32 = ffi::FILE_WRITE_DATA_ACCESS
     | ffi::FILE_READ_ATTRIBUTES_ACCESS
