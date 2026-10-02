@@ -4,8 +4,9 @@ These exception classes carry the agent-facing ``code``/``message`` pair and
 nothing else: no file descriptors, no errno, no platform objects. The tool
 layer maps them to ``CODE: message`` ToolErrors, so it must be able to
 recognize them without importing any Linux-only kernel module (§11 import
-safety). Platform kernels raise them; the mutation kernel
-(``mutations.py``) defines its subclasses on top of ``MutationError``.
+safety). Platform kernels raise them; the mutation failure subclasses are
+defined here (not in ``mutations.py``) precisely so every platform backend
+shares one coded-error vocabulary without importing the Linux fdio kernel.
 """
 
 from __future__ import annotations
