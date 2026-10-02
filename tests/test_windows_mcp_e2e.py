@@ -785,6 +785,12 @@ class TestMutationsE2E:
         assert error_code(msg) == "DIRECTORY_NOT_EMPTY"
         (rw_root / "dir" / ".secret").unlink()
         rev = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "dir"})["revision"]
+        stale = call_error(
+            rw_server,
+            "delete_directory",
+            {"workdir": "rw", "path": "dir", "expected_revision": "v1:0000000000000000"},
+        )
+        assert error_code(stale) == "REVISION_CONFLICT"
         deleted = call_success(
             rw_server,
             "delete_directory",
