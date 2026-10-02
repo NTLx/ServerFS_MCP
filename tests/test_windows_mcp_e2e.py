@@ -489,8 +489,8 @@ class TestFindSearchE2E:
         assert result["matches"][0]["text"] == "  spaced NEEDLE  "
 
     def test_search_timeout_code_parity(self, wd_root) -> None:
-        # session-level: deadline of zero trips the first loop check and
-        # must surface exactly the BackendError code the Linux searcher uses
+        # session-level: a strictly past deadline must surface exactly the
+        # BackendError code the Linux searcher uses
         from serverfs_mcp.backends import BackendError
         from serverfs_mcp.paths import DenyPolicy, resolve_workdir_path
         from serverfs_mcp.windows_backend import WindowsBackend
@@ -513,6 +513,47 @@ class TestFindSearchE2E:
                 max_file_bytes=1 << 20,
             )
         assert excinfo.value.code == "SEARCH_TIMEOUT"
+
+    def test_wide_tree_timeout_terminates_and_recovers(self, wd_root) -> None:
+        import time
+        from concurrent.futures import ThreadPoolExecutor
+
+        from serverfs_mcp.workdirs import EffectiveWorkdirPolicy
+
+        names = [f"w{i:04d}.txt" for i in range(2500)]
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            list(pool.map(lambda n: (wd_root / n).write_bytes(b"no match here\n"), names))
+        # 60 matching files scattered at the end of the walk order
+        for i in range(60):
+            (wd_root / names[2440 + i]).write_bytes(b"NEEDLE\n")
+
+        server = create_server(
+            Settings(search_timeout_seconds=0.05),
+            WorkdirRegistry([Workdir("test", wd_root, None, policy=EffectiveWorkdirPolicy())]),
+        )
+        started = time.monotonic()
+        msg = call_error(server, "search_text", {"workdir": "test", "query": "NEEDLE"})
+        elapsed = time.monotonic() - started
+        assert error_code(msg) == "SEARCH_TIMEOUT"
+        # must abort on the deadline, not after finishing the whole tree
+        assert elapsed < 5.0, f"deadline overshoot: {elapsed:.2f}s"
+
+        # the session keeps working after a timed-out search
+        ok = create_server(
+            Settings(),
+            WorkdirRegistry([Workdir("test", wd_root, None, policy=EffectiveWorkdirPolicy())]),
+        )
+        result = call_success(ok, "search_text", {"workdir": "test", "query": "NEEDLE"})
+        assert result["returned"] > 0
+
+    def test_find_max_walk_truncated(self, server, wd_root) -> None:
+        self._seed_tree(wd_root)
+        small_walk = create_server(
+            Settings(max_walk_entries=2),
+            WorkdirRegistry([Workdir("test", wd_root, None)]),
+        )
+        result = call_success(small_walk, "find_files", {"workdir": "test", "pattern": "*"})
+        assert result["truncated"] is True
 
 
 class TestRootRenameRetention:
