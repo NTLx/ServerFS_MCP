@@ -189,13 +189,20 @@ CONTROL_PLANE_API_KEY=rtk_...
 
 The tunnel is **outbound-only**: no public domain, no TLS certificate, no inbound firewall rule, no reverse proxy. The container connects out to OpenAI's control plane and forwards MCP traffic to `http://serverfs-mcp:8000/mcp` over the internal Docker network.
 
-If outbound access to `api.openai.com` requires an HTTP proxy, set
-`CONTROL_PLANE_HTTP_PROXY` in `.env` to a URL reachable from the
-`openai-tunnel` container, for example `http://proxy.internal:7890`.
-This setting proxies the tunnel control plane only; the connection to
-`serverfs-mcp` stays on the internal Docker network. A proxy bound only to
-the host's `127.0.0.1` is normally unreachable from a container. Leave the
-variable empty when no proxy is needed.
+The v0.10 proxy configuration contract is shared across platforms and supports
+HTTP proxy only. This PR implements the Linux Compose wiring first; Windows
+native launcher and tunnel-client wiring with the same fields is Phase E work.
+Set `SERVERFS_PROXY_HOST` and `SERVERFS_PROXY_PORT` in `.env`;
+leave both empty to disable the proxy. Set both `SERVERFS_PROXY_USERNAME` and
+`SERVERFS_PROXY_PASSWORD` empty for no authentication. A non-empty username
+enables authentication, and its password may be empty; a password without a
+username is invalid. The Linux Compose launcher safely encodes credentials
+when it derives the tunnel client's internal proxy URL. Proxy settings and
+credentials are passed only to `openai-tunnel`; the MCP connection remains on
+the internal Docker network.
+A proxy bound only to the host's `127.0.0.1` is normally unreachable from a
+container. Do not set `CONTROL_PLANE_HTTP_PROXY` in `.env`; it is an internal
+derived value used only by the tunnel client.
 
 To troubleshoot the tunnel, use the official client's own diagnostics (`tunnel-client doctor`, `/readyz`) rather than guessing.
 
