@@ -47,7 +47,18 @@ from collections.abc import Iterator
 from . import fdio
 from . import logging as jsonlog
 from .concurrency import mutation_lock
-from .errors import MutationError
+from .errors import (
+    DirectoryNotEmptyError,
+    FileChangedDuringReadError,
+    MetadataPreservationError,
+    MultipleHardlinksError,
+    MutationIOError,
+    NotAFileError,
+    ParentNotFoundError,
+    PathAlreadyExistsError,
+    RevisionConflictError,
+    WriteTooLargeError,
+)
 from .fdio import stat_at, unlink_at, walk_parent_dirs
 from .models import (
     CreateDirectoryResult,
@@ -58,90 +69,24 @@ from .models import (
     TextEdit,
     UploadBinaryFileResult,
 )
+from .mutation_text import UTF8_BOM as _UTF8_BOM
+from .mutation_text import (
+    apply_edits as _apply_edits,
+)
+from .mutation_text import (
+    decode_text as _decode_text,
+)
+from .mutation_text import (
+    encode_new_content as _encode_new_content,
+)
+from .mutation_text import (
+    validate_edits as _validate_edits,
+)
 from .paths import ResolvedPath
 
 REVISION_PREFIX = "v1:"
 _REVISION_HEX_CHARS = 16
-_UTF8_BOM = b"\xef\xbb\xbf"
 _READ_CHUNK = 1 << 20
-
-
-# ---- coded, agent-safe errors ----
-
-
-class PathAlreadyExistsError(MutationError):
-    code = "PATH_ALREADY_EXISTS"
-    message = "target already exists; ServerFS never overwrites"
-
-
-class ParentNotFoundError(MutationError):
-    code = "PARENT_NOT_FOUND"
-    message = "parent directory does not exist; create it first"
-
-
-class NotAFileError(MutationError):
-    code = "NOT_A_FILE"
-    message = "target is not a regular file"
-
-
-class RevisionConflictError(MutationError):
-    code = "REVISION_CONFLICT"
-    message = "content changed since the revision you supplied; re-read and retry"
-
-
-class FileChangedDuringReadError(MutationError):
-    code = "FILE_CHANGED_DURING_READ"
-    message = "file changed while it was being read; retry"
-
-
-class EditConflictError(MutationError):
-    code = "EDIT_CONFLICT"
-    message = "old_text did not match the expected number of occurrences"
-
-
-class TooManyEditsError(MutationError):
-    code = "TOO_MANY_EDITS"
-    message = "too many edits in one call"
-
-
-class WriteTooLargeError(MutationError):
-    code = "WRITE_TOO_LARGE"
-    message = "content exceeds the server write size limit"
-
-
-class BinaryContentError(MutationError):
-    code = "BINARY_CONTENT_NOT_ALLOWED"
-    message = "content must be UTF-8 text without NUL bytes"
-
-
-class BinaryFileError(MutationError):
-    code = "BINARY_FILE"
-    message = "file appears to be binary"
-
-
-class UnsupportedTextEncodingError(MutationError):
-    code = "UNSUPPORTED_TEXT_ENCODING"
-    message = "file is not valid UTF-8"
-
-
-class MultipleHardlinksError(MutationError):
-    code = "MULTIPLE_HARDLINKS_NOT_SUPPORTED"
-    message = "file has multiple hard links; editing would break them"
-
-
-class MetadataPreservationError(MutationError):
-    code = "METADATA_PRESERVATION_FAILED"
-    message = "file metadata could not be preserved; nothing was changed"
-
-
-class DirectoryNotEmptyError(MutationError):
-    code = "DIRECTORY_NOT_EMPTY"
-    message = "directory is not empty; ServerFS never deletes recursively"
-
-
-class MutationIOError(MutationError):
-    code = "MUTATION_IO_ERROR"
-    message = "the filesystem refused the operation"
 
 
 # ---- revision ----
@@ -228,13 +173,6 @@ def _read_all(fd: int, limit: int) -> bytes:
     return data
 
 
-def _utf8_size(text: str) -> int:
-    try:
-        return len(text.encode("utf-8"))
-    except UnicodeEncodeError:
-        raise BinaryContentError("text is not valid UTF-8") from None
-
-
 def _persist_directory(parent_fd: int) -> None:
     """Persist a committed directory entry (create/link/replace/unlink).
 
@@ -248,18 +186,6 @@ def _persist_directory(parent_fd: int) -> None:
         fdio.fsync_directory(parent_fd)
     except OSError as exc:
         jsonlog.warning("directory_fsync_failed", errno=exc.errno)
-
-
-def _decode_text(data: bytes) -> tuple[str, bool]:
-    """Decode a text file, hiding the physical BOM from the caller."""
-    has_bom = data.startswith(_UTF8_BOM)
-    body = data[3:] if has_bom else data
-    if b"\x00" in body:
-        raise BinaryFileError()
-    try:
-        return body.decode("utf-8"), has_bom
-    except UnicodeDecodeError:
-        raise UnsupportedTextEncodingError() from None
 
 
 def _preserve_metadata(src_fd: int, dst_fd: int, st: os.stat_result) -> None:
@@ -314,18 +240,6 @@ def _copy_xattrs(src_fd: int, dst_fd: int) -> None:
 
 
 # ---- create ----
-
-
-def _encode_new_content(content: str, max_write_bytes: int) -> bytes:
-    if "\x00" in content:
-        raise BinaryContentError()
-    try:
-        data = content.encode("utf-8")
-    except UnicodeEncodeError:
-        raise BinaryContentError("text is not valid UTF-8") from None
-    if len(data) > max_write_bytes:
-        raise WriteTooLargeError(f"content exceeds {max_write_bytes} bytes")
-    return data
 
 
 def _publish_new_file(parent_fd: int, name: str, data: bytes) -> str:
@@ -471,42 +385,6 @@ def create_directory(resolved: ResolvedPath) -> CreateDirectoryResult:
 
 
 # ---- edit ----
-
-
-def _apply_edits(text: str, edits: list[TextEdit]) -> str:
-    """Apply exact-match edits in order to the in-memory text.
-
-    Nothing is written until every edit has been validated and applied, so
-    one failing edit leaves the file untouched.
-    """
-    for edit in edits:
-        old_text = edit.old_text
-        if old_text == "" and (text != "" or edit.expected_count != 1):
-            # the only legal empty match is filling a completely empty file
-            raise EditConflictError("empty old_text is only allowed when the file is empty")
-        found = text.count(old_text)
-        if found != edit.expected_count:
-            raise EditConflictError(f"expected {edit.expected_count} occurrence(s), found {found}")
-        text = text.replace(old_text, edit.new_text)
-    return text
-
-
-def _validate_edits(
-    edits: list[TextEdit], *, max_write_bytes: int, max_edits_per_call: int
-) -> None:
-    if not edits:
-        raise EditConflictError("no edits supplied")
-    if len(edits) > max_edits_per_call:
-        raise TooManyEditsError(f"at most {max_edits_per_call} edits per call")
-    for edit in edits:
-        # The source file is verified NUL-free, so a request that carries no
-        # NUL cannot produce a binary result — and edit must not become the
-        # one way to create a file no text channel can read again.
-        if "\x00" in edit.old_text or "\x00" in edit.new_text:
-            raise BinaryContentError()
-    total = sum(_utf8_size(e.old_text) + _utf8_size(e.new_text) for e in edits)
-    if total > max_write_bytes:
-        raise WriteTooLargeError(f"edits exceed {max_write_bytes} bytes")
 
 
 def _replace_at(
