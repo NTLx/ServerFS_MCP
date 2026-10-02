@@ -287,7 +287,11 @@ fn delete_and_directory_mutations_are_revision_guarded_and_nonrecursive() {
         NativeError::DirectoryNotEmpty
     );
     std::fs::remove_file(sandbox.root.join("new-dir").join("child")).unwrap();
-    mutation::delete_directory(&root, &["new-dir"], &dir_rev).unwrap();
+    let empty_dir_revision = metadata::revision_of(
+        &traversal::resolve(&root, &["new-dir"], ffi::OpenKind::Directory).unwrap(),
+    )
+    .unwrap();
+    mutation::delete_directory(&root, &["new-dir"], &empty_dir_revision).unwrap();
     assert!(!sandbox.root.join("new-dir").exists());
 }
 
