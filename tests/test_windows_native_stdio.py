@@ -79,7 +79,7 @@ def test_native_serverfs_stdio_initialize_tools_read_and_stat(tmp_path: Path) ->
         async with stdio_client(params) as (reader, writer):
             async with ClientSession(reader, writer) as session:
                 initialized = await session.initialize()
-                assert initialized.serverInfo.name == "ServerFS"
+                assert initialized.server_info.name == "ServerFS"
                 assert json.loads(report_path.read_text(encoding="utf-8")) == {
                     key: False
                     for key in (
@@ -104,12 +104,12 @@ def test_native_serverfs_stdio_initialize_tools_read_and_stat(tmp_path: Path) ->
                 read = await session.call_tool(
                     "read_text_file", {"workdir": "repo", "path": "hello.txt"}
                 )
-                assert not read.isError
-                assert read.structuredContent["content"] == "native stdio works\n"
+                assert not read.is_error
+                assert read.structured_content["content"] == "native stdio works\n"
                 stat = await session.call_tool(
                     "stat_file", {"workdir": "repo", "path": "hello.txt"}
                 )
-                assert not stat.isError
-                assert stat.structuredContent["type"] == "file"
+                assert not stat.is_error
+                assert stat.structured_content["type"] == "file"
 
     asyncio.run(exercise())
