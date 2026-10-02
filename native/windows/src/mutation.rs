@@ -95,8 +95,8 @@ pub fn create_file(root: &Handle, parts: &[&str], data: &[u8]) -> Result<String,
         err
     })?;
     let final_name: Vec<u16> = leaf.encode_utf16().collect();
-    if let Err(publication_error) =
-        ffi::rename_no_replace(&temp.handle, parent, &final_name).map_err(|err| {
+    if let Err(publication_error) = ffi::rename_no_replace(&temp.handle, parent, &final_name)
+        .map_err(|err| {
             eprintln!("temporary rename failed: {err:?}");
             err
         })
