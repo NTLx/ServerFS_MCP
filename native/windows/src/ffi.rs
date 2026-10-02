@@ -6,8 +6,9 @@
 
 use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows_sys::Wdk::Storage::FileSystem::{
-    NtCreateFile, FILE_CREATE, FILE_DIRECTORY_FILE, FILE_ID_BOTH_DIR_INFORMATION,
-    FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT,
+    NtCreateFile, NtSetInformationFile, FileRenameInformation, FILE_CREATE, FILE_DIRECTORY_FILE,
+    FILE_ID_BOTH_DIR_INFORMATION, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT,
+    FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT,
 };
 use windows_sys::Win32::Foundation::{GetLastError, HANDLE, UNICODE_STRING};
 use windows_sys::Win32::Storage::FileSystem::{
@@ -208,8 +209,9 @@ pub fn flush_file(handle: &Handle) -> Result<(), NativeError> {
 }
 
 /// Publish by renaming the already-open source HANDLE to one simple name
-/// rooted at the retained parent HANDLE. FileRenameInfo is class 3 in the
-/// documented FILE_INFO_BY_HANDLE_CLASS enum. ReplaceIfExists is FALSE.
+/// rooted at the retained parent HANDLE. NtSetInformationFile avoids the
+/// Win32 wrapper's conversion of a relative FileName when RootDirectory is
+/// non-null. FileRenameInformation uses ReplaceIfExists = FALSE.
 pub fn rename_no_replace(
     source: &Handle,
     parent: &Handle,
@@ -218,28 +220,38 @@ pub fn rename_no_replace(
     let root_offset = align_up(1, std::mem::align_of::<HANDLE>());
     let length_offset = root_offset + std::mem::size_of::<HANDLE>();
     let name_offset = length_offset + std::mem::size_of::<u32>();
-    let total = name_offset + std::mem::size_of_val(final_name);
-    let mut info = vec![0u8; total];
+    let file_name_bytes = std::mem::size_of_val(final_name);
+    let total = (name_offset + file_name_bytes)
+        .max(std::mem::size_of::<FILE_RENAME_INFORMATION>() + file_name_bytes.saturating_sub(2));
+    let mut storage = vec![0u64; total.div_ceil(std::mem::size_of::<u64>())];
+    let info = unsafe {
+        std::slice::from_raw_parts_mut(
+            storage.as_mut_ptr().cast::<u8>(),
+            storage.len() * std::mem::size_of::<u64>(),
+        )
+    };
     info[0] = 0; // ReplaceIfExists = FALSE
     let root = parent.as_raw() as usize;
     info[root_offset..root_offset + std::mem::size_of::<HANDLE>()]
         .copy_from_slice(&root.to_ne_bytes()[..std::mem::size_of::<HANDLE>()]);
     info[length_offset..name_offset]
-        .copy_from_slice(&(std::mem::size_of_val(final_name) as u32).to_ne_bytes());
+        .copy_from_slice(&(file_name_bytes as u32).to_ne_bytes());
     for (index, unit) in final_name.iter().enumerate() {
         let offset = name_offset + index * 2;
         info[offset..offset + 2].copy_from_slice(&unit.to_ne_bytes());
     }
-    if unsafe {
-        SetFileInformationByHandle(
+    let mut iosb = IO_STATUS_BLOCK::default();
+    let status = unsafe {
+        NtSetInformationFile(
             source.as_raw(),
-            3, // FileRenameInfo
-            info.as_mut_ptr().cast(),
-            info.len() as u32,
+            &mut iosb,
+            info.as_ptr().cast(),
+            total as u32,
+            FileRenameInformation,
         )
-    } == 0
-    {
-        return Err(NativeError::win32(unsafe { GetLastError() }));
+    };
+    if status < 0 {
+        return Err(NativeError::nt(status as u32));
     }
     Ok(())
 }
