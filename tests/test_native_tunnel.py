@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ from serverfs_mcp.native_tunnel import (
     proxy_url,
     run_native_tunnel,
 )
-from serverfs_mcp.supervisor import forward_stdio, sanitized_environment
+from serverfs_mcp.supervisor import _copy, forward_stdio, sanitized_environment
 
 
 def _env_file(tmp_path: Path, contents: str) -> Path:
@@ -372,3 +373,61 @@ def test_forward_stdio_child_environment_and_byte_transparency(monkeypatch) -> N
     code = forward_stdio([sys.executable, "-c", probe], child_env)
     assert code == 0
     assert captured.getvalue() == b"frame\x00bytes|"
+
+
+def test_supervisor_copy_forwards_small_pipe_payload_before_eof() -> None:
+    payload = b"Content-Length: 2\r\n\r\n{}"
+    read_fd, write_fd = os.pipe()
+    source = os.fdopen(read_fd, "rb", buffering=64 * 1024)
+
+    class Destination:
+        def __init__(self) -> None:
+            self.data = bytearray()
+            self.written = threading.Event()
+
+        def write(self, data: bytes) -> int:
+            self.data.extend(data)
+            self.written.set()
+            return len(data)
+
+        def flush(self) -> None:
+            pass
+
+    destination = Destination()
+    worker = threading.Thread(target=_copy, args=(source, destination), daemon=True)
+    try:
+        assert os.write(write_fd, payload) == len(payload)
+        worker.start()
+        assert destination.written.wait(timeout=1), "pipe payload was buffered until EOF"
+        assert bytes(destination.data) == payload
+    finally:
+        os.close(write_fd)
+        if worker.ident is not None:
+            worker.join(timeout=1)
+        source.close()
+    assert not worker.is_alive(), "copy thread did not exit after pipe EOF"
+
+
+def test_supervisor_copy_falls_back_to_read_for_test_doubles() -> None:
+    class ReadOnlySource:
+        def __init__(self) -> None:
+            self.chunks = iter((b"fallback bytes", b""))
+
+        def read(self, size: int) -> bytes:
+            assert size == 64 * 1024
+            return next(self.chunks)
+
+    class Destination:
+        def __init__(self) -> None:
+            self.data = bytearray()
+
+        def write(self, data: bytes) -> int:
+            self.data.extend(data)
+            return len(data)
+
+        def flush(self) -> None:
+            pass
+
+    destination = Destination()
+    _copy(ReadOnlySource(), destination)  # type: ignore[arg-type]
+    assert destination.data == b"fallback bytes"

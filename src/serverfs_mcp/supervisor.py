@@ -26,7 +26,8 @@ def sanitized_environment(source: dict[str, str] | None = None) -> dict[str, str
 
 def _copy(source: BinaryIO, destination: BinaryIO, *, close_destination: bool = False) -> None:
     try:
-        while chunk := source.read(64 * 1024):
+        read = getattr(source, "read1", source.read)
+        while chunk := read(64 * 1024):
             destination.write(chunk)
             destination.flush()
     except (BrokenPipeError, OSError):
