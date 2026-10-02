@@ -806,6 +806,29 @@ Conservative initial policy:
 
 The acceptance suite, not optimistic documentation, decides which metadata classes are writable in v0.10.0.
 
+Phase D1 keeps the public Windows `v1:<16hex>` revision material frozen. Replacement
+captures a separate internal preservation snapshot from the held target handle and
+fingerprints its basic metadata, owner/group/DACL descriptor and unsupported-state
+classification. The fingerprint never crosses PyO3. Immediately before publication,
+the destination is reopened relative to the same parent and both public revision/object
+identity and this private fingerprint must still match. A DACL-only change therefore
+conflicts even though it does not change the public revision. The final gate narrows the
+race but is not an atomic compare-and-swap: a non-cooperating writer can still race
+between the gate and the relative rename.
+
+The initial D1 preservation matrix is deliberately explicit: copy handle-readable basic
+timestamps and supported DOS attributes plus DACL; require temporary-file owner/group
+to already match the original and refuse otherwise. Do not request or claim audit-SACL
+preservation. Refuse named streams, EAs, object IDs, multiple hard links, reparses,
+sparse/compressed/encrypted/integrity/offline/cloud and unknown attribute state when
+their loss is detectable. A failed or unavailable handle-only query is also a refusal,
+not evidence that the feature is absent. `FlushFileBuffers` flushes the temporary file
+handle before publication; D1 does not claim a directory-entry fsync equivalent or
+power-loss durability for the subsequent rename. File deletion marks the verified
+object handle for deletion; if an external writer renames that object after the final
+name gate, deletion follows the object to its new name rather than deleting an
+unverified replacement.
+
 ## 21. Error normalization
 
 Windows native errors map to the existing agent-recoverable ServerFS vocabulary wherever semantics match.

@@ -19,6 +19,22 @@ pub enum NativeError {
     ReparsePoint,
     /// The filesystem refused access for the current process.
     AccessDenied,
+    /// A create-only destination already exists.
+    PathAlreadyExists,
+    /// A directory could not be deleted because it contains any entry.
+    DirectoryNotEmpty,
+    /// A replacement target has more than one hard link.
+    MultipleHardlinksNotSupported,
+    /// The target contains state that the replacement path cannot preserve.
+    MetadataPreservationFailed,
+    /// The request attempted to mutate the retained workdir root.
+    RootMutationRefused,
+    /// A mutation failed during write/flush; destination publication did not occur.
+    MutationIoError,
+    /// Mutation was refused by the session's kernel-side read-only policy.
+    WorkdirReadOnly,
+    /// The expected public revision no longer identifies the destination state.
+    RevisionConflict,
     /// A file exceeded a channel byte limit (the tool layer renders the
     /// channel-specific agent code).
     FileTooLarge,
@@ -52,12 +68,16 @@ impl NativeError {
         const STATUS_NOT_A_DIRECTORY: u32 = 0xC000_0103;
         const STATUS_FILE_IS_A_DIRECTORY: u32 = 0xC000_00BA;
         const STATUS_BAD_NETWORK_NAME: u32 = 0xC000_00CC;
+        const STATUS_OBJECT_NAME_COLLISION: u32 = 0xC000_0035;
+        const STATUS_DIRECTORY_NOT_EMPTY: u32 = 0xC000_0101;
 
         match status {
             STATUS_OBJECT_NAME_NOT_FOUND | STATUS_OBJECT_PATH_NOT_FOUND | STATUS_NO_SUCH_FILE => {
                 NativeError::PathNotFound
             }
             STATUS_BAD_NETWORK_NAME => NativeError::PathNotFound,
+            STATUS_OBJECT_NAME_COLLISION => NativeError::PathAlreadyExists,
+            STATUS_DIRECTORY_NOT_EMPTY => NativeError::DirectoryNotEmpty,
             STATUS_ACCESS_DENIED => NativeError::AccessDenied,
             STATUS_NOT_A_DIRECTORY => NativeError::NotADirectory,
             STATUS_FILE_IS_A_DIRECTORY => NativeError::IsADirectory,
@@ -72,9 +92,14 @@ impl NativeError {
         const ERROR_FILE_NOT_FOUND: u32 = 2;
         const ERROR_PATH_NOT_FOUND: u32 = 3;
         const ERROR_ACCESS_DENIED: u32 = 5;
+        const ERROR_ALREADY_EXISTS: u32 = 183;
+        const ERROR_FILE_EXISTS: u32 = 80;
+        const ERROR_DIR_NOT_EMPTY: u32 = 145;
 
         match code {
             ERROR_FILE_NOT_FOUND | ERROR_PATH_NOT_FOUND => NativeError::PathNotFound,
+            ERROR_ALREADY_EXISTS | ERROR_FILE_EXISTS => NativeError::PathAlreadyExists,
+            ERROR_DIR_NOT_EMPTY => NativeError::DirectoryNotEmpty,
             ERROR_ACCESS_DENIED => NativeError::AccessDenied,
             _ => NativeError::Unexpected { code, nt: false },
         }
@@ -89,6 +114,18 @@ impl fmt::Display for NativeError {
             NativeError::IsADirectory => f.write_str("target is a directory"),
             NativeError::ReparsePoint => f.write_str("reparse point refused"),
             NativeError::AccessDenied => f.write_str("access denied"),
+            NativeError::PathAlreadyExists => f.write_str("path already exists"),
+            NativeError::DirectoryNotEmpty => f.write_str("directory is not empty"),
+            NativeError::MultipleHardlinksNotSupported => {
+                f.write_str("multiple hard links are not supported")
+            }
+            NativeError::MetadataPreservationFailed => {
+                f.write_str("file metadata cannot be safely preserved")
+            }
+            NativeError::RootMutationRefused => f.write_str("workdir root cannot be mutated"),
+            NativeError::MutationIoError => f.write_str("mutation I/O failed"),
+            NativeError::WorkdirReadOnly => f.write_str("workdir is read-only"),
+            NativeError::RevisionConflict => f.write_str("file revision changed"),
             NativeError::FileTooLarge => f.write_str("file exceeds the byte limit"),
             NativeError::ChangedDuringRead => f.write_str("file changed while it was being read"),
             NativeError::LineTooLarge { line, max_bytes } => {
