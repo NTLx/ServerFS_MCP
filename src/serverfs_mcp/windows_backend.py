@@ -31,6 +31,7 @@ from .backends import BackendError, TextPage
 from .binary_payload import BinaryRead, BinaryTransferError
 from .models import EntryInfo, StatFileResult, TextMatch
 from .paths import is_hidden_component
+from .search_glob import glob_matches
 
 if TYPE_CHECKING:
     from .models import TextEdit
@@ -74,22 +75,30 @@ def _pending(channel: str) -> BackendError:
 # that exclusion so both backends scan the same set of files.
 _RG_ALWAYS_EXCLUDED_DIRS = frozenset({".git", ".hg", ".svn"})
 
+# ripgrep reads in 64 KiB buffers and stops at the FIRST buffer containing a
+# NUL: matches from that buffer are suppressed and the file is abandoned
+# (measured: a needle before the NUL in one small file still yields nothing).
+# Truncating at the start of the NUL-containing chunk reproduces that exactly.
+_RG_READ_CHUNK = 65536
 
-def _glob_matches(name: str, rel_path: str, glob: str) -> bool:
-    # rg --glob parity for the patterns the tool contract exposes: a
-    # separator-free pattern matches the file name, anything else matches
-    # the search-root-relative POSIX path
-    if "/" in glob or "\\" in glob:
-        return fnmatch.fnmatchcase(rel_path, glob)
-    return fnmatch.fnmatchcase(name, glob)
+
+def _rg_binary_truncate(data: bytes) -> bytes:
+    nul = data.find(b"\x00")
+    if nul < 0:
+        return data
+    return data[: (nul // _RG_READ_CHUNK) * _RG_READ_CHUNK]
 
 
 def _scan_file(data: bytes, path: str, needle: str, case_sensitive: bool):
     for index, raw in enumerate(data.split(b"\n"), start=1):
-        # rg reports whole lines with the trailing newline removed and
-        # never rewrites an interior \r; non-UTF-8 bytes are lossy-decoded
-        # exactly like the current text channel
-        text = raw.decode("utf-8", errors="replace").rstrip("\n")
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            # rg's UTF-8 matcher cannot match a line it cannot decode: an
+            # undecodable line contributes no matches, the file continues
+            continue
+        # trailing \n was consumed by the split; an interior \r stays in the
+        # reported text verbatim (rg does not normalize CRLF lines)
         probe = text if case_sensitive else text.casefold()
         if needle and needle in probe:
             yield TextMatch(path=path, line=index, text=text)
@@ -308,10 +317,17 @@ class WindowsWorkdirSession:
                     continue
                 if etype != "file":
                     continue
-                if glob and not _glob_matches(name, rel_from_root, glob):
+                if glob and not glob_matches(name, rel_from_root, glob):
                     continue
                 if size is None or size > max_file_bytes:
                     continue
+                if time.monotonic() > deadline:
+                    # per-file check: one wide directory must not stretch
+                    # the deadline across thousands of reads
+                    raise BackendError(
+                        "SEARCH_TIMEOUT",
+                        f"search exceeded the {timeout_seconds}s deadline",
+                    )
                 try:
                     data, _sha, _rev = _call(self._native.read_bounded, list(child), max_file_bytes)
                 except BackendError as exc:
@@ -324,8 +340,7 @@ class WindowsWorkdirSession:
                     ):
                         continue  # raced/vanished/binary-adjacent: rg skips too
                     raise
-                if b"\x00" in data:
-                    continue
+                data = _rg_binary_truncate(data)
                 for match in _scan_file(data, "/".join(child), needle, case_sensitive):
                     matches.append(match)
                     if len(matches) > limit:
