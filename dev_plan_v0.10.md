@@ -1,0 +1,1433 @@
+# ServerFS v0.10.0 Development Plan — Native Windows Filesystem Backend
+
+Status: design / not yet implemented  
+Baseline: v0.9.0 / main  
+Primary release target: Windows 11 x64 + local NTFS workdirs  
+Scope: add a first-class Windows-native ServerFS filesystem implementation with no Docker or WSL runtime dependency; keep the MCP/product layer in Python; implement the Windows filesystem security kernel as a small Rust/PyO3 native backend; preserve the existing public filesystem tool contract wherever platform semantics permit; leave Windows Agent Bridge and native file-parameter ingress for later releases.
+
+## 1. Problem statement
+
+ServerFS through v0.9.0 is a Linux-first system. Its filesystem security model is intentionally built on Linux kernel primitives:
+
+- directory-file-descriptor traversal;
+- `openat`/`dir_fd`;
+- `O_NOFOLLOW`;
+- `fstat` object identity;
+- `renameat`/`linkat`/`unlinkat`-style mutation;
+- `/proc/self/fd/N` anchoring for ripgrep;
+- Linux ownership/mode/xattr metadata;
+- Docker bind mounts as a second read-only enforcement layer.
+
+That design is strong on Linux, but it is not a portable abstraction. Running the Linux image through Docker Desktop on Windows makes the existing service usable, but it does not make Windows a first-class ServerFS platform. Windows workdirs are still accessed through a Linux VM/filesystem translation layer, native NTFS semantics are not the security authority, Agent and filesystem behavior are split across kernels, and Docker/WSL become mandatory dependencies for a product that fundamentally only needs controlled filesystem access and MCP connectivity.
+
+v0.10.0 therefore does **not** add another compatibility layer around the Linux implementation. It establishes the first native non-Linux filesystem backend and uses that work to remove Linux/Docker deployment assumptions from the ServerFS domain model.
+
+The release goal is:
+
+> ServerFS v0.10.0 runs as a native Windows MCP filesystem service against explicitly configured Windows directories, without Docker or WSL, while preserving ServerFS's fail-closed path confinement, object-identity, optimistic-concurrency and atomic-publication contracts.
+
+The release is successful only if Windows is supported as a real security model, not merely if the Python process starts on Windows.
+
+## 2. Goals
+
+v0.10.0 has six primary goals.
+
+1. **Native Windows filesystem service**
+   - no Docker Desktop;
+   - no WSL;
+   - no Linux VM dependency;
+   - no system-wide Python requirement when `uv` manages the project interpreter/environment.
+
+2. **Preserve the existing MCP filesystem contract**
+   - `list_workdirs`;
+   - `list_directory`;
+   - `find_files`;
+   - `search_text`;
+   - `read_text_file`;
+   - `stat_file`;
+   - existing text mutation tools;
+   - existing native base64 binary transfer when enabled;
+   - existing coded error model and audit discipline.
+
+3. **Keep the product/control plane in Python**
+   - MCP registration and schemas;
+   - policy;
+   - limits;
+   - workdir registry;
+   - edit semantics;
+   - logging;
+   - configuration;
+   - orchestration.
+
+4. **Move Windows filesystem security primitives into a narrow Rust native module**
+   - HANDLE-relative traversal;
+   - reparse-point rejection;
+   - native object identity;
+   - secure directory enumeration;
+   - secure read;
+   - native revision material;
+   - atomic mutation;
+   - platform metadata handling.
+
+5. **Minimize runtime dependencies**
+   - Python packages remain managed by `uv`;
+   - Windows users consume a prebuilt Rust/PyO3 wheel and do not install Rust, Cargo, MSVC Build Tools or the Windows SDK;
+   - no `pywin32`;
+   - no Windows `rg.exe` requirement;
+   - the official OpenAI `tunnel-client` may be kept project-local and version-pinned.
+
+6. **Create a reusable platform boundary**
+   - Linux keeps its proven implementation;
+   - Windows gets a native implementation;
+   - a future macOS backend can implement the same high-level filesystem contract without forcing Linux or Windows primitives onto Darwin.
+
+## 3. Non-goals
+
+v0.10.0 does **not** include:
+
+- Windows Agent Bridge;
+- Windows Codex/Claude/Qoder runtime integration;
+- Windows writer-lease replacement for Agent workspace-write mode;
+- Windows Task Scheduler or Windows Service installation;
+- native Windows ChatGPT/OpenAI file-parameter ingress;
+- AppContainer or a new Windows sandbox;
+- OAuth redesign;
+- a ServerFS-wide rewrite in Rust;
+- a Linux filesystem rewrite in Rust;
+- a portable emulation of Linux `stat_result`;
+- a claim that every Windows filesystem is supported;
+- guaranteed support for ReFS, SMB/network shares, OneDrive/cloud placeholders or arbitrary filesystem filter drivers;
+- following symbolic links, junctions, mount points or other reparse points;
+- NTFS Alternate Data Stream access through ServerFS virtual paths;
+- recursive delete;
+- shell/command execution;
+- indexing/RAG;
+- a generic regex search engine.
+
+The v0.10.0 GA support claim is deliberately narrow:
+
+> **Windows 11 x64, native CPython managed by uv, local NTFS workdirs, ordinary files/directories, reparse points fail closed.**
+
+Windows arm64 may be published when the native wheel and acceptance suite are reproducibly built and exercised, but it is not a GA claim merely because cross-compilation succeeds.
+
+## 4. Design principles and frozen invariants
+
+### 4.1 Native platform semantics, common product contract
+
+ServerFS shares a public contract across platforms, not a fake common syscall layer.
+
+~~~text
+MCP / policy / tool contract
+            |
+     FilesystemBackend
+       /          \
+ Linux backend   Windows backend
+ openat/fd       HANDLE/NT APIs
+~~~
+
+Linux and Windows may use different implementations as long as they satisfy the same externally visible security and tool contracts.
+
+### 4.2 No path-string revalidation as the Windows security primitive
+
+The Windows backend must not implement confinement as:
+
+~~~python
+Path(root, relative_path).resolve()
+if resolved.is_relative_to(root):
+    open(resolved)
+~~~
+
+That model has the same check/use race ServerFS deliberately removed on Linux.
+
+Request-controlled traversal must be anchored to an already opened directory object. The intended Windows primitive is documented `NtCreateFile`/`NtOpenFile` relative naming through `OBJECT_ATTRIBUTES.RootDirectory`, with no-follow/reparse handling verified against real Windows behavior before mutation ships.
+
+Microsoft documents that `NtCreateFile` can name an object relative to the directory handle stored in `RootDirectory`:
+
+https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile
+
+### 4.3 Reparse points fail closed
+
+All request-controlled Windows reparse points are unsupported in v0.10.0.
+
+This includes, without trying to reinterpret them as Unix symlinks:
+
+- symbolic links;
+- junctions;
+- mount points;
+- cloud placeholders;
+- projected/virtual filesystem reparse points;
+- third-party reparse tags.
+
+The backend opens/inspects the object itself rather than following normal reparse processing and refuses traversal through any reparse-point component. Microsoft explicitly documents the need for open-reparse-point behavior when applications intend to operate on the reparse object rather than follow it:
+
+https://learn.microsoft.com/en-us/windows/win32/fileio/reparse-points-and-file-operations
+
+A final reparse object may be reported by `stat_file` as `reparse_point` but is never read, entered, replaced or deleted through normal file/directory tools in v0.10.0.
+
+### 4.4 Opaque backend-owned revisions
+
+Revision generation moves behind the filesystem backend contract.
+
+Python must not assume `os.stat_result` or POSIX inode semantics. Linux may continue deriving revisions from its current stat tuple. Windows derives its material from native handle metadata, including stable file identity and relevant mutable metadata.
+
+Windows should use `FILE_ID_INFO` where available. Microsoft documents `VolumeSerialNumber + FILE_ID_128` as an object identity pair that uniquely identifies a file on a single computer:
+
+https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_info
+
+The MCP output remains opaque:
+
+~~~text
+v1:<digest>
+~~~
+
+No raw volume serial, file ID, SID, ACL or host path is exposed to the agent.
+
+### 4.5 Atomicity is a release gate, not an aspiration
+
+Create/edit/binary overwrite must preserve the existing publication rule:
+
+> A concurrent reader sees either the complete prior state or the complete published state, never a partially written destination.
+
+Windows mutation does not ship until same-directory temporary creation plus confined native publication has been demonstrated against real NTFS concurrency tests.
+
+### 4.6 Fail rather than silently lose metadata
+
+The existing Linux rule remains conceptually authoritative:
+
+> Losing platform-significant metadata silently is worse than refusing an edit.
+
+The metadata set is platform-specific. Windows is not required to mimic POSIX ownership/mode/xattr, but it must define which Windows metadata it preserves and refuse mutations where a safe preservation path is not implemented.
+
+### 4.7 Keep unsafe code narrow
+
+The Rust crate may require `unsafe` for Windows FFI. Unsafe blocks must be concentrated in a small native layer, not spread through traversal and product logic.
+
+Every raw HANDLE returned by FFI is immediately wrapped in an owned RAII type and closed automatically on all paths.
+
+### 4.8 No unrelated cross-platform rewrite
+
+The existence of a Rust Windows backend is not a reason to rewrite Linux `fdio.py`, MCP tools, Agent Bridge, logging or configuration behavior unrelated to v0.10.0.
+
+## 5. Target architecture
+
+### 5.1 Windows native runtime
+
+~~~text
+ChatGPT
+   |
+OpenAI Tunnel
+   |
+tunnel-client.exe
+   |
+   | stdio (default native profile)
+   v
+ServerFS MCP (Python)
+   |
+   +-- config / policy / limits / schemas / audit
+   |
+   v
+serverfs-windows-native (Rust/PyO3)
+   |
+   +-- retained root HANDLE
+   +-- HANDLE-relative traversal
+   +-- directory enumeration
+   +-- read/stat/find/search
+   +-- mutation / revision / metadata
+   |
+   v
+NTFS
+~~~
+
+There is no Docker or WSL component in the supported Windows path.
+
+### 5.2 Linux runtime remains valid
+
+The current Linux Docker deployment remains supported and retains its existing Streamable HTTP topology and security model.
+
+The platform split is:
+
+~~~text
+Linux:
+  existing Python/POSIX backend
+  Docker deployment remains supported
+  Streamable HTTP remains supported
+
+Windows:
+  Python + Rust native backend
+  native stdio is the default tunnel binding
+  Docker/WSL are not the supported Windows architecture
+~~~
+
+A later Linux-native no-Docker deployment may reuse the native configuration/stdio work, but it is not required for v0.10.0.
+
+## 6. Platform-neutral domain refactor
+
+The current model contains Compose artifacts that must stop being mandatory domain concepts:
+
+- fixed `/workdirs/01..16` paths;
+- exactly 16 workdir slots;
+- `container_path` as the canonical root;
+- `.serverfs-disabled` as the only way to express an unused slot;
+- `WORKDIR_XX_*` as the primary configuration representation.
+
+v0.10.0 introduces a platform-neutral resolved workdir model, conceptually:
+
+~~~text
+Workdir
+  alias
+  root
+  description
+  read_only
+  effective_policy
+  backend_session
+  legacy_slot?       # only when built from the legacy Compose adapter
+~~~
+
+The public MCP identity remains the alias. A fixed numeric slot is no longer required by the filesystem core.
+
+The legacy slot model remains available to preserve v0.9.0 Docker/Agent compatibility. It becomes an input adapter, not the canonical in-memory model.
+
+## 7. Native configuration model
+
+### 7.1 New TOML configuration
+
+Native deployments use an explicit TOML file, read with Python 3.12 `tomllib` so no new parser dependency is required.
+
+Example:
+
+~~~toml
+[server]
+log_level = "INFO"
+
+[defaults]
+max_read_bytes = 524288
+max_read_lines = 500
+max_write_bytes = 1048576
+allow_hidden = false
+binary_transfer_enabled = false
+max_binary_transfer_bytes = 8388608
+
+[[workdirs]]
+alias = "projects"
+path = 'D:\Projects'
+description = "Development projects"
+read_only = false
+
+[[workdirs]]
+alias = "documents"
+path = 'C:\Users\me\Documents'
+read_only = true
+~~~
+
+Rules:
+
+- `path` is operator configuration, never an MCP argument.
+- workdir paths must be absolute native paths.
+- aliases keep the current public validation rules unless a concrete compatibility reason requires change.
+- duplicate aliases fail startup.
+- invalid or unsupported roots fail startup.
+- configuration is parsed once; effective policy is frozen at startup.
+- native configuration has no arbitrary environment interpolation.
+- secrets do not belong in `serverfs.toml`.
+
+### 7.2 Legacy environment/Compose adapter
+
+The existing `SERVERFS_*` and `WORKDIR_XX_*` environment configuration remains supported for the existing Linux deployment.
+
+The adapter resolves the legacy environment + bind-mount layout into the same platform-neutral runtime model.
+
+v0.10.0 must not force Linux operators to migrate configuration as part of the Windows work.
+
+### 7.3 No fixed workdir count in native mode
+
+The native TOML format does not impose the legacy 16-slot limit.
+
+Reasonable startup/config-size limits may exist for denial-of-service protection, but they are resource limits rather than numbered deployment slots.
+
+## 8. Native transport and tunnel integration
+
+### 8.1 Stdio is the default native transport
+
+The official OpenAI `tunnel-client` supports local MCP commands through `--mcp.command` / `MCP_COMMAND` and uses the child process stdin/stdout for MCP frames:
+
+https://github.com/openai/tunnel-client/blob/master/docs/configuration.md
+
+Therefore the default Windows profile is:
+
+~~~text
+tunnel-client
+    |
+    +-- starts ServerFS once
+    +-- MCP over stdin/stdout
+~~~
+
+Benefits:
+
+- no localhost listening socket;
+- no port allocation/conflict;
+- no LAN exposure;
+- no local process probing an unauthenticated HTTP port;
+- no Host/Origin/DNS-rebinding policy in the native stdio path;
+- tunnel-client owns child lifecycle naturally;
+- existing ServerFS structured logs already go to stderr, leaving stdout available for MCP frames.
+
+The existing Streamable HTTP implementation remains for the Linux Docker profile.
+
+### 8.2 Tunnel credential inheritance is an explicit security concern
+
+The current tunnel-client stdio implementation starts its MCP child with Go `exec.Command` and does not supply a replacement child environment, so the child inherits the tunnel-client environment by default.
+
+Source:
+
+https://github.com/openai/tunnel-client/blob/master/pkg/mcpclient/stdio_command.go
+
+Therefore the Windows native deployment **must not** use the old pattern of placing the Control Plane API key directly in the tunnel-client process environment when that would make the value visible to the ServerFS MCP child.
+
+The supported native deployment should prefer tunnel-client file/profile-backed credential resolution. The tunnel-client documentation supports `file:/path/to/secret` for secret-bearing fields.
+
+Acceptance must verify:
+
+- the ServerFS MCP child environment does not contain the Control Plane API key value;
+- the credential file is outside every configured ServerFS workdir;
+- the credential file is restricted to the current Windows user;
+- ServerFS logs never include the key or credential-file contents.
+
+This is not claimed to be equivalent to a container security boundary against arbitrary same-user code execution. The ServerFS native threat model protects configured filesystem boundaries against untrusted MCP input/content; it does not claim to sandbox a fully compromised Python process from the rest of the current user's account.
+
+### 8.3 One active stdio tunnel instance
+
+The tunnel-client documents that multiple active instances sharing one tunnel ID are unsupported for stdio bindings. Native operations/documentation must reflect that constraint and avoid overlapping restart strategies.
+
+## 9. Windows virtual path contract
+
+MCP paths remain ServerFS virtual paths, not Windows paths.
+
+Public examples remain:
+
+~~~text
+src/serverfs_mcp/main.py
+docs/architecture.md
+~~~
+
+They never become:
+
+~~~text
+D:\Projects\src\...
+\\server\share\...
+\??\...
+~~~
+
+ServerFS virtual paths:
+
+- are workdir-relative;
+- use `/` as the only separator;
+- reject NUL;
+- reject leading root/absolute forms;
+- reject escape above the root;
+- reject `\` in a component;
+- reject `:` in a component, which also excludes NTFS Alternate Data Stream syntax;
+- reject ambiguous Windows trailing dot/space names;
+- reject reserved DOS device-name forms conservatively;
+- reserve ServerFS internal names before touching the filesystem.
+
+The exact Windows component validator lives at the platform-policy boundary and has dedicated tests.
+
+Policy comparisons for reserved/credential-sensitive names are case-insensitive on Windows even if a particular NTFS directory has case-sensitive behavior enabled. This is intentionally conservative so `.ENV` cannot bypass a `.env` protection rule.
+
+## 10. Root acquisition and WorkdirSession capability
+
+### 10.1 Open roots once at startup
+
+Native workdir roots are acquired once during startup and held for the ServerFS process lifetime.
+
+Conceptually:
+
+~~~text
+configuration path
+    |
+trusted root acquisition
+    |
+validated native root HANDLE
+    |
+WorkdirSession
+    |
+all request-controlled operations
+~~~
+
+Subsequent MCP requests never re-establish trust by re-resolving the configured absolute root path.
+
+If an operator intentionally changes a workdir root, restart ServerFS.
+
+### 10.2 Trusted root anchor vs untrusted relative path
+
+The configured absolute root is administrator-controlled input and is the trust anchor. Request-controlled path components begin below the retained root handle.
+
+v0.10.0 must reject a final configured root object that is itself an unsupported reparse point. Ancestor behavior in the administrator-supplied absolute path is outside the request-path confinement problem; `serverfs doctor` should report the acquired root's canonical identity/filesystem so operators can detect surprising topology.
+
+### 10.3 Read-only and writable capabilities
+
+The Rust module must not expose one unconstrained session with a boolean that every call ignores.
+
+Conceptually:
+
+~~~text
+ReadOnlyWorkdirSession
+  read/list/stat/find/search
+
+WritableWorkdirSession
+  read/list/stat/find/search
+  create/replace/delete/mkdir/rmdir
+~~~
+
+Python still performs the public authorization check first. The native backend then enforces the capability boundary independently.
+
+On Windows, HANDLE access requests should use the minimum access rights needed by the operation.
+
+This is defense in depth against implementation mistakes. It is **not** represented as equivalent to Docker's read-only mount sandbox: native ServerFS remains one current-user process and does not claim to survive arbitrary code execution inside that process.
+
+## 11. Windows native module boundary
+
+The Python/Rust boundary is deliberately high-level.
+
+Python must not manipulate raw Windows HANDLE values.
+
+Target interface shape:
+
+~~~text
+open_workdir(root, mode) -> WorkdirSession
+
+session.stat(path)
+session.list(path, ...)
+session.read(path, ...)
+session.find(path, pattern, ...)
+session.search(path, query, ...)
+session.create_file(path, bytes, ...)
+session.replace_file(path, bytes, expected_revision, ...)
+session.delete_file(path, expected_revision)
+session.create_directory(path)
+session.delete_directory(path, expected_revision)
+~~~
+
+Exact method names may change during implementation, but the boundary follows these rules:
+
+- native handles never cross into general Python code;
+- native object identity/revision stays in Rust;
+- Windows error details are normalized before returning to the MCP layer;
+- no public Python method accepts an absolute Windows path after the root session has been created;
+- no generic “open arbitrary path” escape hatch exists.
+
+## 12. Rust crate and FFI strategy
+
+Proposed repository layout:
+
+~~~text
+native/
+  windows/
+    Cargo.toml
+    Cargo.lock
+    src/
+      lib.rs
+      ffi.rs
+      handle.rs
+      path.rs
+      metadata.rs
+      traversal.rs
+      read.rs
+      enumerate.rs
+      search.rs
+      mutation.rs
+      error.rs
+~~~
+
+Runtime/build choices:
+
+- Rust stable, pinned for reproducible CI;
+- PyO3 for the Python extension boundary;
+- Maturin for wheel building;
+- Microsoft `windows-sys` or narrowly generated Windows bindings for documented Win32 APIs;
+- a minimal explicit FFI declaration only for documented NT entry points not cleanly exposed by the pinned Windows binding crate;
+- exact Cargo lockfile committed;
+- no broad convenience framework.
+
+Unsafe policy:
+
+- raw FFI calls are concentrated in `ffi.rs` / handle construction;
+- a successfully returned HANDLE is immediately converted to an owned RAII type;
+- higher layers operate on safe wrappers;
+- no handle leaks on exceptions/panics;
+- panic must not unwind across the Python FFI boundary.
+
+## 13. Secure HANDLE-relative traversal
+
+The intended traversal model mirrors the security property of Linux `openat` rather than its syntax.
+
+For:
+
+~~~text
+src/serverfs_mcp/main.py
+~~~
+
+the Windows backend conceptually performs:
+
+~~~text
+retained root HANDLE
+  -> open literal child "src" relative to root
+  -> validate child is directory and not reparse point
+  -> open "serverfs_mcp" relative to retained child HANDLE
+  -> validate
+  -> open "main.py" relative to retained parent HANDLE
+  -> validate type
+~~~
+
+Each component is opened from an already trusted parent directory object.
+
+Required properties:
+
+- no whole-path `Path.resolve()` security decision;
+- no lstat-then-open pattern;
+- no reparse following;
+- component identity checked on the returned handle;
+- parent handles retained while descendants are opened;
+- no fallback to absolute-path reopening after validation.
+
+`NtCreateFile`/`NtOpenFile` RootDirectory behavior is the target primitive. Exact access masks, share modes, object attributes and open flags must be proven by a focused Windows prototype before the full backend is written.
+
+## 14. Entry types
+
+The platform-neutral MCP type set is extended additively so Windows does not mislabel every reparse object as a Unix symlink.
+
+Expected values:
+
+- `file`
+- `directory`
+- `symlink` — Linux/macOS when applicable
+- `reparse_point` — Windows unsupported reparse object
+- `other`
+
+Older clients treating the field as an opaque string remain compatible.
+
+Windows reparse tags are never exposed unless a future explicit contract requires them; detailed reparse metadata can reveal topology and is not needed for agent recovery.
+
+## 15. Read and stat
+
+### 15.1 Read
+
+Windows read behavior must preserve the current ServerFS contract:
+
+- only ordinary regular-file base data;
+- UTF-8 text for `read_text_file`;
+- NUL/binary detection unchanged at the product layer where practical;
+- byte/line limits unchanged;
+- binary download returns exact base-stream bytes;
+- content read is tied to the native object whose handle was opened;
+- revision is computed from that object;
+- if a binary download detects object change during the operation, no mixed/stale payload is returned.
+
+### 15.2 Stat
+
+`stat_file` returns the same normalized fields:
+
+- workdir;
+- virtual relative path;
+- type;
+- size where meaningful;
+- modified time;
+- MIME best effort;
+- opaque revision.
+
+No raw host path, volume serial or file ID appears in the result.
+
+## 16. Directory enumeration and find
+
+Directory listing and recursive find are implemented through the Windows backend, not Python path walking.
+
+Security requirements:
+
+- enumeration begins from an already opened/validated directory handle;
+- child metadata is obtained without following reparse points;
+- reparse directories are reported but never traversed;
+- denied/hidden/reserved entries are filtered consistently;
+- walk-entry and result limits remain global;
+- directory races produce bounded skip/retry/error behavior but never path escape;
+- returned paths always use ServerFS `/` virtual syntax.
+
+The implementation may use documented native directory enumeration APIs selected during the prototype. The public contract, not a specific enumeration syscall, is frozen here.
+
+## 17. Windows search implementation
+
+Windows v0.10.0 does **not** depend on ripgrep.
+
+The existing Linux search safety depends on running `rg` with cwd anchored to `/proc/self/fd/<validated-directory-fd>`. Windows has no equivalent way to give an arbitrary third-party `rg.exe` process an already validated ServerFS directory HANDLE as its working-directory capability without falling back to pathname resolution.
+
+The Windows backend therefore implements the narrow existing `search_text` contract itself:
+
+- literal/fixed-string search only;
+- optional file glob;
+- case-sensitive toggle;
+- UTF-8/text behavior compatible with the current contract;
+- per-file size ceiling;
+- wall-clock deadline;
+- global result limit and real early stop;
+- line number and matched line text;
+- hidden/deny/reserved policy filtering;
+- no reparse traversal.
+
+This is not an attempt to reimplement ripgrep as a general regex engine.
+
+Linux continues using ripgrep unless a separate future change demonstrates a reason to replace it.
+
+Search compatibility tests must compare important edge cases against the released Linux behavior so the two backends do not silently become different products.
+
+## 18. Revision design
+
+The revision contract remains:
+
+> opaque token representing the object identity and relevant metadata observed by ServerFS.
+
+Windows revision material should include at least:
+
+- volume identity;
+- 128-bit file ID;
+- object type/attributes relevant to ServerFS semantics;
+- size;
+- last-write/change metadata available from the handle;
+- link count where available.
+
+The exact tuple is frozen only after a Windows probe confirms which metadata changes reliably reflect the conflicts ServerFS needs to detect.
+
+Properties:
+
+- stable for an unchanged object;
+- changes when content or relevant metadata changes;
+- distinguishes replacement objects even when a pathname is reused;
+- never exposes raw identity data;
+- hashed into the existing `v1:...` representation unless a format change is demonstrably required.
+
+If a filesystem cannot provide the identity guarantees required by this contract, v0.10.0 fails that workdir closed rather than downgrading optimistic concurrency silently.
+
+## 19. Mutation and atomic publication
+
+Mutation support ships only after read-only traversal is accepted.
+
+### 19.1 Create
+
+Create semantics remain:
+
+- target must not already exist;
+- parent must already exist;
+- write same-directory reserved temp object;
+- flush data;
+- publish atomically under the final name without overwrite;
+- clean temp on every failure;
+- compute revision after publication.
+
+Direct “open final path then stream bytes into it” is not acceptable because concurrent readers could observe partial content.
+
+### 19.2 Replace/edit
+
+Edit/binary overwrite semantics remain:
+
+- open and validate the existing regular file;
+- reject stale `expected_revision`;
+- reject unsupported multi-hardlink/metadata cases;
+- create same-directory replacement temp;
+- write complete content;
+- preserve supported Windows metadata;
+- flush;
+- revalidate the expected target identity/revision immediately before publication;
+- publish by a HANDLE-confined native rename/replace operation;
+- compute returned revision from the published replacement.
+
+The preferred primitive is a handle-based `SetFileInformationByHandle` rename/replace path (for example the appropriate `FileRenameInfo`/`FileRenameInfoEx` contract) rather than a path-only replacement API. Exact flags are an implementation proof item: they are not guessed in this plan.
+
+If no handle-confined primitive can satisfy the required create-only/replace atomicity on the supported Windows/NTFS baseline, the corresponding mutation does not ship.
+
+### 19.3 Delete
+
+Delete remains:
+
+- revision guarded where currently required;
+- regular-file only for `delete_file`;
+- empty-directory only for `delete_directory`;
+- no recursive delete;
+- no “force” option;
+- reparse objects rejected.
+
+## 20. Windows metadata preservation
+
+Windows metadata is not mapped to POSIX fields.
+
+The Windows backend must explicitly classify metadata into:
+
+1. **must preserve or fail**;
+2. **safe to recompute/inherit**;
+3. **unsupported for writable v0.10 workdirs**.
+
+At minimum the design review must cover:
+
+- DACL/security descriptor behavior;
+- standard file attributes;
+- creation/write timestamps where the current tool contract requires preservation;
+- compression;
+- encryption/EFS;
+- sparse-file state;
+- named streams / Alternate Data Streams;
+- hard links.
+
+Conservative initial policy:
+
+- multiple hard links remain unsupported for replacement;
+- request paths containing `:` are rejected so ADS cannot be addressed directly;
+- if replacing a file would silently discard an existing named stream or other significant metadata that the backend does not yet preserve, the mutation fails before publication;
+- EFS or other semantics that cannot be safely preserved in the first release may be read-only/unsupported for mutation.
+
+The acceptance suite, not optimistic documentation, decides which metadata classes are writable in v0.10.0.
+
+## 21. Error normalization
+
+Windows native errors map to the existing agent-recoverable ServerFS vocabulary wherever semantics match.
+
+Examples:
+
+- path missing -> `PATH_NOT_FOUND`;
+- parent missing -> `PARENT_NOT_FOUND`;
+- access denied -> `ACCESS_DENIED` / existing mutation-specific code;
+- reparse object -> `SYMLINK_NOT_ALLOWED` for parent traversal compatibility or a clearly documented additive `REPARSE_POINT_NOT_ALLOWED` if needed;
+- target exists -> `PATH_ALREADY_EXISTS`;
+- stale object -> `REVISION_CONFLICT`;
+- unsupported type -> `UNSUPPORTED_FILE_TYPE`;
+- unsupported metadata preservation -> `METADATA_PRESERVATION_FAILED`;
+- resource exhaustion -> `RESOURCE_EXHAUSTED`.
+
+Raw NTSTATUS, Windows error strings, absolute paths, SIDs, file IDs and volume IDs do not escape through MCP errors.
+
+A new error code is added only when collapsing the condition into an existing code would make correct agent recovery impossible.
+
+## 22. Read-only defense in depth
+
+The Linux Docker deployment currently has two independent write barriers:
+
+1. ServerFS authorization;
+2. read-only bind mount.
+
+A native Windows current-user process cannot truthfully claim the same container boundary.
+
+v0.10.0 therefore defines its defense in depth honestly:
+
+1. Python workdir authorization;
+2. Rust read-only vs writable session capability;
+3. minimum native HANDLE access rights;
+4. Windows filesystem ACL enforcement;
+5. no generic path/open primitive exported to the MCP layer.
+
+This protects against input-driven logic mistakes and overbroad native calls. It is not an arbitrary-code-execution sandbox.
+
+A future optional Windows sandbox/AppContainer design can be investigated separately; it is not required to call v0.10.0 native.
+
+## 23. Native file ingress is deferred
+
+The Linux file-ingress sidecar is a real network/filesystem isolation boundary:
+
+- network egress;
+- no workdir mounts;
+- no tunnel credentials.
+
+Simply turning it into a second same-user Windows Python process would not preserve that security property.
+
+Therefore Windows v0.10.0 supports native binary transfer from explicit base64 payloads but does not claim support for ChatGPT/OpenAI remote `fileParams` ingress.
+
+The existing Linux sidecar remains unchanged.
+
+A later Windows-native ingress design must first establish an equivalent isolation boundary before the feature is enabled.
+
+## 24. Packaging and dependency model
+
+### 24.1 Python package remains primary
+
+`serverfs-mcp` remains the Python product package and keeps the existing packaging approach where practical.
+
+Do not convert the whole project to a Maturin build merely because one platform backend is Rust.
+
+### 24.2 Separate native wheel
+
+Preferred distribution shape:
+
+~~~text
+serverfs-mcp
+serverfs-windows-native
+~~~
+
+The Windows native wheel is selected only on Windows and imported behind the filesystem backend interface.
+
+End users receive a prebuilt wheel.
+
+They do **not** need:
+
+- Rust;
+- Cargo;
+- Visual Studio Build Tools;
+- Windows SDK;
+- pywin32.
+
+### 24.3 PyO3 ABI strategy
+
+PyO3 supports prebuilt extension wheels and stable ABI (`abi3`) builds. The project should prefer the narrowest ABI strategy that keeps the supported Python matrix small and reliable.
+
+Reference:
+
+https://pyo3.rs/main/building-and-distribution
+
+Because ServerFS already requires Python >=3.12, an `abi3-py312` wheel is a strong default candidate, subject to CI verification. The implementation must not adopt `abi3` merely for theoretical portability if a required PyO3 feature is unavailable; the acceptance matrix decides.
+
+### 24.4 Rust dependency budget
+
+Target direct Rust dependencies:
+
+- `pyo3`;
+- `windows-sys` or equivalent narrow Microsoft binding package.
+
+Any additional direct crate must have a concrete correctness/performance reason documented in the change that introduces it.
+
+For example, Windows literal search may justify a small well-audited matcher dependency if reproducing Unicode case-folding correctly is materially safer than a hand-rolled implementation. “Zero crates” is not a goal when it decreases correctness.
+
+## 25. OpenAI tunnel-client distribution
+
+The official tunnel-client currently publishes Windows amd64/arm64 artifacts and checksum manifests.
+
+Release source:
+
+https://github.com/openai/tunnel-client/releases
+
+v0.10.0 should support keeping a pinned tunnel-client binary under a project-managed data/bin directory rather than requiring a machine-wide install.
+
+A bootstrap helper may:
+
+1. resolve the pinned release;
+2. download the exact platform archive from the official distribution;
+3. verify the published SHA-256;
+4. extract only the required runtime/client binary;
+5. store it below the project/user ServerFS data directory;
+6. never modify global PATH.
+
+The filesystem service itself must remain runnable/testable without tunnel-client; tunnel-client is connectivity infrastructure, not part of the filesystem security kernel.
+
+## 26. CLI and native operations
+
+Add a minimal stdlib-`argparse` CLI rather than another CLI framework.
+
+Target commands:
+
+~~~text
+serverfs serve --config serverfs.toml
+serverfs doctor --config serverfs.toml
+~~~
+
+Optional explicit transport selection may exist for development/legacy scenarios, but native default is stdio.
+
+`serverfs doctor` is read-only and should report:
+
+- ServerFS version;
+- Python version;
+- platform/architecture;
+- native backend import/version;
+- config parse result;
+- each workdir alias and access mode;
+- root open success;
+- supported filesystem type;
+- root reparse status;
+- basic read/write capability assessment without mutating user files;
+- tunnel-client presence/version when configured;
+- clear “not supported” reasons.
+
+Doctor output must not print secret values or expose host roots in contexts where logs may be agent-visible. A deliberate local human-facing verbose mode may show configured roots, but it must be clearly separated from MCP/audit output.
+
+## 27. Logging and stdout discipline
+
+Native stdio makes stdout protocol-critical.
+
+Rules:
+
+- MCP frames only on stdout;
+- all structured ServerFS logs remain on stderr;
+- Rust native backend never prints to stdout/stderr directly during normal operation;
+- Rust errors return structured values/exceptions to Python;
+- panic hook must not dump secrets or paths into protocol output;
+- tunnel-client diagnostics remain separate from MCP frames.
+
+The existing JSON audit contract remains unchanged where possible.
+
+## 28. Linux compatibility requirements
+
+Phase A must prove that refactoring toward `FilesystemBackend` does not change released Linux behavior.
+
+Linux v0.9.0 invariants remain authoritative:
+
+- same filesystem tool names and schemas;
+- same error codes;
+- same hidden/deny behavior;
+- same revisions for unchanged Linux implementation unless a deliberate migration is documented;
+- same ripgrep behavior;
+- same Docker compose deployment;
+- same Streamable HTTP transport security;
+- same file-ingress sidecar;
+- same Agent Bridge integration and writer lease;
+- same 16-slot environment adapter for existing deployments.
+
+Do not “clean up” Linux behavior just to make Windows code look symmetric.
+
+## 29. Test architecture
+
+### 29.1 Contract tests
+
+Extract/extend backend-neutral tests that exercise the same MCP surface against each available backend.
+
+Contract cases include:
+
+- path normalization;
+- hidden policy;
+- deny policy;
+- reserved names;
+- read limits;
+- list pagination;
+- find limits;
+- search limits;
+- text/binary distinction;
+- revisions;
+- create/edit/delete semantics;
+- error redaction;
+- audit redaction.
+
+### 29.2 Windows native security tests
+
+Required Windows cases include:
+
+- ordinary file/directory traversal;
+- `..` escape attempts;
+- `\` and absolute/drive/UNC/NT namespace attempts;
+- colon/ADS syntax;
+- DOS device names;
+- trailing dot/space ambiguity;
+- final symbolic link;
+- parent symbolic link;
+- junction;
+- mount point;
+- other available reparse tags;
+- case variants of deny/reserved names;
+- hard links;
+- concurrent rename of parent;
+- concurrent replacement of final target;
+- concurrent host edit during revision-guarded mutation;
+- target replacement between check and publish;
+- ACL-denied object;
+- read-only attribute;
+- very deep paths;
+- long paths beyond legacy MAX_PATH where supported;
+- Unicode names/content;
+- files that vanish during enumeration;
+- large directory breadth under bounded resource use;
+- stale revision;
+- metadata-preservation failure;
+- temp cleanup after every injected failure point.
+
+### 29.3 Search tests
+
+Search must cover:
+
+- literal match;
+- no regex interpretation;
+- line numbers;
+- UTF-8;
+- case sensitivity toggle;
+- cross-chunk match boundary;
+- max-file-size skip;
+- global result limit;
+- timeout/early stop;
+- hidden/deny/reserved paths;
+- reparse directory never traversed;
+- file disappearing during scan;
+- compatibility with representative Linux `rg` output semantics.
+
+### 29.4 Fault injection
+
+The Rust backend should expose test-only fault injection or internal units sufficient to exercise:
+
+- short write;
+- flush failure;
+- metadata copy failure;
+- rename/publish failure;
+- target identity change;
+- temp cleanup;
+- allocation/handle failures.
+
+Production builds expose no fault-injection controls.
+
+### 29.5 Real filesystem acceptance
+
+Mocked Win32 calls are not sufficient for release.
+
+The release requires tests against a real Windows 11 NTFS filesystem, including concurrency/reparse behavior.
+
+## 30. CI and build matrix
+
+Minimum CI gates:
+
+### Existing Linux root gate
+
+Retain the current project gate required by the files changed.
+
+### Windows Python/native gate
+
+On a real Windows GitHub Actions runner or equivalent:
+
+~~~text
+uv sync --frozen
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest <platform-neutral + Windows-safe tests>
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+maturin build --locked <wheel args>
+install built wheel into a clean uv environment
+run native MCP/doctor smoke tests
+run Windows NTFS security acceptance subset
+~~~
+
+Release CI must additionally test the wheel as an artifact rather than only testing an in-tree debug build.
+
+### Architecture
+
+Windows x64 is mandatory for v0.10.0 release.
+
+Windows arm64 becomes supported only when build and runtime acceptance evidence exists.
+
+## 31. Development phases
+
+### Phase A — Platform boundary refactor
+
+Objective: create the backend/configuration seams without changing Linux behavior.
+
+Work:
+
+- define `FilesystemBackend` / session contract;
+- move revision ownership behind the backend;
+- separate platform-neutral virtual-path policy from Linux path mechanics;
+- remove `container_path` and mandatory numeric slot assumptions from the core model;
+- retain a legacy Compose/env adapter;
+- keep Linux implementation using existing `fdio.py`;
+- add native TOML config parser;
+- add minimal CLI skeleton.
+
+Exit criteria:
+
+- released Linux filesystem behavior unchanged;
+- existing Linux tests green;
+- existing Docker config/build green;
+- no Windows feature claimed yet;
+- no Agent Bridge behavior changed.
+
+Closure addendum (2026-10-02, import-safety/protocol pass):
+
+- `backends.py` now carries only `BackendError`, `TextPage`, the two Protocols and
+  a lazy `get_backend`; the Linux session implementation moved to
+  `linux_backend.py`, the single module-level `fdio` consumer in the MCP product
+  path.
+- Platform-neutral extractions: `concurrency.py` (`mutation_lock`),
+  `binary_payload.py` (`BinaryTransferError`, `BinaryRead`,
+  `decode_base64_payload`), `errors.py` (`MutationError` base plus the three
+  Agent-lease error classes, so `agent_leases.py` stays Linux-only).
+- `SearchTimeout` was normalized to `BackendError("SEARCH_TIMEOUT", ...)` raised
+  by the search kernel; the tool layer maps it through the existing
+  BackendError branch, so the agent-visible code is unchanged.
+- `tools.py` no longer imports `agent_leases`, `mutations`, `search` or `fdio` at
+  module level; the Unix lease manager loads lazily and only on the
+  Agent-enabled mutation path. `main.py` imports `agent_tools` only when the
+  Agent surface is actually enabled.
+- `WorkdirSession` declares `create_binary_file`/`replace_binary_file` and every
+  session method has an explicit return type; `tests/test_backends.py` enforces
+  protocol coverage against the Linux session and the fake session.
+- `tests/test_import_safety.py` proves the product layers import with
+  `serverfs_mcp.fdio` and `serverfs_mcp.agent_leases` force-blocked (measured
+  natively on Windows, where `fcntl` cannot exist at all, and in a Linux
+  container).
+
+Phase B first Python-side wiring task (review decision): `WindowsBackend` must
+retain one session/root capability per workdir for the process lifetime; the
+current per-call `_session()`/`open_session()` pattern must not reopen the
+Windows root HANDLE on every tool call.
+
+### Phase B — Windows native read/security kernel
+
+Objective: prove the Windows security primitive before broad implementation.
+
+Work:
+
+- create Rust/PyO3 crate;
+- owned HANDLE abstraction;
+- trusted root acquisition;
+- HANDLE-relative component open prototype;
+- reparse detection/rejection;
+- native stat/object identity;
+- directory enumeration;
+- read;
+- Windows error normalization;
+- real NTFS tests for traversal and concurrent rename.
+
+Exit criteria:
+
+- no path-string TOCTOU fallback;
+- parent and final reparse tests fail closed;
+- root/session identity remains stable across host-side rename;
+- no handle leaks under stress/failure tests;
+- stat/read/list MCP tests pass on Windows.
+
+If Phase B cannot prove these invariants, stop and redesign before implementing mutations.
+
+### Phase C — Native find/search
+
+Objective: complete the read-only six-tool surface without ripgrep.
+
+Work:
+
+- recursive HANDLE-relative walk;
+- find glob behavior;
+- literal search engine;
+- timeout/limit/size handling;
+- compatibility tests against Linux behavior;
+- bounded resource/handle usage.
+
+Exit criteria:
+
+- six read tools pass Windows MCP E2E;
+- reparse trees cannot escape or be traversed;
+- search early-stop/timeout are demonstrated;
+- no `rg.exe` dependency.
+
+### Phase D — Windows native mutation and binary transfer
+
+Objective: add safe writable workdirs.
+
+Work:
+
+- same-directory temp creation;
+- durable write/flush;
+- create-only atomic publication;
+- revision-guarded replace;
+- delete/rmdir;
+- hard-link handling;
+- Windows metadata preservation policy;
+- binary base64 create/overwrite/download;
+- exhaustive cleanup/fault tests.
+
+Exit criteria:
+
+- atomicity demonstrated with concurrent readers;
+- stale revisions cannot commit;
+- unsupported metadata fails before publication;
+- no partial destination content;
+- no temp artifacts exposed through tools;
+- all mutation MCP tests pass on real NTFS.
+
+### Phase E — Native packaging and tunnel profile
+
+Objective: make the implementation installable and usable without a developer toolchain.
+
+Work:
+
+- prebuilt Windows x64 wheel;
+- uv dependency integration;
+- `serverfs.toml.example`;
+- `serverfs serve` and `serverfs doctor`;
+- pinned project-local tunnel-client bootstrap/profile;
+- stdio launch;
+- file-backed tunnel credential guidance;
+- child-environment secret regression test;
+- Windows documentation.
+
+Exit criteria:
+
+- clean Windows machine/environment needs no Docker/WSL/Rust/MSVC SDK;
+- `uv sync` installs the usable native backend from a wheel;
+- ChatGPT tunnel E2E succeeds over stdio;
+- ServerFS child does not receive the Control Plane API key value;
+- no localhost MCP listener exists in the default native profile.
+
+### Phase F — Windows acceptance and release closure
+
+Objective: decide whether v0.10.0 may claim Windows support.
+
+Required acceptance:
+
+- Windows 11 x64;
+- local NTFS;
+- read-only and writable workdirs;
+- reparse/junction attack matrix;
+- concurrent host edit/rename matrix;
+- metadata cases;
+- large/deep/Unicode paths;
+- clean-install wheel;
+- tunnel E2E;
+- restart/recovery of tunnel-created MCP child;
+- documentation and website alignment.
+
+Release only after all required acceptance evidence is recorded.
+
+## 32. Public compatibility and additive changes
+
+Expected public filesystem tool count remains unchanged by default.
+
+Additive public changes may include:
+
+- `type="reparse_point"` in entry/stat output;
+- a new recoverable Windows-specific error only if required for correct recovery.
+
+Configuration/CLI changes are deployment-facing, not agent-facing.
+
+v0.10.0 must not alter Agent MCP tools or Bridge RPC merely to prepare for future Windows Agent support.
+
+## 33. Supported and unsupported Windows storage
+
+### GA target
+
+- Windows 11 x64;
+- local NTFS;
+- ordinary current-user accessible files/directories.
+
+### Must be detected/tested before claiming support
+
+- ReFS / Dev Drive;
+- SMB/UNC network shares;
+- mapped network drives;
+- OneDrive/cloud placeholders;
+- filesystem virtualization/filter products;
+- removable filesystems;
+- FAT/exFAT.
+
+A filesystem being mountable/openable is not enough. It is supported only after its identity, reparse, atomic rename, flush and revision semantics pass the acceptance suite.
+
+Unknown storage must fail clearly or run only in an explicitly documented reduced mode; it must never silently inherit the NTFS security claim.
+
+## 34. Performance principles
+
+Security correctness wins over micro-optimization.
+
+Still, the native backend should avoid unnecessary crossings:
+
+- root/session handles retained;
+- high-level read/list/find/search calls cross Python/Rust once per operation rather than once per path component;
+- native search streams/limits internally;
+- directory handles are bounded by traversal depth/algorithm;
+- no persistent content cache or index;
+- no hidden background scanner.
+
+Performance acceptance should record representative:
+
+- read latency;
+- large directory listing;
+- recursive find;
+- literal search;
+- create/edit latency;
+
+but no release requirement is expressed as an arbitrary throughput target until a real baseline is measured.
+
+## 35. Security/threat-model statement for Windows
+
+Windows Native ServerFS protects against:
+
+- untrusted MCP path input;
+- traversal;
+- symlink/junction/reparse redirection;
+- hidden/credential policy bypass;
+- stale revision writes;
+- partial publication;
+- unsupported file types;
+- accidental metadata loss within the declared mutation contract;
+- secret/path leakage through normal MCP errors/audit logs.
+
+It does not claim to protect against:
+
+- arbitrary native code execution inside the ServerFS process;
+- a malicious process running as the same Windows user with unrestricted access to the same workdir;
+- administrator/kernel compromise;
+- filesystem/filter behavior outside the tested support matrix.
+
+This distinction must remain explicit in documentation.
+
+## 36. Future compatibility
+
+The architectural output of v0.10.0 should make later work simpler without implementing it early.
+
+### Windows Agent Bridge, future release
+
+Later work can add platform-specific:
+
+- local IPC;
+- Agent process lifecycle;
+- writer leases;
+- Job Objects;
+- native runtime adapters.
+
+It must build on the native workdir identity/model rather than restoring fixed Docker slots as a core concept.
+
+### macOS native backend, future release
+
+macOS should be evaluated as a native platform, not implemented through Docker by default.
+
+Likely shared ideas:
+
+- Python product layer;
+- native TOML config;
+- stdio tunnel profile;
+- backend-owned revision;
+- retained root capability;
+- platform-specific filesystem implementation.
+
+Darwin may reuse POSIX concepts such as `openat` but must be validated independently for APFS/macOS semantics. Shared contract does not imply identical implementation.
+
+## 37. External facts verified for this design
+
+The following external capabilities were verified against current primary/official sources before freezing this plan:
+
+1. Microsoft documents user-mode `NtCreateFile` and relative naming through `OBJECT_ATTRIBUTES.RootDirectory`:
+   https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile
+
+2. Microsoft documents reparse-point handling and `FILE_FLAG_OPEN_REPARSE_POINT` behavior:
+   https://learn.microsoft.com/en-us/windows/win32/fileio/reparse-points-and-file-operations
+
+3. Microsoft documents `FILE_ID_INFO` with `VolumeSerialNumber` + `FILE_ID_128` for file identity:
+   https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_info
+
+4. PyO3 documents prebuilt extension distribution, Maturin and stable ABI/`abi3` wheels:
+   https://pyo3.rs/main/building-and-distribution
+
+5. OpenAI tunnel-client documents `--mcp.command` / `MCP_COMMAND` stdio MCP children and the one-active-instance-per-tunnel stdio limitation:
+   https://github.com/openai/tunnel-client/blob/master/docs/configuration.md
+
+6. OpenAI tunnel-client currently publishes Windows amd64/arm64 artifacts with checksum manifests:
+   https://github.com/openai/tunnel-client/releases
+
+7. The current tunnel-client stdio implementation uses Go `exec.Command` without replacing the child environment, which is why v0.10 native deployment must not place the Control Plane API key value in an environment inherited by ServerFS:
+   https://github.com/openai/tunnel-client/blob/master/pkg/mcpclient/stdio_command.go
+
+These references establish available primitives, not implementation acceptance. Real Windows tests remain authoritative.
+
+## 38. Completion contract for v0.10.0
+
+v0.10.0 is complete only when all of the following are true:
+
+1. Linux v0.9 filesystem behavior and deployment remain regression-green.
+2. Windows 11 x64 runs ServerFS natively without Docker/WSL.
+3. Windows filesystem access is rooted in retained native handles and request-controlled traversal is HANDLE-relative.
+4. Reparse-point parents never resolve through to targets.
+5. Windows read/list/find/search/stat pass MCP-level tests.
+6. Writable Windows workdirs satisfy revision, atomic publication and metadata fail-closed contracts on real NTFS.
+7. Windows search requires no ripgrep installation.
+8. End users install no Rust/MSVC/Windows SDK toolchain.
+9. The native default MCP transport is stdio through the official tunnel-client.
+10. Tunnel control-plane secret values are not inherited by the ServerFS MCP child in the supported profile.
+11. Native fileParams ingress remains disabled until an equivalent isolation design exists.
+12. Windows documentation names the exact tested support matrix and does not imply untested ReFS/SMB/cloud support.
+13. Full Linux and Windows gates are actually executed and recorded.
+14. Repository docs/site are aligned to v0.10.0 before tag/release.
+
+Until those conditions hold, Windows Native remains development/preview functionality rather than a released support claim.
