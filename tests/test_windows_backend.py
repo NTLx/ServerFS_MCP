@@ -116,7 +116,7 @@ class TestPendingChannels:
     def test_pending_channel_reports_structured_code(self, tmp_path: Path) -> None:
         session = WindowsBackend().open_session(make_workdir(tmp_path))
         with pytest.raises(BackendError) as excinfo:
-            session.find(None, pattern="*", limit=10, max_walk_entries=10)
+            session.create_file(None, "x", max_write_bytes=10)
         assert excinfo.value.code == "WINDOWS_KERNEL_PENDING"
 
 

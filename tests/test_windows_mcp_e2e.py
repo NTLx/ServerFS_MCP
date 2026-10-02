@@ -389,6 +389,125 @@ class TestAcceptanceClosure:
         assert after - baseline <= 64, f"handle drift {baseline} -> {after}"
 
 
+class TestFindSearchE2E:
+    def _seed_tree(self, wd_root) -> None:
+        (wd_root / "docs").mkdir()
+        (wd_root / "docs" / "a.txt").write_bytes(b"first NEEDLE line\nsecond\nthird NEEDLE too\n")
+        (wd_root / "docs" / "b.md").write_bytes(b"NEEDLE in markdown\n")
+        (wd_root / "notes.txt").write_bytes(b"needle lowercase\n")
+        (wd_root / "skip.py").write_bytes(b"NEEDLE in python\n")
+        (wd_root / ".hidden.txt").write_bytes(b"NEEDLE hidden\n")
+        (wd_root / ".env").write_bytes(b"NEEDLE=secret\n")
+        big = "x" * 200 + ".txt"
+        (wd_root / big).write_bytes(b"NEEDLE unicode-name\n")
+
+    def test_find_matches_and_truncation(self, server, wd_root) -> None:
+        self._seed_tree(wd_root)
+        result = call_success(server, "find_files", {"workdir": "test", "pattern": "*.txt"})
+        paths = {m["path"] for m in result["matches"]}
+        assert "docs/a.txt" in paths and "notes.txt" in paths
+        assert "skip.py" not in paths
+        # hidden and denied namespaces never surface
+        assert ".hidden.txt" not in paths
+        assert all(".env" not in p for p in paths)
+        assert result["truncated"] is False
+
+    def test_find_limit_truncated_flag(self, server, wd_root) -> None:
+        self._seed_tree(wd_root)
+        result = call_success(
+            server, "find_files", {"workdir": "test", "pattern": "*.txt", "limit": 1}
+        )
+        assert result["returned"] == 1
+        assert result["truncated"] is True
+
+    def test_find_skips_reparse_dirs(self, server, wd_root) -> None:
+        (wd_root / "real").mkdir()
+        (wd_root / "real" / "in.txt").write_bytes(b"x\n")
+        if not make_junction(wd_root / "jdir", wd_root / "real"):
+            pytest.fail("junction creation failed on this host")
+        result = call_success(server, "find_files", {"workdir": "test", "pattern": "*"})
+        paths = {m["path"] for m in result["matches"]}
+        assert "real/in.txt" in paths
+        assert not any(p.startswith("jdir/") for p in paths)
+
+    def test_find_root_missing_and_file(self, server, wd_root) -> None:
+        assert (
+            error_code(
+                call_error(
+                    server, "find_files", {"workdir": "test", "path": "gone", "pattern": "*"}
+                )
+            )
+            == "PATH_NOT_FOUND"
+        )
+
+    def test_search_literal_case_and_glob(self, server, wd_root) -> None:
+        self._seed_tree(wd_root)
+        result = call_success(server, "search_text", {"workdir": "test", "query": "NEEDLE"})
+        matches = result["matches"]
+        big = "x" * 200 + ".txt"
+        assert {(m["path"], m["line"]) for m in matches} == {
+            ("docs/a.txt", 1),
+            ("docs/a.txt", 3),
+            ("docs/b.md", 1),
+            ("skip.py", 1),
+            (big, 1),
+        }
+        globbed = call_success(
+            server, "search_text", {"workdir": "test", "query": "NEEDLE", "glob": "*.md"}
+        )
+        assert [m["path"] for m in globbed["matches"]] == ["docs/b.md"]
+        ci = call_success(
+            server,
+            "search_text",
+            {"workdir": "test", "query": "needle", "case_sensitive": False},
+        )
+        cpaths = {(m["path"], m["line"]) for m in ci["matches"]}
+        assert ("notes.txt", 1) in cpaths and ("docs/a.txt", 1) in cpaths
+
+    def test_search_denied_hidden_and_binary_skipped(self, server, wd_root) -> None:
+        self._seed_tree(wd_root)
+        (wd_root / "bin.dat").write_bytes(b"NEEDLE\x00after\n")
+        result = call_success(server, "search_text", {"workdir": "test", "query": "NEEDLE"})
+        paths = {m["path"] for m in result["matches"]}
+        assert ".env" not in paths and ".hidden.txt" not in paths and "bin.dat" not in paths
+
+    def test_search_limit_early_stop(self, server, wd_root) -> None:
+        self._seed_tree(wd_root)
+        result = call_success(
+            server, "search_text", {"workdir": "test", "query": "NEEDLE", "limit": 2}
+        )
+        assert result["returned"] == 2
+        assert result["truncated"] is True
+
+    def test_search_text_content_preserves_line(self, server, wd_root) -> None:
+        (wd_root / "l.txt").write_bytes(b"  spaced NEEDLE  \n")
+        result = call_success(server, "search_text", {"workdir": "test", "query": "NEEDLE"})
+        assert result["matches"][0]["text"] == "  spaced NEEDLE  "
+
+    def test_search_timeout_code_parity(self, wd_root) -> None:
+        # session-level: deadline of zero trips the first loop check and
+        # must surface exactly the BackendError code the Linux searcher uses
+        from serverfs_mcp.backends import BackendError
+        from serverfs_mcp.paths import DenyPolicy, resolve_workdir_path
+        from serverfs_mcp.windows_backend import WindowsBackend
+
+        wd = Workdir("test", wd_root, None)
+        (wd_root / "a.txt").write_bytes(b"NEEDLE\n")
+        session = WindowsBackend().open_session(wd)
+        resolved = resolve_workdir_path(wd, "", allow_hidden=False, deny_policy=DenyPolicy())
+        with pytest.raises(BackendError) as excinfo:
+            session.search(
+                resolved,
+                query="NEEDLE",
+                glob=None,
+                case_sensitive=True,
+                limit=10,
+                timeout_seconds=0.0,
+                max_file_bytes=1 << 20,
+            )
+        assert excinfo.value.code == "SEARCH_TIMEOUT"
+
+
 class TestRootRenameRetention:
     def test_channels_keep_working_after_root_renamed(self, wd_root) -> None:
         # the acceptance the review demanded beyond object_token: after the

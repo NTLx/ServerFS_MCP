@@ -10,10 +10,9 @@ v0.9 did — the Windows backend acquires the trusted root HANDLE once per
 workdir and retains it for the process lifetime. ``open_session`` returns
 the cached session; no MCP tool call ever reopens the root.
 
-Channel status (Phase B read kernel): stat/list/read_text_page/
-read_binary/validate_directory are live against the retained root handle.
-find and search stay explicit pending stubs until Phase C, and all
-mutation channels until Phase D, each raising
+Channel status (Phase B read kernel + Phase C find/search): all read,
+find and search channels are live against the retained root handle; all
+mutation channels stay explicit pending stubs until Phase D, each raising
 ``BackendError("WINDOWS_KERNEL_PENDING", ...)`` so a half-built Windows
 surface can never silently answer with wrong data.
 """
@@ -21,14 +20,17 @@ surface can never silently answer with wrong data.
 from __future__ import annotations
 
 import datetime as _dt
+import fnmatch
 import mimetypes
+import time
 from typing import TYPE_CHECKING
 
 import serverfs_windows_native as native
 
 from .backends import BackendError, TextPage
 from .binary_payload import BinaryRead, BinaryTransferError
-from .models import EntryInfo, StatFileResult
+from .models import EntryInfo, StatFileResult, TextMatch
+from .paths import is_hidden_component
 
 if TYPE_CHECKING:
     from .models import TextEdit
@@ -65,6 +67,32 @@ def _pending(channel: str) -> BackendError:
         "WINDOWS_KERNEL_PENDING",
         f"the Windows '{channel}' channel arrives with a later phase",
     )
+
+
+# The Linux search pins rg with `--glob !.git/!hg/!svn` regardless of
+# allow_hidden (rg never reads VCS internals); the Windows searcher keeps
+# that exclusion so both backends scan the same set of files.
+_RG_ALWAYS_EXCLUDED_DIRS = frozenset({".git", ".hg", ".svn"})
+
+
+def _glob_matches(name: str, rel_path: str, glob: str) -> bool:
+    # rg --glob parity for the patterns the tool contract exposes: a
+    # separator-free pattern matches the file name, anything else matches
+    # the search-root-relative POSIX path
+    if "/" in glob or "\\" in glob:
+        return fnmatch.fnmatchcase(rel_path, glob)
+    return fnmatch.fnmatchcase(name, glob)
+
+
+def _scan_file(data: bytes, path: str, needle: str, case_sensitive: bool):
+    for index, raw in enumerate(data.split(b"\n"), start=1):
+        # rg reports whole lines with the trailing newline removed and
+        # never rewrites an interior \r; non-UTF-8 bytes are lossy-decoded
+        # exactly like the current text channel
+        text = raw.decode("utf-8", errors="replace").rstrip("\n")
+        probe = text if case_sensitive else text.casefold()
+        if needle and needle in probe:
+            yield TextMatch(path=path, line=index, text=text)
 
 
 class WindowsWorkdirSession:
@@ -187,10 +215,49 @@ class WindowsWorkdirSession:
             return
         _call(self._native.validate_directory, parts)
 
-    # ---- find/search (pending: Phase C native walk/search) ----
+    # ---- find/search (native walk per dev_plan §16/§17: no ripgrep) ----
 
-    def find(self, resolved: ResolvedPath, *, pattern: str, limit: int, max_walk_entries: int):
-        raise _pending("find")
+    def _rows(self, parts: tuple[str, ...]):
+        return _call(self._native.list, list(parts))
+
+    def find(
+        self, resolved: ResolvedPath, *, pattern: str, limit: int, max_walk_entries: int
+    ) -> tuple[list[str], bool]:
+        # DFS over per-directory handle scans, mirroring filesystem.find_files:
+        # every directory open re-validates the full component chain from the
+        # retained root; entries come from the candidate+reopen verified list;
+        # reparse points never match and are never descended.
+        matches: list[str] = []
+        visited = 0
+        stack = [resolved.rel_parts]
+        first = True
+        while stack:
+            parts = stack.pop()
+            try:
+                rows = self._rows(parts)
+            except BackendError as exc:
+                if first:
+                    raise
+                if exc.code in ("PATH_NOT_FOUND", "NOT_A_DIRECTORY"):
+                    continue  # raced away mid-walk, like Linux
+                raise
+            first = False
+            for name, etype, _size, _ts in sorted(rows, key=lambda r: r[0]):
+                visited += 1
+                if visited > max_walk_entries:
+                    return matches, True
+                child = (*parts, name)
+                if not resolved.allow_hidden and is_hidden_component(name):
+                    continue
+                if resolved.deny_policy.is_denied(child):
+                    continue
+                if etype == "directory":
+                    stack.append(child)
+                elif etype == "file" and fnmatch.fnmatchcase(name, pattern):
+                    matches.append("/".join(child))
+                    if len(matches) >= limit:
+                        return matches, True
+        return matches, False
 
     def search(
         self,
@@ -202,8 +269,71 @@ class WindowsWorkdirSession:
         limit: int,
         timeout_seconds: float,
         max_file_bytes: int,
-    ):
-        raise _pending("search")
+    ) -> tuple[list[TextMatch], bool]:
+        # §17: literal fixed-string search over the policy-filtered walk.
+        # Files are read through the same handle-verified bounded read; NUL
+        # content is skipped whole (rg's binary suppression), oversized
+        # files are skipped (rg --max-filesize), and the scan stops at
+        # limit + 1 valid matches so truncation is proven, not guessed.
+        deadline = time.monotonic() + timeout_seconds
+        base = resolved.rel_parts
+        self.validate_directory(resolved)
+        needle = query if case_sensitive else query.casefold()
+        matches: list[TextMatch] = []
+        truncated = False
+        stack = [base]
+        while stack and not truncated:
+            if time.monotonic() > deadline:
+                raise BackendError(
+                    "SEARCH_TIMEOUT", f"search exceeded the {timeout_seconds}s deadline"
+                )
+            parts = stack.pop()
+            try:
+                rows = self._rows(parts)
+            except BackendError as exc:
+                if exc.code in ("PATH_NOT_FOUND", "NOT_A_DIRECTORY"):
+                    continue
+                raise
+            for name, etype, size, _ts in rows:
+                child = (*parts, name)
+                rel_from_root = "/".join(child[len(base) :])
+                if not resolved.allow_hidden and is_hidden_component(name):
+                    continue
+                if resolved.deny_policy.is_denied(child):
+                    continue
+                if etype == "directory":
+                    if name in _RG_ALWAYS_EXCLUDED_DIRS:
+                        continue
+                    stack.append(child)
+                    continue
+                if etype != "file":
+                    continue
+                if glob and not _glob_matches(name, rel_from_root, glob):
+                    continue
+                if size is None or size > max_file_bytes:
+                    continue
+                try:
+                    data, _sha, _rev = _call(self._native.read_bounded, list(child), max_file_bytes)
+                except BackendError as exc:
+                    if exc.code in (
+                        "FILE_TOO_LARGE",
+                        "PATH_NOT_FOUND",
+                        "NOT_A_FILE",
+                        "REPARSE_POINT_NOT_ALLOWED",
+                        "ACCESS_DENIED",
+                    ):
+                        continue  # raced/vanished/binary-adjacent: rg skips too
+                    raise
+                if b"\x00" in data:
+                    continue
+                for match in _scan_file(data, "/".join(child), needle, case_sensitive):
+                    matches.append(match)
+                    if len(matches) > limit:
+                        truncated = True
+                        break
+                if truncated:
+                    break
+        return matches[:limit], truncated
 
     # ---- mutation channels (pending: Phase D) ----
 
