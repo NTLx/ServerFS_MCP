@@ -412,7 +412,10 @@ services:
       CONTROL_PLANE_API_KEY: ${CONTROL_PLANE_API_KEY}
       CONTROL_PLANE_TUNNEL_ID: ${CONTROL_PLANE_TUNNEL_ID}
       CONTROL_PLANE_BASE_URL: ${CONTROL_PLANE_BASE_URL:-https://api.openai.com}
-      CONTROL_PLANE_HTTP_PROXY: ${CONTROL_PLANE_HTTP_PROXY:-}
+      SERVERFS_PROXY_HOST: ${SERVERFS_PROXY_HOST:-}
+      SERVERFS_PROXY_PORT: ${SERVERFS_PROXY_PORT:-}
+      SERVERFS_PROXY_USERNAME: ${SERVERFS_PROXY_USERNAME:-}
+      SERVERFS_PROXY_PASSWORD: ${SERVERFS_PROXY_PASSWORD:-}
 
       MCP_SERVER_URL: http://serverfs-mcp:8000/mcp
 
@@ -422,6 +425,11 @@ services:
       LOG_FORMAT: ${TUNNEL_LOG_FORMAT:-json}
 
       HEALTH_LISTEN_ADDR: ${HEALTH_LISTEN_ADDR:-:8080}
+
+    entrypoint: ["/bin/sh", "/opt/serverfs/tunnel-launcher.sh"]
+
+    volumes:
+      - ./deployment/tunnel/tunnel-launcher.sh:/opt/serverfs/tunnel-launcher.sh:ro
 
     expose:
       - "8080"

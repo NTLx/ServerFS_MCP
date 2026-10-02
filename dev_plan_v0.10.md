@@ -260,6 +260,33 @@ Windows:
 
 A later Linux-native no-Docker deployment may reuse the native configuration/stdio work, but it is not required for v0.10.0.
 
+### 5.3 HTTP proxy scope
+
+The v0.10 public proxy configuration contract is shared across supported
+platforms. Its fields are
+`SERVERFS_PROXY_HOST`, `SERVERFS_PROXY_PORT`, `SERVERFS_PROXY_USERNAME`, and
+`SERVERFS_PROXY_PASSWORD`. There is no protocol selector: v0.10 supports HTTP
+proxy only. Empty host disables the proxy and requires the other fields to be
+empty; a host requires a valid port. Empty username and password means no
+authentication. A non-empty username enables HTTP proxy authentication, and
+the password may be empty. Password without username is invalid. Credentials
+are percent-encoded when deriving the tunnel client's internal
+`CONTROL_PLANE_HTTP_PROXY` URL.
+
+This PR lands the Linux Compose wiring first. Compose passes these values only
+to `openai-tunnel`; it must not pass proxy configuration or derived credentials
+to `serverfs-mcp`, Agent Bridge, or the v0.5 file-ingress sidecar. Phase E must
+implement the Windows-native launcher/tunnel-client wiring with these identical
+field names and semantics, and construct a sanitized child environment so proxy
+credentials are not inherited by ServerFS or Agent Bridge. Never log credentials
+or a credential-bearing URL. The default empty configuration leaves tunnel
+behavior equivalent to the current proxy-disabled deployment. This does not
+add SOCKS, PAC or system-proxy discovery, a generic proxy service, host ports,
+or TLS interception.
+
+The shared contract does not make the Windows implementation part of this PR;
+that wiring remains Phase E work.
+
 ## 6. Platform-neutral domain refactor
 
 The current model contains Compose artifacts that must stop being mandatory domain concepts:
