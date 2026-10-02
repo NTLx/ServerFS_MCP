@@ -161,10 +161,11 @@ class DenyPolicy:
     this one matcher, so no configuration can expose a temp artifact or
     the disabled-slot sentinel.
 
-    ``case_insensitive`` aligns rule matching with the platform's own
-    name comparison (Windows treats ``SECRET.PEM`` and ``secret.pem``
-    as the same name). It is a platform fact wired by the tool layer,
-    not an administrator knob; Linux keeps exact-case semantics.
+    ``case_insensitive`` is conservative case-insensitive matching on
+    Windows (casefolding is broader than the NT object manager's
+    Unicode case table, so it can over-deny but never under-deny —
+    fail-closed). It is a platform fact wired by the tool layer, not an
+    administrator knob; Linux keeps exact-case semantics.
     """
 
     extra_globs: tuple[str, ...] = ()
@@ -176,7 +177,7 @@ class DenyPolicy:
         if not rel_parts:
             return False
         if self.case_insensitive:
-            rel_parts = tuple(c.lower() for c in rel_parts)
+            rel_parts = tuple(c.casefold() for c in rel_parts)
         if is_reserved_path(rel_parts):
             return True
         *dirs, base = rel_parts
@@ -189,7 +190,7 @@ class DenyPolicy:
             if any(fnmatch.fnmatchcase(base, g) for g in DEFAULT_DENY_GLOBS):
                 return True
         for g in self.extra_globs:
-            glob = g.lower() if self.case_insensitive else g
+            glob = g.casefold() if self.case_insensitive else g
             if glob.endswith("/**"):
                 head = glob[:-3]
                 if head and any(fnmatch.fnmatchcase(c, head) for c in components):

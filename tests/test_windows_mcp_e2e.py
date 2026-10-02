@@ -258,13 +258,147 @@ class TestBinaryDownloadE2E:
         assert result["size"] == 0
 
 
+class TestAcceptanceClosure:
+    def test_reparse_error_leaks_neither_status_nor_path(self, server, wd_root) -> None:
+        (wd_root / "real").mkdir()
+        (wd_root / "real" / "inner.txt").write_bytes(b"i\n")
+        if not make_junction(wd_root / "jlink", wd_root / "real"):
+            pytest.fail("junction creation with mklink /J failed on this host")
+        msg = call_error(server, "read_text_file", {"workdir": "test", "path": "jlink/inner.txt"})
+        assert error_code(msg) == "REPARSE_POINT_NOT_ALLOWED"
+        assert "0x" not in msg
+        assert str(wd_root) not in msg
+
+    def test_same_name_replacement_never_mixes_objects(self, server, wd_root) -> None:
+        import threading
+
+        target = wd_root / "swap.txt"
+        target.write_bytes(b"short\n")
+        stop = threading.Event()
+
+        def mutator():
+            while not stop.is_set():
+                try:
+                    # grow then shrink: every observable size (0, 7, 26)
+                    # is a legitimate single-snapshot state
+                    target.write_bytes(b"much-longer-content-line\n")
+                    target.write_bytes(b"short\n")
+                except OSError:
+                    pass  # transient sharing violation with a reader; retry
+
+        thread = threading.Thread(target=mutator, daemon=True)
+        thread.start()
+        unexpected: list[str] = []
+        try:
+            for _ in range(120):
+                try:
+                    read = call_success(
+                        server, "read_text_file", {"workdir": "test", "path": "swap.txt"}
+                    )
+                except AssertionError as exc:
+                    text = str(exc)
+                    if "PATH_NOT_FOUND:" not in text:
+                        unexpected.append(text)
+                    continue
+                # every successful read must describe ONE object snapshot.
+                # A concurrent write can be observed at any prefix length
+                # (0..full), so the invariant is: content is a prefix of
+                # one canonical state, and end_line agrees with content —
+                # never bytes from one object plus metadata from another
+                content = read["content"]
+                legal = ("short\n", "much-longer-content-line\n")
+                if not any(cand.startswith(content) for cand in legal):
+                    unexpected.append(f"mixed read: {read!r}")
+                expected_end = 0 if content == "" else 1
+                if read["end_line"] != expected_end:
+                    unexpected.append(f"inconsistent page: {read!r}")
+                stat = call_success(server, "stat_file", {"workdir": "test", "path": "swap.txt"})
+                if stat["size"] not in range(0, 27):
+                    unexpected.append(f"mixed stat: {stat!r}")
+        finally:
+            stop.set()
+            thread.join(timeout=5)
+        assert not unexpected, unexpected[:3]
+
+    def test_enumeration_races_never_escape_or_traceback(self, server, wd_root) -> None:
+        import threading
+
+        stop = threading.Event()
+        names = [f"racer{i}.txt" for i in range(24)]
+        for name in names[:8]:
+            (wd_root / name).write_bytes(b"seed\n")
+
+        def churn():
+            i = 0
+            while not stop.is_set():
+                name = names[i % len(names)]
+                path = wd_root / name
+                moved = wd_root / (name + ".moved")
+                try:
+                    if path.exists():
+                        path.rename(moved)
+                    else:
+                        moved.write_bytes(b"moved\n")
+                        moved.rename(path)
+                except OSError:
+                    pass  # raced with the reader side; the next round retries
+                i += 1
+
+        thread = threading.Thread(target=churn, daemon=True)
+        thread.start()
+        try:
+            for _ in range(60):
+                result = call_success(
+                    server, "list_directory", {"workdir": "test", "path": "", "limit": 50}
+                )
+                for entry in result["entries"]:
+                    # bounded skip/retry/error but never: separators in
+                    # names, reserved leaks, path escape or wrong types
+                    assert "\\" not in entry["name"] and "/" not in entry["name"]
+                    assert not entry["name"].startswith(".serverfs-tmp")
+                    assert entry["type"] in ("file", "directory", "reparse_point")
+                    assert not entry["path"].startswith(("\\", "/", ".."))
+        finally:
+            stop.set()
+            thread.join(timeout=5)
+
+    def test_mcp_stress_keeps_handle_count_bounded(self, server, wd_root) -> None:
+        import ctypes
+
+        (wd_root / "f.txt").write_bytes(b"payload\n")
+        (wd_root / "blob.bin").write_bytes(b"b" * 100)
+
+        def handle_count() -> int:
+            kernel32 = ctypes.windll.kernel32
+            count = ctypes.c_uint32(0)
+            ok = kernel32.GetProcessHandleCount(ctypes.c_void_p(-1), ctypes.byref(count))
+            assert ok, ctypes.WinError()
+            return count.value
+
+        handle_count()  # warm
+        baseline = handle_count()
+        for _ in range(300):
+            call_success(server, "stat_file", {"workdir": "test", "path": "f.txt"})
+            call_success(server, "list_directory", {"workdir": "test", "path": ""})
+            call_success(server, "read_text_file", {"workdir": "test", "path": "f.txt"})
+            call_success(server, "download_binary_file", {"workdir": "test", "path": "blob.bin"})
+            call_error(server, "stat_file", {"workdir": "test", "path": "absent.txt"})
+        after = handle_count()
+        # per-operation leaf handles must all close; only retained roots
+        # persist. margin absorbs runtime/allocator noise on this host
+        assert after - baseline <= 64, f"handle drift {baseline} -> {after}"
+
+
 class TestRootRenameRetention:
     def test_channels_keep_working_after_root_renamed(self, wd_root) -> None:
         # the acceptance the review demanded beyond object_token: after the
         # configured root path is renamed by the host, every channel still
         # serves the SAME retained root handle, not a reopened path
+        from serverfs_mcp.workdirs import EffectiveWorkdirPolicy
+
         (wd_root / "a.txt").write_bytes(b"keep\n")
-        server = create_server(Settings(), WorkdirRegistry([Workdir("test", wd_root, None)]))
+        plain = Workdir("test", wd_root, None)
+        server = create_server(Settings(), WorkdirRegistry([plain]))
         before = call_success(server, "stat_file", {"workdir": "test", "path": "a.txt"})
         moved = wd_root.parent / (wd_root.name + "-moved")
         wd_root.rename(moved)
@@ -275,6 +409,32 @@ class TestRootRenameRetention:
             assert read["content"] == "keep\n"
             after = call_success(server, "stat_file", {"workdir": "test", "path": "a.txt"})
             assert after["revision"] == before["revision"]
+            # download + resource through the same cached session: same
+            # (alias, root, read_only) key, binary policy from this registry
+            binary_server = create_server(
+                Settings(binary_transfer_enabled=True),
+                WorkdirRegistry(
+                    [
+                        Workdir(
+                            "test",
+                            wd_root,
+                            None,
+                            policy=EffectiveWorkdirPolicy(binary_transfer_enabled=True),
+                        )
+                    ]
+                ),
+            )
+            downloaded = call_success(
+                binary_server, "download_binary_file", {"workdir": "test", "path": "a.txt"}
+            )
+            assert downloaded["size"] == 5
+            assert downloaded["revision"] == before["revision"]
+
+            async def _read_resource():
+                return await binary_server.read_resource("serverfs://test/a.txt")
+
+            contents = asyncio.run(_read_resource())
+            assert "keep" in contents[0].content
         finally:
             moved.rename(wd_root)
 

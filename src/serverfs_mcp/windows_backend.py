@@ -250,7 +250,7 @@ class WindowsBackend:
     _shared: WindowsBackend | None = None
 
     def __init__(self) -> None:
-        self._sessions: dict[tuple[str, str], WindowsWorkdirSession] = {}
+        self._sessions: dict[tuple[str, str, bool], WindowsWorkdirSession] = {}
 
     @classmethod
     def shared(cls) -> WindowsBackend:

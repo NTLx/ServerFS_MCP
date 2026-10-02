@@ -37,7 +37,13 @@ fn error_pair(err: &NativeError) -> (&'static str, String) {
         // Linux file contexts render "target is a directory" as NOT_A_FILE
         // (open-by-name on a directory yields EISDIR); keep the code identical
         NativeError::IsADirectory => ("NOT_A_FILE", "target is a directory".to_string()),
-        NativeError::ReparsePoint => ("REPARSE_POINT", "reparse point refused".to_string()),
+        // explicit recoverable Windows code (§14 additive): the object exists,
+        // ServerFS policy forbids entering it — kept distinct from the
+        // type value "reparse_point" that stat/list report
+        NativeError::ReparsePoint => (
+            "REPARSE_POINT_NOT_ALLOWED",
+            "reparse point is not allowed on this channel".to_string(),
+        ),
         NativeError::AccessDenied => ("ACCESS_DENIED", "access denied".to_string()),
         NativeError::InvalidName => ("INVALID_NAME", "invalid component name".to_string()),
         NativeError::InvalidRoot => ("INVALID_ROOT", "invalid workdir root".to_string()),
@@ -81,7 +87,7 @@ mod tests {
             (NativeError::PathNotFound, "PATH_NOT_FOUND"),
             (NativeError::NotADirectory, "NOT_A_DIRECTORY"),
             (NativeError::IsADirectory, "NOT_A_FILE"),
-            (NativeError::ReparsePoint, "REPARSE_POINT"),
+            (NativeError::ReparsePoint, "REPARSE_POINT_NOT_ALLOWED"),
             (NativeError::AccessDenied, "ACCESS_DENIED"),
             (NativeError::InvalidName, "INVALID_NAME"),
             (NativeError::InvalidRoot, "INVALID_ROOT"),

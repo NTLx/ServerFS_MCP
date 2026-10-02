@@ -51,13 +51,23 @@ impl Drop for Sandbox {
 fn symlink_supported(result: &std::io::Result<()>) -> bool {
     match result {
         Err(e) if e.raw_os_error() == Some(1314) => {
+            // the dedicated Windows acceptance CI job sets
+            // SERVERFS_REQUIRE_SYMLINK=1, where an unexercised symlink
+            // case is a hard failure rather than a soft skip
+            if std::env::var("SERVERFS_REQUIRE_SYMLINK").is_ok() {
+                panic!(
+                    "SERVERFS_REQUIRE_SYMLINK=1 but symlink creation lacks \
+                     SeCreateSymbolicLinkPrivilege/Developer Mode"
+                );
+            }
             eprintln!(
                 "SKIPPED (privilege not held): symlink reparse coverage needs \
                        SeCreateSymbolicLinkPrivilege or Developer Mode"
             );
             false
         }
-        _ => true,
+        Ok(_) => true,
+        Err(e) => panic!("symlink creation failed unexpectedly: {e}"),
     }
 }
 
@@ -76,7 +86,11 @@ fn make_junction(link: &std::path::Path, target: &std::path::Path) -> bool {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status();
-    matches!(status, Ok(s) if s.success())
+    let ok = matches!(status, Ok(s) if s.success());
+    if !ok && std::env::var("SERVERFS_REQUIRE_SYMLINK").is_ok() {
+        panic!("SERVERFS_REQUIRE_SYMLINK=1 but junction creation failed");
+    }
+    ok
 }
 
 #[test]

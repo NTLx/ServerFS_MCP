@@ -1,0 +1,119 @@
+name: Windows native
+
+# dev_plan_v0.10.md §30 "Windows Python/native gate", executed on every
+# push/PR that touches the Windows kernel or the platform-boundary Python
+# layers. The release-blocking wheel-artifact run (maturin) belongs to
+# Phase E packaging; this gate builds the extension with cargo and
+# imports the produced .pyd directly.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "native/**"
+      - "src/serverfs_mcp/backends.py"
+      - "src/serverfs_mcp/linux_backend.py"
+      - "src/serverfs_mcp/windows_backend.py"
+      - "src/serverfs_mcp/paths.py"
+      - "src/serverfs_mcp/tools.py"
+      - "tests/test_windows_*"
+      - "tests/test_native_windows.py"
+      - "tests/test_import_safety.py"
+      - ".github/workflows/windows-native.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "native/**"
+      - "src/serverfs_mcp/backends.py"
+      - "src/serverfs_mcp/linux_backend.py"
+      - "src/serverfs_mcp/windows_backend.py"
+      - "src/serverfs_mcp/paths.py"
+      - "src/serverfs_mcp/tools.py"
+      - "tests/test_windows_*"
+      - "tests/test_native_windows.py"
+      - "tests/test_import_safety.py"
+      - ".github/workflows/windows-native.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-kernel:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # the acceptance job must EXECUTE the symlink-class reparse cases;
+      # a soft skip is a failure here (tests/ntfs_traversal.rs honors it)
+      SERVERFS_REQUIRE_SYMLINK: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Rust toolchain (runner-provided, versions reported for evidence)
+        run: |
+          rustc --version
+          cargo --version
+        shell: pwsh
+
+      - name: cargo fmt
+        working-directory: native/windows
+        run: cargo fmt --check
+        shell: pwsh
+
+      - name: cargo clippy (lib + integration, -D warnings)
+        working-directory: native/windows
+        run: cargo clippy --locked --all-targets -- -D warnings
+        shell: pwsh
+
+      - name: cargo clippy (python feature, -D warnings)
+        working-directory: native/windows
+        run: cargo clippy --locked --all-targets --features pyo3 -- -D warnings
+        shell: pwsh
+
+      - name: cargo test (kernel; symlink cases hard-required)
+        working-directory: native/windows
+        run: cargo test --locked
+        shell: pwsh
+
+      - name: cargo test (python-boundary unit tests)
+        working-directory: native/windows
+        run: cargo test --locked --features pyo3
+        shell: pwsh
+
+      - name: Build release extension module
+        working-directory: native/windows
+        run: |
+          cargo build --locked --release --features pyo3
+          New-Item -ItemType Directory -Force -Path pyd-staging | Out-Null
+          Copy-Item target/release/serverfs_windows_native.dll pyd-staging/serverfs_windows_native.pyd -Force
+        shell: pwsh
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: "3.12"
+
+      - name: uv sync --frozen
+        run: uv sync --frozen
+
+      - name: ruff check + format gate
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Windows Python/native test set
+        env:
+          PYTHONPATH: "${{ github.workspace }}\\native\\windows\\pyd-staging"
+        run: >
+          uv run pytest
+          tests/test_import_safety.py
+          tests/test_native_windows.py
+          tests/test_windows_backend.py
+          tests/test_windows_mcp_e2e.py
+          tests/test_paths.py
+          tests/test_config.py
+          tests/test_workdirs.py -q
