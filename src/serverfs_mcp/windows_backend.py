@@ -10,17 +10,19 @@ v0.9 did — the Windows backend acquires the trusted root HANDLE once per
 workdir and retains it for the process lifetime. ``open_session`` returns
 the cached session; no MCP tool call ever reopens the root.
 
-Channel status (Phase B read kernel + Phase C find/search): all read,
-find and search channels are live against the retained root handle; all
-mutation channels stay explicit pending stubs until Phase D, each raising
-``BackendError("WINDOWS_KERNEL_PENDING", ...)`` so a half-built Windows
-surface can never silently answer with wrong data.
+Channel status (Phase B read kernel, Phase C find/search, Phase D2
+mutations): every ``WorkdirSession`` channel is live against the retained
+root handle. Mutations map the D1 native kernel (handle-relative atomic
+create/replace/delete plus kernel-side read-only enforcement) onto the same
+result models and coded errors the Linux backend produces, with the shared
+``mutation_text`` semantics so both platforms decide identically.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
 import fnmatch
+import hashlib
 import mimetypes
 import time
 from typing import TYPE_CHECKING
@@ -29,7 +31,32 @@ import serverfs_windows_native as native
 
 from .backends import BackendError, TextPage
 from .binary_payload import BinaryRead, BinaryTransferError
-from .models import EntryInfo, StatFileResult, TextMatch
+from .concurrency import mutation_lock
+from .errors import (
+    FileChangedDuringReadError,
+    NotAFileError,
+    ParentNotFoundError,
+    RevisionConflictError,
+    WriteTooLargeError,
+)
+from .models import (
+    CreateDirectoryResult,
+    CreateTextFileResult,
+    DeleteDirectoryResult,
+    DeleteFileResult,
+    EditTextFileResult,
+    EntryInfo,
+    StatFileResult,
+    TextMatch,
+    UploadBinaryFileResult,
+)
+from .mutation_text import (
+    UTF8_BOM,
+    apply_edits,
+    decode_text,
+    encode_new_content,
+    validate_edits,
+)
 from .paths import is_hidden_component
 from .search_glob import glob_matches
 
@@ -61,13 +88,6 @@ def _rfc3339_from_100ns(ticks: int) -> str | None:
         return None
     seconds = (ticks - _UNIX_EPOCH_100NS) / 10_000_000
     return _dt.datetime.fromtimestamp(seconds, tz=_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _pending(channel: str) -> BackendError:
-    return BackendError(
-        "WINDOWS_KERNEL_PENDING",
-        f"the Windows '{channel}' channel arrives with a later phase",
-    )
 
 
 # The Linux search pins rg with `--glob !.git/!hg/!svn` regardless of
@@ -350,10 +370,94 @@ class WindowsWorkdirSession:
                     break
         return matches[:limit], truncated
 
-    # ---- mutation channels (pending: Phase D) ----
+    # ---- mutation channels (Phase D2 over the D1 native mutation kernel) ----
+    #
+    # Every channel maps the plain-data primitives of ``WindowsWorkdirSession``
+    # onto the exact v0.9 result models and error codes the Linux backend
+    # produces (§11: revision ownership and error normalization are
+    # backend-side; text semantics are shared through ``mutation_text`` so
+    # both kernels decide identically). The kernel inside ``replace_bytes``
+    # / ``delete_file`` holds handles under restrictive sharing, re-checks
+    # revision/identity at the final gate and publishes atomically (§19.4);
+    # nothing here re-implements that.
 
-    def create_file(self, resolved: ResolvedPath, content: str, *, max_write_bytes: int):
-        raise _pending("create_file")
+    def _ensure_writable(self) -> None:
+        # Same precedence as the tool layer: WORKDIR_READ_ONLY is decided
+        # before any revision/path condition is even looked at. The native
+        # session gate stays as defense in depth behind this.
+        if self._workdir.read_only:
+            raise BackendError("WORKDIR_READ_ONLY", "workdir is read-only")
+
+    def _publish_create(self, parts: list[str], data: bytes) -> str:
+        try:
+            with mutation_lock():
+                return _call(self._native.create_bytes, parts, data)
+        except BackendError as exc:
+            if exc.code == "PATH_NOT_FOUND":
+                # Linux create channels report a missing parent as
+                # PARENT_NOT_FOUND (walk_parent_dirs FileNotFoundError →
+                # ParentNotFoundError); the kernel reports PATH_NOT_FOUND
+                raise ParentNotFoundError() from None
+            raise
+
+    def create_file(
+        self, resolved: ResolvedPath, content: str, *, max_write_bytes: int
+    ) -> CreateTextFileResult:
+        self._ensure_writable()
+        data = encode_new_content(content, max_write_bytes)
+        revision = self._publish_create(list(resolved.rel_parts), data)
+        return CreateTextFileResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            created=True,
+            bytes_written=len(data),
+            revision=revision,
+        )
+
+    def create_binary_file(
+        self, resolved: ResolvedPath, data: bytes, *, max_binary_bytes: int
+    ) -> UploadBinaryFileResult:
+        self._ensure_writable()
+        if len(data) > max_binary_bytes:
+            raise WriteTooLargeError(f"binary payload exceeds {max_binary_bytes} bytes")
+        revision = self._publish_create(list(resolved.rel_parts), data)
+        return UploadBinaryFileResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            created=True,
+            replaced=False,
+            bytes_written=len(data),
+            sha256=hashlib.sha256(data).hexdigest(),
+            revision_before=None,
+            revision=revision,
+        )
+
+    def _replace(self, parts: list[str], data: bytes, expected_revision: str) -> str:
+        with mutation_lock():
+            return _call(self._native.replace_bytes, parts, data, expected_revision)
+
+    def replace_binary_file(
+        self,
+        resolved: ResolvedPath,
+        data: bytes,
+        expected_revision: str,
+        *,
+        max_binary_bytes: int,
+    ) -> UploadBinaryFileResult:
+        self._ensure_writable()
+        if len(data) > max_binary_bytes:
+            raise WriteTooLargeError(f"binary payload exceeds {max_binary_bytes} bytes")
+        revision = self._replace(list(resolved.rel_parts), data, expected_revision)
+        return UploadBinaryFileResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            created=False,
+            replaced=True,
+            bytes_written=len(data),
+            sha256=hashlib.sha256(data).hexdigest(),
+            revision_before=expected_revision,
+            revision=revision,
+        )
 
     def replace_file(
         self,
@@ -363,30 +467,107 @@ class WindowsWorkdirSession:
         *,
         max_write_bytes: int,
         max_edits_per_call: int,
-    ):
-        raise _pending("replace_file")
+    ) -> EditTextFileResult:
+        self._ensure_writable()
+        validate_edits(
+            edits,
+            max_write_bytes=max_write_bytes,
+            max_edits_per_call=max_edits_per_call,
+        )
+        parts = list(resolved.rel_parts)
+        # ordering parity with Linux edit_text_file: stale revision is
+        # refused before any content is read or sized
+        etype, size, _modified, revision_now = _call(self._native.stat, parts)
+        if revision_now != expected_revision:
+            raise RevisionConflictError()
+        if etype == "directory":
+            raise NotAFileError()
+        if etype == "reparse_point":
+            # the kernel refuses at the open too; the code is Windows-native
+            # (§14 additive) where Linux reports SYMLINK_NOT_ALLOWED
+            raise BackendError(
+                "REPARSE_POINT_NOT_ALLOWED", "reparse point is not allowed on this channel"
+            )
+        if size is not None and size > max_write_bytes:
+            raise WriteTooLargeError(f"file exceeds {max_write_bytes} bytes")
+        try:
+            data, _sha, revision_before = _call(self._native.read_bounded, parts, max_write_bytes)
+        except BackendError as exc:
+            if exc.code == "FILE_TOO_LARGE":
+                raise WriteTooLargeError(f"file exceeds {max_write_bytes} bytes") from None
+            if exc.code == "FILE_CHANGED_DURING_READ":
+                raise FileChangedDuringReadError() from None
+            raise
+        if revision_before != expected_revision:
+            raise RevisionConflictError()
+        text, has_bom = decode_text(data)
+        edited_text = apply_edits(text, edits)
+        body = edited_text.encode("utf-8")
+        payload = (UTF8_BOM + body) if has_bom else body
+        if len(payload) > max_write_bytes:
+            raise WriteTooLargeError(f"result exceeds {max_write_bytes} bytes")
+        revision = self._replace(parts, payload, expected_revision)
+        return EditTextFileResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            edited=True,
+            edits_applied=len(edits),
+            bytes_before=len(data),
+            bytes_after=len(payload),
+            revision_before=revision_before,
+            revision=revision,
+        )
 
-    def delete_file(self, resolved: ResolvedPath, expected_revision: str):
-        raise _pending("delete_file")
+    def delete_file(self, resolved: ResolvedPath, expected_revision: str) -> DeleteFileResult:
+        self._ensure_writable()
+        try:
+            with mutation_lock():
+                bytes_deleted, revision_deleted = _call(
+                    self._native.delete_file, list(resolved.rel_parts), expected_revision
+                )
+        except BackendError as exc:
+            if exc.code == "NOT_A_FILE":
+                # Linux delete_file goes through the same _open_regular gate
+                raise NotAFileError() from None
+            raise
+        return DeleteFileResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            deleted=True,
+            bytes_deleted=bytes_deleted,
+            revision_deleted=revision_deleted,
+        )
 
-    def create_binary_file(self, resolved: ResolvedPath, data: bytes, *, max_binary_bytes: int):
-        raise _pending("create_binary_file")
+    def create_directory(self, resolved: ResolvedPath) -> CreateDirectoryResult:
+        self._ensure_writable()
+        try:
+            with mutation_lock():
+                revision = _call(self._native.create_directory, list(resolved.rel_parts))
+        except BackendError as exc:
+            if exc.code == "PATH_NOT_FOUND":
+                raise ParentNotFoundError() from None
+            raise
+        return CreateDirectoryResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            created=True,
+            revision=revision,
+        )
 
-    def replace_binary_file(
-        self,
-        resolved: ResolvedPath,
-        data: bytes,
-        expected_revision: str,
-        *,
-        max_binary_bytes: int,
-    ):
-        raise _pending("replace_binary_file")
-
-    def create_directory(self, resolved: ResolvedPath):
-        raise _pending("create_directory")
-
-    def delete_directory(self, resolved: ResolvedPath, expected_revision: str):
-        raise _pending("delete_directory")
+    def delete_directory(
+        self, resolved: ResolvedPath, expected_revision: str
+    ) -> DeleteDirectoryResult:
+        self._ensure_writable()
+        with mutation_lock():
+            _call(self._native.delete_directory, list(resolved.rel_parts), expected_revision)
+        # the kernel verified expected_revision at the final gate before
+        # marking the directory for deletion (Linux: same checked value)
+        return DeleteDirectoryResult(
+            workdir=resolved.workdir.alias,
+            path=resolved.rel_path,
+            deleted=True,
+            revision_deleted=expected_revision,
+        )
 
 
 class WindowsBackend:

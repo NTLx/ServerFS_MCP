@@ -619,3 +619,384 @@ def _isolate_backend_singleton():
     windows_backend.WindowsBackend._shared = None
     yield
     windows_backend.WindowsBackend._shared = None
+
+
+@pytest.fixture()
+def rw_root(tmp_path):
+    root = tmp_path / "rwrepo"
+    root.mkdir()
+    return root
+
+
+@pytest.fixture()
+def rw_server(rw_root):
+    from serverfs_mcp.workdirs import EffectiveWorkdirPolicy
+
+    wd = Workdir(
+        "rw",
+        rw_root,
+        None,
+        read_only=False,
+        policy=EffectiveWorkdirPolicy(binary_transfer_enabled=True),
+    )
+    return create_server(
+        Settings(binary_transfer_enabled=True),
+        WorkdirRegistry([wd]),
+    )
+
+
+class TestMutationsE2E:
+    """MCP-surface mutation parity over the native D1/D2 kernel."""
+
+    def test_create_then_read_and_stat_chain(self, rw_server, rw_root) -> None:
+        created = call_success(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": "file.txt", "content": "alpha\r\nbeta\r\n"},
+        )
+        assert created["created"] is True
+        assert created["bytes_written"] == 13
+        assert (rw_root / "file.txt").read_bytes() == b"alpha\r\nbeta\r\n"
+        stat = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "file.txt"})
+        assert stat["revision"] == created["revision"]
+        read = call_success(
+            rw_server, "read_text_file", {"workdir": "rw", "path": "file.txt", "start_line": 1}
+        )
+        assert read["revision"] == created["revision"]
+
+    def test_missing_parent_is_parent_not_found(self, rw_server) -> None:
+        msg = call_error(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": "gone/x.txt", "content": "x"},
+        )
+        assert error_code(msg) == "PARENT_NOT_FOUND"
+
+    def test_existing_path_never_overwritten(self, rw_server, rw_root) -> None:
+        (rw_root / "that.txt").write_bytes(b"keep\n")
+        msg = call_error(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": "that.txt", "content": "x"},
+        )
+        assert error_code(msg) == "PATH_ALREADY_EXISTS"
+        assert (rw_root / "that.txt").read_bytes() == b"keep\n"
+
+    def test_edit_roundtrip_stale_revision_and_edit_conflict(self, rw_server, rw_root) -> None:
+        created = call_success(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": "e.txt", "content": "one\ntwo\n"},
+        )
+        edited = call_success(
+            rw_server,
+            "edit_text_file",
+            {
+                "workdir": "rw",
+                "path": "e.txt",
+                "expected_revision": created["revision"],
+                "edits": [{"old_text": "two", "new_text": "TWO"}],
+            },
+        )
+        assert edited["edited"] is True
+        assert edited["bytes_before"] == 8
+        assert edited["bytes_after"] == 8
+        assert edited["revision_before"] == created["revision"]
+        assert (rw_root / "e.txt").read_bytes() == b"one\nTWO\n"
+        stat = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "e.txt"})
+        assert stat["revision"] == edited["revision"]
+        msg = call_error(
+            rw_server,
+            "edit_text_file",
+            {
+                "workdir": "rw",
+                "path": "e.txt",
+                "expected_revision": created["revision"],
+                "edits": [{"old_text": "one", "new_text": "x"}],
+            },
+        )
+        assert error_code(msg) == "REVISION_CONFLICT"
+        msg = call_error(
+            rw_server,
+            "edit_text_file",
+            {
+                "workdir": "rw",
+                "path": "e.txt",
+                "expected_revision": edited["revision"],
+                "edits": [{"old_text": "missing", "new_text": "x"}],
+            },
+        )
+        assert error_code(msg) == "EDIT_CONFLICT"
+
+    def test_nul_content_and_encoding_gates(self, rw_server, rw_root) -> None:
+        msg = call_error(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": "n.txt", "content": "a\x00b"},
+        )
+        assert error_code(msg) == "BINARY_CONTENT_NOT_ALLOWED"
+        (rw_root / "bin.dat").write_bytes(b"\x00abc")
+        rev = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "bin.dat"})["revision"]
+        msg = call_error(
+            rw_server,
+            "edit_text_file",
+            {
+                "workdir": "rw",
+                "path": "bin.dat",
+                "expected_revision": rev,
+                "edits": [{"old_text": "a", "new_text": "b"}],
+            },
+        )
+        assert error_code(msg) == "BINARY_FILE"
+
+    def test_delete_returns_size_and_is_permanent(self, rw_server, rw_root) -> None:
+        created = call_success(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": "d.txt", "content": "12345"},
+        )
+        deleted = call_success(
+            rw_server,
+            "delete_file",
+            {"workdir": "rw", "path": "d.txt", "expected_revision": created["revision"]},
+        )
+        assert deleted["deleted"] is True
+        assert deleted["bytes_deleted"] == 5
+        assert deleted["revision_deleted"] == created["revision"]
+        assert not (rw_root / "d.txt").exists()
+        msg = call_error(
+            rw_server,
+            "delete_file",
+            {"workdir": "rw", "path": "d.txt", "expected_revision": created["revision"]},
+        )
+        assert error_code(msg) == "PATH_NOT_FOUND"
+
+    def test_directory_lifecycle_and_physical_emptiness(self, rw_server, rw_root) -> None:
+        created = call_success(rw_server, "create_directory", {"workdir": "rw", "path": "dir"})
+        again = call_error(rw_server, "create_directory", {"workdir": "rw", "path": "dir"})
+        assert error_code(again) == "PATH_ALREADY_EXISTS"
+        (rw_root / "dir" / ".secret").write_bytes(b"x")
+        rev = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "dir"})["revision"]
+        msg = call_error(
+            rw_server,
+            "delete_directory",
+            {"workdir": "rw", "path": "dir", "expected_revision": rev},
+        )
+        assert error_code(msg) == "DIRECTORY_NOT_EMPTY"
+        (rw_root / "dir" / ".secret").unlink()
+        rev = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "dir"})["revision"]
+        deleted = call_success(
+            rw_server,
+            "delete_directory",
+            {"workdir": "rw", "path": "dir", "expected_revision": rev},
+        )
+        assert deleted["deleted"] is True
+        assert not (rw_root / "dir").exists()
+        assert created["revision"].startswith("v1:")
+
+    def test_binary_upload_create_and_revision_guarded_replace(self, rw_server, rw_root) -> None:
+        import base64
+
+        blob = base64.b64encode(b"\x00\x01\x02payload").decode()
+        created = call_success(
+            rw_server,
+            "upload_binary_file",
+            {"workdir": "rw", "path": "up.bin", "data_base64": blob},
+        )
+        import hashlib
+
+        assert created["sha256"] == hashlib.sha256(b"\x00\x01\x02payload").hexdigest()
+        assert created["created"] is True
+        assert (rw_root / "up.bin").read_bytes() == b"\x00\x01\x02payload"
+        replaced = call_success(
+            rw_server,
+            "upload_binary_file",
+            {
+                "workdir": "rw",
+                "path": "up.bin",
+                "data_base64": base64.b64encode(b"small").decode(),
+                "overwrite": True,
+                "expected_revision": created["revision"],
+            },
+        )
+        assert replaced["replaced"] is True
+        assert replaced["revision_before"] == created["revision"]
+        assert (rw_root / "up.bin").read_bytes() == b"small"
+        msg = call_error(
+            rw_server,
+            "upload_binary_file",
+            {
+                "workdir": "rw",
+                "path": "up.bin",
+                "data_base64": base64.b64encode(b"x").decode(),
+                "overwrite": True,
+                "expected_revision": created["revision"],
+            },
+        )
+        assert error_code(msg) == "REVISION_CONFLICT"
+
+    def test_read_only_workdir_wins_before_any_other_condition(self, server, wd_root) -> None:
+        # the read-only `server` fixture: application authorization precedes
+        # path policy and revision checks (frozen precedence)
+        for tool, args in [
+            ("create_text_file", {"workdir": "test", "path": "x.txt", "content": "x"}),
+            (
+                "edit_text_file",
+                {
+                    "workdir": "test",
+                    "path": "x.txt",
+                    "expected_revision": "v1:0000000000000000",
+                    "edits": [{"old_text": "a", "new_text": "b"}],
+                },
+            ),
+            (
+                "delete_file",
+                {"workdir": "test", "path": "x.txt", "expected_revision": "v1:0000000000000000"},
+            ),
+            ("create_directory", {"workdir": "test", "path": "d"}),
+            (
+                "delete_directory",
+                {"workdir": "test", "path": "d", "expected_revision": "v1:0000000000000000"},
+            ),
+        ]:
+            msg = call_error(server, tool, args)
+            assert error_code(msg) == "WORKDIR_READ_ONLY", tool
+
+    def test_policy_rejects_denied_hidden_and_reserved_mutation_paths(
+        self, rw_server, rw_root
+    ) -> None:
+        msg = call_error(
+            rw_server, "create_text_file", {"workdir": "rw", "path": "server.pem", "content": "x"}
+        )
+        assert error_code(msg) == "DENIED_PATH"
+        msg = call_error(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": ".hidden/x.txt", "content": "x"},
+        )
+        assert error_code(msg) == "HIDDEN_PATH_NOT_ALLOWED"
+        msg = call_error(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": ".serverfs-tmp-forge", "content": "x"},
+        )
+        assert error_code(msg) == "RESERVED_PATH"
+        msg = call_error(
+            rw_server, "create_text_file", {"workdir": "rw", "path": "", "content": "x"}
+        )
+        assert error_code(msg) == "ROOT_MUTATION_NOT_ALLOWED"
+
+    def test_reparse_mutation_targets_are_refused_not_followed(self, rw_server, rw_root) -> None:
+        (rw_root / "real.txt").write_bytes(b"safe\n")
+        if not make_junction(rw_root / "jlink", rw_root / "real.txt"):
+            pytest.fail("junction creation with mklink /J failed on this host")
+        rev = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "jlink"})["revision"]
+        msg = call_error(
+            rw_server,
+            "edit_text_file",
+            {
+                "workdir": "rw",
+                "path": "jlink",
+                "expected_revision": rev,
+                "edits": [{"old_text": "safe", "new_text": "unsafe"}],
+            },
+        )
+        assert error_code(msg) == "REPARSE_POINT_NOT_ALLOWED"
+        assert (rw_root / "real.txt").read_bytes() == b"safe\n"
+
+    def test_mutations_continue_through_retained_root_after_host_rename(
+        self, rw_server, rw_root
+    ) -> None:
+        # the D1 root-rename acceptance re-probed through the MCP surface:
+        # the retained capability, not the configured pathname, serves the
+        # mutation
+        moved = rw_root.parent / "rwrepo-moved"
+        # open the session through one successful call BEFORE the rename
+        call_success(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": "before.txt", "content": "b\n"},
+        )
+        rw_root.rename(moved)
+        try:
+            created = call_success(
+                rw_server,
+                "create_text_file",
+                {"workdir": "rw", "path": "still.txt", "content": "works\n"},
+            )
+            assert (moved / "still.txt").read_bytes() == b"works\n"
+            assert (
+                created["revision"]
+                == call_success(rw_server, "stat_file", {"workdir": "rw", "path": "still.txt"})[
+                    "revision"
+                ]
+            )
+        finally:
+            moved.rename(rw_root)
+
+    def test_concurrent_readers_never_observe_torn_edit(self, rw_server, rw_root) -> None:
+        import threading
+
+        old = "STATE-A\n" * 500
+        new = "STATE-B\n" * 500
+        created = call_success(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": "torn.txt", "content": old},
+        )
+        revision = created["revision"]
+        stop = threading.Event()
+        unexpected: list[str] = []
+        observed = threading.Event()
+
+        def reader() -> None:
+            while not stop.is_set():
+                try:
+                    read = call_success(
+                        rw_server, "read_text_file", {"workdir": "rw", "path": "torn.txt"}
+                    )
+                except Exception:
+                    continue  # transient coded failures are the designed outcome
+                lines = read["content"].splitlines()
+                kinds = {line[-1] for line in lines}
+                if kinds not in ({"A"}, {"B"}):
+                    unexpected.append(f"torn page: {sorted(kinds)}")
+                else:
+                    observed.set()
+
+        thread = threading.Thread(target=reader, daemon=True)
+        thread.start()
+        try:
+            for _ in range(20):
+                edited = call_success(
+                    rw_server,
+                    "edit_text_file",
+                    {
+                        "workdir": "rw",
+                        "path": "torn.txt",
+                        "expected_revision": revision,
+                        "edits": [
+                            {"old_text": "STATE-A", "new_text": "STATE-B", "expected_count": 500}
+                        ],
+                    },
+                )
+                revision = edited["revision"]
+                swap = call_success(
+                    rw_server,
+                    "edit_text_file",
+                    {
+                        "workdir": "rw",
+                        "path": "torn.txt",
+                        "expected_revision": revision,
+                        "edits": [
+                            {"old_text": "STATE-B", "new_text": "STATE-A", "expected_count": 500}
+                        ],
+                    },
+                )
+                revision = swap["revision"]
+        finally:
+            stop.set()
+            thread.join(timeout=5)
+        assert not unexpected, unexpected[:3]
+        assert observed.is_set()
+        assert (rw_root / "torn.txt").read_text() in (old, new)
