@@ -409,7 +409,7 @@ Benefits:
 - no LAN exposure;
 - no local process probing an unauthenticated HTTP port;
 - no Host/Origin/DNS-rebinding policy in the native stdio path;
-- tunnel-client owns child lifecycle naturally;
+- tunnel-client owns the sanitizer-supervisor lifecycle; the supervisor owns the actual ServerFS child lifecycle;
 - existing ServerFS structured logs already go to stderr, leaving stdout available for MCP frames.
 
 The existing Streamable HTTP implementation remains for the Linux Docker profile.
@@ -925,7 +925,7 @@ Do not convert the whole project to a Maturin build merely because one platform 
 
 ### 24.2 Separate native wheel
 
-Preferred distribution shape:
+Distribution shape (implemented by Phase E1):
 
 ~~~text
 serverfs-mcp
@@ -952,7 +952,7 @@ Reference:
 
 https://pyo3.rs/main/building-and-distribution
 
-Because ServerFS already requires Python >=3.12, an `abi3-py312` wheel is a strong default candidate, subject to CI verification. The implementation must not adopt `abi3` merely for theoretical portability if a required PyO3 feature is unavailable; the acceptance matrix decides.
+Phase E1 adopts an abi3-py312 wheel and verifies the built artifact on CPython 3.12 in a clean wheel environment. Phase F must either install/import/smoke the same wheel on at least one newer CPython minor (3.13+) or explicitly bind the v0.10 Windows native support statement to Python 3.12 in the release documentation.
 
 ### 24.4 Rust dependency budget
 
@@ -1237,10 +1237,9 @@ Closure addendum (2026-10-02, import-safety/protocol pass):
   natively on Windows, where `fcntl` cannot exist at all, and in a Linux
   container).
 
-Phase B first Python-side wiring task (review decision): `WindowsBackend` must
-retain one session/root capability per workdir for the process lifetime; the
-current per-call `_session()`/`open_session()` pattern must not reopen the
-Windows root HANDLE on every tool call.
+Phase B closure decision: `WindowsBackend` retains one process-lifetime
+session/root capability per workdir. Tool calls reuse that retained capability
+and do not reopen the Windows root HANDLE from the configured pathname.
 
 ### Phase B — Windows native read/security kernel
 
@@ -1269,7 +1268,7 @@ Exit criteria:
 - no handle leaks under stress/failure tests;
 - stat/read/list MCP tests pass on Windows.
 
-If Phase B cannot prove these invariants, stop and redesign before implementing mutations.
+Phase B closed only after these invariants were demonstrated on real Windows/NTFS and in the Windows CI gate; later phases must not weaken them.
 
 ### Phase C — Native find/search
 
