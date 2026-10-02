@@ -272,6 +272,8 @@ class TestAcceptanceClosure:
     def test_same_name_replacement_never_mixes_objects(self, server, wd_root) -> None:
         import threading
 
+        from mcp.server.mcpserver.exceptions import ToolError
+
         target = wd_root / "swap.txt"
         target.write_bytes(b"short\n")
         stop = threading.Event()
@@ -295,12 +297,14 @@ class TestAcceptanceClosure:
                     read = call_success(
                         server, "read_text_file", {"workdir": "test", "path": "swap.txt"}
                     )
-                except AssertionError as exc:
-                    text = str(exc)
+                except (AssertionError, ToolError) as exc:
                     # both designed race outcomes are acceptable: the name
                     # can vanish mid-round, and a read straddling an
                     # external rewrite must abort with FILE_CHANGED (the
-                    # consistency guarantee itself — CI proved it fires)
+                    # consistency guarantee itself — CI proved it fires).
+                    # call_success surfaces is_error as AssertionError and
+                    # a raised tool failure as ToolError; accept both.
+                    text = str(exc)
                     if "PATH_NOT_FOUND:" not in text and "FILE_CHANGED_DURING_READ:" not in text:
                         unexpected.append(text)
                     continue
