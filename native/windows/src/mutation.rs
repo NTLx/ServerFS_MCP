@@ -34,10 +34,9 @@ const SAFE_BASIC_ATTRIBUTES: u32 = FILE_ATTRIBUTE_READONLY
     | FILE_ATTRIBUTE_NORMAL
     | FILE_ATTRIBUTE_TEMPORARY
     | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED;
-// The original is otherwise read-only. DELETE is needed because NTFS checks
-// delete permission on an existing destination during the replacement rename.
-const REPLACEMENT_ACCESS: u32 =
-    ffi::FILE_READ_ACCESS | ffi::FILE_READ_ATTRIBUTES_ACCESS | ffi::FILE_DELETE_ACCESS;
+// The original is opened only for revision and preservation queries. The
+// temporary source handle carries DELETE for the relative replacement rename.
+const REPLACEMENT_ACCESS: u32 = ffi::FILE_READ_ACCESS | ffi::FILE_READ_ATTRIBUTES_ACCESS;
 const DELETE_ACCESS: u32 =
     ffi::FILE_READ_ATTRIBUTES_ACCESS | ffi::FILE_DELETE_ACCESS | ffi::SYNCHRONIZE_ACCESS;
 const DIRECTORY_DELETE_ACCESS: u32 = DELETE_ACCESS | 0x0000_0001;
@@ -342,12 +341,9 @@ fn replace_bytes_transaction(
     {
         return Err(NativeError::RevisionConflict);
     }
-    // NTFS replacement rename cannot replace a destination while our own
-    // verification handles keep that destination open. All checks are
-    // complete; closing them leaves only the documented external-writer
-    // race between this gate and the atomic rename.
-    drop(final_target);
-    drop(original);
+    // POSIX replacement semantics let NTFS atomically replace an open name;
+    // existing handles continue to reference the old object. The documented
+    // non-cooperating-writer race remains between this gate and the rename.
     ffi::rename_relative(&temp.handle, parent, name, true)?;
     temp.published = true;
     metadata::revision_of(&temp.handle)
