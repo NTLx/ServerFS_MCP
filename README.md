@@ -189,6 +189,14 @@ CONTROL_PLANE_API_KEY=rtk_...
 
 The tunnel is **outbound-only**: no public domain, no TLS certificate, no inbound firewall rule, no reverse proxy. The container connects out to OpenAI's control plane and forwards MCP traffic to `http://serverfs-mcp:8000/mcp` over the internal Docker network.
 
+If outbound access to `api.openai.com` requires an HTTP proxy, set
+`CONTROL_PLANE_HTTP_PROXY` in `.env` to a URL reachable from the
+`openai-tunnel` container, for example `http://proxy.internal:7890`.
+This setting proxies the tunnel control plane only; the connection to
+`serverfs-mcp` stays on the internal Docker network. A proxy bound only to
+the host's `127.0.0.1` is normally unreachable from a container. Leave the
+variable empty when no proxy is needed.
+
 To troubleshoot the tunnel, use the official client's own diagnostics (`tunnel-client doctor`, `/readyz`) rather than guessing.
 
 ## Security Model
