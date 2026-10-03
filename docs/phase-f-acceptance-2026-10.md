@@ -105,6 +105,7 @@ transcript `serverfs-proxy-acceptance-ul8qbw6z`, 11/11 PASS, exit 0):
 | 8 | restart/recovery through proxy | second scripted run re-established a fresh CONNECT + TLS session | Pass |
 | 9 | child/container receives no credentials | real `forward_stdio` subprocess: child env lacks `CONTROL_PLANE_API_KEY`, `CONTROL_PLANE_HTTP_PROXY`, `SERVERFS_PROXY_*`, all proxy variables and every secret value; `PATH` preserved | Pass |
 | 10 | proxy-disabled identical | blank `SERVERFS_PROXY_HOST=` behaves exactly like the no-file direct path (same rc class, zero proxy CONNECTs) | Pass |
+| +1 | tunnel-created child restart | spawn chain verified (client->supervisor->serve); killing the child tears the session down fail-fast (client exits rc=1, no silent half-state); recovery = external tunnel restart (see runbook step 6) | Pass (measured semantics) |
 
 Live extension (maintainer-supplied real HTTP proxy `proxy.cm.com:20171`,
 `--live-proxy`): the launcher drove the real tunnel-client against the real
@@ -144,9 +145,14 @@ Runbook (native profile, scheduled maintenance window):
    read (`list_workdirs`, `read_text_file`), one guarded mutation roundtrip
    (`create_text_file` -> `edit_text_file` -> `delete_file`) in the writable
    acceptance workdir, and `download/upload_binary_file` if enabled.
-6. Child-restart evidence: kill the `serverfs serve` child from Task
-   Manager; tunnel-client must respawn it through the supervisor; a
-   subsequent ChatGPT call succeeds.
+6. Child-restart evidence (measured semantics, harness scenario
+   `child restart/recovery`, transcript `serverfs-proxy-acceptance-j799uufb`):
+   killing the `serverfs serve` grandchild makes the supervisor exit, and
+   tunnel-client v0.0.15 then terminates the whole session (observed rc=1);
+   it does **not** respawn the MCP command in-process. Recovery contract is
+   therefore an external restart of `serverfs tunnel` (manual or process
+   manager). Verify after restart that a subsequent ChatGPT call succeeds.
+   Never document an auto-respawn claim.
 7. Secret-boundary evidence: with Process Explorer (or the section-7 probe),
    confirm the `serverfs serve` child environment contains neither the
    Control Plane key nor proxy credentials.

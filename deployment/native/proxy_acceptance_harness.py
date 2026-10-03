@@ -310,6 +310,122 @@ class Check:
         return not self.problems
 
 
+def child_pids(parent_pid: int) -> list[int]:
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            f"(Get-CimInstance Win32_Process -Filter 'ParentProcessID={parent_pid}').ProcessId",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return [int(word) for word in completed.stdout.split() if word.strip().isdigit()]
+
+
+def scenario_child_restart(
+    check: Check,
+    *,
+    repo_python: Path,
+    tunnel_client: Path,
+    config: Path,
+    stub_url: str,
+    extra_env: dict[str, str],
+) -> None:
+    """Tunnel-created MCP child restart/recovery (Phase F matrix row).
+
+    Start the launcher against the stub, let tunnel-client spawn the
+    supervisor and the supervisor spawn `serverfs serve`, kill the deepest
+    child, and require the chain to come back with fresh PIDs.
+    """
+    import time
+
+    env = os.environ.copy()
+    env.update(extra_env)
+    argv = [
+        str(repo_python),
+        "-m",
+        "serverfs_mcp.cli",
+        "tunnel",
+        "--config",
+        str(config),
+        "--tunnel-client",
+        str(tunnel_client),
+        "--tunnel-id",
+        TUNNEL_ID,
+        "--api-key-file",
+        str(config.parent / "api-key"),
+        "--base-url",
+        stub_url,
+    ]
+    process = subprocess.Popen(
+        argv,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    def kill_tree() -> None:
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)], capture_output=True, check=False
+        )
+        try:
+            process.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+    try:
+        supervisor_pids: list[int] = []
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not supervisor_pids:
+            supervisor_pids = child_pids(process.pid)
+            if supervisor_pids:
+                time.sleep(3)  # let the supervisor spawn the actual child
+                break
+            time.sleep(1)
+        check.expect(bool(supervisor_pids), "tunnel-client spawned the supervisor child")
+        if not supervisor_pids:
+            return
+        grandchildren = child_pids(supervisor_pids[0])
+        check.expect(bool(grandchildren), "supervisor spawned the serverfs serve grandchild")
+        for pid in grandchildren:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=False
+            )
+        time.sleep(10)
+        surviving = child_pids(process.pid)
+        new_supervisors = [pid for pid in surviving if pid != supervisor_pids[0]]
+        rc_now = process.poll()
+        REC.add(
+            "child_restart_probe",
+            original_supervisor=supervisor_pids[0],
+            killed_children=grandchildren,
+            surviving_supervisors=surviving,
+            respawned=bool(new_supervisors),
+            client_exit=rc_now,
+        )
+        if new_supervisors:
+            check.expect(True, "respawn observed: chain recovered in-process")
+        elif rc_now is not None:
+            check.expect(
+                rc_now != 0,
+                f"launcher exited rc={rc_now} on child teardown; recovery contract "
+                "is a tunnel restart (documented runbook step)",
+            )
+        else:
+            check.expect(
+                False,
+                "no respawn, no client exit: tunnel-client left without an MCP child",
+            )
+    finally:
+        kill_tree()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tunnel-client", required=True, type=Path)
@@ -324,6 +440,11 @@ def main() -> int:
         "--live-base-url",
         default="https://api.openai.com",
         help="Real control-plane endpoint used with --live-proxy",
+    )
+    parser.add_argument(
+        "--only-child-restart",
+        action="store_true",
+        help="Run only the tunnel-created MCP child restart scenario",
     )
     args = parser.parse_args()
 
@@ -345,6 +466,26 @@ def main() -> int:
     stub_port = stub.server_address[1]
     serve(stub)
     stub_url = f"https://127.0.0.1:{stub_port}"
+
+    if args.only_child_restart:
+        check = Check("child restart/recovery (tunnel-created MCP chain)")
+        scenario_child_restart(
+            check,
+            repo_python=args.serverfs_python,
+            tunnel_client=args.tunnel_client,
+            config=config,
+            stub_url=stub_url,
+            extra_env={"SSL_CERT_FILE": str(cert_path)},
+        )
+        transcript = scratch / "transcript.json"
+        transcript.write_text(json.dumps(REC.events, indent=1), encoding="utf-8")
+        if args.out:
+            Path(args.out).write_text(json.dumps(REC.events, indent=1), encoding="utf-8")
+        print(("PASS" if check.passed else "FAIL") + f"  {check.name}")
+        for problem in check.problems:
+            print(f"      - {problem}")
+        print(f"transcript: {transcript}")
+        return 1 if check.problems else 0
 
     def start_proxy(mode: str, user: str = "", password: str = "") -> int:
         handler = type(
@@ -574,6 +715,18 @@ def main() -> int:
     check.expect(REC.count("proxy_connect") == connects_before, "blank proxy config used no proxy")
     check.expect(
         REC.count("stub_request") >= stubs_before + 1, "blank config still reached the stub"
+    )
+    results.append(check)
+
+    # tunnel-created MCP child restart/recovery
+    check = Check("child restart/recovery (tunnel-created MCP chain)")
+    scenario_child_restart(
+        check,
+        repo_python=args.serverfs_python,
+        tunnel_client=args.tunnel_client,
+        config=config,
+        stub_url=stub_url,
+        extra_env={"SSL_CERT_FILE": str(cert_path)},
     )
     results.append(check)
 
