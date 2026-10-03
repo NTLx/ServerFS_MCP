@@ -506,7 +506,23 @@ def test_base_url_validation_is_fail_closed_and_redacted(raw: str, secret: str) 
         assert secret not in str(excinfo.value)
 
 
-@pytest.mark.parametrize("raw", ["8080", "host:notaport", "host:70000"])
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "8080",
+        "host:notaport",
+        "host:70000",
+        "0.0.0.0:8080",
+        ":8080",
+        "192.168.1.10:8080",
+        "localhost:8080",
+    ],
+)
 def test_health_addr_validation_is_fail_closed(raw: str) -> None:
     with pytest.raises(NativeTunnelError):
         native_tunnel._validated_health_addr(raw)
+
+
+@pytest.mark.parametrize("raw", ["127.0.0.1:0", "127.0.0.1:18080", "127.0.0.1:65535"])
+def test_health_addr_accepts_loopback_ports(raw: str) -> None:
+    assert native_tunnel._validated_health_addr(raw) == raw
