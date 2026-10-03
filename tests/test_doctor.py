@@ -18,7 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from serverfs_mcp.doctor import run_doctor
+from serverfs_mcp import doctor
+from serverfs_mcp.doctor import _classify_windows_storage, run_doctor
 
 needs_kernel = pytest.mark.skipif(
     sys.platform == "win32" and importlib.util.find_spec("serverfs_windows_native") is None,
@@ -171,6 +172,59 @@ class TestTunnelProbe:
 
 
 @needs_kernel
+class TestWindowsSupportMatrix:
+    """§33 contract: Windows doctor fails closed on anything but local NTFS.
+
+    The classifier is pure so the verdict contract runs on every platform;
+    the end-to-end exit-code checks additionally run on real Windows.
+    """
+
+    @pytest.mark.parametrize(
+        ("info", "state", "fragment"),
+        [
+            (("NTFS", False), "OK", "NTFS"),
+            (("ntfs", False), "OK", "NTFS"),
+            (("exFAT", False), "FAIL", "not local NTFS"),
+            (("ReFS", False), "FAIL", "not local NTFS"),
+            (("FAT32", False), "FAIL", "not local NTFS"),
+            (("NTFS", True), "FAIL", "network storage"),
+            (None, "FAIL", "could not be determined"),
+        ],
+    )
+    def test_classifier_verdicts(self, info: object, state: str, fragment: str) -> None:
+        got_state, got_detail = _classify_windows_storage(info)  # type: ignore[arg-type]
+        assert got_state == state
+        assert fragment in got_detail
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows storage probe wiring")
+    @pytest.mark.parametrize(
+        "fake_info", [("exFAT", False), ("NTFS", True), None], ids=["exfat", "remote", "unknown"]
+    )
+    def test_unsupported_storage_exits_one_end_to_end(
+        self,
+        tmp_path: Path,
+        isolated_data_home: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_info: object,
+    ) -> None:
+        monkeypatch.setattr(doctor, "_windows_volume_info", lambda root: fake_info)
+        wd = tmp_path / "wd"
+        wd.mkdir()
+        code, lines = _run(_config(tmp_path, {"wd": (wd, True)}))
+        assert code == 1
+        assert any(line.startswith("filesystem: FAIL") for line in lines)
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows storage probe wiring")
+    def test_local_ntfs_root_passes_the_matrix(
+        self, tmp_path: Path, isolated_data_home: Path
+    ) -> None:
+        wd = tmp_path / "wd"
+        wd.mkdir()
+        code, lines = _run(_config(tmp_path, {"wd": (wd, True)}))
+        assert code == 0, "\n".join(lines)
+        assert any(line.startswith("filesystem: OK") and "NTFS" in line for line in lines)
+
+
 class TestProxyProbe:
     def test_absent_env_file_means_direct(self, tmp_path: Path, isolated_data_home: Path) -> None:
         wd = tmp_path / "wd"

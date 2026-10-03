@@ -259,8 +259,9 @@ serverfs doctor --config serverfs.toml
 ```
 
 `serverfs doctor` probes config parse, native backend import/version, each
-workdir root open, filesystem class (NTFS GA; network/FAT/exFAT/ReFS are
-reported as *not supported until acceptance*), reparse topology, a real
+workdir root open, filesystem class (Windows GA is local NTFS: network
+shares, FAT/exFAT/ReFS and any storage whose class cannot be measured are
+`filesystem: FAIL` and a non-zero exit), reparse topology, a real
 policy-filtered root listing, a non-mutating write capability check, the
 bootstrapped tunnel-client version and the project-managed HTTP proxy
 reachability — with proxy/tunnel credentials never displayed.
