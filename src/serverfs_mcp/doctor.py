@@ -61,30 +61,30 @@ class _Report:
         self.say(f"{label}: {detail}")
 
 
+def _classify_windows_storage(info: tuple[str, bool] | None) -> tuple[str, str]:
+    """§33 support-matrix verdict for one Windows root.
+
+    Windows GA is LOCAL NTFS only. Network shares, mapped drives, FAT/exFAT,
+    ReFS/Dev Drive and any storage whose class cannot be measured must fail
+    clearly -- an unknown filesystem never silently inherits the NTFS
+    security claim (fail closed, "must fail clearly or run only in an
+    explicitly documented reduced mode").
+    """
+    if info is None:
+        return FAIL, "storage class could not be determined -- failing closed (section 33)"
+    fs_name, is_remote = info
+    if is_remote:
+        return FAIL, f"{fs_name} on network storage -- unsupported until section 33 acceptance"
+    if fs_name.upper() == "NTFS":
+        return OK, "NTFS"
+    return FAIL, f"{fs_name} -- not local NTFS, unsupported until section 33 acceptance"
+
+
 def _filesystem_probe(report: _Report, root: Path) -> None:
     """Filesystem class + storage topology for one configured root (section 33)."""
     if sys.platform == "win32":
-        info = _windows_volume_info(root)
-        if info is None:
-            report.status("filesystem", WARN, "volume information unavailable")
-            return
-        fs_name, is_remote, error = info
-        if error:
-            report.status("filesystem", WARN, error)
-        elif is_remote:
-            report.status(
-                "filesystem",
-                WARN,
-                f"{fs_name} on network storage -- not supported until plan section 33 acceptance",
-            )
-        elif fs_name.upper() == "NTFS":
-            report.status("filesystem", OK, "NTFS")
-        else:
-            report.status(
-                "filesystem",
-                WARN,
-                f"{fs_name} -- not NTFS, not supported until plan section 33 acceptance",
-            )
+        state, detail = _classify_windows_storage(_windows_volume_info(root))
+        report.status("filesystem", state, detail)
         return
     fs_name = _linux_mount_fstype(root)
     if fs_name is None:
@@ -93,8 +93,8 @@ def _filesystem_probe(report: _Report, root: Path) -> None:
         report.status("filesystem", OK, fs_name)
 
 
-def _windows_volume_info(root: Path) -> tuple[str, bool, str] | None:
-    """GetVolumeInformationW for the operator-configured root.
+def _windows_volume_info(root: Path) -> tuple[str, bool] | None:
+    """(filesystem name, is network storage) for the operator-configured root.
 
     This is a diagnostics-only, configuration-derived call: doctor runs
     outside the request path, the path is the operator's own config value,
@@ -128,19 +128,14 @@ def _windows_volume_info(root: Path) -> tuple[str, bool, str] | None:
     if not kernel32.GetVolumeInformationW(
         volume_root.value, None, 0, None, None, None, fs_name, 261
     ):
-        error = ctypes.get_last_error()
-        return (
-            "unknown",
-            False,
-            f"GetVolumeInformationW failed for {volume_root.value} (code {error})",
-        )
+        return None
     drive_root = root.drive + "\\" if root.drive else None
     is_remote = False
     if drive_root is not None:
         is_remote = kernel32.GetDriveTypeW(drive_root) == 4  # DRIVE_REMOTE
     elif str(root).startswith("\\\\") or volume_root.value.startswith("\\\\"):
         is_remote = True
-    return fs_name.value or "unknown", is_remote, ""
+    return (fs_name.value or "unknown"), is_remote
 
 
 def _linux_mount_fstype(root: Path) -> str | None:

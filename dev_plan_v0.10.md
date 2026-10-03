@@ -1385,9 +1385,10 @@ E2 delivered (WorkPC-verified):
   the real loader in a regression test);
 - full `serverfs doctor` (`serverfs_mcp/doctor.py`): version/Python/platform,
   native backend import/distribution-version, config parse, per-workdir root
-  open through the backend seam, filesystem class via volume resolution
-  (NTFS OK; network/FAT/exFAT/ReFS reported as unsupported until §33
-  acceptance), configuration-level reparse pre-check beside the kernel's own
+  open through the backend seam, filesystem class via volume resolution —
+  fail closed per §33: local NTFS is the only OK verdict, while network
+  shares, FAT/exFAT/ReFS and undeterminable storage classes are `FAIL` with
+  a non-zero exit — configuration-level reparse pre-check beside the kernel's own
   refusal, a real policy-filtered root listing as the read probe, a
   non-mutating write-capability probe (Win32 `CreateFileW(FILE_ADD_FILE)` /
   POSIX `access`), tunnel-client presence/version and bootstrapped-copy
@@ -1403,10 +1404,14 @@ E2 delivered (WorkPC-verified):
 - `serverfs bootstrap native-wheel --url --sha256`: verify-then-store
   channel for the published wheel, installation staying an explicit step;
 - `.github/workflows/wheel-release.yml`: tag-triggered publication that
-  builds the wheel, repeats clean-venv artifact acceptance, enforces the
-  Cargo-version/tag-version gate, builds the product wheel and attaches both
-  to the tag's GitHub Release with SHA-256 + asset URLs in the notes. The
-  actual publication run belongs to the maintainer's release decision;
+  builds BOTH release wheels (maturin native + hatchling product), gates
+  each wheel's version against the tag, runs a two-wheel clean-install
+  acceptance in a fresh venv with no editable checkout and no PYTHONPATH
+  (module-provenance assertion included), then attaches both wheels to the
+  tag's GitHub Release with SHA-256 + asset URLs written into a
+  marker-delimited section that is regenerated in place while preserving
+  maintainer-authored release notes. The actual publication run belongs to
+  the maintainer's release decision;
 - clean-install closure evidence on WorkPC: fresh `uv venv` (CPython 3.13)
   with only the two release-shaped wheels installed -> `serverfs doctor`
   exit 0 and a full stdio MCP session (create -> stat -> edit -> stat,
