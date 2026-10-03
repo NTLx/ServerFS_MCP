@@ -1,14 +1,14 @@
 # v0.10.0 Release Checklist (Phase F closure order)
 
-Preconditions — all must be green before the tag exists:
+Preconditions — all must pass before the release-closeout PR is merged:
 
 - [ ] Phase F evidence document (`docs/phase-f-acceptance-2026-10.md`) complete
       with CI run IDs for every pushed head.
-- [ ] Live ChatGPT tunnel E2E executed by the maintainer per section 8 of the
-      evidence document, OR the release is explicitly scoped without that claim.
+- [ ] Live ChatGPT tunnel E2E passes, executed by the maintainer per section 8
+      of the evidence document.
 - [ ] PR for Phase F merged to `main` after review.
 
-Step 1 — version bump commit (single, on `main`, reviewable):
+Step 1 — prepare and review the release-closeout PR (do not merge yet):
 
 - [ ] `pyproject.toml`: `version = "0.10.0"` (SERVER_VERSION resolves through
       package metadata, no code change).
@@ -22,19 +22,29 @@ Step 1 — version bump commit (single, on `main`, reviewable):
       a v0.10.0 entry (Windows native section already documents the surface).
 - [ ] Website (`site/`): news/release page per the site gate
       (`cd site && npm ci && npm run build`, `git diff --check`).
-- [ ] After tag+publish, separate commit `docs: mark v0.10.0 as released`:
-      AGENTS.md current-stable paragraphs (`dev_plan_v0.10.md` first, v0.9 plan
-      becomes the frozen prior record) and the dev_plan status line.
+- [ ] Review the release-closeout PR, including any README/site stable copy.
+- [ ] Keep the release-closeout PR unmerged until the live ChatGPT tunnel E2E
+      precondition above has passed.
 
-Step 2 — tag and publish (maintainer action; tags are immutable once published):
+Step 2 — merge after live E2E, then tag and publish immediately:
 
-- [ ] `git tag v0.10.0 && git push origin v0.10.0`.
+- [ ] Confirm the Phase F evidence, Phase F merge, and live ChatGPT tunnel E2E
+      preconditions above have passed.
+- [ ] Merge the reviewed release-closeout PR to `main` only after live E2E passes.
+- [ ] Immediately after that merge, maintainer creates and pushes the release
+      tag (tags are immutable once published):
+      `git tag v0.10.0 && git push origin v0.10.0`.
 - [ ] Container workflow publishes `0.10.0`, `0.10`, `latest` images.
 - [ ] `wheel-release` workflow runs on the tag: version gate reads METADATA
       versions of both wheels (must equal `0.10.0`), clean two-wheel acceptance,
       then attaches `serverfs_mcp-0.10.0-py3-none-any.whl` and
       `serverfs_windows_native-0.10.0-cp312-abi3-win_amd64.whl` to the GitHub
       Release with the managed marker block (SHA-256 + asset URLs).
+
+- [ ] After tag and publish, make a separate commit `docs: mark v0.10.0 as
+      released` for the AGENTS.md current-stable paragraphs (`dev_plan_v0.10.md`
+      first, v0.9 plan becomes the frozen prior record) and the dev_plan status
+      line.
 
 Step 3 — post-publish verification:
 
