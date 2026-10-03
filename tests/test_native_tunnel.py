@@ -431,3 +431,82 @@ def test_supervisor_copy_falls_back_to_read_for_test_doubles() -> None:
     destination = Destination()
     _copy(ReadOnlySource(), destination)  # type: ignore[arg-type]
     assert destination.data == b"fallback bytes"
+
+
+def _launcher_capture(tmp_path, monkeypatch, **kwargs):
+    root = tmp_path / "work"
+    root.mkdir()
+    config = tmp_path / "serverfs.toml"
+    config.write_text(f'[[workdirs]]\nalias="repo"\npath="{root.as_posix()}"\n', encoding="utf-8")
+    key = tmp_path / "api-key.txt"
+    key.write_text("key-sentinel", encoding="utf-8")
+    client = tmp_path / "tunnel-client.exe"
+    client.touch()
+    captured: dict[str, object] = {}
+
+    def fake_run(argv, *, env, check):
+        captured.update(argv=argv, env=env, check=check)
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(native_tunnel.sys, "platform", "win32")
+    monkeypatch.setattr(native_tunnel.subprocess, "run", fake_run)
+    monkeypatch.setenv("CONTROL_PLANE_BASE_URL", "https://inherited.example")
+    monkeypatch.setenv("HEALTH_LISTEN_ADDR", "127.0.0.1:9999")
+    code = run_native_tunnel(
+        config_path=config,
+        env_file=None,
+        tunnel_client=client,
+        tunnel_id="tunnel_" + "b" * 32,
+        api_key_file=key,
+        **kwargs,
+    )
+    assert code == 0
+    return captured
+
+
+def test_launcher_forces_ephemeral_health_and_sanitors_base_url(tmp_path, monkeypatch) -> None:
+    captured = _launcher_capture(tmp_path, monkeypatch)
+    env = captured["env"]
+    assert env["HEALTH_LISTEN_ADDR"] == "127.0.0.1:0"
+    assert "CONTROL_PLANE_BASE_URL" not in env  # inherited value stripped, none set
+    argv = captured["argv"]
+    assert "--control-plane.base-url" not in argv
+    assert "--health.listen-addr" not in argv
+
+
+def test_launcher_applies_validated_base_url_and_health_overrides(tmp_path, monkeypatch) -> None:
+    captured = _launcher_capture(
+        tmp_path,
+        monkeypatch,
+        base_url="https://127.0.0.1:8443",
+        health_listen_addr="127.0.0.1:18080",
+    )
+    env = captured["env"]
+    assert env["CONTROL_PLANE_BASE_URL"] == "https://127.0.0.1:8443"
+    assert env["HEALTH_LISTEN_ADDR"] == "127.0.0.1:18080"
+
+
+@pytest.mark.parametrize(
+    ("raw", "secret"),
+    [
+        ("http://insecure.example", ""),
+        ("https://user:sup3rsecret@host", "sup3rsecret"),
+        ("https://host/path", ""),
+        ("https://host?token=abc", "abc"),
+        ("ftp://host", ""),
+        ("https://", ""),
+        ("https://host:0", ""),
+        ("https://host:notaport", ""),
+    ],
+)
+def test_base_url_validation_is_fail_closed_and_redacted(raw: str, secret: str) -> None:
+    with pytest.raises(NativeTunnelError) as excinfo:
+        native_tunnel._validated_base_url(raw)
+    if secret:
+        assert secret not in str(excinfo.value)
+
+
+@pytest.mark.parametrize("raw", ["8080", "host:notaport", "host:70000"])
+def test_health_addr_validation_is_fail_closed(raw: str) -> None:
+    with pytest.raises(NativeTunnelError):
+        native_tunnel._validated_health_addr(raw)

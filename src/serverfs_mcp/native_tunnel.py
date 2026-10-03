@@ -158,10 +158,16 @@ def run_native_tunnel(
     tunnel_client: Path | None,
     tunnel_id: str,
     api_key_file: Path,
+    base_url: str | None = None,
+    health_listen_addr: str | None = None,
 ) -> int:
     """Run tunnel-client, whose stdio child is the minimal sanitizer supervisor."""
     if sys.platform != "win32":
         raise NativeTunnelError("native tunnel is supported only on Windows")
+    if base_url is not None:
+        base_url = _validated_base_url(base_url)
+    if health_listen_addr is not None:
+        health_listen_addr = _validated_health_addr(health_listen_addr)
     if tunnel_client is None:
         from .tunnel_bootstrap import default_tunnel_client_path
 
@@ -217,4 +223,48 @@ def run_native_tunnel(
             tunnel_env.pop(name, None)
     if proxy:
         tunnel_env["CONTROL_PLANE_HTTP_PROXY"] = proxy
+    if base_url:
+        tunnel_env["CONTROL_PLANE_BASE_URL"] = base_url
+    # tunnel-client's health server defaults to 127.0.0.1:8080, which collides
+    # with ordinary local services (measured in Phase F acceptance). The
+    # launcher owns this connectivity infrastructure, so it requests an
+    # ephemeral loopback port unless the operator overrides it.
+    tunnel_env["HEALTH_LISTEN_ADDR"] = health_listen_addr or "127.0.0.1:0"
     return subprocess.run(tunnel_argv, env=tunnel_env, check=False).returncode
+
+
+def _validated_health_addr(raw: str) -> str:
+    candidate = raw.strip()
+    host, sep, port = candidate.rpartition(":")
+    if not sep or not port.isascii() or not port.isdecimal() or not 0 <= int(port) <= 65535:
+        raise NativeTunnelError("health listen address must be ip:port with port 0..65535")
+    if not host and not candidate.startswith(":"):
+        raise NativeTunnelError("health listen address must be ip:port")
+    return candidate
+
+
+def _validated_base_url(raw: str) -> str:
+    """Deployment-facing override of the control-plane endpoint (acceptance
+    harnesses, future regional endpoints). HTTPS-only, no userinfo, no path:
+    this value selects the trust anchor of the control-plane connection, so
+    anything looser is refused rather than normalized."""
+    from urllib.parse import urlsplit
+
+    split = urlsplit(raw.strip())
+    if (
+        split.scheme != "https"
+        or not split.hostname
+        or split.username
+        or split.password
+        or (split.path and split.path != "/")
+        or split.query
+        or split.fragment
+    ):
+        raise NativeTunnelError("base URL must be an https endpoint without credentials or path")
+    try:
+        port = split.port
+    except ValueError as exc:
+        raise NativeTunnelError("base URL port must be an integer from 1 to 65535") from exc
+    if port is not None and not 1 <= port <= 65535:
+        raise NativeTunnelError("base URL port must be an integer from 1 to 65535")
+    return raw.strip().rstrip("/")
