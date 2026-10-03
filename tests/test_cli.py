@@ -64,18 +64,42 @@ class TestServe:
 
 
 class TestDoctor:
-    def test_doctor_reports_config_and_workdirs(self, config_path: Path) -> None:
+    @staticmethod
+    def _config(tmp_path: Path) -> Path:
+        ro = tmp_path / "ro"
+        ro.mkdir()
+        rw = tmp_path / "rw"
+        rw.mkdir()
+        config = tmp_path / "serverfs.toml"
+        config.write_text(
+            f'[[workdirs]]\nalias = "ro"\npath = "{ro.as_posix()}"\n'
+            f'read_only = true\n\n[[workdirs]]\nalias = "rw"\n'
+            f'path = "{rw.as_posix()}"\nread_only = false\n',
+            encoding="utf-8",
+        )
+        return config
+
+    def test_doctor_reports_full_probe_surface(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("SERVERFS_DATA_HOME", str(tmp_path / "data"))
+        config = self._config(tmp_path)
         err = io.StringIO()
         out = io.StringIO()
         # stdout stays protocol-reserved: doctor must not print there
         with redirect_stderr(err), redirect_stdout(out):
-            code = main(["doctor", "--config", str(config_path)])
-        assert code == 0
+            code = main(["doctor", "--config", str(config)])
         report = err.getvalue()
         assert out.getvalue() == ""
+        assert code == 0, report
         assert "config: OK" in report
-        assert "workdir: projects (read-write)" in report
-        assert "workdir: documents (read-only)" in report
+        assert "workdir: ro (read-only)" in report
+        assert "workdir: rw (read-write)" in report
+        assert "root: OK" in report
+        assert "read: OK" in report
+        assert "not evaluated (read-only workdir)" in report
+        assert "add-file capability present" in report
+        assert "tunnel-client" in report
+        assert "proxy: disabled" in report
+        assert "summary: 0 FAIL" in report
 
     def test_doctor_reports_invalid_config(self, tmp_path: Path) -> None:
         bad = tmp_path / "bad.toml"
@@ -86,13 +110,19 @@ class TestDoctor:
         assert code == 2
         assert "config: FAIL" in err.getvalue()
 
-    def test_doctor_names_phase_a_limits(self, config_path: Path) -> None:
-        # The report must be honest about what was NOT checked (§ "Not
-        # verified" discipline): root probes are not implemented in Phase A.
+    def test_doctor_fails_on_missing_root(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("SERVERFS_DATA_HOME", str(tmp_path / "data"))
+        config = tmp_path / "serverfs.toml"
+        config.write_text(
+            f'[[workdirs]]\nalias = "gone"\npath = "{(tmp_path / "missing").as_posix()}"\n',
+            encoding="utf-8",
+        )
         err = io.StringIO()
         with redirect_stderr(err):
-            main(["doctor", "--config", str(config_path)])
-        assert "root probes: not implemented" in err.getvalue()
+            code = main(["doctor", "--config", str(config)])
+        assert code == 1
+        assert "root: FAIL" in err.getvalue()
+        assert "does not exist" in err.getvalue()
 
 
 class TestParser:
