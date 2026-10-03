@@ -1,0 +1,93 @@
+name: Windows wheel release
+
+# dev_plan_v0.10.md §24.2/§30: publication channel for the prebuilt
+# serverfs-windows-native abi3 wheel. Runs only when the maintainer creates
+# a release tag; the maturin-built wheel is verified in a clean environment
+# (the wheel is the ONLY provider of the native module) and then attached to
+# the GitHub Release for that tag with its SHA-256 and asset URL recorded in
+# the release body. The "Private :: Do Not Upload" trove classifier in
+# native/windows/pyproject.toml remains a PyPI guard: this workflow does not
+# publish to any package index. End users install with:
+#
+#   serverfs bootstrap native-wheel --url <asset url> --sha256 <recorded>
+#   uv pip install <stored wheel>
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wheel-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  wheel:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: "3.12"
+
+      - name: maturin wheel build (release, abi3, locked)
+        working-directory: native/windows
+        run: uv tool run --from maturin==1.8.2 maturin build --release --features pyo3 --locked
+        shell: pwsh
+
+      - name: wheel version must match the tag (Cargo owns the version)
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v').Split('+')[0]
+          $wheel = Get-ChildItem native/windows/target/wheels/*.whl
+          $ver = ($wheel.Name -split '-')[2]
+          if ($ver -ne $tag -and $ver -ne ($tag -replace '-', '')) {
+            Write-Error "wheel version $ver does not match tag $tag; set Cargo versions to the exact PEP440 form before tagging"
+            exit 1
+          }
+          "wheel: $($wheel.Name) (version gate passed)"
+        shell: pwsh
+
+      - name: wheel artifact acceptance (clean env, wheel is sole native provider)
+        run: |
+          $wheel = (Get-ChildItem native/windows/target/wheels/*.whl).FullName
+          uv venv --python 3.12 .venv-wheel
+          uv pip install --python .venv-wheel/Scripts/python.exe $wheel pytest
+          uv pip install --python .venv-wheel/Scripts/python.exe -e .
+          Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+          .venv-wheel/Scripts/python.exe -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py -q
+        shell: pwsh
+
+      - name: publish wheel as GitHub Release asset with SHA-256 evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $wheel = Get-ChildItem native/windows/target/wheels/*.whl
+          $hash = (Get-FileHash $wheel.FullName -Algorithm SHA256).Hash.ToLower()
+          $assetUrl = "$env:SERVER_URL/$env:REPO/releases/download/$tag/$($wheel.Name)"
+          if (-not (gh release view $tag 2>$null)) {
+            gh release create $tag --target $env:COMMIT --verify-tag --title "ServerFS $tag" --notes "ServerFS $tag"
+          }
+          gh release upload $tag $wheel.FullName --clobber
+          @"
+          Prebuilt Windows amd64 abi3 wheel (Python >= 3.12, no Rust/MSVC required).
+
+          | file | sha256 |
+          | --- | --- |
+          | [$($wheel.Name)]($assetUrl) | ``$hash`` |
+
+          Install on a clean Windows machine:
+            serverfs bootstrap native-wheel --url "$assetUrl" --sha256 $hash
+            uv pip install <path printed by bootstrap>
+          "@ | Set-Content -Encoding utf8 release-notes.md
+          gh release edit $tag --notes-file release-notes.md
+        shell: pwsh
