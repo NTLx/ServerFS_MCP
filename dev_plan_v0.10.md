@@ -1,6 +1,6 @@
 # ServerFS v0.10.0 Development Plan — Native Windows Filesystem Backend
 
-Status: Phase A-D closed; Windows connectivity prerequisite delivered; Phase E1 native-wheel packaging merged; Phase E/F remaining  
+Status: Phase A-D closed; Windows connectivity prerequisite delivered; Phase E1/E2 (wheel packaging, doctor, bootstrap, publication channel) implemented — E2 pending review; Phase F remaining
 Baseline: v0.9.0 / main  
 Primary release target: Windows 11 x64 + local NTFS workdirs  
 Scope: add a first-class Windows-native ServerFS filesystem implementation with no Docker or WSL runtime dependency; keep the MCP/product layer in Python; implement the Windows filesystem security kernel as a small Rust/PyO3 native backend; preserve the existing public filesystem tool contract wherever platform semantics permit; leave Windows Agent Bridge and native file-parameter ingress for later releases.
@@ -975,14 +975,26 @@ https://github.com/openai/tunnel-client/releases
 
 v0.10.0 should support keeping a pinned tunnel-client binary under a project-managed data/bin directory rather than requiring a machine-wide install.
 
-A bootstrap helper may:
+Implemented in Phase E2 by `serverfs_mcp/tunnel_bootstrap.py` behind the
+`serverfs bootstrap tunnel-client` CLI command. The delivered shape:
 
-1. resolve the pinned release;
-2. download the exact platform archive from the official distribution;
-3. verify the published SHA-256;
-4. extract only the required runtime/client binary;
-5. store it below the project/user ServerFS data directory;
+1. resolve the pinned release (pinned tag constants);
+2. download the exact platform archive from the official distribution
+   (https-only, GitHub release-asset host allowlist, redirects validated);
+3. verify the published SHA-256 (double anchor: the `SHA256SUMS.txt`
+   manifest itself must match a pinned digest before it is trusted, then
+   the archive is re-hashed against the manifest entry);
+4. extract the runtime member set top-level-only (the official zips carry
+   `cloudflared.exe` plus `cloudflared-manifest.json` beside the client;
+   provenance `.spdx.json`/`-licenses.txt` assets are dropped, traversal
+   members are refused);
+5. store it below the user-owned ServerFS data directory
+   (`SERVERFS_DATA_HOME` override; `%LOCALAPPDATA%\ServerFS\bin` on Windows);
 6. never modify global PATH.
+
+`serverfs bootstrap native-wheel --url … --sha256 …` applies the same
+verify-then-store discipline to the published wheel; installation remains an
+explicit operator step.
 
 The filesystem service itself must remain runnable/testable without tunnel-client; tunnel-client is connectivity infrastructure, not part of the filesystem security kernel.
 
@@ -994,10 +1006,11 @@ Target commands:
 
 ~~~text
 serverfs serve --config serverfs.toml
-serverfs doctor --config serverfs.toml
+serverfs doctor --config serverfs.toml [--env-file .env] [--tunnel-client PATH]
 serverfs tunnel --config serverfs.toml --env-file .env \
-  --tunnel-client C:\\tools\\tunnel-client.exe --tunnel-id tunnel_... \
+  [--tunnel-client C:\\tools\\tunnel-client.exe] --tunnel-id tunnel_... \
   --api-key-file C:\\Users\\me\\.config\\serverfs\\api-key
+serverfs bootstrap tunnel-client | native-wheel --url ... --sha256 ...
 ~~~
 
 Native `serve` and `tunnel` are Windows-only in v0.10 and fail closed on
@@ -1005,10 +1018,10 @@ other platforms. Native default transport is stdio. Linux keeps its existing
 Docker deployment; Linux-native no-Docker service may reuse this work later.
 `serve` and `tunnel` are implemented and regression-tested (the `tunnel` path
 wires the §8.2 `file:`-reference credential boundary and the sanitizer
-supervisor). `serverfs doctor` is currently a config/platform-level skeleton
-only; the full health report below remains Phase E work:
-
-`serverfs doctor` should report:
+supervisor); `tunnel` now defaults to the bootstrapped client when
+`--tunnel-client` is omitted. `serverfs doctor` is implemented in full
+(Phase E2, `serverfs_mcp/doctor.py`); the reported list below is the
+acceptance contract it satisfies:
 
 - ServerFS version;
 - Python version;
@@ -1359,41 +1372,73 @@ Exit criteria:
 
 ### Phase E — Native packaging and release operations
 
-**Status: IN PROGRESS — E1 (wheel packaging) CLOSED.** `native/windows/pyproject.toml`
+**Status: E1 CLOSED; E2 implemented, pending review.** `native/windows/pyproject.toml`
 + maturin produce the separate `serverfs-windows-native` `cp312-abi3-win_amd64` wheel
 (Cargo owns the version; root package stays Hatchling); CI builds it and runs the native
 + backend + MCP E2E suites in a clean venv where the wheel is the only provider of the
 native module, and uploads the wheel artifact. `Private :: Do Not Upload` guards
-accidental publication until the release decision.
+accidental PyPI publication until the release decision.
 
-Remaining work:
+E2 delivered (WorkPC-verified):
 
-- wheel publication + `uv` dependency integration so `uv sync` installs the usable
-  native backend from a prebuilt wheel;
-- `serverfs.toml.example`;
-- full `serverfs doctor` root/backend/filesystem/tunnel/proxy health checks;
-- pinned project-local tunnel-client bootstrap with published-SHA-256 verification and
-  profile;
-- clean install and upgrade guidance;
-- Windows operator documentation.
+- `serverfs.toml.example` documenting the full native TOML schema (parsed by
+  the real loader in a regression test);
+- full `serverfs doctor` (`serverfs_mcp/doctor.py`): version/Python/platform,
+  native backend import/distribution-version, config parse, per-workdir root
+  open through the backend seam, filesystem class via volume resolution
+  (NTFS OK; network/FAT/exFAT/ReFS reported as unsupported until §33
+  acceptance), configuration-level reparse pre-check beside the kernel's own
+  refusal, a real policy-filtered root listing as the read probe, a
+  non-mutating write-capability probe (Win32 `CreateFileW(FILE_ADD_FILE)` /
+  POSIX `access`), tunnel-client presence/version and bootstrapped-copy
+  discovery, and redacted proxy status with DNS/TCP reachability — secrets
+  and the derived proxy URL never appear; exit 0/1/2 semantics; stderr-only;
+- `serverfs bootstrap tunnel-client` (`tunnel_bootstrap.py`) per §25, pinned
+  to the official v0.0.15 release with double-anchored SHA-256 verification
+  (pinned manifest digest -> manifest entry -> archive re-hash),
+  traversal-safe top-level extraction of the runtime member set, user-owned
+  data directory, no PATH changes; `serverfs tunnel` now auto-discovers the
+  bootstrapped client; real-network run on WorkPC installed and executed the
+  verified binary;
+- `serverfs bootstrap native-wheel --url --sha256`: verify-then-store
+  channel for the published wheel, installation staying an explicit step;
+- `.github/workflows/wheel-release.yml`: tag-triggered publication that
+  builds the wheel, repeats clean-venv artifact acceptance, enforces the
+  Cargo-version/tag-version gate, builds the product wheel and attaches both
+  to the tag's GitHub Release with SHA-256 + asset URLs in the notes. The
+  actual publication run belongs to the maintainer's release decision;
+- clean-install closure evidence on WorkPC: fresh `uv venv` (CPython 3.13)
+  with only the two release-shaped wheels installed -> `serverfs doctor`
+  exit 0 and a full stdio MCP session (create -> stat -> edit -> stat,
+  exact CRLF bytes, consistent revision chain). This doubles as the abi3
+  cross-minor evidence item (install/import/smoke on 3.13);
+- README "Windows Native Deployment", bootstrap/upgrade guidance and the
+  Windows native development section.
+
+Deliberate uv-dependency shape: a `[tool.uv.sources]` URL entry cannot land
+before the release asset exists, because `uv.lock` is universal — a
+not-yet-downloadable URL would break Linux `uv sync --frozen` and the
+Windows CI job's resolution. The post-publication switch to a URL-pinned
+source (or a release-time `uv add`) remains a release-checklist step; the
+two-command `uv pip install`/bootstrap path is the shipped closure.
 
 Objective: make the implementation installable and usable without a developer toolchain.
 
 Work:
 
-- prebuilt Windows x64 wheel (delivered by E1; publication pending);
-- uv dependency integration;
-- `serverfs.toml.example`;
-- full `serverfs doctor` root/backend health checks;
-- pinned project-local tunnel-client bootstrap/profile;
-- clean install and upgrade guidance;
-- Windows documentation.
+- prebuilt Windows x64 wheel (E1; publication channel landed by E2, run pending release tag);
+- uv install closure (E2: two-wheel clean-venv path + verified native-wheel bootstrap);
+- `serverfs.toml.example` (done);
+- full `serverfs doctor` root/backend/filesystem/tunnel/proxy health checks (done);
+- pinned project-local tunnel-client bootstrap/profile (done);
+- clean install and upgrade guidance (done);
+- Windows documentation (done; website mirror may follow).
 
 Exit criteria:
 
-- clean Windows machine/environment needs no Docker/WSL/Rust/MSVC SDK;
-- `uv sync` installs the usable native backend from a wheel;
-- ChatGPT tunnel E2E succeeds over stdio;
+- clean Windows machine/environment needs no Docker/WSL/Rust/MSVC SDK (demonstrated in the WorkPC clean-venv closure);
+- the usable native backend installs from a prebuilt wheel via `uv` (URL-source lockfile wiring follows publication);
+- ChatGPT tunnel E2E succeeds over stdio (Phase F live-network acceptance);
 - ServerFS child does not receive the Control Plane API key value;
 - no localhost MCP listener exists in the default native profile.
 
@@ -1423,7 +1468,10 @@ Required acceptance:
   values, (10) proxy-disabled deployment behaviorally identical to the direct path;
 - Python minor-version evidence for the abi3 claim: install/import/smoke the same
   `cp312-abi3` wheel on at least one newer CPython minor (3.13+), or explicitly bound
-  v0.10 Windows native support to 3.12 in the release documentation;
+  v0.10 Windows native support to 3.12 in the release documentation. E2 development
+  evidence already shows the wheel installing and serving a full stdio MCP session
+  (doctor + create/stat/edit chain) on CPython 3.13.3 in a clean uv venv; Phase F must
+  repeat this against the exact release-built wheel and record it.
 - documentation and website alignment.
 
 Release only after all required acceptance evidence is recorded.

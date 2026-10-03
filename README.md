@@ -213,6 +213,97 @@ outside every configured workdir.
 
 To troubleshoot the tunnel, use the official client's own diagnostics (`tunnel-client doctor`, `/readyz`) rather than guessing.
 
+## Windows Native Deployment (v0.10)
+
+v0.10 adds a native Windows deployment: ServerFS runs directly on the machine
+as an MCP **stdio** service backed by a Rust/NTFS kernel — no Docker, no WSL,
+no localhost listener. The Linux Docker deployment above is unchanged and
+remains the supported Linux shape. Windows support is scoped to **Windows 11
+x64 + local NTFS**; the GA claim is only made after the Phase F acceptance
+record.
+
+The runtime chain is:
+
+```text
+serverfs tunnel
+  -> official pinned tunnel-client        (owns control-plane connectivity)
+       -> sanitizer supervisor            (strips tunnel/proxy environment)
+            -> serverfs serve             (MCP stdio child, sees no secrets)
+                 -> serverfs-windows-native wheel (HANDLE-relative NTFS kernel)
+```
+
+Windows users consume two prebuilt wheels from the GitHub Release and never
+need Rust, Cargo, MSVC Build Tools or the Windows SDK. The `serverfs-windows-native`
+wheel is `cp312-abi3-win_amd64` (stable ABI, Python ≥ 3.12; validated on
+CPython 3.12 in artifact CI and on 3.13 in development evidence).
+
+### Clean install
+
+1. Install [uv](https://docs.astral.sh/uv/) (or any Python ≥ 3.12).
+2. From the release assets, install both wheels:
+
+```powershell
+uv venv --python 3.12
+.venv\Scripts\activate
+uv pip install serverfs_mcp-<ver>-py3-none-any.whl serverfs_windows_native-<ver>-cp312-abi3-win_amd64.whl
+```
+
+3. Copy `serverfs.toml.example` to `serverfs.toml` and set your workdirs
+   (paths are operator configuration; agents only ever see aliases;
+   `read_only = true` is the default and mutations are refused by the kernel
+   unless a workdir opts in). Never put secrets in `serverfs.toml`.
+4. Run the health report — it must exit 0 with `0 FAIL` before you serve:
+
+```powershell
+serverfs doctor --config serverfs.toml
+```
+
+`serverfs doctor` probes config parse, native backend import/version, each
+workdir root open, filesystem class (NTFS GA; network/FAT/exFAT/ReFS are
+reported as *not supported until acceptance*), reparse topology, a real
+policy-filtered root listing, a non-mutating write capability check, the
+bootstrapped tunnel-client version and the project-managed HTTP proxy
+reachability — with proxy/tunnel credentials never displayed.
+
+5. Serve (usually the tunnel launcher starts this for you):
+
+```powershell
+serverfs serve --config serverfs.toml     # MCP frames on stdout, logs on stderr
+```
+
+### Connectivity bootstrap
+
+```powershell
+serverfs bootstrap tunnel-client          # pinned official release, SHA-256 verified
+serverfs tunnel --config serverfs.toml `
+  --tunnel-id tunnel_... --api-key-file C:\Users\you\.config\serverfs\api-key
+```
+
+`bootstrap` stores the client under the user-owned ServerFS data directory
+(`%LOCALAPPDATA%\ServerFS\bin\…`, override with `SERVERFS_DATA_HOME`) and
+never modifies the machine PATH. `serverfs tunnel` finds the bootstrapped
+client automatically (or take `--tunnel-client` for an explicit path). The
+API-key file must live outside every configured workdir; it is passed to
+tunnel-client only as a `file:` reference, and the supervisor removes all
+`CONTROL_PLANE_*`, `TUNNEL_CLIENT_*`, `OPENAI_*`, `MCP_*`, `SERVERFS_PROXY_*`
+and proxy variables before spawning the ServerFS child. Proxy configuration
+shares the same four `SERVERFS_PROXY_*` fields in `.env` as Linux (see OpenAI
+Tunnel Setup). Multiple active tunnel-client instances sharing one tunnel ID
+are unsupported upstream — do not run the native profile twice.
+
+For the native wheel itself, `serverfs bootstrap native-wheel --url <asset>
+--sha256 <recorded>` verifies the digest and stores the wheel under the
+ServerFS data directory; the release notes table records both wheel SHA-256
+values.
+
+### Upgrade
+
+Install the new release wheels into the venv (`uv pip install --upgrade …`),
+rerun `serverfs doctor`, then restart `serverfs tunnel` (recreating the child
+is how the new version gets served). `serverfs bootstrap tunnel-client`
+updates only when this project raises its pinned release; the digest chain
+fails closed on any upstream re-recording.
+
 ## Security Model
 
 Defense in depth — each layer is independent:
@@ -383,6 +474,20 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 ```
 
 The scratch tag on the last line matters: `image` doubles as the tag Compose builds to, so an untagged build with a pinned production `.env` present would repoint that release tag at your working tree.
+
+### Windows native development
+
+The `Windows native` workflow (`.github/workflows/windows-native.yml`) is the
+authoritative gate: `cargo fmt/clippy/test` (with `SERVERFS_REQUIRE_SYMLINK=1`
+so symlink-class cases must execute), the Python/native test set against the
+in-tree `.pyd`, and a maturin `cp312-abi3` wheel accepted in a clean venv
+where the wheel is the only provider of the native module. Locally on a
+Windows machine: build with
+`uv tool run --from maturin==1.8.2 maturin build --release --locked -m native/windows/Cargo.toml`,
+then `uv pip install` the produced wheel into your venv; `serverfs doctor`
+and the pytest `tests/test_windows_*` suites run against it directly.
+`.github/workflows/wheel-release.yml` publishes those wheels to a GitHub
+Release only when the maintainer creates a version tag.
 
 ## Still not included (by design)
 

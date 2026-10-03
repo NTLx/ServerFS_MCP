@@ -63,7 +63,11 @@ jobs:
           .venv-wheel/Scripts/python.exe -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py -q
         shell: pwsh
 
-      - name: publish wheel as GitHub Release asset with SHA-256 evidence
+      - name: build the pure-Python product wheel
+        run: uv build --wheel -o dist
+        shell: pwsh
+
+      - name: publish wheels as GitHub Release assets with SHA-256 evidence
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -71,22 +75,31 @@ jobs:
           COMMIT: ${{ github.sha }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $wheel = Get-ChildItem native/windows/target/wheels/*.whl
-          $hash = (Get-FileHash $wheel.FullName -Algorithm SHA256).Hash.ToLower()
-          $assetUrl = "$env:SERVER_URL/$env:REPO/releases/download/$tag/$($wheel.Name)"
+          $native = Get-ChildItem native/windows/target/wheels/*.whl
+          $product = Get-ChildItem dist/*.whl
           if (-not (gh release view $tag 2>$null)) {
             gh release create $tag --target $env:COMMIT --verify-tag --title "ServerFS $tag" --notes "ServerFS $tag"
           }
-          gh release upload $tag $wheel.FullName --clobber
+          gh release upload $tag $native.FullName --clobber
+          gh release upload $tag $product.FullName --clobber
+          $nativeHash = (Get-FileHash $native.FullName -Algorithm SHA256).Hash.ToLower()
+          $productHash = (Get-FileHash $product.FullName -Algorithm SHA256).Hash.ToLower()
+          $nativeUrl = "$env:SERVER_URL/$env:REPO/releases/download/$tag/$($native.Name)"
+          $productUrl = "$env:SERVER_URL/$env:REPO/releases/download/$tag/$($product.Name)"
           @"
-          Prebuilt Windows amd64 abi3 wheel (Python >= 3.12, no Rust/MSVC required).
+          Windows native installation assets (Python >= 3.12; no Rust/MSVC/Docker required).
 
           | file | sha256 |
           | --- | --- |
-          | [$($wheel.Name)]($assetUrl) | ``$hash`` |
+          | [$($product.Name)]($productUrl) | ``$productHash`` |
+          | [$($native.Name)]($nativeUrl) | ``$nativeHash`` |
 
-          Install on a clean Windows machine:
-            serverfs bootstrap native-wheel --url "$assetUrl" --sha256 $hash
+          Clean install:
+            uv venv --python 3.12
+            uv pip install $productUrl $nativeUrl
+
+          Verified native-wheel storage alternative:
+            serverfs bootstrap native-wheel --url "$nativeUrl" --sha256 $nativeHash
             uv pip install <path printed by bootstrap>
           "@ | Set-Content -Encoding utf8 release-notes.md
           gh release edit $tag --notes-file release-notes.md
