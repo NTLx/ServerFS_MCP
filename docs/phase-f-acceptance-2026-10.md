@@ -155,11 +155,25 @@ Runbook (native profile, scheduled maintenance window):
 
 ## 9. CI record
 
-- Linux root gate at each push: `ruff check`, `ruff format --check`,
-  `pytest` (counts recorded per run), `docker compose config`, build.
+- PR #25 (E2) final head `9cd9daf`: Test 1047 passed / 10 skipped,
+  native-kernel pass, Container check pass, wheel-release not applicable
+  (no tag). Merged; `main` = `b800f91`.
+- PR #26 (Phase F) head `a5290a7`: Test **1060 passed / 11 skipped**,
+  native-kernel pass (2m34s, includes the new path-acceptance suite),
+  Container check pass (29s), Publish skipping (normal for PRs).
+- Linux root gate at each push covers: `ruff check`, `ruff format --check`,
+  full `pytest` (incl. `test_wheel_release.py` helper matrix),
+  `docker compose config`, image build.
 - Windows native gate: cargo fmt/clippy/tests (symlink cases hard-required),
   Python/native set incl. Phase F suites, maturin wheel build + artifact
   acceptance in a clean venv.
-- wheel-release workflow: executed only on a maintainer release tag.
-  Version gate and release-notes logic are unit-tested in
-  `tests/test_wheel_release.py` on every push.
+- wheel-release workflow: executes only on a maintainer release tag; its
+  version gate and release-notes logic are unit-tested on every push.
+
+## 10. Release closure sequence
+
+See `docs/phase-f-release-checklist.md`: version bump surface
+(`pyproject` + `uv lock`, `native/windows/Cargo.toml` + lockfile, README/
+AGENTS/site), tag + publish, and post-publish clean-machine verification.
+The tag decision itself belongs to the maintainer; published stable tags
+remain immutable.
