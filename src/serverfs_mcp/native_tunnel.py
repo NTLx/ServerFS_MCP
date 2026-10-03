@@ -234,12 +234,20 @@ def run_native_tunnel(
 
 
 def _validated_health_addr(raw: str) -> str:
+    # Loopback-only by contract: the native profile freezes "no LAN
+    # exposure" — the health server may bind an ephemeral or fixed port on
+    # 127.0.0.1 and nothing else. IPv6 loopback is deliberately not parsed
+    # until there is an explicit need.
     candidate = raw.strip()
     host, sep, port = candidate.rpartition(":")
-    if not sep or not port.isascii() or not port.isdecimal() or not 0 <= int(port) <= 65535:
-        raise NativeTunnelError("health listen address must be ip:port with port 0..65535")
-    if not host and not candidate.startswith(":"):
-        raise NativeTunnelError("health listen address must be ip:port")
+    if (
+        host != "127.0.0.1"
+        or not sep
+        or not port.isascii()
+        or not port.isdecimal()
+        or not 0 <= int(port) <= 65535
+    ):
+        raise NativeTunnelError("health listen address must be 127.0.0.1:<port 0..65535>")
     return candidate
 
 

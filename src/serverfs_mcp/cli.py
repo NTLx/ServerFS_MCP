@@ -71,8 +71,9 @@ def build_parser() -> argparse.ArgumentParser:
     tunnel.add_argument(
         "--health-listen-addr",
         help=(
-            "tunnel-client health bind (default 127.0.0.1:0, an ephemeral loopback "
-            "port, because 8080 collides with common local services)"
+            "tunnel-client health bind: 127.0.0.1:<port 0..65535> only "
+            "(default 127.0.0.1:0, an ephemeral loopback port, because 8080 "
+            "collides with common local services)"
         ),
     )
 
