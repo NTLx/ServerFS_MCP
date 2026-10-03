@@ -22,11 +22,15 @@ on:
       - "src/serverfs_mcp/main.py"
       - "src/serverfs_mcp/native_config.py"
       - "src/serverfs_mcp/native_tunnel.py"
+      - "src/serverfs_mcp/doctor.py"
+      - "src/serverfs_mcp/tunnel_bootstrap.py"
       - "src/serverfs_mcp/supervisor.py"
       - "pyproject.toml"
       - "src/serverfs_mcp/search_glob.py"
       - "tests/test_cli.py"
       - "tests/test_native_tunnel.py"
+      - "tests/test_doctor.py"
+      - "tests/test_tunnel_bootstrap.py"
       - "tests/test_windows_*"
       - "tests/test_search_glob*"
       - "tests/test_search_find_contract.py"
@@ -48,11 +52,15 @@ on:
       - "src/serverfs_mcp/main.py"
       - "src/serverfs_mcp/native_config.py"
       - "src/serverfs_mcp/native_tunnel.py"
+      - "src/serverfs_mcp/doctor.py"
+      - "src/serverfs_mcp/tunnel_bootstrap.py"
       - "src/serverfs_mcp/supervisor.py"
       - "pyproject.toml"
       - "src/serverfs_mcp/search_glob.py"
       - "tests/test_cli.py"
       - "tests/test_native_tunnel.py"
+      - "tests/test_doctor.py"
+      - "tests/test_tunnel_bootstrap.py"
       - "tests/test_windows_*"
       - "tests/test_search_glob*"
       - "tests/test_search_find_contract.py"
@@ -148,6 +156,8 @@ jobs:
           tests/test_windows_native_stdio.py
           tests/test_cli.py
           tests/test_native_tunnel.py
+          tests/test_doctor.py
+          tests/test_tunnel_bootstrap.py
           tests/test_paths.py
           tests/test_config.py
           tests/test_workdirs.py -q
