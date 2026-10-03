@@ -20,9 +20,11 @@ Step 1 — version bump commit (single, on `main`, reviewable):
 - [ ] README: "Current stable release" line, Docker image & release channels
       table (`ghcr.io/ntlx/serverfs_mcp:0.10.0` / `0.10`), upgrade section with
       a v0.10.0 entry (Windows native section already documents the surface).
-- [ ] `AGENTS.md`: v0.10.0 becomes the current stable release paragraph.
 - [ ] Website (`site/`): news/release page per the site gate
       (`cd site && npm ci && npm run build`, `git diff --check`).
+- [ ] After tag+publish, separate commit `docs: mark v0.10.0 as released`:
+      AGENTS.md current-stable paragraphs (`dev_plan_v0.10.md` first, v0.9 plan
+      becomes the frozen prior record) and the dev_plan status line.
 
 Step 2 — tag and publish (maintainer action; tags are immutable once published):
 

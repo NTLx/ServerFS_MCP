@@ -77,14 +77,14 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 引入的文件入口主机策略与网络边界详见[二进制传输](./binary-transfer/)和[安全模型](./security/)。
 
-## 当前稳定版本：v0.9.0
+## 当前稳定版本：v0.10.0
 
-v0.9.0 使用不可变标签 `v0.9.0`，并发布以下 GHCR 稳定标签：
+v0.10.0 使用不可变标签 `v0.10.0`，并发布以下 GHCR 稳定标签：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.9
-ghcr.io/ntlx/serverfs_mcp:0.9.0
+ghcr.io/ntlx/serverfs_mcp:0.10
+ghcr.io/ntlx/serverfs_mcp:0.10.0
 ```
 
-生产环境应固定使用 `0.9.0`，而不是长期跟随 `latest` 或 `edge`。
+生产环境应固定使用 `0.10.0`，而不是长期跟随 `latest` 或 `edge`。同一 tag 还会在 GitHub Release 上发布两个 Windows 安装 wheel（产品包 + `serverfs-windows-native` abi3）并记录 SHA-256；见 [Windows 原生部署](./windows-native/)。
