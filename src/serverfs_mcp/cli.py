@@ -64,6 +64,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tunnel.add_argument("--tunnel-id", required=True, help="OpenAI tunnel_... identifier")
     tunnel.add_argument("--api-key-file", required=True, type=Path, help="Control-plane key file")
+    tunnel.add_argument(
+        "--base-url",
+        help="Override the https control-plane endpoint (acceptance/ops use; default upstream)",
+    )
+    tunnel.add_argument(
+        "--health-listen-addr",
+        help=(
+            "tunnel-client health bind (default 127.0.0.1:0, an ephemeral loopback "
+            "port, because 8080 collides with common local services)"
+        ),
+    )
 
     bootstrap = sub.add_parser(
         "bootstrap", help="Download/verify pinned connectivity artifacts (never touches PATH)"
@@ -128,6 +139,8 @@ def cmd_tunnel(args: argparse.Namespace) -> int:
             tunnel_client=args.tunnel_client,
             tunnel_id=args.tunnel_id,
             api_key_file=args.api_key_file,
+            base_url=args.base_url,
+            health_listen_addr=args.health_listen_addr,
         )
     except (OSError, ValueError) as exc:
         return _fail(str(exc))
