@@ -164,13 +164,15 @@ Runbook (native profile, scheduled maintenance window):
 - PR #25 (E2) final head `9cd9daf`: Test 1047 passed / 10 skipped,
   native-kernel pass, Container check pass, wheel-release not applicable
   (no tag). Merged; `main` = `b800f91`.
-- PR #26 (Phase F) latest code-bearing acceptance head `bcc5fe4`: runs
-  37098326564 (Linux root gate: Test **1060 passed / 11 skipped**, Container
-  check pass 28s) and 37098326573 (native-kernel pass, includes the
-  path-acceptance suite); Publish skipping is normal PR behavior. The final
-  docs-only closeout head is re-validated by GitHub required checks before
-  merge — this document deliberately does not record a "final head" SHA
-  that would self-expire with every evidence edit.
+- PR #26 (Phase F) latest code-bearing acceptance head `73069db` (the
+  loopback-only health-listen production fix). The subsequent docs-only
+  closeout head was revalidated by GitHub required checks before this evidence
+  correction. Container run `37103640111`: Linux root gate **1067 passed / 11
+  skipped**, Container check pass; Publish skipped is normal for a PR. Windows
+  native run `37103640112`: native-kernel pass, including the path-acceptance
+  and tunnel suites. The final docs-only merge head must again pass the same
+  GitHub required checks before merge; this document intentionally does not
+  embed a self-expiring final-head SHA.
 - Linux root gate at each push covers: `ruff check`, `ruff format --check`,
   full `pytest` (incl. `test_wheel_release.py` helper matrix),
   `docker compose config`, image build.
