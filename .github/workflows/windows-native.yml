@@ -154,6 +154,7 @@ jobs:
           tests/test_windows_backend.py
           tests/test_windows_mcp_e2e.py
           tests/test_windows_native_stdio.py
+          tests/test_windows_path_acceptance.py
           tests/test_cli.py
           tests/test_native_tunnel.py
           tests/test_doctor.py
