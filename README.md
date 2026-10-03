@@ -1,8 +1,8 @@
 # ServerFS MCP
 
-> ServerFS MCP is a secure MCP server that exposes explicitly configured Linux directories as controlled workdirs to AI agents, **read-only by default** with opt-in per-workdir file mutation.
+> ServerFS MCP is a secure MCP server that exposes explicitly configured directories as controlled workdirs to AI agents, **read-only by default** with opt-in per-workdir file mutation.
 
-Current stable release: **v0.9.0**. v0.9.0 adds provider-neutral Agent model discovery, optional advisory-only Jev model recommendations before submission, and an optional request-scoped `model` override on `submit_agent_task` while keeping runtime defaults/configuration provider-owned. It also makes `SERVERFS_MAX_BINARY_TRANSFER_BYTES` the single public global size limit for native binary transfer and ChatGPT file-parameter ingress.
+Current stable release: **v0.10.0**. v0.10.0 adds a native Windows deployment: ServerFS runs directly on Windows 11 x64 over local NTFS as an MCP **stdio** service backed by a prebuilt Rust kernel wheel (`serverfs-windows-native`, abi3, Python >= 3.12) — no Docker, WSL, Rust or MSVC for end users — with `serverfs serve/doctor/tunnel/bootstrap`, the pinned official tunnel-client launcher chain (sanitized MCP child, `file:` credential boundary) and the shared four-field HTTP proxy contract. The Linux Docker deployment, tool surface and all prior contracts are unchanged; v0.9.0's provider-neutral model discovery and unified `SERVERFS_MAX_BINARY_TRANSFER_BYTES` ceiling carry over as-is.
 
 Agents reach your directories through the **OpenAI Secure MCP Tunnel**. They can list, find, search, read and stat files anywhere you mount; optionally transfer bounded whole binary files; and, in workdirs you explicitly mark read-write, create, edit, delete or revision-guarded replace files through narrow tools. Nothing else: no shell, no command execution, no unguarded overwrite, no recursive delete, no escape from the directories you configure.
 
@@ -95,8 +95,8 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.9.0` | `v0.9.0` |
-| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.9` | newest `v0.9.x` tag |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.10.0` | `v0.10.0` |
+| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.10` | newest `v0.10.x` tag |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
 Every image is multi-arch: `linux/amd64` and `linux/arm64`.
@@ -108,7 +108,7 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-The v0.9.0 release publishes immutable tag `v0.9.0` and stable GHCR tags `0.9.0`, `0.9` and `latest`. Earlier release tags remain immutable. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
+The v0.10.0 release publishes immutable tag `v0.10.0` and stable GHCR tags `0.10.0`, `0.10` and `latest`, plus the two Windows installation wheels (product + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests. Earlier release tags remain immutable. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
 
 ## Workdir Configuration
 
@@ -429,13 +429,19 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose up -d
 
 Dependency versions are pinned: `mcp==2.2.0` in `pyproject.toml`/`uv.lock`, the builder image `ghcr.io/astral-sh/uv:0.12.15` in the `Dockerfile`, and the tunnel image `ghcr.io/openai/tunnel-client:v0.0.14` in `.env.example`. Upgrade deliberately by changing those pins and rebuilding along the source path. Avoid `latest`.
 
-For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. For v0.9.0, use:
+For **production**, pin `SERVERFS_IMAGE` to an exact published release instead of `latest`. For v0.10.0, use:
 
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.9.0
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.10.0
 ```
 
 Pinned deploys are reproducible, upgrades are explicit, and rollback is a one-line change back to the previous version. `latest` is convenient for a first look, not for a long-lived deployment.
+
+### Upgrading to v0.10.0
+
+For existing **Linux Docker deployments this is a no-op upgrade**: bump `SERVERFS_IMAGE`, recreate, and restart `openai-tunnel` in the same breath. The tool surface, policy model, Bridge contract and Compose layout are unchanged; the new optional `SERVERFS_PROXY_*` four-field HTTP proxy configuration stays inert while `SERVERFS_PROXY_HOST` is blank.
+
+**Windows native is a new installation path, not an upgrade of the Docker one** — see [Windows Native Deployment](#windows-native-deployment-v010) above: install the two release wheels into a Python >= 3.12 environment, copy `serverfs.toml.example`, run `serverfs doctor` until it exits 0, then serve over stdio through the bootstrapped pinned tunnel-client. Windows GA is scoped to Windows 11 x64 + local NTFS; network shares, FAT/exFAT, ReFS and cloud-placeholder storage are explicitly unsupported and `serverfs doctor` fails closed on them. SOCKS proxies are not supported; only plain HTTP proxies (with or without Basic authentication) are.
 
 ### Upgrading to v0.9.0
 

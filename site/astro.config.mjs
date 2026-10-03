@@ -51,6 +51,11 @@ export default defineConfig({
               translations: { 'zh-CN': '配置' },
               slug: 'docs/configuration',
             },
+            {
+              label: 'Windows Native',
+              translations: { 'zh-CN': 'Windows 原生部署' },
+              slug: 'docs/windows-native',
+            },
           ],
         },
         {
