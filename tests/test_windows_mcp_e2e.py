@@ -841,6 +841,48 @@ class TestMutationsE2E:
         )
         assert error_code(msg) == "REVISION_CONFLICT"
 
+    def test_returned_revision_survives_the_immediate_next_call(self, rw_server, rw_root) -> None:
+        # Live E2E regression: an agent uses the revision a mutation just
+        # returned for the very next call. NTFS can finalize LastWriteTime
+        # only when the last writable handle closes, so the published
+        # revision must already be the stable post-close value on every
+        # volume/filter combination.
+        created = call_success(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": "phase.txt", "content": "phase=created\n"},
+        )
+        stat = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "phase.txt"})
+        assert stat["revision"] == created["revision"]
+        edited = call_success(
+            rw_server,
+            "edit_text_file",
+            {
+                "workdir": "rw",
+                "path": "phase.txt",
+                "expected_revision": created["revision"],
+                "edits": [{"old_text": "created", "new_text": "edited"}],
+            },
+        )
+        assert (rw_root / "phase.txt").read_text(encoding="utf-8") == "phase=edited\n"
+        stat2 = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "phase.txt"})
+        assert stat2["revision"] == edited["revision"]
+        import base64
+
+        uploaded = call_success(
+            rw_server,
+            "upload_binary_file",
+            {
+                "workdir": "rw",
+                "path": "up.bin",
+                "data_base64": base64.b64encode(b"\x00ab").decode(),
+            },
+        )
+        downloaded = call_success(
+            rw_server, "download_binary_file", {"workdir": "rw", "path": "up.bin"}
+        )
+        assert downloaded["revision"] == uploaded["revision"]
+
     def test_read_only_workdir_wins_before_any_other_condition(self, server, wd_root) -> None:
         # the read-only `server` fixture: application authorization precedes
         # path policy and revision checks (frozen precedence)
