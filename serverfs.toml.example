@@ -1,0 +1,48 @@
+# ServerFS native configuration (v0.10)
+#
+# Copy this file to serverfs.toml next to your deployment, edit the
+# [[workdirs]] entries, then run:
+#
+#     serverfs doctor --config serverfs.toml    # read-only health report
+#     serverfs serve  --config serverfs.toml    # MCP stdio service
+#
+# Rules that never change:
+# - every path here is operator configuration; the agent only ever sees
+#   workdir aliases, never host paths;
+# - no secrets belong in this file. Tunnel/proxy credentials live in the
+#   separate .env consumed by `serverfs tunnel` (see SERVERFS_PROXY_* in
+#   README), and the Control Plane API key lives in a file OUTSIDE every
+#   workdir referenced below.
+
+[server]
+# DEBUG | INFO | WARNING | ERROR (default: INFO)
+# Structured JSON logs go to stderr only; stdout is reserved for MCP frames.
+log_level = "INFO"
+
+# Policy defaults applied to every workdir unless noted. These mirror the
+# global SERVERFS_* environment defaults of the Docker deployment.
+[defaults]
+max_read_bytes = 524288  # read_text_file page cap
+max_read_lines = 500  # read_text_file line cap per call
+max_write_bytes = 1048576  # create/edit text size cap
+allow_hidden = false  # true exposes dotfiles on every channel
+binary_transfer_enabled = false  # true enables upload/download binary tools
+max_binary_transfer_bytes = 8388608
+
+# One [[workdirs]] entry per exposed directory. Aliases must be unique and
+# match ^[A-Za-z][A-Za-z0-9_-]{0,31}$. Paths must be absolute native paths
+# (D:\trees\project or /srv/trees/project) and must not contain "..".
+# read_only defaults to TRUE: mutations are refused by the kernel unless you
+# explicitly opt the workdir in.
+
+[[workdirs]]
+alias = "docs"
+path = "D:\\agent-data\\docs"
+description = "Documentation tree, offered read-only"
+read_only = true
+
+[[workdirs]]
+alias = "workspace"
+path = "D:\\agent-data\\workspace"
+description = "Writable scratch area for agent tasks"
+read_only = false

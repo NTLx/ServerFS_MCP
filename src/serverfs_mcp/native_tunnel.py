@@ -155,13 +155,22 @@ def run_native_tunnel(
     *,
     config_path: Path,
     env_file: Path | None,
-    tunnel_client: Path,
+    tunnel_client: Path | None,
     tunnel_id: str,
     api_key_file: Path,
 ) -> int:
     """Run tunnel-client, whose stdio child is the minimal sanitizer supervisor."""
     if sys.platform != "win32":
         raise NativeTunnelError("native tunnel is supported only on Windows")
+    if tunnel_client is None:
+        from .tunnel_bootstrap import default_tunnel_client_path
+
+        tunnel_client = default_tunnel_client_path()
+        if tunnel_client is None:
+            raise NativeTunnelError(
+                "no bootstrapped tunnel-client found; run 'serverfs bootstrap tunnel-client' "
+                "or pass --tunnel-client"
+            )
     if not _TUNNEL_ID.fullmatch(tunnel_id):
         raise NativeTunnelError("invalid tunnel ID")
     if not config_path.is_file():
