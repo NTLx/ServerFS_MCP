@@ -43,18 +43,12 @@ jobs:
           uv build --wheel -o dist
         shell: pwsh
 
-      - name: both wheel versions must match the tag (Cargo and pyproject own them)
+      - name: both wheel versions must match the tag (METADATA is authoritative)
         run: |
-          $tag = "${{ github.ref_name }}".TrimStart('v').Split('+')[0]
-          $accepted = @($tag, ($tag -replace '-', ''))
-          foreach ($wheel in @((Get-ChildItem native/windows/target/wheels/*.whl), (Get-ChildItem dist/*.whl))) {
-            $ver = ($wheel.Name -split '-')[2]
-            if ($accepted -notcontains $ver) {
-              Write-Error "wheel $($wheel.Name) version $ver does not match tag $tag; the Cargo version (native) and the project version (pyproject) must equal the tag before releasing"
-              exit 1
-            }
-            "version gate ok: $($wheel.Name)"
-          }
+          $native = (Get-ChildItem native/windows/target/wheels/*.whl).FullName
+          $product = (Get-ChildItem dist/*.whl).FullName
+          uv run --no-project --python 3.12 python deployment/native/wheel_release.py version-gate `
+            --tag "${{ github.ref_name }}" --wheel $native --wheel $product
         shell: pwsh
 
       - name: two-wheel clean-install acceptance (no editable checkout)
@@ -89,32 +83,15 @@ jobs:
           $productHash = (Get-FileHash $product.FullName -Algorithm SHA256).Hash.ToLower()
           $nativeUrl = "$env:SERVER_URL/$env:REPO/releases/download/$tag/$($native.Name)"
           $productUrl = "$env:SERVER_URL/$env:REPO/releases/download/$tag/$($product.Name)"
-          $marker = "<!-- serverfs-windows-wheel-assets -->"
-          $section = @"
-          $marker
-
-          ## Windows native installation assets (Python >= 3.12; no Rust/MSVC/Docker required)
-
-          | file | sha256 |
-          | --- | --- |
-          | [$($product.Name)]($productUrl) | ``$productHash`` |
-          | [$($native.Name)]($nativeUrl) | ``$nativeHash`` |
-
-          Clean install:
-            uv venv --python 3.12
-            uv pip install $productUrl $nativeUrl
-
-          Verified native-wheel storage alternative:
-            serverfs bootstrap native-wheel --url "$nativeUrl" --sha256 $nativeHash
-          "@
-          $existing = (gh release view $tag --json body --jq '.body') 2>$null
-          $existing = ($existing -join "`n")
-          if ($existing.Contains($marker)) {
-            $head = ($existing -split [regex]::Escape($marker))[0]
-            $notes = ($head.TrimEnd() + "`n`n" + $section)
-          } else {
-            $notes = ($existing.TrimEnd() + "`n`n" + $section).TrimStart()
+          (gh release view $tag --json body --jq '.body') -join "`n" |
+            Set-Content -Encoding utf8NoBOM release-body-in.md
+          uv run --no-project --python 3.12 python deployment/native/wheel_release.py notes-update `
+            --body-file release-body-in.md --out-file release-notes-out.md `
+            --product-name $product.Name --product-url $productUrl --product-sha $productHash `
+            --native-name $native.Name --native-url $nativeUrl --native-sha $nativeHash
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "notes-update failed closed; release body left untouched"
+            exit $LASTEXITCODE
           }
-          $notes | Set-Content -Encoding utf8 release-notes.md
-          gh release edit $tag --notes-file release-notes.md
+          gh release edit $tag --notes-file release-notes-out.md
         shell: pwsh

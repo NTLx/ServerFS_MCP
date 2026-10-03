@@ -1405,13 +1405,19 @@ E2 delivered (WorkPC-verified):
   channel for the published wheel, installation staying an explicit step;
 - `.github/workflows/wheel-release.yml`: tag-triggered publication that
   builds BOTH release wheels (maturin native + hatchling product), gates
-  each wheel's version against the tag, runs a two-wheel clean-install
-  acceptance in a fresh venv with no editable checkout and no PYTHONPATH
-  (module-provenance assertion included), then attaches both wheels to the
-  tag's GitHub Release with SHA-256 + asset URLs written into a
-  marker-delimited section that is regenerated in place while preserving
-  maintainer-authored release notes. The actual publication run belongs to
-  the maintainer's release decision;
+  each wheel's version against the tag by reading the authoritative
+  ``Version:`` from each wheel's ``*.dist-info/METADATA`` (never filename
+  segment positions, which misread ``cp312``/``py3``), runs a two-wheel
+  clean-install acceptance in a fresh venv with no editable checkout and no
+  PYTHONPATH (module-provenance assertion included), then attaches both
+  wheels to the tag's GitHub Release and rewrites its notes through the
+  paired-marker managed block in `deployment/native/wheel_release.py`:
+  maintainer text before and after the block survives, re-runs replace the
+  block in place, an absent pair appends exactly one, and any orphan or
+  duplicate marker fails closed without touching the release. The helper's
+  version normalization and full notes matrix are unit-tested in
+  `tests/test_wheel_release.py`, executed by the Linux gate on every push;
+  the actual publication run belongs to the maintainer's release decision;
 - clean-install closure evidence on WorkPC: fresh `uv venv` (CPython 3.13)
   with only the two release-shaped wheels installed -> `serverfs doctor`
   exit 0 and a full stdio MCP session (create -> stat -> edit -> stat,
