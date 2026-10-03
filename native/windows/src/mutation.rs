@@ -321,7 +321,14 @@ pub fn create_bytes(root: &Handle, parts: &[&str], bytes: &[u8]) -> Result<Strin
     write_and_flush(&temp.handle, bytes)?;
     ffi::rename_relative(&temp.handle, parent, name, false)?;
     temp.published = true;
-    metadata::revision_of(&temp.handle)
+    // NTFS may finalize LastWriteTime only when the final writable handle
+    // closes. The public revision includes LastWriteTime, so deriving it
+    // from the still-open staging handle can return a token that is stale
+    // immediately after this function returns. Close first, then reopen the
+    // published name through the retained parent and report that stable state.
+    drop(temp);
+    let published = traversal::open_component(parent, name, ffi::OpenKind::File)?;
+    metadata::revision_of(&published)
 }
 
 pub fn replace_bytes(
@@ -402,7 +409,12 @@ fn replace_bytes_transaction(
     // this gate and the rename.
     ffi::rename_relative(&temp.handle, parent, name, true)?;
     temp.published = true;
-    metadata::revision_of(&temp.handle)
+    // As with create, close the writable staging handle before computing the
+    // externally visible revision. This also avoids querying metadata from a
+    // renamed staging handle after the replacement has already committed.
+    drop(temp);
+    let published = traversal::open_component(parent, name, ffi::OpenKind::File)?;
+    metadata::revision_of(&published)
 }
 
 pub fn delete_file(

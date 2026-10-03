@@ -95,6 +95,17 @@ fn create_and_replace_return_postpublication_revision_and_exact_bytes() {
     let sandbox = Sandbox::new("replace");
     let root = sandbox.open();
     let before = mutation::create_bytes(&root, &["value.bin"], b"first\0bytes").unwrap();
+    // The live E2E blocker: NTFS can finalize LastWriteTime only when the
+    // final writable handle closes, so the returned revision must already
+    // equal what a FRESH reopen of the published name reports — for create,
+    // not just for replace.
+    assert_eq!(
+        metadata::collect(&traversal::resolve(&root, &["value.bin"], ffi::OpenKind::File).unwrap())
+            .unwrap()
+            .revision(),
+        before,
+        "create revision must match an immediate fresh reopen"
+    );
     let after = mutation::replace_bytes(&root, &["value.bin"], b"second\0bytes", &before).unwrap();
     assert_ne!(before, after);
     assert_eq!(
