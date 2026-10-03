@@ -166,34 +166,32 @@ def _linux_mount_fstype(root: Path) -> str | None:
     return best_fstype
 
 
-def _reparse_probe(report: _Report, root: Path) -> None:
+def _reparse_probe(report: _Report, root: Path, root_stat: os.stat_result) -> bool:
     """Configuration-level symlink/junction detection ahead of the open.
 
-    The native kernel independently refuses a reparse root on the request
-    path; this check exists so the operator sees the precise topology
-    reason even when the open itself reports only ``REPARSE_POINT``.
+    Returns True when the root is refused as reparse topology. The native
+    kernel independently rejects a reparse root on the request path; this
+    check exists so the operator sees the precise topology reason (a plain
+    ``not a directory`` verdict on a POSIX symlink root would hide it).
     """
-    if sys.platform == "win32":
-        import stat as _stat
+    import stat as _stat
 
-        try:
-            attributes = os.lstat(root).st_file_attributes
-        except OSError as exc:
-            report.status("reparse", WARN, f"attributes unavailable ({type(exc).__name__})")
-            return
-        if attributes & _stat.FILE_ATTRIBUTE_REPARSE_POINT:
+    if sys.platform == "win32":
+        reparse = bool(root_stat.st_file_attributes & _stat.FILE_ATTRIBUTE_REPARSE_POINT)
+        if reparse or _stat.S_ISLNK(root_stat.st_mode):
             report.status(
                 "reparse",
                 FAIL,
                 "root is a reparse point (symlink/junction); point at a real directory",
             )
-        else:
-            report.status("reparse", OK, "not a reparse point")
-    else:
-        if root.is_symlink():
-            report.status("reparse", FAIL, "root is a symlink; point at a real directory")
-        else:
-            report.status("reparse", OK, "not a symlink")
+            return True
+        report.status("reparse", OK, "not a reparse point")
+        return False
+    if _stat.S_ISLNK(root_stat.st_mode):
+        report.status("reparse", FAIL, "root is a symlink; point at a real directory")
+        return True
+    report.status("reparse", OK, "not a symlink")
+    return False
 
 
 def _read_probe(report: _Report, session: object, workdir: object) -> None:
@@ -394,10 +392,14 @@ def _probe_workdir(report: _Report, backend: object | None, workdir: object) -> 
         return
     import stat as _stat
 
+    # A POSIX symlink root lstats as S_IFLNK, not S_IFDIR: decide the
+    # reparse topology first so the operator sees the precise reason
+    # instead of a bare "not a directory".
+    if _reparse_probe(report, wd.root, root_stat):
+        return
     if not _stat.S_ISDIR(root_stat.st_mode):
         report.status("root", FAIL, "configured root is not a directory")
         return
-    _reparse_probe(report, wd.root)
     _filesystem_probe(report, wd.root)
     if backend is None:
         report.status("read", WARN, "not probed (backend unavailable)")

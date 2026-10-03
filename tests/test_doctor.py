@@ -12,6 +12,7 @@ import importlib.util
 import os
 import shutil
 import socket
+import subprocess
 import sys
 from pathlib import Path
 
@@ -102,6 +103,25 @@ class TestCoreReport:
         code, lines = _run(_config(tmp_path, {"link": (link, True)}))
         assert code == 1
         assert any("reparse: FAIL" in line and "symlink" in line for line in lines)
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="NTFS junction semantics")
+    def test_junctioned_root_is_reported(self, tmp_path: Path, isolated_data_home: Path) -> None:
+        real = tmp_path / "real"
+        real.mkdir()
+        link = tmp_path / "link"
+        made = subprocess.run(
+            ["cmd", "/C", "mklink", "/J", str(link), str(real)],
+            capture_output=True,
+            text=True,
+        )
+        if made.returncode != 0:
+            pytest.skip("junction creation with mklink /J unavailable on this host")
+        try:
+            code, lines = _run(_config(tmp_path, {"link": (link, True)}))
+            assert code == 1
+            assert any("reparse: FAIL" in line and "junction" in line for line in lines)
+        finally:
+            link.rmdir()  # removes the junction itself, never the target
 
 
 @needs_kernel
