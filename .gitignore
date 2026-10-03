@@ -16,3 +16,4 @@ native/windows/target/
 native/windows/pyd-staging/
 .venv-clean/
 scratchpad/
+.venv-abi*/
