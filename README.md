@@ -284,6 +284,9 @@ serverfs tunnel --config serverfs.toml `
 (`%LOCALAPPDATA%\ServerFS\bin\…`, override with `SERVERFS_DATA_HOME`) and
 never modifies the machine PATH. `serverfs tunnel` finds the bootstrapped
 client automatically (or take `--tunnel-client` for an explicit path). The
+launcher binds tunnel-client's health server to an ephemeral loopback port
+by default (`127.0.0.1:0`, override with `--health-listen-addr`) so it never
+collides with a local service on 8080. The
 API-key file must live outside every configured workdir; it is passed to
 tunnel-client only as a `file:` reference, and the supervisor removes all
 `CONTROL_PLANE_*`, `TUNNEL_CLIENT_*`, `OPENAI_*`, `MCP_*`, `SERVERFS_PROXY_*`
