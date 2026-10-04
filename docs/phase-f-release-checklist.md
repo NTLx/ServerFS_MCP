@@ -1,11 +1,15 @@
 # v0.10.0 Release Checklist (Phase F closure order)
 
-Preconditions — all must pass before the release-closeout PR is merged:
+Acceptance preconditions:
 
-- [ ] Phase F evidence document (`docs/phase-f-acceptance-2026-10.md`) complete
-      with CI run IDs for every pushed head.
-- [ ] Phase F PR #26 merged to `main`.
-- [ ] Release-closeout PR #27 reviewed and all required checks are green.
+- [x] Phase F evidence document (`docs/phase-f-acceptance-2026-10.md`) complete
+      with CI run IDs for the Phase F and PR #28 code-bearing heads.
+- [x] Phase F PR #26 merged to `main`.
+- [x] Release-closeout PR #27 reviewed, required checks green, and merged.
+- [x] PR #28 guarded-merged from exact head
+      `124481384bd25566b9461032147fa5c3bd01689b` to `main` at
+      `0e40ecf793a6409b4f2204310790fce7c96b4b79`; Container and Windows native
+      workflows succeeded.
 
 Step 1 — prepare and review the release-closeout PR (do not merge yet):
 
@@ -21,15 +25,15 @@ Step 1 — prepare and review the release-closeout PR (do not merge yet):
       a v0.10.0 entry (Windows native section already documents the surface).
 - [ ] Website (`site/`): news/release page per the site gate
       (`cd site && npm ci && npm run build`, `git diff --check`).
-- [ ] Review PR #27, including any README/site stable copy, and confirm all
+- [x] Review PR #27, including any README/site stable copy, and confirm all
       required checks are green.
 
-Step 2 — merge the closeout PR, run live E2E, then tag and publish:
+Step 2 — confirm closeout, run live E2E, then tag and publish:
 
-- [ ] Confirm the Phase F evidence, Phase F PR #26 merge, and PR #27 review and
+- [x] Confirm the Phase F evidence, Phase F PR #26 merge, and PR #27 review and
       required checks above are complete.
-- [ ] Merge PR #27 to `main`.
-- [ ] Run the live ChatGPT tunnel E2E per section 8 of
+- [x] Merge PR #27 to `main`.
+- [x] Run the live ChatGPT tunnel E2E per section 8 of
       `docs/phase-f-acceptance-2026-10.md`.
 - [ ] Only if live E2E passes, immediately create and push the release tag
       (tags are immutable once published):

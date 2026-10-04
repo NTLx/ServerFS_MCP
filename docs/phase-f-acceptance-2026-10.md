@@ -159,6 +159,44 @@ Runbook (native profile, scheduled maintenance window):
 8. Restore: stop `serverfs tunnel`, `docker compose start openai-tunnel`,
    verify the Docker deployment's session resumes, then record results here.
 
+### Live result — 2026-10-04
+
+The earlier ChatGPT live attempts accidentally used the legacy Docker topology
+on WorkPC, not Windows native: Docker `openai-tunnel` ran tunnel-client
+v0.0.14 → `serverfs-mcp` v0.9.0 Linux backend, with the Windows host workdir
+exposed through Docker 9p/drvfs (`cache=0x5`, `metadata`). On this unsupported
+Windows-Docker/9p topology, file creation returned a revision that differed
+from immediate stat/read because metadata settled when the handle closed. This
+was **not** evidence that PR #28 failed.
+
+The native live profile then became the sole active tunnel:
+`serverfs.exe tunnel` → tunnel-client v0.0.15 → supervisor → `serverfs serve`
+under CPython 3.12.10 in the patched `wheelenv`. The
+`serverfs_windows_native` `.pyd` SHA-256 was verified byte-identical to the
+wheel rebuilt from merged `main` commit `0e40ecf793a6409b4f2204310790fce7c96b4b79`.
+ServerFS MCP metadata/version and native package metadata both reported
+`0.10.0`.
+
+Real ChatGPT → tunnel-client → supervisor → Windows-native ServerFS MCP
+acceptance passed with workdir `workpc` (read-write, binary transfer enabled):
+
+- `create_text_file` returned `v1:043c707bfe1e6903`; immediate `stat_file`
+  and `read_text_file` returned exactly that revision.
+- `edit_text_file` directly consumed the create revision and succeeded,
+  returning `v1:e0d972d7772001b0`. Immediate stat/read both returned exactly
+  that revision; content was `serverfs-live-e2e\nphase=edited\n`.
+- `upload_binary_file` wrote 11 bytes, SHA-256
+  `37e121a5fb02b55b6c7c5c4323df64ad19f86bb4bcfe848aca9dff72adc4868e`,
+  revision `v1:5da8227919154492`. `download_binary_file` returned the same
+  size, SHA-256 and revision.
+- Both text and binary test files were revision-guardedly deleted; no test
+  artifacts remain.
+
+PR #28's post-publication revision fix is validated end-to-end through the
+real ChatGPT connector on native Windows. The legacy Docker + 9p Windows-host
+topology is unsupported and must not be used as the Windows-native acceptance
+path.
+
 ## 9. CI record
 
 - PR #25 (E2) final head `9cd9daf`: Test 1047 passed / 10 skipped,
@@ -173,6 +211,11 @@ Runbook (native profile, scheduled maintenance window):
   and tunnel suites. The final docs-only merge head must again pass the same
   GitHub required checks before merge; this document intentionally does not
   embed a self-expiring final-head SHA.
+- PR #28 Windows post-publication revision fix: exact head
+  `124481384bd25566b9461032147fa5c3bd01689b`, guarded-merged to
+  `0e40ecf793a6409b4f2204310790fce7c96b4b79`. Container run
+  `37136723458` and Windows native run `37136723419` succeeded before merge;
+  Publish was skipped because this was a PR.
 - Linux root gate at each push covers: `ruff check`, `ruff format --check`,
   full `pytest` (incl. `test_wheel_release.py` helper matrix),
   `docker compose config`, image build.
