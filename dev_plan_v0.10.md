@@ -1,6 +1,6 @@
 # ServerFS v0.10.0 Development Plan — Native Windows Filesystem Backend
 
-Status: Phase A-D closed; Windows connectivity prerequisite delivered; Phase E1/E2 closed (wheel packaging, doctor, bootstrap, publication channel); Phase F in progress — executed acceptance evidence in docs/phase-f-acceptance-2026-10.md
+Status: COMPLETE — v0.10.0 released 2026-10-04 (tag v0.10.0 -> commit 9087e0a; images 0.10.0/0.10/latest; release wheels published with SHA-256 notes; live ChatGPT native E2E passed). Full evidence: docs/phase-f-acceptance-2026-10.md
 Baseline: v0.9.0 / main  
 Primary release target: Windows 11 x64 + local NTFS workdirs  
 Scope: add a first-class Windows-native ServerFS filesystem implementation with no Docker or WSL runtime dependency; keep the MCP/product layer in Python; implement the Windows filesystem security kernel as a small Rust/PyO3 native backend; preserve the existing public filesystem tool contract wherever platform semantics permit; leave Windows Agent Bridge and native file-parameter ingress for later releases.
@@ -1455,14 +1455,19 @@ Exit criteria:
 
 ### Phase F — Windows acceptance and release closure
 
-**Status: IN PROGRESS — executed evidence lives in
-`docs/phase-f-acceptance-2026-10.md` (clean dual-wheel installs on CPython
-3.12.10 and 3.13.3, long/deep/Unicode suite, proxy items 1–10 plus a real
-control-plane 401 through the operator's HTTP proxy, sanitized child-env
-probe, and the acceptance-found launcher fix for the health bind on
-127.0.0.1:8080). Remaining: maintainer live ChatGPT E2E per the runbook in
-that document, then the version bump and publication sequence in
-`docs/phase-f-release-checklist.md`.**
+**Status: CLOSED.** Executed evidence lives in
+`docs/phase-f-acceptance-2026-10.md`: clean dual-wheel installs on CPython
+3.12.10 and 3.13.3, the long/deep/Unicode acceptance suite, proxy items 1–10
+plus a real control-plane 401 through the operator's HTTP proxy, the
+sanitized child-env probe, and three acceptance-found fixes shipped through
+reviewed PRs (health bind on 127.0.0.1:8080, loopback-only override, and
+PR #28 post-publication revisions — NTFS finalizes LastWriteTime when the
+last writable handle closes). The live ChatGPT E2E initially failed twice for
+distinct reasons (the real #28 defect, then an incorrect Docker+9p acceptance
+channel); after cutover to the native profile on the same tunnel it passed
+end to end on the real repository workdir with zero residue. v0.10.0 was then
+tagged and published per `docs/phase-f-release-checklist.md` (section 11 of
+the evidence document).**
 
 Objective: decide whether v0.10.0 may claim Windows support.
 

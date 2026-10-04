@@ -232,3 +232,29 @@ See `docs/phase-f-release-checklist.md`: version bump surface
 AGENTS/site), tag + publish, and post-publish clean-machine verification.
 The tag decision itself belongs to the maintainer; published stable tags
 remain immutable.
+
+## 11. Publication record — v0.10.0 (2026-10-04)
+
+- PR #29 (live-E2E evidence) guarded-merged from exact head
+  `89d21341f467064dcd75148d30a81591d910ea40` -> main `9087e0a`.
+- Annotated tag `v0.10.0` (tag object `9a2d460ed61e777308ec64584d25acbf160cd7fb`)
+  created on `9087e0a9a3e1cb14d19814923060122fcabd6679` and pushed.
+- Container workflow run `37181574595`: success; GHCR tags `0.10.0`, `0.10`
+  and `latest` verified present via anonymous `docker manifest inspect`
+  (public visibility effective).
+- wheel-release workflow run `37181574606`: success; version gate (METADATA
+  0.10.0 == tag), two-wheel clean-install acceptance, both assets attached to
+  the GitHub Release with the marker-managed notes block recording:
+  product wheel sha256 `130f83bf1363725d53b254b086e1d76175e2bf3409362f489db81871e27bc200`,
+  native wheel sha256 `3388c0b008c149dba7c4bdee7fafb0fc2371f37b002933e7a2fa5cd03618bd37`.
+- Clean-machine verification from release assets (fresh `uv venv`, CPython
+  3.13, network via the operator proxy): product asset downloaded and
+  re-hashed equal to the notes digest; `serverfs bootstrap native-wheel
+  --url <release asset> --sha256 <notes digest>` verified and stored the
+  native wheel under `%LOCALAPPDATA%\ServerFS\wheels`; from the two wheels
+  alone: `serverfs --version` 0.10.0, `serverfs doctor` exit 0
+  (0 FAIL / 0 WARN), and a full stdio MCP create/edit session with exact CRLF
+  bytes and a consistent revision chain.
+- Deferred by decision (not omissions): the optional `uv` URL-source wiring
+  for the native wheel (the two-command release-asset install path is the
+  shipped contract).
