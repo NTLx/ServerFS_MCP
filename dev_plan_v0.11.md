@@ -1224,7 +1224,8 @@ Executed gates:
 | Windows v0.10 gate set (15 files) | **359 passed, 3 skipped** — VERIFIED, unchanged |
 | Windows `agent_bridge` gate (`ruff check`, `ruff format --check`, `pytest`) | **51 passed, 103 skipped** — VERIFIED |
 | Linux root suite (CI `Container / Test`) | **1074 passed, 11 skipped** — VERIFIED |
-| Linux Bridge suite (CI `Container / Agent Bridge test`) | **154 passed** — VERIFIED |
+| Linux root suite on `main` for comparison (same runner) | 1067 passed, 11 skipped — VERIFIED; the delta is exactly the 7 added §8.2 cwd cases, and the skip count is unchanged, so no Linux test was lost |
+| Linux Bridge suite (CI `Container / Agent Bridge test`) | **154 passed** — VERIFIED (154 = the 51 portable + 103 classified Linux-contract tests, all of which run on Linux) |
 | CI `windows-native / native-kernel` (cargo kernel, ruff gate, Windows Python/native test set, wheel acceptance in a clean env) | all steps success — VERIFIED (per-step counts not extracted from the job log) |
 | CI `Windows native / native-kernel`: ruff gate, 13-file Python set, wheel acceptance | all steps success — VERIFIED (step conclusions; per-step counts not extracted) |
 | `bash -n deployment/agent-bridge/*.sh` | Not run — no Phase E shell script changed |
