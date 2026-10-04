@@ -257,10 +257,11 @@ use_proxy = false      # measured directly reachable; proxy honoured but falls b
 - Whether `claude.exe` itself honours standard proxy variables — no non-inference trigger exists on
   this host (§6). Must be settled during Phase G live smoke, and WorkPC's custom Claude endpoint
   configuration must not be generalized to standard Anthropic environments.
-- Authenticated-proxy broker: measured technically viable (chain), **not designed or implemented**;
-  needs a maintainer decision plus Job Object and §6 private-state interaction review.
-- The Bridge's own advisory (Jev) HTTP client egress is a separate question from runtime egress and
-  was not in 0F's scope; Phase D must decide whether Jev reuses the dedicated Agent proxy contract or
-  stays direct.
+- Authenticated-proxy broker: measured technically viable (chain), and since decided **out of scope
+  for v0.11** (plan §7.3) — no stored or injected proxy credential, no broker listener or process.
+- The Bridge's own advisory (Jev) HTTP client egress was outside 0F's scope; since decided in plan
+  §7.4: Jev may reuse the dedicated Agent proxy configuration only through an explicit HTTP client
+  parameter, never via the Bridge environment, and stays direct if the SDK offers no proxy argument.
+  Implementation is Phase D work.
 - Machine-wide state: none was touched — WinINet/WinHTTP were read only, registry values never written,
   no provider persistent configuration changed.
