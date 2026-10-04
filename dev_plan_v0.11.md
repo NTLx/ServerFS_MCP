@@ -1,6 +1,7 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
-Status: IN PROGRESS — Phase 0 experiments; Phase 0A CLOSED, Phase 0B CLOSED (2026-10-04)
+Status: IN PROGRESS — Phase 0 experiments; 0A CLOSED, 0B CLOSED, 0C measured with an open transport
+decision (§10.1-§10.2), 0D/0E in progress
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -498,37 +499,57 @@ The Bridge environment must not receive Tunnel / Control Plane secrets or tunnel
 
 Codex is the first runtime implementation track because the installed Windows CLI and app-server schema already match the existing adapter at the protocol level.
 
-### 10.1 Preferred Windows transport
+### 10.1 Preferred Windows transport — measured, assumption disproved
 
-First test and prefer:
+The plan preferred:
 
 ```text
 codex app-server proxy
 ```
 
-against the managed daemon.
+against the managed daemon, on the assumption that it preserves the bidirectional JSON-RPC stream
+with the smallest change to `CodexAdapter`.
 
-If the proxy preserves the required bidirectional JSON-RPC stream, use it as the Windows transport.
+Phase 0C measured that assumption to be false (full evidence in
+`docs/windows-phase-0c-codex-transport-2026-10-04.md`): the proxy is a **transparent byte relay**,
+not a stdio JSON-RPC endpoint. Newline-delimited JSON-RPC gets no reply at all, while an HTTP
+WebSocket upgrade sent through it returns `101 Switching Protocols` from the daemon. Using it would
+require hand-writing an RFC 6455 client (masked frames, fragmentation up to 16 MiB, ping/pong/close)
+over a subprocess pipe, replacing the `websockets` dependency for this one transport. The relay
+itself works and its failures are observable; the cost is entirely invented client code.
 
-Benefits:
+Python cannot reuse the Linux transport directly either: `socket.AF_UNIX` is absent on CPython
+3.12.10 and 3.13.3 on this OS build. A raw Winsock `AF_UNIX` shim was deliberately not attempted —
+that is the forbidden private workaround.
 
-- no Python AF_UNIX requirement;
-- no exposed TCP listener;
-- provider-managed daemon retained;
-- thread/read reconciliation retained;
-- smallest change to CodexAdapter.
+### 10.2 Selected candidate (awaiting maintainer confirmation)
 
-### 10.2 Fallback
-
-Only if proxy is experimentally unsuitable, test:
+Measured working, and recommended:
 
 ```text
-codex app-server --listen ws://127.0.0.1:<ephemeral>
+codex app-server --listen ws://127.0.0.1:<ephemeral> --ws-auth capability-token --ws-token-file <private path>
 ```
 
-with loopback-only binding and provider-supported authentication where required.
+- loopback-only bind confirmed by `netstat`; a non-loopback bind was deliberately not tested;
+- unauthenticated clients are refused with HTTP 401; `Authorization: Bearer <token>` is the accepted
+  credential form (`Sec-WebSocket-Protocol: bearer.<token>` is refused);
+- `initialize` and `model/list` complete over `websockets` with no new protocol code;
+- the listener only answers after ~24 s, so readiness waiting must accommodate that;
+- `--ws-token-file` and `--ws-token-sha256` are mutually exclusive;
+- the answering `userAgent` version is the CLI version (0.159.2 here), not the managed daemon's.
 
-Never expose a LAN listener.
+Cost of this choice, stated plainly: the Bridge owns its own `codex app-server` child (inside the Job
+Object per §9) instead of attaching to the provider-managed daemon, so an in-flight turn does not
+survive a Bridge restart. Windows Codex then has the same reconciliation floor as Windows
+Claude/Qoder, while Linux Codex keeps the stronger daemon-backed `thread/read` proof. Thread resume
+by ID still works because the shared `codexHome` state is the same.
+
+Never, in any option: seize the managed daemon, bind non-loopback, run without authentication, or
+reverse-engineer the daemon control protocol.
+
+`codex app-server daemon enable-remote-control` is an official unexplored avenue that might expose
+the managed daemon over loopback WebSocket and combine both options' benefits. Measuring it changes
+the user's running provider configuration, so it is left for the maintainer to decide.
 
 ### 10.3 Protocol drift
 
@@ -755,6 +776,35 @@ Test codex app-server proxy first.
 Test loopback WebSocket only if proxy is unsuitable.
 
 Gate: select exactly one production Windows Codex transport.
+
+Status: **MEASURED — gate NOT closed, selection needs a maintainer decision** (2026-10-04).
+
+Implemented:
+Nothing in product code. Throwaway probes under `%TEMP%\serverfs-phase0c\`: stdio framing attempts
+against `app-server proxy` with raw-byte reads, a WebSocket-upgrade probe to identify the relay's
+nature, and a full `--listen ws://127.0.0.1` session (initialize/initialized/model/list) including
+capability-token auth positive and negative cases and `netstat` bind verification. No inference.
+
+Measured:
+`socket.AF_UNIX` is absent in CPython 3.12.10 and 3.13.3, so the Linux transport cannot be reused.
+`app-server proxy` is a transparent byte relay: JSON-RPC lines produce zero bytes, a WebSocket
+handshake gets a real `101` back from the daemon, and a missing socket exits 1 with a clear error.
+`--listen ws://127.0.0.1:<ephemeral>` works end to end (initialize `userAgent` 0.159.2, model/list
+8 models, both `/rpc` and `/` accepted, no subprotocol required), binds loopback only, refuses
+anonymous clients with 401, accepts `Authorization: Bearer <token>`, refuses the
+`Sec-WebSocket-Protocol: bearer.<token>` form, rejects `--ws-token-file` together with
+`--ws-token-sha256`, takes ~24 s before it answers, and releases the port on terminate.
+
+Blocker for the gate: the plan's preferred transport is disproved, and each remaining candidate
+gives up something the plan promised to keep — the proxy preserves the managed daemon and its strong
+`thread/read` reconciliation but requires an invented RFC 6455 client over stdio; loopback WebSocket
+uses only official flags with near-zero new protocol code but moves Codex onto the same "in-flight
+work dies with the Bridge" reconciliation floor as Windows Claude/Qoder. This is a product trade-off,
+recorded with the recommendation in §10.1-§10.2 and `docs/windows-phase-0c-codex-transport-2026-10-04.md` §5.
+
+Not verified: `codex app-server daemon enable-remote-control` (would change the user's running
+provider configuration), non-loopback bind behaviour (would expose a LAN listener), and real approval
+server→client request round-trips (needs a turn, i.e. Phase E).
 
 #### Phase 0D — Qoder SDK
 
