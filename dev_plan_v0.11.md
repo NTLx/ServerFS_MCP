@@ -1229,7 +1229,17 @@ Executed gates:
 | CI `windows-native / native-kernel` (cargo kernel, ruff gate, Windows Python/native test set, wheel acceptance in a clean env) | all steps success — VERIFIED (per-step counts not extracted from the job log) |
 | CI `Windows native / native-kernel`: ruff gate, 13-file Python set, wheel acceptance | all steps success — VERIFIED (step conclusions; per-step counts not extracted) |
 | `bash -n deployment/agent-bridge/*.sh` | Not run — no Phase E shell script changed |
-| `docker compose config`, image build | Not run — no deployment or Dockerfile change |
+| `uv sync --frozen` (root) | exit 0 — VERIFIED, see the wheel note below |
+| `docker compose config` | exit 0, output not printed — VERIFIED |
+| `SERVERFS_IMAGE=serverfs-mcp:dev docker compose build` | Not run locally — CI `Container check` builds the image on Linux and passed |
+
+Repository gate note (measured, cost a re-run): on a Windows checkout `uv sync --frozen`
+**uninstalls the locally installed `serverfs-windows-native` wheel**, because that wheel is not part of
+the locked root dependencies. With it gone, every native-kernel test errors instead of skipping and the
+suite no longer measures what this table claims. Re-install the built wheel after any frozen sync before
+trusting a Windows gate:
+`uv pip install native/windows/target/wheels/serverfs_windows_native-<version>-cp312-abi3-win_amd64.whl`.
+The full root gate was re-executed after restoring it and reproduced the numbers above.
 
 Container CI gained a `bridge-test` job because the root pytest configuration does not collect
 `agent_bridge/tests` (AGENTS.md → Change protocol); without it the Linux Bridge gate had no
