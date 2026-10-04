@@ -850,7 +850,7 @@ Implemented:
 Nothing in product code, by design. One throwaway `ctypes` harness under
 `%TEMP%\serverfs-phase0a\` (holder/contender child processes, per-stage Win32 error reporting,
 hard deadline so a blocking call is reported as `BLOCKED@<stage>` instead of hanging). Kept outside
-the repository (under `%TEMP%`) until Phase 0 closes, then deleted.
+the repository (under `%TEMP%`) and discarded once this Phase 0 review concludes.
 
 Measured:
 Every matrix item passed. Exclusive `LockFileEx` succeeds on a `GENERIC_READ` handle, including on
