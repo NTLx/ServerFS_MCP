@@ -1325,9 +1325,9 @@ Executed gates:
 | Linux root suite in a `python:3.12` container from a git-tracked + Phase B working tree, `ripgrep` installed: `ruff check`, `ruff format --check` | All checks passed / 208 files already formatted — VERIFIED |
 | Linux root suite collected-test comparison against `origin/main` in the identical image | main 1080 → Phase B 1087, and the per-file diff is exactly one added line (`tests/test_windows_mcp_agent_e2e.py: 7`). No Linux file or case left the suite, so §35's no-coverage-loss requirement holds — VERIFIED |
 | Linux root `pytest` in that container | **Indicative only.** Repeated runs of the same image and tree ranged 1070–1097 passed / 13 skipped with 0–6 failures, always in `tests/test_agent_deployment.py` (Phase E `systemctl` and `set -o pipefail` script cases) or `tests/test_revision.py` opacity — container-environment cases that do not reproduce. The authoritative run is the CI job below, which is green |
-| CI `Container / Test` (Linux root, `ruff check`, `ruff format --check`, `pytest`) | **All checks passed / 208 files already formatted / 1074 passed, 18 skipped** — VERIFIED on head `dc14c95`. Phase A recorded 1074 passed / 11 skipped on the same job: identical pass count, and the +7 skips are exactly the new Windows-only MCP-surface E2E file, so §35's no-loss requirement holds in CI as well |
+| CI `Container / Test` (Linux root, `ruff check`, `ruff format --check`, `pytest`) | **All checks passed / 205 files already formatted / 1074 passed, 18 skipped** — VERIFIED on head `2bc517c` (the local format count reads 208 because this working tree also carries gitignored `scratchpad/` files). Phase A recorded 1074 passed / 11 skipped on the same job: identical pass count, and the +7 skips are exactly the new Windows-only MCP-surface E2E file, so §35's no-loss requirement holds in CI as well |
 | CI `Container / Agent Bridge test` (Linux Bridge) | **All checks passed / 162 passed** — VERIFIED (§35's 154 baseline plus the 8 platform-neutral cases) |
-| CI `Container check` (image build) and `Windows native / native-kernel` | both runs success on head `dc14c95` — VERIFIED (per-step counts not extracted from the job logs) |
+| CI `Container check` (image build) and `Windows native / native-kernel` | both runs success on head `2bc517c` — VERIFIED (per-step counts not extracted from the job logs) |
 | Linux `agent_bridge` suite in the same container: `ruff check`, `ruff format --check`, `pytest` | All checks passed / 56 files already formatted / **162 passed, 0 failed** in two independent runs — VERIFIED (§35's 154-passed baseline plus the 8 new platform-neutral `test_local_ipc_contract.py` cases; the four Windows-only files are `collect_ignore`d on Linux by the new `agent_bridge/tests/conftest.py`) |
 | Linux root pass/skip totals and the CI `Container / Test`, `Container / Agent Bridge test`, `Container check` and `windows-native` jobs | To be recorded from the Phase B PR's CI run (§39) — **Not verified here** until that run is green |
 | `bash -n deployment/agent-bridge/*.sh` | Not run — no Phase E shell script changed |
@@ -1387,6 +1387,10 @@ Measured platform facts that changed a Phase B design assumption:
   thread exists, and hands that instance to slot 0. Verified: a held name produces
   `PIPE_NAME_UNAVAILABLE` every time, and the collision case ran green three times in a row after
   the change where it had previously been timing-dependent.
+- Handing that instance over through a shared field was itself a race: four threads reading and
+  clearing one attribute let a non-zero slot clear the claim before slot 0 read it, leaving the
+  instance that carried the flag unserved. `start()` now takes it out before any thread exists and
+  passes it to slot 0 as that thread's argument.
 
 Not verified, with reasons:
 
@@ -1659,7 +1663,7 @@ Phase B status (2026-10-05): **CLOSED-PASS** (§15 Phase B closure). The three f
 Windows data home and the client half of the IPC seam, and a real Windows Bridge **subprocess**
 serves FakeAdapter tasks over a real Named Pipe. Windows root 912 passed / 127 skipped / 1 xfailed
 (Phase A: 905 / 127 / 1 — the delta is the 7 new E2E cases), Windows Bridge 128 passed / 93 skipped
-(Phase A: 51 / 103), and CI green on the code head `dc14c95`: Linux root 1074 passed / 18 skipped,
+(Phase A: 51 / 103), and CI green on the code head `2bc517c`: Linux root 1074 passed / 18 skipped,
 where the +7 skips are exactly the new Windows-only MCP-surface E2E file, Linux Bridge 162 passed on
 top of §35's 154 baseline, `Container check` and `Windows native` success. Only documentation
 follows that head. No Windows twin weakened a Linux contract. `WRITER_LEASE` and `PROCESS_CONTAINMENT`
