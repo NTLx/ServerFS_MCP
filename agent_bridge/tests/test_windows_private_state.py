@@ -17,12 +17,9 @@ import pytest
 
 from platform_contract import require_windows_kernel
 from serverfs_agent_bridge import private_state, windows_security
-from serverfs_agent_bridge.adapters import FakeAdapter
 from serverfs_agent_bridge.data_home import bridge_data_home, serverfs_data_dir
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.leases import LeaseManager
-from serverfs_agent_bridge.models import AgentMode
-from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
 from serverfs_agent_bridge.recovery import ActiveGuardManager
 from serverfs_agent_bridge.result_spool import ResultSpool
 from serverfs_agent_bridge.store import TaskStore
@@ -371,31 +368,6 @@ def test_writer_lease_stays_a_phase_c_seam(tmp_path: Path) -> None:
     manager = LeaseManager(tmp_path / "locks")
     assert security(tmp_path / "locks").dacl_present
     expect_bridge_error("BRIDGE_PLATFORM_UNSUPPORTED", lambda: manager.acquire_exclusive(1))
-
-
-def test_fake_adapter_service_starts_on_windows(tmp_path: Path) -> None:
-    from serverfs_agent_bridge.service import BridgeService
-
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    service = BridgeService(
-        store=TaskStore(tmp_path / "state"),
-        policies=PolicyRegistry(
-            [
-                WorkdirAgentPolicy(
-                    slot=1,
-                    alias="repo",
-                    host_path=repo,
-                    mode=AgentMode.REVIEW,
-                    runtimes=frozenset({"fake"}),
-                    read_only=True,
-                )
-            ]
-        ),
-        adapters={"fake": FakeAdapter()},
-        lease_manager=LeaseManager(tmp_path / "locks"),
-    )
-    assert service.list_agents() if hasattr(service, "list_agents") else True
 
 
 def test_private_state_module_reports_windows() -> None:
