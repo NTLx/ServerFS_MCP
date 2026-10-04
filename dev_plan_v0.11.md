@@ -1659,10 +1659,10 @@ Phase B status (2026-10-05): **CLOSED-PASS** (§15 Phase B closure). The three f
 Windows data home and the client half of the IPC seam, and a real Windows Bridge **subprocess**
 serves FakeAdapter tasks over a real Named Pipe. Windows root 912 passed / 127 skipped / 1 xfailed
 (Phase A: 905 / 127 / 1 — the delta is the 7 new E2E cases), Windows Bridge 128 passed / 93 skipped
-(Phase A: 51 / 103), and CI green on this head: Linux root 1074 passed / 18 skipped, where the +7
-skips are exactly the new Windows-only MCP-surface E2E file, Linux Bridge 162 passed on top of §35's
-154 baseline, `Container check` and `Windows native` success. No Windows twin weakened a Linux
-contract. `WRITER_LEASE` and `PROCESS_CONTAINMENT`
+(Phase A: 51 / 103), and CI green on the code head `dc14c95`: Linux root 1074 passed / 18 skipped,
+where the +7 skips are exactly the new Windows-only MCP-surface E2E file, Linux Bridge 162 passed on
+top of §35's 154 baseline, `Container check` and `Windows native` success. Only documentation
+follows that head. No Windows twin weakened a Linux contract. `WRITER_LEASE` and `PROCESS_CONTAINMENT`
 still fail closed, and Phase C has three recorded prerequisites (§15 Phase C). Phase C is next and
 unblocked.
 The WorkPC deployment requirement — Codex and
