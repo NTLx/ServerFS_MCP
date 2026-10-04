@@ -711,6 +711,7 @@ On real NTFS prove:
 Gate: freeze LockFileEx as the Windows writer-lease primitive.
 
 Status: **CLOSED — gate PASS** (2026-10-04, WorkPC, Windows 11 Pro 10.0.26200, local NTFS `C:`).
+PR: https://github.com/NTLx/ServerFS_MCP/pull/32 (Phase 0 branch `v0.11-phase0-experiments`)
 
 Implemented:
 Nothing in product code, by design. One throwaway `ctypes` harness under
@@ -761,6 +762,7 @@ Prove:
 Gate: freeze the Windows IPC + peer identity contract.
 
 Status: **CLOSED — gate PASS** (2026-10-04, WorkPC, Windows 11 Pro 10.0.26200).
+PR: https://github.com/NTLx/ServerFS_MCP/pull/32 (Phase 0 branch `v0.11-phase0-experiments`)
 
 Implemented:
 Nothing in product code. Throwaway `ctypes` pipe harness under `%TEMP%\serverfs-phase0b\` with real
@@ -807,6 +809,7 @@ Test loopback WebSocket only if proxy is unsuitable.
 Gate: select exactly one production Windows Codex transport.
 
 Status: **MEASURED — gate NOT closed, selection needs a maintainer decision** (2026-10-04).
+PR: https://github.com/NTLx/ServerFS_MCP/pull/32 (Phase 0 branch `v0.11-phase0-experiments`)
 
 Implemented:
 Nothing in product code. Throwaway probes under `%TEMP%\serverfs-phase0c\`: stdio framing attempts
@@ -847,6 +850,7 @@ In an isolated Bridge environment prove without inference:
 - model catalog API.
 
 Status: **CLOSED — gate PASS** (2026-10-04).
+PR: https://github.com/NTLx/ServerFS_MCP/pull/32 (Phase 0 branch `v0.11-phase0-experiments`)
 
 Implemented: no product code; isolated `uv` venv on Python 3.12.10 under `%TEMP%\serverfs-phase0d\`.
 
@@ -875,6 +879,7 @@ In an isolated Bridge environment prove without inference:
 Gate: Claude remains in v0.11 unless this produces a demonstrated upstream blocker.
 
 Status: **CLOSED — gate PASS, Claude remains in scope.** No upstream blocker exists.
+PR: https://github.com/NTLx/ServerFS_MCP/pull/32 (Phase 0 branch `v0.11-phase0-experiments`)
 
 Implemented: no product code; second isolated `uv` venv under `%TEMP%\serverfs-phase0e\`.
 
