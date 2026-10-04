@@ -1,4 +1,6 @@
 .env
+# Real native deployment config (machine-specific paths); template is serverfs.toml.example
+serverfs.toml
 .venv/
 .venv-wheel/
 __pycache__/
