@@ -1,6 +1,6 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
-Status: Phase 0 CLOSED
+Status: Phase 0 CLOSED · Phase A CLOSED
 
 ```text
 0A PASS — LockFileEx
@@ -9,10 +9,12 @@ Status: Phase 0 CLOSED
 0D PASS — Qoder SDK
 0E PASS — Claude SDK
 0F PASS — Runtime Egress Proxy
+A  PASS — portability foundation (root suite and Bridge suite run on Windows;
+      Linux root + Linux Bridge gates green in CI)
 ```
 
-No Phase 0 gate or design decision is outstanding (§18). Phase A (portability foundation) proceeds on
-its own branch.
+No Phase 0 gate or design decision is outstanding (§18). Phase B (Windows IPC and private state)
+is the next phase.
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -1174,6 +1176,81 @@ Exit:
 - root suite collects on Windows;
 - portable Bridge tests run on Windows.
 
+Status: **CLOSED — exit PASS** (2026-10-05 local; CI job logs carry 2026-10-04T17:5xZ, WorkPC).
+Branch `v0.11-phase-a-portability`,
+PR: https://github.com/NTLx/ServerFS_MCP/pull/33
+
+Implemented:
+
+- **A1 platform-safe imports.** `agent_bridge/src/serverfs_agent_bridge/platform_seams.py`
+  names the four proven seams (`LOCAL_IPC`, `PEER_IDENTITY`, `WRITER_LEASE`, `PRIVATE_STATE`)
+  and `require_linux_seam` fails closed with `BRIDGE_PLATFORM_UNSUPPORTED` when a Windows
+  Bridge process asks for a Linux mechanism. `leases.py` imports `fcntl` under guard; the
+  Unix-socket server, the flock lease, and the UID/mode state owners (`TaskStore`,
+  `ActiveGuardManager`, `ResultSpool`) check their seam at construction. Linux behavior is
+  unchanged — the guard returns immediately there, and no primitive was replaced or emulated.
+  The Linux kernel modules (`fdio`, `binary`, `filesystem`, `mutations`, `search`,
+  `linux_backend`) still cannot be imported on Windows **by design** (§11 import boundary):
+  the product layer reaches them only through `get_backend()`.
+- **A2 platform-safe tests.** `tests/platform_contract.py` classifies per test — portable,
+  Linux-kernel contract, or measured cross-platform difference — with the mechanism named in
+  each reason. Byte-fidelity assertions seed with `write_bytes` and compare `read_bytes`
+  (Windows newline translation and the GBK locale codec were producing fake failures), and
+  assertions that expect a revision to change call `settle_file_time()` instead of depending
+  on process speed. No portable test was skipped to reach green.
+- **A3 lazy runtime imports.** `adapters/__init__.py` resolves the three SDK-backed adapters
+  on first attribute access; `main.py` touches them only inside the enabled branch. Enabling
+  one runtime no longer imports another runtime's SDK, and a missing SDK names the runtime.
+- **A4 backend-neutral Agent cwd validation.** `agent_tools._validate_agent_cwd` uses
+  `WorkdirSession.validate_directory` (the pre-open contract find/search already had) instead
+  of `fdio`, and shares `tools.fs_error`, so codes match on both platforms. On the Bridge side,
+  `resolve_relative_cwd` now refuses backslash and drive-prefix forms: it treated a native path
+  as one relative component, so on Windows `C:\<workdir>\sub` was silently accepted as an Agent
+  cwd whenever it happened to land inside the workdir.
+- **A5 seams only.** Only the §3 seams above were introduced. No Phase B/C/D Windows
+  implementation, no parallel Windows service/store/lifecycle module.
+- **A6 no proxy code.** Nothing in `src/` or `agent_bridge/src/` mutates the process environment
+  (verified: no `os.environ[...]`, `setdefault`, `putenv` or `update` writes), and no
+  `SERVERFS_AGENT_PROXY_*` reader was added. Phase D owns that.
+- **A7 Jev unchanged.** No Jev file was touched.
+
+Executed gates:
+
+| Gate | Result |
+| --- | --- |
+| Windows `uv run ruff check .` | All checks passed — VERIFIED |
+| Windows `uv run ruff format --check .` | 193 files already formatted — VERIFIED |
+| Windows `uv run pytest` (full root) | **905 passed, 127 skipped, 1 xfailed** — VERIFIED (was: 12 collection errors, suite not runnable) |
+| Windows v0.10 gate set (15 files) | **359 passed, 3 skipped** — VERIFIED, unchanged |
+| Windows `agent_bridge` gate (`ruff check`, `ruff format --check`, `pytest`) | **51 passed, 103 skipped** — VERIFIED |
+| Linux root suite (CI `Container / Test`) | **1074 passed, 11 skipped** — VERIFIED |
+| Linux Bridge suite (CI `Container / Agent Bridge test`) | **154 passed** — VERIFIED |
+| CI `windows-native / native-kernel` (cargo kernel, ruff gate, Windows Python/native test set, wheel acceptance in a clean env) | all steps success — VERIFIED (per-step counts not extracted from the job log) |
+| CI `Windows native / native-kernel`: ruff gate, 13-file Python set, wheel acceptance | all steps success — VERIFIED (step conclusions; per-step counts not extracted) |
+| `bash -n deployment/agent-bridge/*.sh` | Not run — no Phase E shell script changed |
+| `docker compose config`, image build | Not run — no deployment or Dockerfile change |
+
+Container CI gained a `bridge-test` job because the root pytest configuration does not collect
+`agent_bridge/tests` (AGENTS.md → Change protocol); without it the Linux Bridge gate had no
+runner at all.
+
+Recorded differences and findings:
+
+1. `edit_text_file` on a directory target with a stale revision returns `REVISION_CONFLICT` on
+   the v0.10 native kernel and `NOT_A_FILE` on the Linux FD pipeline. Measured directly: with the
+   exact revision both report `NOT_A_FILE`, so the native kernel checks the revision guard before
+   the target type. Mutation is refused either way; only the code ordering differs. Marked
+   `xfail` rather than re-asserted, so Phase C/D must decide whether to align the precedence.
+2. Windows records file times from the sampled system clock, so two mutations inside one step share
+   a stat tuple and therefore a revision token. Measured on WorkPC: 17 of 20 same-size rewrites in
+   a tight loop kept an identical revision, and consecutive recorded times ranged 0.4 ms–15 ms.
+   This is an input to Phase C (lease and revision-guard precision) and Phase D, not a test fix.
+
+Not verified, with reasons: ChatGPT → Tunnel → deployment E2E belongs to the maintainer; the
+ripgrep-parity tests self-skip on this host because `rg` is not on the Python PATH on Windows
+(they run in the Linux CI job); Windows production use of the seams is not enabled — a Windows
+Bridge process still cannot serve, lock or own private state until Phases B–D provide those twins.
+
 ### Phase B — Windows IPC and private state
 
 Implement:
@@ -1407,7 +1484,13 @@ CLOSED-PASS, 0E Claude SDK CLOSED-PASS, 0F Agent Runtime Egress Proxy CLOSED-PAS
 decisions 0F left behind are now settled too: the authenticated-upstream broker is out of scope for
 v0.11 (§7.3) and Jev may consume the dedicated Agent proxy configuration only through an explicit HTTP
 client parameter, never through the Bridge environment (§7.4, Phase D work). Nothing in Phase 0 or in
-the phase ordering is blocked on an open decision; Phase A proceeds on its own branch. The WorkPC deployment requirement — Codex and
+the phase ordering is blocked on an open decision.
+Phase A status (2026-10-05): **CLOSED-PASS** (§15 Phase A closure). Windows root suite runs
+(905 passed / 127 classified skips / 1 recorded xfail), the v0.10 Windows gate set is unchanged at
+359 passed / 3 skipped, the Bridge core imports on Windows with the §3 seams failing closed
+(51 portable tests pass, 103 Linux-contract tests classified), and both Linux gates are green in CI
+(root 1074 passed / 11 skipped; Bridge 154 passed, newly a CI job). Phase B is next and unblocked.
+The WorkPC deployment requirement — Codex and
 OpenAI traffic only reachable through an outbound proxy — is now a measured product contract instead of
 ambient developer-shell state, and Phase D may not implement an environment builder that contradicts
 §7.2.
