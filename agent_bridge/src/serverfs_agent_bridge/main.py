@@ -62,6 +62,7 @@ async def _serve(
         socket_path=config.socket_path,
         allowed_peer_uid=config.allowed_peer_uid,
         allowed_peer_gid=config.allowed_peer_gid,
+        allowed_peer_sid=config.allowed_peer_sid,
     )
     await server.start()
 

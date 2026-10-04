@@ -1,4 +1,11 @@
-"""Versioned JSON-lines RPC over a local Unix-domain socket."""
+"""Versioned JSON-lines RPC over the platform's local IPC endpoint.
+
+The framing, size bounds, protocol version and error vocabulary below are the frozen
+provider-neutral Bridge contract and are shared by both platforms. The endpoint itself is a
+§3 seam: an AF_UNIX socket guarded by ``SO_PEERCRED`` on Linux, and a Named Pipe guarded by a
+measured client SID on Windows (see ``local_ipc.py`` for that twin and Phase 0B for the
+measurements behind it).
+"""
 
 from __future__ import annotations
 
@@ -6,14 +13,19 @@ import asyncio
 import errno
 import json
 import os
-import socket
 import stat
-import struct
 from pathlib import Path
 from typing import Any
 
 from .errors import BridgeError
-from .platform_seams import LOCAL_IPC, require_linux_seam
+from .local_ipc import (
+    PIPE_NAMESPACE,
+    authorize_posix_peer,
+    authorize_windows_peer,
+    derive_pipe_name,
+    measure_posix_peer,
+)
+from .platform_seams import WINDOWS
 from .service import BridgeService
 
 PROTOCOL_VERSION = 1
@@ -21,36 +33,65 @@ MAX_REQUEST_BYTES = 1_048_576
 MAX_RESPONSE_BYTES = 1_048_576
 _ALLOWED_TOP_LEVEL = frozenset({"protocol_version", "request_id", "method", "params"})
 
+#: Pipe sizing is a platform property, not operator configuration in v0.11: a byte pipe serves
+#: at most as many simultaneous clients as there are listening instances, so the Bridge keeps
+#: a pool of four (§13), and the idle read bound follows the existing RPC timeout philosophy
+#: (§18). Phase D may expose both as configuration if an operator ever needs to change them.
+PIPE_POOL_SIZE = 4
+PIPE_IDLE_TIMEOUT_SECONDS = 30.0
+
 
 class BridgeProtocolServer:
     def __init__(
         self,
         *,
         service: BridgeService,
-        socket_path: Path,
+        socket_path: Path | None = None,
         allowed_peer_uid: int | None = None,
         allowed_peer_gid: int | None = None,
+        allowed_peer_sid: str | None = None,
+        pipe_name: str | None = None,
     ):
-        require_linux_seam(LOCAL_IPC)
         self.service = service
         self.socket_path = socket_path
-        if not self.socket_path.is_absolute():
-            raise ValueError("socket_path must be absolute")
         self._shared_gid_explicit = allowed_peer_gid is not None
-        self.allowed_peer_uid = (
-            os.getuid()
-            if allowed_peer_uid is None and allowed_peer_gid is None
-            else allowed_peer_uid
-        )
-        self.allowed_peer_gid = (
-            os.getgid()
-            if allowed_peer_uid is None and allowed_peer_gid is None
-            else allowed_peer_gid
-        )
         self._server: asyncio.AbstractServer | None = None
         self._socket_identity: tuple[int, int] | None = None
+        self._pipe: Any = None
+        self.allowed_peer_uid = allowed_peer_uid
+        self.allowed_peer_gid = allowed_peer_gid
+        self.allowed_peer_sid = allowed_peer_sid
+        self._pipe_name = pipe_name
+        if WINDOWS:
+            # The endpoint behind this seam is a pipe name, not a path, so a Windows Bridge is
+            # configured without one. The name must still be a pipe namespace path, and the
+            # production name is derived from the Bridge user's SID — never from a username,
+            # host or PID (§6). Tests drive a second Bridge on a throwaway name, so only the
+            # namespace is validated here; `derive_pipe_name` owns the §6 shape.
+            if self._pipe_name is not None and not self._pipe_name.startswith(PIPE_NAMESPACE):
+                raise ValueError(f"pipe_name must start with {PIPE_NAMESPACE}")
+            # The Windows Bridge and ServerFS run as one interactive user, so the expected peer
+            # SID defaults to this process's own identity: measured, then asserted, never
+            # inferred from the pipe name, a username or a PID (§11).
+            if self.allowed_peer_sid is None:
+                from .windows_security import current_user_sid
+
+                self.allowed_peer_sid = current_user_sid()
+            if self._pipe_name is None:
+                self._pipe_name = derive_pipe_name(self.allowed_peer_sid)
+            return
+        if socket_path is None:
+            raise ValueError("socket_path must be set where the local endpoint is a socket")
+        if not self.socket_path.is_absolute():
+            raise ValueError("socket_path must be absolute")
+        if allowed_peer_uid is None and allowed_peer_gid is None:
+            self.allowed_peer_uid = os.getuid()
+            self.allowed_peer_gid = os.getgid()
 
     async def start(self) -> None:
+        if WINDOWS:
+            await self._start_pipe()
+            return
         self._prepare_socket_parent()
         await self._prepare_socket_path()
         self._server = await asyncio.start_unix_server(
@@ -71,6 +112,22 @@ class BridgeProtocolServer:
                     "socket group cannot be set to the authorized peer gid",
                 ) from exc
         os.chmod(self.socket_path, socket_mode)
+
+    async def _start_pipe(self) -> None:
+        from .local_ipc import create_pipe_endpoint
+        from .windows_security import pipe_dacl_sddl
+
+        assert self._pipe_name is not None and self.allowed_peer_sid is not None
+        self._pipe = create_pipe_endpoint(
+            pipe_name=self._pipe_name,
+            # The default pipe descriptor grants read to Everyone and Anonymous (Phase 0B),
+            # so the DACL is explicit and protected rather than inherited.
+            dacl_sddl=pipe_dacl_sddl(self.allowed_peer_sid),
+            limit=MAX_REQUEST_BYTES,
+            pool_size=PIPE_POOL_SIZE,
+            idle_timeout_seconds=PIPE_IDLE_TIMEOUT_SECONDS,
+        )
+        await self._pipe.start(self._handle_client)
 
     async def _prepare_socket_path(self) -> None:
         try:
@@ -164,6 +221,12 @@ class BridgeProtocolServer:
         os.chmod(parent, created_mode)
 
     async def serve_forever(self) -> None:
+        if WINDOWS:
+            if self._pipe is None:
+                await self.start()
+            assert self._pipe is not None
+            await self._pipe.serve_forever()
+            return
         if self._server is None:
             await self.start()
         assert self._server is not None
@@ -171,6 +234,11 @@ class BridgeProtocolServer:
             await self._server.serve_forever()
 
     async def close(self) -> None:
+        if WINDOWS:
+            if self._pipe is not None:
+                await self._pipe.close()
+                self._pipe = None
+            return
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
@@ -192,11 +260,19 @@ class BridgeProtocolServer:
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
+        pending: bytes | None = None
         try:
+            if WINDOWS:
+                # Phase 0B measured that a pipe peer can only be impersonated after a read
+                # has completed, so the first frame is read here and buffered: it reaches the
+                # dispatcher only once _check_peer has asserted the measured identity.
+                pending = await reader.readline()
+                if not pending:
+                    return
             self._check_peer(writer)
             while True:
                 try:
-                    raw = await reader.readline()
+                    raw = pending if pending is not None else await reader.readline()
                 except asyncio.LimitOverrunError:
                     await _write_response(
                         writer,
@@ -207,6 +283,7 @@ class BridgeProtocolServer:
                         ),
                     )
                     break
+                pending = None
                 if not raw:
                     break
                 if len(raw) > MAX_REQUEST_BYTES:
@@ -240,18 +317,21 @@ class BridgeProtocolServer:
             await writer.wait_closed()
 
     def _check_peer(self, writer: asyncio.StreamWriter) -> None:
-        sock = writer.get_extra_info("socket")
-        if sock is None or not hasattr(socket, "SO_PEERCRED"):
-            raise BridgeError("PEER_NOT_AUTHORIZED", "peer credentials are unavailable")
-        try:
-            raw = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
-        except OSError as exc:
-            raise BridgeError("PEER_NOT_AUTHORIZED", "peer credentials are unavailable") from exc
-        _, uid, gid = struct.unpack("3i", raw)
-        if self.allowed_peer_uid is not None and uid != self.allowed_peer_uid:
-            raise BridgeError("PEER_NOT_AUTHORIZED", "peer uid is not authorized")
-        if self.allowed_peer_gid is not None and gid != self.allowed_peer_gid:
-            raise BridgeError("PEER_NOT_AUTHORIZED", "peer gid is not authorized")
+        """Assert the identity the endpoint measured for this connection.
+
+        Linux measures here (SO_PEERCRED is available at connection setup); Windows measured
+        during the first read and hands the result over, so this is where the SID assertion
+        runs. Either way a failure means nothing was dispatched.
+        """
+        if WINDOWS:
+            assert self._pipe is not None
+            authorize_windows_peer(self._pipe.peer(writer), allowed_sid=self.allowed_peer_sid or "")
+            return
+        authorize_posix_peer(
+            measure_posix_peer(writer.get_extra_info("socket")),
+            allowed_uid=self.allowed_peer_uid,
+            allowed_gid=self.allowed_peer_gid,
+        )
 
     async def _dispatch_raw(self, raw: bytes) -> dict[str, Any]:
         try:

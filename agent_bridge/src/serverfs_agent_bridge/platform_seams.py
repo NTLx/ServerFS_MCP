@@ -1,13 +1,16 @@
-"""The platform seams of §3 and what they require from the running kernel.
+"""The platform seams of §3 and what each platform provides behind them.
 
-v0.11 Phase A makes the Bridge core *importable* on Windows without giving
-Windows an implementation of any seam: a component that would reach a
-Linux-specific mechanism reports that this process cannot provide it instead of
-raising `AttributeError` from inside a primitive call. The Windows twins are
-scheduled, not invented here — Named Pipe plus client SID (Phase B), the
-LockFileEx writer lease (Phase C), NTFS DACL private state (Phase B/D) and Job
-Object containment (Phase D). Everything above these seams stays
-provider-neutral and unchanged.
+Phase A made the Bridge core *importable* on Windows by failing every seam closed. Phase B
+implements three of the four Windows twins, so they are no longer guards:
+
+- ``LOCAL_IPC`` — AF_UNIX on Linux, a byte Named Pipe pool on Windows (§4, ``windows_ipc``);
+- ``PEER_IDENTITY`` — ``SO_PEERCRED`` on Linux, an impersonated client SID on Windows (§4.5);
+- ``PRIVATE_STATE`` — owner UID plus mode bits on Linux, owner SID plus an explicit protected
+  NTFS DACL on Windows (§6.1, ``private_state``).
+
+``WRITER_LEASE`` stays a guard until Phase C: ``flock`` has no Windows twin yet, and a Bridge
+that could not lease a workdir must refuse a ``workspace-write`` task rather than run one
+unleased. Everything above these seams is provider-neutral and platform-independent.
 """
 
 from __future__ import annotations
@@ -17,14 +20,20 @@ import sys
 from .errors import BridgeError
 
 LINUX = sys.platform.startswith("linux")
+WINDOWS = sys.platform == "win32"
 
-LOCAL_IPC = "local IPC over a Unix-domain socket"
-PEER_IDENTITY = "peer identity from SO_PEERCRED"
+LOCAL_IPC = "local IPC"
+PEER_IDENTITY = "peer identity"
 WRITER_LEASE = "the flock-backed writer lease"
-PRIVATE_STATE = "private-state authorization by owner UID and mode bits"
+PRIVATE_STATE = "private-state authorization"
+
+#: Seams whose Windows twin is not implemented yet. Phase C removes the writer lease from
+#: this list; nothing else may join it, because a seam on the list is a missing feature.
+UNIMPLEMENTED_ON_WINDOWS = {WRITER_LEASE: "Phase C"}
 
 __all__ = [
     "LINUX",
+    "WINDOWS",
     "LOCAL_IPC",
     "PEER_IDENTITY",
     "PRIVATE_STATE",
@@ -34,10 +43,12 @@ __all__ = [
 
 
 def require_linux_seam(seam: str) -> None:
-    """Fail closed when a caller asks this process for a Linux-only mechanism."""
+    """Fail closed when a caller asks a Windows process for an unimplemented seam."""
     if LINUX:
         return
+    phase = UNIMPLEMENTED_ON_WINDOWS.get(seam)
+    detail = f"; the Windows twin is scheduled for {phase}" if phase else ""
     raise BridgeError(
         "BRIDGE_PLATFORM_UNSUPPORTED",
-        f"{seam} is not available in this Bridge process",
+        f"{seam} is not available in this Bridge process{detail}",
     )
