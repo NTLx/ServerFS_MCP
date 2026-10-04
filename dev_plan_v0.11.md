@@ -1328,7 +1328,8 @@ Executed gates:
 | Linux `agent_bridge` suite in the same container: `ruff check`, `ruff format --check`, `pytest` | All checks passed / 56 files already formatted / **162 passed, 0 failed** in two independent runs — VERIFIED (§35's 154-passed baseline plus the 8 new platform-neutral `test_local_ipc_contract.py` cases; the four Windows-only files are `collect_ignore`d on Linux by the new `agent_bridge/tests/conftest.py`) |
 | Linux root pass/skip totals and the CI `Container / Test`, `Container / Agent Bridge test`, `Container check` and `windows-native` jobs | To be recorded from the Phase B PR's CI run (§39) — **Not verified here** until that run is green |
 | `bash -n deployment/agent-bridge/*.sh` | Not run — no Phase E shell script changed |
-| `docker compose config`, image build | Not run — no compose or Dockerfile change in Phase B |
+| `docker compose config` | exit 0, output not printed — VERIFIED |
+| `SERVERFS_IMAGE=serverfs-mcp:dev docker compose build` | built under the scratch tag — VERIFIED (the running deployment was not touched; §38's `uv sync --frozen` wheel note does not apply because no `uv sync` was run in the root Windows venv this phase, so `serverfs-windows-native` stayed installed and the native suites ran) |
 
 Security evidence, by requirement:
 
