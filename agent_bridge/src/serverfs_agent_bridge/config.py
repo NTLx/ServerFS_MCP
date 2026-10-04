@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ _CONFIG_KEYS = frozenset(
         "lock_dir",
         "allowed_peer_uid",
         "allowed_peer_gid",
+        "allowed_peer_sid",
         "enable_fake_runtime",
         "limits",
         "codex",
@@ -128,6 +130,7 @@ class BridgeConfig:
     lock_dir: Path
     allowed_peer_uid: int | None
     allowed_peer_gid: int | None
+    allowed_peer_sid: str | None
     enable_fake_runtime: bool
     limits: LifecycleLimits
     codex: CodexSettings
@@ -236,19 +239,18 @@ class BridgeConfig:
                 "for every allowlisted workdir"
             )
 
+        endpoint, default_state_dir, default_lock_dir = _default_paths()
         return cls(
-            socket_path=_config_path(
-                data.get("socket_path", "/run/serverfs-agent-bridge/bridge.sock"),
-                "socket_path",
-            ),
+            socket_path=_config_path(data.get("socket_path", endpoint), "socket_path"),
             state_dir=_config_path(
-                data.get("state_dir", "~/.local/state/serverfs-agent-bridge"),
+                data.get("state_dir", default_state_dir),
                 "state_dir",
                 expand_user=True,
             ),
-            lock_dir=_config_path(data.get("lock_dir", "/run/serverfs-agent-locks"), "lock_dir"),
+            lock_dir=_config_path(data.get("lock_dir", default_lock_dir), "lock_dir"),
             allowed_peer_uid=_optional_int(data.get("allowed_peer_uid")),
             allowed_peer_gid=_optional_int(data.get("allowed_peer_gid")),
+            allowed_peer_sid=_optional_string(data.get("allowed_peer_sid")),
             enable_fake_runtime=enable_fake_runtime,
             limits=limits,
             codex=codex,
@@ -464,6 +466,34 @@ def _strict_positive_number(value: Any, label: str) -> float:
     if not math.isfinite(number) or not number > 0:
         raise ValueError(f"{label} must be a finite positive number")
     return number
+
+
+def _default_paths() -> tuple[str, str, str]:
+    """The endpoint and directory defaults for this platform (§6.2, §22).
+
+    Linux keeps the frozen Phase E paths so an existing deployment needs no change. Windows
+    derives them from the Bridge data home and from a deterministic, user-scoped pipe name.
+    """
+    if sys.platform != "win32":
+        return (
+            "/run/serverfs-agent-bridge/bridge.sock",
+            "~/.local/state/serverfs-agent-bridge",
+            "/run/serverfs-agent-locks",
+        )
+    from .data_home import bridge_data_home
+    from .local_ipc import derive_pipe_name
+    from .windows_security import current_user_sid
+
+    home = bridge_data_home()
+    return (derive_pipe_name(current_user_sid()), str(home / "state"), str(home / "locks"))
+
+
+def _optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError("allowed_peer_sid must be a non-empty string or null")
+    return value
 
 
 def _config_path(value: Any, label: str, *, expand_user: bool = False) -> Path:
