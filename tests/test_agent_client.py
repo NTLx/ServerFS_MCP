@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from platform_contract import linux_only
 from serverfs_mcp.agent_client import (
     PROTOCOL_VERSION,
     AgentBridgeClient,
@@ -17,6 +18,7 @@ from serverfs_mcp.agent_client import (
 )
 
 
+@linux_only("the Bridge client transport is a Unix socket")
 def test_agent_bridge_client_round_trip(tmp_path: Path) -> None:
     async def scenario() -> None:
         socket_path = tmp_path / "bridge.sock"
@@ -52,6 +54,7 @@ def test_agent_bridge_client_round_trip(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+@linux_only("the Bridge client transport is a Unix socket")
 def test_agent_bridge_remote_error_preserves_code(tmp_path: Path) -> None:
     async def scenario() -> None:
         socket_path = tmp_path / "bridge.sock"
@@ -83,6 +86,7 @@ def test_agent_bridge_remote_error_preserves_code(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+@linux_only("the Bridge client transport is a Unix socket")
 def test_agent_bridge_rejects_response_id_mismatch(tmp_path: Path) -> None:
     async def scenario() -> None:
         socket_path = tmp_path / "bridge.sock"
@@ -115,6 +119,7 @@ def test_agent_bridge_rejects_response_id_mismatch(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+@linux_only("the Bridge client transport is a Unix socket")
 def test_agent_bridge_missing_socket_is_unavailable(tmp_path: Path) -> None:
     async def scenario() -> None:
         client = AgentBridgeClient(tmp_path / "missing.sock", timeout_seconds=0.1)
@@ -124,6 +129,7 @@ def test_agent_bridge_missing_socket_is_unavailable(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+@linux_only("the Bridge client transport is a Unix socket")
 def test_lost_submit_response_can_be_retried_with_same_idempotency_key(tmp_path: Path) -> None:
     async def scenario() -> None:
         socket_path = tmp_path / "bridge.sock"

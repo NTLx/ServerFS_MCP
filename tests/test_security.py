@@ -18,6 +18,7 @@ import pytest
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 
 from helpers import make_server
+from platform_contract import linux_only
 from serverfs_mcp.config import Settings
 from serverfs_mcp.main import STREAMABLE_HTTP_TRANSPORT_SECURITY, create_server
 from serverfs_mcp.workdirs import EffectiveWorkdirPolicy, Workdir, WorkdirRegistry
@@ -200,16 +201,19 @@ class TestToolErrors:
         msg = call_error(srv, "read_text_file", {"workdir": "test", "path": "id_rsa"})
         assert "DENIED_PATH" in msg
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_symlink_escape_blocked(self, server, workdir) -> None:
         os.symlink("/etc", workdir.container_path / "etclink")
         msg = call_error(server, "read_text_file", {"workdir": "test", "path": "etclink/passwd"})
         assert "SYMLINK_NOT_ALLOWED" in msg
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_symlink_parent_stat_blocked(self, server, workdir) -> None:
         os.symlink("/etc", workdir.container_path / "etclink")
         msg = call_error(server, "stat_file", {"workdir": "test", "path": "etclink/passwd"})
         assert "SYMLINK_NOT_ALLOWED" in msg
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_stat_final_symlink_reports_type(self, server, workdir) -> None:
         (workdir.container_path / "real.txt").write_text("x")
         os.symlink("real.txt", workdir.container_path / "lnk")
@@ -232,6 +236,7 @@ class TestToolErrors:
         msg = call_error(server, "read_text_file", {"workdir": "test", "path": "a\x00b"})
         assert "ACCESS_DENIED" in msg
 
+    @linux_only("the Linux FD resource-exhaustion path")
     def test_find_files_emfile_reports_resource_exhausted(self, server, monkeypatch) -> None:
         def fail_scandir(*args, **kwargs):
             raise OSError(errno.EMFILE, "Too many open files")
@@ -251,7 +256,7 @@ class TestPolicyMatrix:
     ]
 
     def _seed(self, workdir, name: str, content: str = "VALUE=1\n") -> None:
-        (workdir.container_path / name).write_text(content)
+        (workdir.container_path / name).write_bytes(content.encode())
 
     def _visible_in_list(self, srv, name) -> bool:
         data = call_success(srv, "list_directory", {"workdir": "test", "path": ""})
@@ -411,7 +416,7 @@ class TestResourceTemplate:
         return _make_server(workdir, **kw)
 
     def test_small_file_full_content(self, workdir) -> None:
-        (workdir.container_path / "ok.txt").write_text("hello resource\n")
+        (workdir.container_path / "ok.txt").write_bytes(b"hello resource\n")
         text = read_resource_ok(self._srv(workdir), "serverfs://test/ok.txt")
         assert text == "hello resource\n"
 
@@ -437,7 +442,7 @@ class TestResourceTemplate:
         assert "DENIED_PATH" in msg
 
     def test_disable_default_deny_resource_readable(self, workdir) -> None:
-        (workdir.container_path / ".env").write_text("VALUE=1\n")
+        (workdir.container_path / ".env").write_bytes(b"VALUE=1\n")
         text = read_resource_ok(
             self._srv(workdir, allow_hidden=True, disable_default_deny=True),
             "serverfs://test/.env",
@@ -456,22 +461,26 @@ class TestResourceTemplate:
 
 
 class TestSpecialFilesViaTool:
+    @linux_only("mkfifo special files are a POSIX object type")
     def test_fifo_never_blocks(self, server, workdir) -> None:
         os.mkfifo(workdir.container_path / "apipe")
         msg = call_error(server, "read_text_file", {"workdir": "test", "path": "apipe"})
         assert "UNSUPPORTED_FILE_TYPE" in msg
 
+    @linux_only("mkfifo special files are a POSIX object type")
     def test_fifo_stat_other(self, server, workdir) -> None:
         os.mkfifo(workdir.container_path / "apipe")
         data = call_success(server, "stat_file", {"workdir": "test", "path": "apipe"})
         assert data["type"] == "other"
 
+    @linux_only("mkfifo special files are a POSIX object type")
     def test_fifo_listed_as_other(self, server, workdir) -> None:
         os.mkfifo(workdir.container_path / "apipe")
         data = call_success(server, "list_directory", {"workdir": "test", "path": ""})
         entry = next(e for e in data["entries"] if e["name"] == "apipe")
         assert entry["type"] == "other"
 
+    @linux_only("AF_UNIX sockets do not exist on Windows")
     def test_unix_socket_never_blocks(self, server, workdir) -> None:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.bind(str(workdir.container_path / "asock"))
@@ -485,8 +494,8 @@ def test_effective_policy_is_selected_per_workdir_for_tools_and_resources(tmp_pa
     second_root = tmp_path / "second"
     first_root.mkdir()
     second_root.mkdir()
-    (first_root / ".hidden.txt").write_text("one\ntwo\n")
-    (second_root / ".hidden.txt").write_text("one\ntwo\n")
+    (first_root / ".hidden.txt").write_bytes(b"one\ntwo\n")
+    (second_root / ".hidden.txt").write_bytes(b"one\ntwo\n")
     (first_root / "large.txt").write_text("123456789\n")
     (second_root / "large.txt").write_text("123456789\n")
     first = Workdir(

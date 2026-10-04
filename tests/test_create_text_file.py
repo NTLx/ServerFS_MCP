@@ -9,6 +9,9 @@ import stat as stat_module
 import pytest
 
 from helpers import call_error, call_success, error_code, make_server
+from platform_contract import IS_ROOT as _IS_ROOT
+from platform_contract import LINUX as _LINUX
+from platform_contract import linux_only
 
 WRITE_ARGS = {"workdir": "test", "path": "new.txt", "content": "hello\n"}
 
@@ -58,7 +61,7 @@ class TestCreateSuccess:
             srv, "create_text_file", {"workdir": "test", "path": "u.txt", "content": content}
         )
         assert data["bytes_written"] == len(content.encode())
-        assert (workdir.container_path / "u.txt").read_text() == content
+        assert (workdir.container_path / "u.txt").read_bytes() == content.encode()
 
     def test_content_has_no_bom(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
@@ -101,6 +104,7 @@ class TestCreateConflict:
         assert error_code(call_error(srv, "create_text_file", WRITE_ARGS)) == "PATH_ALREADY_EXISTS"
         assert (workdir.container_path / "new.txt").is_dir()
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_existing_symlink(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         (workdir.container_path / "target.txt").write_text("target\n")
@@ -109,11 +113,13 @@ class TestCreateConflict:
         assert (workdir.container_path / "new.txt").is_symlink()
         assert (workdir.container_path / "target.txt").read_text() == "target\n"
 
+    @linux_only("mkfifo special files are a POSIX object type")
     def test_existing_fifo(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         os.mkfifo(workdir.container_path / "new.txt")
         assert error_code(call_error(srv, "create_text_file", WRITE_ARGS)) == "PATH_ALREADY_EXISTS"
 
+    @linux_only("AF_UNIX sockets do not exist on Windows")
     def test_existing_socket(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -143,6 +149,7 @@ class TestCreateConflict:
         )
         assert error_code(msg) == "NOT_A_DIRECTORY"
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_parent_is_a_symlink(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         os.mkdir(workdir.container_path / "real")
@@ -153,6 +160,7 @@ class TestCreateConflict:
         assert error_code(msg) == "SYMLINK_NOT_ALLOWED"
         assert not (workdir.container_path / "real" / "x.txt").exists()
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_symlink_escaping_the_workdir(self, workdir, tmp_path) -> None:
         srv = make_server(workdir, read_write_access=True)
         outside = tmp_path / "outside"
@@ -169,7 +177,7 @@ class TestCreateConflict:
         msg = call_error(srv, "create_text_file", {"workdir": "test", "path": "", "content": "x"})
         assert error_code(msg) == "ROOT_MUTATION_NOT_ALLOWED"
 
-    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores permission bits")
+    @pytest.mark.skipif(not _LINUX or _IS_ROOT, reason="POSIX permission bits; root ignores them")
     def test_parent_without_read_permission(self, workdir) -> None:
         """The FD walk needs read permission on every parent component, so a
         write-only directory fails closed rather than being traversed."""
@@ -301,6 +309,7 @@ class TestCreateAtomicity:
         assert sorted(p.name for p in workdir.container_path.iterdir()) == ["new.txt"]
         assert (workdir.container_path / "new.txt").read_text() == "original\n"
 
+    @linux_only("fault injected into the Linux os.link publish primitive")
     def test_link_failure_leaves_no_final_file_and_no_temp(self, workdir, monkeypatch) -> None:
         """A failed publish must not leave a partial file behind."""
         srv = make_server(workdir, read_write_access=True)
@@ -313,6 +322,7 @@ class TestCreateAtomicity:
         assert error_code(msg) == "MUTATION_IO_ERROR"
         assert list(workdir.container_path.iterdir()) == []
 
+    @linux_only("fault injected into the Linux os.write temp-write primitive")
     def test_write_failure_leaves_no_final_file_and_no_temp(self, workdir, monkeypatch) -> None:
         srv = make_server(workdir, read_write_access=True)
 

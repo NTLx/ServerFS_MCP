@@ -6,6 +6,7 @@ import dataclasses
 
 import pytest
 
+from platform_contract import linux_only
 from serverfs_mcp.config import Settings
 from serverfs_mcp.tools import READ_IMPL
 from serverfs_mcp.workdirs import EffectiveWorkdirPolicy, WorkdirRegistry
@@ -35,12 +36,12 @@ def read(registry, settings, path, start=1, max_lines=200, workdir="test"):
 
 class TestEncodings:
     def test_ascii(self, registry, settings, workdir) -> None:
-        (workdir.container_path / "a.txt").write_text("hello\nworld\n")
+        (workdir.container_path / "a.txt").write_bytes(b"hello\nworld\n")
         r = read(registry, settings, "a.txt")
         assert r.content == "hello\nworld\n"
 
     def test_utf8_chinese(self, registry, settings, workdir) -> None:
-        (workdir.container_path / "zh.txt").write_text("第一行\n第二行\n")
+        (workdir.container_path / "zh.txt").write_bytes("第一行\n第二行\n".encode())
         r = read(registry, settings, "zh.txt")
         assert r.content == "第一行\n第二行\n"
 
@@ -101,7 +102,7 @@ class TestPagination:
     @pytest.fixture()
     def paginated(self, workdir) -> None:
         content = "\n".join(f"line{i:03d}" for i in range(1, 101)) + "\n"
-        (workdir.container_path / "big.txt").write_text(content)
+        (workdir.container_path / "big.txt").write_bytes(content.encode("utf-8"))
 
     def test_start_line(self, registry, settings, paginated) -> None:
         r = read(registry, settings, "big.txt", start=50)
@@ -171,6 +172,7 @@ class TestErrors:
         with pytest.raises(Exception, match="PATH_OUTSIDE_WORKDIR"):
             read(registry, settings, "../../etc/passwd")
 
+    @linux_only("mkfifo special files are a POSIX object type")
     def test_fifo_does_not_block(self, registry, settings, workdir) -> None:
         import os
 
@@ -178,6 +180,7 @@ class TestErrors:
         with pytest.raises(Exception, match="UNSUPPORTED_FILE_TYPE"):
             read(registry, settings, "pipe")
 
+    @linux_only("AF_UNIX sockets do not exist on Windows")
     def test_unix_socket_does_not_block(self, registry, settings, workdir) -> None:
         import socket
 

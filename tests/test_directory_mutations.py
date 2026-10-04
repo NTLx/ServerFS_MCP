@@ -8,6 +8,7 @@ import stat as stat_module
 import pytest
 
 from helpers import call_error, call_success, error_code, make_server
+from platform_contract import linux_only, settle_file_time
 
 
 def revision_of(srv, path: str) -> str:
@@ -81,6 +82,7 @@ class TestCreateDirectoryRules:
         assert error_code(msg) == "PATH_ALREADY_EXISTS"
         assert (workdir.container_path / "docs").is_file()
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_existing_symlink(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         os.mkdir(workdir.container_path / "real")
@@ -95,6 +97,7 @@ class TestCreateDirectoryRules:
         msg = call_error(srv, "create_directory", {"workdir": "test", "path": "afile/docs"})
         assert error_code(msg) == "NOT_A_DIRECTORY"
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_parent_is_a_symlink(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         os.mkdir(workdir.container_path / "real")
@@ -212,6 +215,7 @@ class TestDeleteDirectorySuccess:
         srv = make_server(workdir, read_write_access=True)
         os.mkdir(workdir.container_path / "dir")
         revision = revision_of(srv, "dir")
+        settle_file_time()
         (workdir.container_path / "dir" / "child.txt").write_text("x")
         msg = call_error(
             srv,
@@ -307,6 +311,7 @@ class TestDeleteDirectoryRules:
         srv = make_server(workdir, read_write_access=True)
         os.mkdir(workdir.container_path / "dir")
         revision = revision_of(srv, "dir")
+        settle_file_time()
         (workdir.container_path / "dir" / "child.txt").write_text("x")
         (workdir.container_path / "dir" / "child.txt").unlink()
         msg = call_error(
@@ -323,6 +328,7 @@ class TestDeleteDirectoryRules:
         msg = call_error(srv, "delete_directory", {"workdir": "test", "path": "dir"})
         assert "expected_revision" in msg
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_symlink_target(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         os.mkdir(workdir.container_path / "real")

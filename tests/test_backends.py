@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from platform_contract import LINUX
 from serverfs_mcp.backends import BackendError, WorkdirSession, get_backend
 from serverfs_mcp.config import Settings
-from serverfs_mcp.linux_backend import LinuxBackend, LinuxWorkdirSession
 from serverfs_mcp.main import create_server
 from serverfs_mcp.models import (
     CreateDirectoryResult,
@@ -410,10 +410,13 @@ class TestProductLayerPurity:
             assert banned not in text, f"tools.py uses platform primitive: {banned}"
 
 
+@pytest.mark.skipif(not LINUX, reason="Linux kernel contract: the POSIX backend implementation")
 class TestLinuxSessionContract:
     """The real Linux backend satisfies the same contract shape."""
 
     def test_open_session_returns_session(self, tmp_path: Path) -> None:
+        from serverfs_mcp.linux_backend import LinuxBackend
+
         backend = get_backend()
         assert isinstance(backend, LinuxBackend)
         wd = Workdir("test", tmp_path, None)
@@ -435,6 +438,10 @@ class TestLinuxSessionContract:
             "delete_directory",
         ):
             assert hasattr(session, method), f"Linux session lacks {method}"
+
+
+class TestBackendErrorContract:
+    """The coded-error contract holds on every platform."""
 
     def test_backend_error_is_coded(self) -> None:
         exc = BackendError("SOME_CODE", "plain words")
@@ -472,7 +479,10 @@ class TestProtocolCompleteness:
         ]
         assert not missing, f"unannotated session methods: {missing}"
 
+    @pytest.mark.skipif(not LINUX, reason="Linux kernel contract: the POSIX backend implementation")
     def test_linux_session_covers_the_protocol(self) -> None:
+        from serverfs_mcp.linux_backend import LinuxWorkdirSession
+
         missing = [
             name
             for name in _protocol_methods()
