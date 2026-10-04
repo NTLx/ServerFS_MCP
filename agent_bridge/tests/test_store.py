@@ -10,8 +10,6 @@ from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.models import TaskStatus
 from serverfs_agent_bridge.store import TaskStore
 
-pytestmark = linux_only("the task store guards its state directory by owner UID and mode bits")
-
 
 def make_task(store: TaskStore, task_id: str = "agt_test"):
     return store.create_task(
@@ -131,6 +129,7 @@ def test_event_cursor(tmp_path: Path) -> None:
     assert [event.event_id for event in events] == [second.event_id]
 
 
+@linux_only("the mode bits this test asserts are POSIX private-state semantics")
 def test_state_database_and_wal_sidecars_are_private(tmp_path: Path) -> None:
     state_dir = tmp_path / "state"
     store = TaskStore(state_dir)
@@ -141,6 +140,7 @@ def test_state_database_and_wal_sidecars_are_private(tmp_path: Path) -> None:
         assert path.stat().st_mode & 0o777 == 0o600
 
 
+@linux_only("mode bits refuse an existing public dir; POSIX records them, NTFS does not")
 def test_existing_non_private_state_dir_fails_without_chmod(tmp_path: Path) -> None:
     state_dir = tmp_path / "public"
     state_dir.mkdir()
