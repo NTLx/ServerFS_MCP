@@ -573,6 +573,39 @@ def test_agent_starting_cwd_uses_selected_workdir_policy(tmp_path: Path) -> None
     assert client.calls[-1][1]["path"] == ".hidden"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/absolute",
+        "../escape",
+        "..\\escape",
+        "C:\\project",
+        "D:/foo",
+        "\\\\server\\share",
+        "docs/../../escape",
+    ],
+)
+def test_agent_starting_path_rejects_host_and_traversal_forms(tmp_path: Path, path: str) -> None:
+    """§8.2: the Agent starting path is a ServerFS virtual "/" workdir-relative
+    path on every platform, so a host-absolute (POSIX, drive, UNC) or traversal
+    form is refused by the shared path policy before the Bridge is called."""
+    client = FakeAgentClient()
+    server = server_with_client(tmp_path, client)
+    message = call_error(
+        server,
+        "submit_agent_task",
+        {
+            "runtime": "codex",
+            "workdir": "repo",
+            "path": path,
+            "profile": "workspace-write",
+            "prompt": "Do work",
+        },
+    )
+    assert error_code(message)
+    assert client.calls == []
+
+
 def test_read_and_interaction_tools_map_to_expected_rpc_methods(tmp_path: Path) -> None:
     client = FakeAgentClient()
     server = server_with_client(tmp_path, client)

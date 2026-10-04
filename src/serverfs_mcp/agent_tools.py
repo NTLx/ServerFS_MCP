@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import time
 from typing import Annotated, Any, Literal
 
@@ -18,11 +17,11 @@ from .agent_client import (
     AgentBridgeRemoteError,
     AgentBridgeUnavailable,
 )
+from .backends import BackendError, get_backend
 from .config import Settings
-from .fdio import open_directory_fd, root_fd
 from .models import AgentQuestionAnswer
 from .paths import PathSecurityError, resolve_workdir_path
-from .tools import deny_policy_from_workdir
+from .tools import deny_policy_from_workdir, fs_error
 from .workdirs import (
     AGENT_MODE_DISABLED,
     AGENT_MODE_REVIEW,
@@ -559,6 +558,14 @@ def _authorize_submit(
 
 
 def _validate_agent_cwd(wd: Workdir, path: str, settings: Settings) -> str:
+    """Validate one Agent starting directory through the filesystem backend.
+
+    `relative_cwd` is a ServerFS virtual path with "/" separators on every
+    platform; the platform kernel only ever sees an already-validated
+    ``ResolvedPath``. The directory pre-open contract is the same one
+    find/search use, so PATH_NOT_FOUND / NOT_A_DIRECTORY / BACKEND_* codes
+    are identical across both channels and both platforms.
+    """
     try:
         resolved = resolve_workdir_path(
             wd,
@@ -566,18 +573,15 @@ def _validate_agent_cwd(wd: Workdir, path: str, settings: Settings) -> str:
             allow_hidden=wd.policy.allow_hidden,
             deny_policy=deny_policy_from_workdir(wd),
         )
-        with contextlib.ExitStack() as stack:
-            root = stack.enter_context(root_fd(str(wd.container_path)))
-            stack.enter_context(open_directory_fd(root, resolved.rel_parts))
-        return resolved.rel_path
+        session = get_backend().open_session(resolved.workdir)
+        session.validate_directory(resolved)
     except PathSecurityError as exc:
         raise ToolError(f"{exc.code}: {wd.alias}:{path} — {exc.message}") from exc
-    except FileNotFoundError as exc:
-        raise ToolError(f"PATH_NOT_FOUND: {wd.alias}:{path} does not exist") from exc
-    except NotADirectoryError as exc:
-        raise ToolError(f"NOT_A_DIRECTORY: {wd.alias}:{path} is not a directory") from exc
+    except BackendError as exc:
+        raise ToolError(f"{exc.code}: {wd.alias}:{path} — {exc.message}") from exc
     except OSError as exc:
-        raise ToolError(f"ACCESS_DENIED: {wd.alias}:{path} ({exc.strerror})") from exc
+        raise fs_error(exc, wd.alias, path) from exc
+    return resolved.rel_path
 
 
 def _allowed_runtimes(registry: WorkdirRegistry) -> set[str]:
