@@ -250,9 +250,14 @@ class NamedPipeEndpoint:
             )
         self._first_instance = instance
         for index in range(self.pool_size):
+            handover = None
+            if index == 0:
+                # Passed in as this slot's argument: a shared field read and cleared by four
+                # racing threads could leave the claimed instance unserved.
+                handover, self._first_instance = self._first_instance, None
             thread = threading.Thread(
                 target=self._accept_loop,
-                args=(index,),
+                args=(handover,),
                 name=f"serverfs-bridge-pipe-accept-{index}",
                 daemon=True,
             )
@@ -317,11 +322,11 @@ class NamedPipeEndpoint:
             first_instance=True,
         )
 
-    def _accept_loop(self, index: int) -> None:
+    def _accept_loop(self, handover: ServerInstance | None = None) -> None:
         # The name was already claimed in start(); every slot here joins the name this process
-        # owns, and slot 0 inherits the instance that carried the claim flag (§7).
-        handover = self._first_instance if index == 0 else None
-        self._first_instance = None
+        # owns, and slot 0 is handed the instance that carried the claim flag (§7). The instance
+        # arrives as an argument rather than from a shared field, because four threads racing to
+        # read and clear that field could leave the claimed instance unserved.
         while not self._stop.is_set():
             if handover is not None:
                 instance, code = handover, 0
