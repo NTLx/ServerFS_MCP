@@ -517,7 +517,3 @@ def create_private_file(path: pathlib.Path, sddl: str) -> bool:
         "PRIVATE_STATE_UNAVAILABLE",
         f"the private state file could not be created ({winerror(code)})",
     )
-
-
-def open_directory_flags() -> int:
-    return FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT

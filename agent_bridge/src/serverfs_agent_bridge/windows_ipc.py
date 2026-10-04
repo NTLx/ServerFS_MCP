@@ -221,6 +221,7 @@ class NamedPipeEndpoint:
         self._connections_lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._on_connection: Any = None
+        self._first_instance: ServerInstance | None = None
 
     # ---- identity ----
 
@@ -232,6 +233,22 @@ class NamedPipeEndpoint:
     async def start(self, on_connection: Any) -> None:
         self._loop = asyncio.get_running_loop()
         self._on_connection = on_connection
+        # The name is claimed here, before any pool thread exists, so the first-instance flag is
+        # deterministic: with four threads racing, a slot that created a plain instance first would
+        # make this process's own claim fail, and a collision could then only ever be reported as
+        # a guess (§7).
+        instance, code = await self._loop.run_in_executor(self._io, self._claim_name)
+        if instance is None:
+            await self.close()
+            if code == ERROR_ACCESS_DENIED:
+                raise BridgeError(
+                    "PIPE_NAME_UNAVAILABLE",
+                    "the Bridge pipe name is already owned by another process",
+                )
+            raise BridgeError(
+                "IPC_UNAVAILABLE", f"the Bridge pipe name could not be claimed ({code})"
+            )
+        self._first_instance = instance
         for index in range(self.pool_size):
             thread = threading.Thread(
                 target=self._accept_loop,
@@ -263,6 +280,10 @@ class NamedPipeEndpoint:
 
     async def close(self) -> None:
         self._stop.set()
+        if self._first_instance is not None:
+            # A start() that failed after claiming the name must not leave the claim behind.
+            self._first_instance.close()
+            self._first_instance = None
         with self._connections_lock:
             connections = list(self._connections)
         for connection in connections:
@@ -287,18 +308,31 @@ class NamedPipeEndpoint:
 
     # ---- accept threads ----
 
+    def _claim_name(self) -> tuple[ServerInstance | None, int]:
+        """One ``CreateNamedPipe`` with ``FILE_FLAG_FIRST_PIPE_INSTANCE``, before the pool runs."""
+        return ServerInstance.create(
+            self.pipe_name,
+            sddl=self._dacl_sddl,
+            buffer_size=_READ_CHUNK,
+            first_instance=True,
+        )
+
     def _accept_loop(self, index: int) -> None:
-        # Only the process's first instance may claim the name; the other slots join the name
-        # this same process already owns (§7).
-        claim_first = index == 0
+        # The name was already claimed in start(); every slot here joins the name this process
+        # owns, and slot 0 inherits the instance that carried the claim flag (§7).
+        handover = self._first_instance if index == 0 else None
+        self._first_instance = None
         while not self._stop.is_set():
-            instance, code = ServerInstance.create(
-                self.pipe_name,
-                sddl=self._dacl_sddl,
-                buffer_size=_READ_CHUNK,
-                first_instance=claim_first,
-            )
-            claim_first = False
+            if handover is not None:
+                instance, code = handover, 0
+                handover = None
+            else:
+                instance, code = ServerInstance.create(
+                    self.pipe_name,
+                    sddl=self._dacl_sddl,
+                    buffer_size=_READ_CHUNK,
+                    first_instance=False,
+                )
             if instance is None:
                 if code == ERROR_ACCESS_DENIED:
                     self._name_taken.set()

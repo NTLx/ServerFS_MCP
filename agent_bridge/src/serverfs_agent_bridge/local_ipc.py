@@ -115,18 +115,3 @@ def create_pipe_endpoint(**kwargs):
     from .windows_ipc import NamedPipeEndpoint
 
     return NamedPipeEndpoint(**kwargs)
-
-
-def connected_server_identity(handle: int) -> tuple[int, int, str | None]:
-    """``(pid, session_id, sid)`` of the server on the other end of a client pipe handle.
-
-    §12: opening a pipe is not trust — the caller compares this SID with its own expectation of
-    the Bridge user, so a squatted or stale name is detected rather than believed.
-    """
-    from . import windows_pipe
-
-    pid, session_id, _ = windows_pipe.pipe_peer_ids(handle, server_side=True)
-    if not pid:
-        return 0, session_id, None
-    sid, _ = windows_pipe.process_user_sid(pid)
-    return pid, session_id, sid

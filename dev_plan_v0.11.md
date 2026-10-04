@@ -1321,10 +1321,13 @@ Executed gates:
 | Windows root `uv run pytest` | **912 passed, 127 skipped, 1 xfailed** — VERIFIED (Phase A recorded 905/127/1: the delta is exactly the 7 new Windows Agent-E2E cases, no skip lost, no failure) |
 | Windows v0.10 native set (`test_native_windows`, `test_native_config`, `test_native_tunnel`, `test_windows_backend`, `test_windows_mcp_e2e`, `test_windows_native_stdio`, `test_windows_path_acceptance`, `test_doctor`, `test_cli`) | **204 passed, 2 skipped** — VERIFIED |
 | Windows `agent_bridge` `ruff check` / `ruff format --check` | All checks passed / 56 files already formatted — VERIFIED |
-| Windows `agent_bridge` `uv run pytest` | **129 passed, 93 skipped** — VERIFIED (Phase A: 51/103; the 52 moved cases are the store's private-state contract, the local-IPC contract and the new Windows seam suites) |
+| Windows `agent_bridge` `uv run pytest` | **128 passed, 93 skipped** — VERIFIED (Phase A: 51/103. The 11 store private-state cases that now run on both platforms, plus 67 new Windows and platform-neutral cases) |
 | Linux root suite in a `python:3.12` container from a git-tracked + Phase B working tree, `ripgrep` installed: `ruff check`, `ruff format --check` | All checks passed / 208 files already formatted — VERIFIED |
 | Linux root suite collected-test comparison against `origin/main` in the identical image | main 1080 → Phase B 1087, and the per-file diff is exactly one added line (`tests/test_windows_mcp_agent_e2e.py: 7`). No Linux file or case left the suite, so §35's no-coverage-loss requirement holds — VERIFIED |
-| Linux root `pytest` in that container | **Indicative only.** Repeated runs of the same image and tree ranged 1070–1097 passed / 13 skipped with 0–6 failures, the failures always in `tests/test_agent_deployment.py` (Phase E `systemctl` and `set -o pipefail` script cases) or `tests/test_revision.py` opacity — container-environment cases, not reproducible evidence. One run of the Phase B tree finished at 1070 passed / 13 skipped with no failures. The authoritative Linux totals are the CI job in §39 — **Not verified here** |
+| Linux root `pytest` in that container | **Indicative only.** Repeated runs of the same image and tree ranged 1070–1097 passed / 13 skipped with 0–6 failures, always in `tests/test_agent_deployment.py` (Phase E `systemctl` and `set -o pipefail` script cases) or `tests/test_revision.py` opacity — container-environment cases that do not reproduce. The authoritative run is the CI job below, which is green |
+| CI `Container / Test` (Linux root, `ruff check`, `ruff format --check`, `pytest`) | **All checks passed / 208 files already formatted / 1074 passed, 18 skipped** — VERIFIED on head `23f2a43`. Phase A recorded 1074 passed / 11 skipped on the same job: identical pass count, and the +7 skips are exactly the new Windows-only MCP-surface E2E file, so §35's no-loss requirement holds in CI as well |
+| CI `Container / Agent Bridge test` (Linux Bridge) | **All checks passed / 162 passed** — VERIFIED (§35's 154 baseline plus the 8 platform-neutral cases) |
+| CI `Container check` (image build) and `Windows native / native-kernel` | both runs success on head `23f2a43` — VERIFIED (per-step counts not extracted from the job logs) |
 | Linux `agent_bridge` suite in the same container: `ruff check`, `ruff format --check`, `pytest` | All checks passed / 56 files already formatted / **162 passed, 0 failed** in two independent runs — VERIFIED (§35's 154-passed baseline plus the 8 new platform-neutral `test_local_ipc_contract.py` cases; the four Windows-only files are `collect_ignore`d on Linux by the new `agent_bridge/tests/conftest.py`) |
 | Linux root pass/skip totals and the CI `Container / Test`, `Container / Agent Bridge test`, `Container check` and `windows-native` jobs | To be recorded from the Phase B PR's CI run (§39) — **Not verified here** until that run is green |
 | `bash -n deployment/agent-bridge/*.sh` | Not run — no Phase E shell script changed |
@@ -1377,6 +1380,13 @@ Measured platform facts that changed a Phase B design assumption:
   path already exists and its descriptor denies this create; that code is therefore the §25
   pre-planting signal, and `create_private_file` returns "already exists" for it so the caller
   verifies and refuses instead of repairing.
+- The first-instance claim cannot live in a racing accept thread. With one `CreateNamedPipe` per
+  pool slot and only slot 0 carrying `FILE_FLAG_FIRST_PIPE_INSTANCE`, the other slots can create a
+  plain instance first, which both makes this process's own claim fail and lets a second process
+  silently join the name — so `NamedPipeEndpoint.start()` now claims the name once, before any
+  thread exists, and hands that instance to slot 0. Verified: a held name produces
+  `PIPE_NAME_UNAVAILABLE` every time, and the collision case ran green three times in a row after
+  the change where it had previously been timing-dependent.
 
 Not verified, with reasons:
 
@@ -1648,9 +1658,11 @@ Phase B status (2026-10-05): **CLOSED-PASS** (§15 Phase B closure). The three f
 `LOCAL_IPC`, `PEER_IDENTITY` and `PRIVATE_STATE` now have real Windows twins behind them, plus the
 Windows data home and the client half of the IPC seam, and a real Windows Bridge **subprocess**
 serves FakeAdapter tasks over a real Named Pipe. Windows root 912 passed / 127 skipped / 1 xfailed
-(Phase A: 905 / 127 / 1 — the delta is the 7 new E2E cases), Windows Bridge 129 passed / 93 skipped
-(Phase A: 51 / 103), Linux Bridge 162 passed in the matched container with the §35 154 baseline
-intact, and no Windows test weakened a Linux contract. `WRITER_LEASE` and `PROCESS_CONTAINMENT`
+(Phase A: 905 / 127 / 1 — the delta is the 7 new E2E cases), Windows Bridge 128 passed / 93 skipped
+(Phase A: 51 / 103), and CI green on this head: Linux root 1074 passed / 18 skipped, where the +7
+skips are exactly the new Windows-only MCP-surface E2E file, Linux Bridge 162 passed on top of §35's
+154 baseline, `Container check` and `Windows native` success. No Windows twin weakened a Linux
+contract. `WRITER_LEASE` and `PROCESS_CONTAINMENT`
 still fail closed, and Phase C has three recorded prerequisites (§15 Phase C). Phase C is next and
 unblocked.
 The WorkPC deployment requirement — Codex and
