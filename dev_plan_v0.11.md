@@ -1,7 +1,7 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
-Status: IN PROGRESS — Phase 0 experiments; 0A CLOSED, 0B CLOSED, 0C measured with an open transport
-decision (§10.1-§10.2), 0D/0E in progress
+Status: IN PROGRESS — Phase 0 experiments; 0A CLOSED, 0B CLOSED, 0D CLOSED, 0E CLOSED; 0C measured with
+the Windows Codex transport selection left as a maintainer decision (§10.1-§10.2)
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -569,6 +569,14 @@ Do not auto-run sandbox setup during normal startup.
 
 Qoder is the second runtime track.
 
+Phase 0D measured this to be true on Windows: `qoder-agent-sdk==1.0.15` (the frozen pin) installs on
+Windows, exports every name `adapters/qoder.py` imports, accepts every option the adapter sets, and
+its real CLI transport connects, answers a control request, interrupts and disconnects cleanly
+against the native `qodercli.EXE` — with no model inference. `get_available_models()` returned 17
+models, and the catalog carries per-model `isFree`/`priceFactor`/`originalPriceFactor`, so cost
+status is read live and never hardcoded. Evidence:
+`docs/windows-phase-0d-0e-agent-sdks-2026-10-04.md` §1.
+
 qoder-agent-sdk publishes a Windows x64 distribution. Phase 0D must first install the existing pinned SDK into the dedicated Bridge environment and verify import/API compatibility before product integration.
 
 Preserve:
@@ -592,6 +600,20 @@ Live validation must enumerate current model IDs first and then explicitly choos
 Claude remains an intended v0.11 runtime.
 
 The absence of a PyPI Windows wheel alone is not sufficient evidence to remove it from scope.
+
+Phase 0E measured the real answer, and it is more specific than the discovery report assumed: the
+**frozen pin** `claude-agent-sdk==0.2.156` does publish a Windows `win_amd64` wheel, Windows wheel
+availability across recent releases is intermittent (`0.2.156` yes, `0.2.157` no, `0.2.158/159` yes,
+`0.2.160`-`0.2.163` no), and **every** release publishes an sdist that builds on Windows without a
+compiler because the runtime path is the subprocess-over-stdio transport against a native CLI. With
+the pin installed from that normal resolution path, the official SDK connects, answers a control
+request, interrupts and disconnects cleanly against the existing `claude.EXE`, and all names the
+adapter imports exist in `claude_agent_sdk` and `claude_agent_sdk.types`. No model inference was run.
+Evidence: `docs/windows-phase-0d-0e-agent-sdks-2026-10-04.md` §2-§3.
+
+Consequence for the upgrade clause below: upgrading `claude-agent-sdk` to a release with no Windows
+wheel is allowed only after re-checking that distribution matrix and re-verifying the sdist path on
+Windows; "the current upstream works" is not by itself Windows evidence.
 
 Phase 0E must install the pinned/current Python SDK through its normal Windows resolution path in an isolated Bridge environment and point it explicitly at the already-installed native claude.exe.
 
@@ -657,6 +679,13 @@ serverfs_agent_bridge-0.11.0-...
 ```
 
 Windows-specific dependencies such as pywin32 should be declared explicitly and conditionally rather than relying on unrelated transitive installation.
+
+Phase 0D/0E measured exactly why: both probe environments pulled `pywin32==312` transitively through
+`mcp`, so a filesystem-only or Bridge install that happened to receive it must not be treated as the
+contract. Declare it, do not inherit it. The same experiment also measured the practical size
+constraint: the platform wheels are ~98 MB (Qoder) and ~105 MB (Claude) and the host CDN throughput
+made them unreliable, while the sdists (143 KB / 347 KB) installed cleanly. Packaging and CI must
+therefore treat the Windows wheel as the intended artifact but keep the sdist path verified.
 
 When Agent mode is disabled, filesystem-only ServerFS must not require provider SDKs.
 
@@ -817,6 +846,22 @@ In an isolated Bridge environment prove without inference:
 - auth helper;
 - model catalog API.
 
+Status: **CLOSED — gate PASS** (2026-10-04).
+
+Implemented: no product code; isolated `uv` venv on Python 3.12.10 under `%TEMP%\serverfs-phase0d\`.
+
+Measured: pinned `qoder-agent-sdk==1.0.15` installs on Windows (the sdist path completed; the
+`win_amd64` wheel is published for every 1.0.8-1.0.15 release but could not be downloaded reliably on
+this host), all 11 adapter imports exist, `QoderAgentOptions` accepts `auth/cwd/cli_path/setting_sources/resume/continue_conversation/session_id/permission_mode/can_use_tool/model`, `qodercli_auth()`
+returns against the existing native login, `shutil.which('qodercli')` resolves
+`%USERPROFILE%\.qoder\bin\qodercli\qodercli.EXE`, and the real transport connect → control request →
+`interrupt()` → `disconnect()` sequence completed with no orphaned child. `get_available_models()`
+returned 17 models whose catalog carries per-model `isFree`/`priceFactor`/`originalPriceFactor`, so
+cost is read live. `live_steer` untouched, still `false`.
+
+Tests: Phase F installs the dependency into the real Bridge environment and runs deterministic adapter
+tests before any live smoke; the live smoke must enumerate models first and choose one explicitly.
+
 #### Phase 0E — Claude SDK
 
 In an isolated Bridge environment prove without inference:
@@ -828,6 +873,23 @@ In an isolated Bridge environment prove without inference:
 - permission result types.
 
 Gate: Claude remains in v0.11 unless this produces a demonstrated upstream blocker.
+
+Status: **CLOSED — gate PASS, Claude remains in scope.** No upstream blocker exists.
+
+Implemented: no product code; second isolated `uv` venv under `%TEMP%\serverfs-phase0e\`.
+
+Measured: `claude-agent-sdk==0.2.156` (the frozen pin) installs on Windows — the sdist builds with no
+compiler — and publishes a `win_amd64` wheel. Every name imported at `adapters/claude.py:20-33`
+exists across `claude_agent_sdk` and `claude_agent_sdk.types`; `ClaudeAgentOptions` accepts
+`cli_path/cwd/setting_sources/permission_mode/can_use_tool/resume/continue_conversation/session_id/model/allowed_tools/env`;
+the real transport against the native `C:\Users\lx\.local\bin\claude.EXE` completed
+connect → `get_server_info()` control round trip → `interrupt()` → `disconnect()` with no leftover
+`claude` child; `_internal.transport.subprocess_cli` imports cleanly. Distribution matrix correction
+and the upgrade condition are in §12 and `docs/windows-phase-0d-0e-agent-sdks-2026-10-04.md` §3.
+
+Not done here, deliberately: no prompt, no turn, no session content, and the WorkPC-specific
+`ANTHROPIC_BASE_URL` configuration observed in the server-info payload is not generalized to standard
+Claude environments (instruction §17). Real approvals/questions/cancel/resume belong to Phase G.
 
 ### Phase A — portability foundation
 
@@ -1054,6 +1116,13 @@ The default implementation order is:
 17. v0.11.0 tag/release
 
 The first five are experiments rather than product code. Their purpose is to eliminate the remaining expensive assumptions before architecture is frozen.
+
+Phase 0 status (2026-10-04): 1 LockFileEx CLOSED-PASS, 2 Named Pipe + SID CLOSED-PASS, 3 Codex
+transport measured with the selection open (§10.1-§10.2), 4 Qoder SDK CLOSED-PASS, 5 Claude SDK
+CLOSED-PASS. Because item 3 is still open, Phase 0 is not frozen and no implementation phase starts
+before that decision: §9 lifecycle, the Phase D `[agent.codex]` config shape and the Job Object
+membership all depend on whether the Bridge owns an app-server child or attaches to the
+provider-managed daemon.
 
 ## 19. Development discipline
 
