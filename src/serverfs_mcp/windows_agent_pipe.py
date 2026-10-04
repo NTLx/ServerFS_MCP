@@ -153,8 +153,13 @@ class Overlapped(ctypes.Structure):
     ]
 
 
-class BridgePipeError(Exception):
-    """A Win32 failure on the Bridge pipe, carrying the raw code for classification only."""
+class BridgePipeError(OSError):
+    """A Win32 failure on the Bridge pipe, carrying the raw code for classification only.
+
+    It is an ``OSError`` on purpose: the shared ``AgentBridgeClient.call`` maps an I/O failure to
+    the frozen ``agent bridge is unavailable`` outcome, and the Win32 text that arrives here is a
+    generic system message — never a path, SID or credential (§11).
+    """
 
     def __init__(self, message: str, *, code: int = 0):
         super().__init__(f"{message} ({describe(code)})" if code else message)
