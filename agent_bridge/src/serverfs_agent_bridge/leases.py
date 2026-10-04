@@ -7,6 +7,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import private_state
 from .errors import BridgeError
 from .platform_seams import WRITER_LEASE, require_linux_seam
 
@@ -39,7 +40,8 @@ class WorkdirLease:
 
 class LeaseManager:
     def __init__(self, lock_dir: Path, *, shared_gid: int | None = None):
-        require_linux_seam(WRITER_LEASE)
+        # Owning the lock directory is private state, which Windows provides behind its own
+        # seam; only the advisory lock itself is still Linux-only (§3, Phase C).
         self.lock_dir = lock_dir
         if shared_gid is not None and (type(shared_gid) is not int or shared_gid < 0):
             raise ValueError("shared_gid must be a non-negative integer")
@@ -47,28 +49,23 @@ class LeaseManager:
         directory_mode = 0o750 if shared_gid is not None else 0o700
         file_mode = 0o640 if shared_gid is not None else 0o600
 
-        try:
-            lock_stat = self.lock_dir.lstat()
-        except FileNotFoundError:
-            self.lock_dir.mkdir(parents=True, exist_ok=True, mode=directory_mode)
-            lock_stat = self.lock_dir.lstat()
-        if stat.S_ISLNK(lock_stat.st_mode) or not stat.S_ISDIR(lock_stat.st_mode):
-            raise ValueError("lock_dir must be a real directory")
-        if lock_stat.st_uid != os.getuid():
-            raise ValueError("lock_dir must be owned by the bridge user")
-        if shared_gid is None:
-            if lock_stat.st_mode & 0o077:
-                raise ValueError("private lock_dir must be mode 0700")
-        else:
-            if lock_stat.st_mode & 0o027:
-                raise ValueError("shared lock_dir must not be group-writable or world-accessible")
-            if lock_stat.st_gid != shared_gid:
-                try:
-                    os.chown(self.lock_dir, -1, shared_gid)
-                except OSError as exc:
-                    raise ValueError("lock_dir group cannot be set to shared_gid") from exc
-        os.chmod(self.lock_dir, directory_mode)
-        self._prepare_lock_files(file_mode)
+        private_state.ensure_private_directory(
+            self.lock_dir,
+            mode=directory_mode,
+            shared_gid=shared_gid,
+            parents=True,
+            messages=private_state.DirectoryMessages(
+                not_a_directory="lock_dir must be a real directory",
+                not_owned="lock_dir must be owned by the bridge user",
+                private_mode="private lock_dir must be mode 0700",
+                shared_mode="shared lock_dir must not be group-writable or world-accessible",
+                group_change_failed="lock_dir group cannot be set to shared_gid",
+            ),
+        )
+        if not private_state.WINDOWS:
+            # The slot artifacts themselves are the writer lease's design space, and Phase C
+            # decides their names; the directory they live in is already private state.
+            self._prepare_lock_files(file_mode)
 
     def _prepare_lock_files(self, mode: int) -> None:
         for slot in range(1, 17):
@@ -76,7 +73,7 @@ class LeaseManager:
             try:
                 fd = os.open(
                     path,
-                    os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+                    private_state.open_flags("read-write", create=True),
                     mode,
                 )
             except OSError as exc:
@@ -95,13 +92,14 @@ class LeaseManager:
                 os.close(fd)
 
     def acquire_exclusive(self, slot: int) -> WorkdirLease:
+        require_linux_seam(WRITER_LEASE)
         if type(slot) is not int or not 1 <= slot <= 16:
             raise BridgeError("INVALID_WORKDIR_SLOT", "workdir slot must be between 1 and 16")
         path = self.lock_dir / f"{slot:02d}.lock"
         try:
             fd = os.open(
                 path,
-                os.O_RDWR | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+                private_state.open_flags("read-write"),
             )
         except OSError as exc:
             raise BridgeError("LOCK_PATH_UNSAFE", "workdir lease path is unavailable") from exc

@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 import os
 import secrets
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import private_state
 from .errors import BridgeError
-from .platform_seams import PRIVATE_STATE, require_linux_seam
 from .util import utc_now
 
 
@@ -23,32 +22,22 @@ class ActiveGuard:
 
 class ActiveGuardManager:
     def __init__(self, lock_dir: Path, *, shared_gid: int | None = None):
-        require_linux_seam(PRIVATE_STATE)
         self.guard_dir = lock_dir / "active"
         directory_mode = 0o750 if shared_gid is not None else 0o700
         file_mode = 0o640 if shared_gid is not None else 0o600
         self.file_mode = file_mode
         self.shared_gid = shared_gid
-        try:
-            directory_stat = self.guard_dir.lstat()
-        except FileNotFoundError:
-            self.guard_dir.mkdir(mode=directory_mode)
-            directory_stat = self.guard_dir.lstat()
-        if stat.S_ISLNK(directory_stat.st_mode) or not stat.S_ISDIR(directory_stat.st_mode):
-            raise ValueError("active guard directory must be a real directory")
-        if directory_stat.st_uid != os.getuid():
-            raise ValueError("active guard directory must be owned by the bridge user")
-        if shared_gid is None:
-            if directory_stat.st_mode & 0o077:
-                raise ValueError("private active guard directory must be mode 0700")
-        else:
-            if directory_stat.st_mode & 0o027:
-                raise ValueError(
-                    "shared active guard directory must not be group-writable or public"
-                )
-            if directory_stat.st_gid != shared_gid:
-                os.chown(self.guard_dir, -1, shared_gid)
-        os.chmod(self.guard_dir, directory_mode)
+        private_state.ensure_private_directory(
+            self.guard_dir,
+            mode=directory_mode,
+            shared_gid=shared_gid,
+            messages=private_state.DirectoryMessages(
+                not_a_directory="active guard directory must be a real directory",
+                not_owned="active guard directory must be owned by the bridge user",
+                private_mode="private active guard directory must be mode 0700",
+                shared_mode="shared active guard directory must not be group-writable or public",
+            ),
+        )
 
     def create(
         self,
@@ -104,7 +93,7 @@ class ActiveGuardManager:
             file_stat = path.lstat()
         except FileNotFoundError:
             return None
-        if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
+        if not private_state.state_entry_is_regular(file_stat):
             raise BridgeError("WORKDIR_RECOVERY_REQUIRED", "active guard path is unsafe")
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -151,15 +140,15 @@ class ActiveGuardManager:
             + "\n"
         ).encode("utf-8")
         tmp = self.guard_dir / f".{path.name}.{secrets.token_hex(8)}.tmp"
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        flags = private_state.open_flags("write", create=True, exclusive=True)
         fd = -1
         try:
             fd = os.open(tmp, flags, self.file_mode)
             os.write(fd, encoded)
             os.fsync(fd)
-            os.fchmod(fd, self.file_mode)
-            if self.shared_gid is not None:
-                os.fchown(fd, -1, self.shared_gid)
+            private_state.apply_private_file_mode(
+                fd, mode=self.file_mode, shared_gid=self.shared_gid
+            )
             os.close(fd)
             fd = -1
             if create_only and (path.exists() or path.is_symlink()):
