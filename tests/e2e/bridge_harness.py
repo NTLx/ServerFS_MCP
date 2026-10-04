@@ -1,7 +1,8 @@
 """Bridge-side process for the two-process MCP <-> Bridge E2E harness.
 
 Run with the **agent_bridge** environment; the driver (``run_e2e.py``) launches
-it as a subprocess and speaks to it over a real AF_UNIX socket:
+it as a subprocess and speaks to it over the platform's local endpoint — a real AF_UNIX socket
+on Linux, a real Named Pipe on Windows:
 
     agent_bridge/.venv/bin/python tests/e2e/bridge_harness.py \
         --socket ... --lock-dir ... --state-dir ... --workdir ...
@@ -11,6 +12,10 @@ runtime name ``codex`` onto the deterministic ``FakeAdapter`` so the MCP
 surface -- whose public allowlist is exactly codex/claude/qoder -- can be driven end
 to end without a provider. The production ``FakeAdapter`` keeps
 ``name == "fake"`` and is never added to the MCP runtime allowlist.
+
+``--read-only`` serves a review workdir instead of a workspace-write one. Linux ignores the
+distinction, but on Windows the writer lease is Phase C: a workspace-write task must fail
+closed there, so the Windows E2E drives review tasks, which need no lease.
 """
 
 from __future__ import annotations
@@ -32,11 +37,22 @@ READY_LINE = "BRIDGE_READY"
 
 
 class CodexNamedFakeAdapter(FakeAdapter):
-    """Test-only runtime mapping: public name ``codex`` runs the fake adapter."""
+    """Test-only runtime mapping: a chosen public runtime name runs the fake adapter.
+
+    ``list_runtimes`` reports ``adapter.name``, and ``submit_task`` looks the adapter up by that
+    same string, so the mapping has to change the name and not only the registry key. The default
+    stays ``codex`` for the MCP-surface driver, whose public allowlist is codex/claude/qoder; a
+    raw-RPC driver passes ``fake`` so it can submit the review profile, which the frozen contract
+    refuses for a native runtime name.
+    """
+
+    def __init__(self, name: str = "codex") -> None:
+        super().__init__()
+        self._name = name
 
     @property
     def name(self) -> str:
-        return "codex"
+        return self._name
 
 
 async def _serve(args: argparse.Namespace) -> None:
@@ -44,19 +60,31 @@ async def _serve(args: argparse.Namespace) -> None:
         slot=1,
         alias=WORKDIR_ALIAS,
         host_path=args.workdir,
-        mode=AgentMode.WORKSPACE_WRITE,
-        runtimes=frozenset({"codex"}),
-        read_only=False,
+        mode=AgentMode.REVIEW if args.read_only else AgentMode.WORKSPACE_WRITE,
+        runtimes=frozenset({args.runtime_name}),
+        read_only=args.read_only,
     )
     service = BridgeService(
         store=TaskStore(args.state_dir),
         policies=PolicyRegistry([policy]),
-        adapters={"codex": CodexNamedFakeAdapter()},
+        adapters={args.runtime_name: CodexNamedFakeAdapter(args.runtime_name)},
         lease_manager=LeaseManager(args.lock_dir),
-        limits=BridgeLimits(task_timeout_seconds=60, interaction_timeout_seconds=1),
+        limits=BridgeLimits(
+            task_timeout_seconds=60,
+            interaction_timeout_seconds=1,
+            # A response over this bound goes to the result spool instead of staying inline, so
+            # the driver can exercise the spooled path without a prompt larger than the Agent
+            # prompt limit allows.
+            max_final_response_bytes=args.max_final_response_bytes,
+            result_preview_bytes=min(65_536, args.max_final_response_bytes),
+        ),
     )
     await service.start()
-    server = BridgeProtocolServer(service=service, socket_path=args.socket)
+    server = BridgeProtocolServer(
+        service=service,
+        socket_path=args.socket,
+        pipe_name=args.pipe_name,
+    )
     await server.start()
     print(READY_LINE, flush=True)
     try:
@@ -68,10 +96,28 @@ async def _serve(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Bridge process for the MCP E2E harness")
-    parser.add_argument("--socket", type=Path, required=True)
+    endpoint = parser.add_mutually_exclusive_group(required=True)
+    endpoint.add_argument("--socket", type=Path)
+    endpoint.add_argument("--pipe-name", help="Windows Named Pipe endpoint, e.g. \\\\.\\pipe\\name")
     parser.add_argument("--lock-dir", type=Path, required=True)
     parser.add_argument("--state-dir", type=Path, required=True)
     parser.add_argument("--workdir", type=Path, required=True)
+    parser.add_argument(
+        "--runtime-name",
+        default="codex",
+        help="public runtime name the FakeAdapter answers to; a raw-RPC driver uses fake",
+    )
+    parser.add_argument(
+        "--read-only",
+        action="store_true",
+        help="serve a review workdir, which needs no writer lease",
+    )
+    parser.add_argument(
+        "--max-final-response-bytes",
+        type=int,
+        default=262_144,
+        help="inline response bound; a longer answer goes to the result spool",
+    )
     args = parser.parse_args()
     asyncio.run(_serve(args))
 
