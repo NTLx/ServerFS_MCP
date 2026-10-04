@@ -487,7 +487,7 @@ def register_tools(
             )
             raise err from exc
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError, OSError) as exc:
-            err = _fs_error(exc, workdir, path)
+            err = fs_error(exc, workdir, path)
             _audit(
                 "list_directory",
                 t0,
@@ -575,7 +575,7 @@ def register_tools(
             )
             raise err from exc
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError, OSError) as exc:
-            err = _fs_error(exc, workdir, path)
+            err = fs_error(exc, workdir, path)
             _audit(
                 "find_files",
                 t0,
@@ -669,7 +669,7 @@ def register_tools(
             )
             raise err from exc
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError, OSError) as exc:
-            err = _fs_error(exc, workdir, path)
+            err = fs_error(exc, workdir, path)
             _audit(
                 "search_text",
                 t0,
@@ -763,7 +763,7 @@ def register_tools(
             )
             raise
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError, OSError) as exc:
-            err = _fs_error(exc, workdir, path)
+            err = fs_error(exc, workdir, path)
             _audit(
                 "stat_file",
                 t0,
@@ -893,7 +893,7 @@ def register_tools(
                 )
                 raise err from exc
             except OSError as exc:
-                err = _fs_error(exc, workdir, path)
+                err = fs_error(exc, workdir, path)
                 _audit(
                     "download_binary_file",
                     t0,
@@ -1246,7 +1246,7 @@ def register_tools(
         return _run_mutation("delete_directory", workdir, path, t0, body)
 
 
-def _fs_error(exc: OSError, workdir: str, path: str) -> ToolError:
+def fs_error(exc: OSError, workdir: str, path: str) -> ToolError:
     """Map an OS-level failure to a coded ToolError (no internal paths)."""
     if isinstance(exc, FileNotFoundError):
         return ToolError(f"PATH_NOT_FOUND: {workdir}:{path} does not exist")
