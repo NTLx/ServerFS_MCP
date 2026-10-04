@@ -31,8 +31,8 @@ lock can be taken on a read-only handle — because a "no" would silently break 
 ## 2. Method
 
 Throwaway `ctypes` harness under `%TEMP%\serverfs-phase0a\` (`probe2`, `probe3`, `probe4`, `probe6`,
-`probe7` and the raw `run*.log` / `work*\matrix.json` outputs). It is never committed and is removed
-when Phase 0 closes. Contention is measured between **real separate processes**: a holder child
+`probe7` and the raw `run*.log` / `work*\matrix.json` outputs). It is never committed; it is kept
+under `%TEMP%` while the Phase 0 review is open and discarded afterwards. Contention is measured between **real separate processes**: a holder child
 acquires and is then killed with `TerminateProcess` (no cleanup runs), and contender children report
 each stage (`open`, `lock`, `read`, `write`, `rename`, `delete`) with the Win32 error code. Every
 contending call has a hard
