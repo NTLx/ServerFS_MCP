@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from platform_contract import linux_only
 from serverfs_agent_bridge.adapters.base import (
     AdapterResult,
     ReconcileResult,
@@ -22,6 +23,10 @@ from serverfs_agent_bridge.protocol import BridgeProtocolServer
 from serverfs_agent_bridge.service import BridgeLimits, BridgeService
 from serverfs_agent_bridge.store import TaskStore
 from serverfs_agent_bridge.util import utc_after, utc_before
+
+pytestmark = linux_only(
+    "reliability evidence is written through UID/mode private state and a flock lease"
+)
 
 
 class LargeResultAdapter(FakeAdapter):

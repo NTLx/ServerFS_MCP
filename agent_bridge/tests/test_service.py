@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import serverfs_agent_bridge.service as service_module
+from platform_contract import require_linux_kernel
 from serverfs_agent_bridge.adapters import FakeAdapter
 from serverfs_agent_bridge.adapters.base import AdapterResult
 from serverfs_agent_bridge.errors import BridgeError
@@ -22,6 +23,7 @@ from serverfs_agent_bridge.store import TaskStore
 
 def make_service(tmp_path: Path) -> BridgeService:
     repo = tmp_path / "repo"
+    require_linux_kernel("a real Bridge service owns a UID/mode state dir and a flock lease dir")
     repo.mkdir()
     policies = PolicyRegistry(
         [

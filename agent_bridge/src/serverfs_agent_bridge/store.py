@@ -19,6 +19,7 @@ from .models import (
     TaskRecord,
     TaskStatus,
 )
+from .platform_seams import PRIVATE_STATE, require_linux_seam
 from .state import validate_transition
 from .util import utc_now
 
@@ -32,6 +33,7 @@ _UNSET = _Unset()
 
 class TaskStore:
     def __init__(self, state_dir: Path):
+        require_linux_seam(PRIVATE_STATE)
         self.state_dir = state_dir
         try:
             state_stat = self.state_dir.lstat()

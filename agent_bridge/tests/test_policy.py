@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from platform_contract import linux_only
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.models import AgentMode
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy, redact_host_path
@@ -53,6 +54,30 @@ def test_workspace_write_requires_writable_workdir(tmp_path: Path) -> None:
             runtimes=frozenset({"fake"}),
             read_only=True,
         )
+
+
+@pytest.mark.parametrize(
+    "relative_cwd",
+    [
+        "/absolute",
+        "../outside",
+        "..\\outside",
+        "C:\\project",
+        "D:/foo",
+        "\\\\server\\share",
+        "sub\\nested",
+    ],
+)
+def test_native_and_traversal_cwd_forms_are_refused(tmp_path: Path, relative_cwd: str) -> None:
+    """§8.2: relative_cwd is a virtual "/" path on every platform, so host
+    absolute (POSIX, drive, UNC), backslash and traversal forms never become a
+    cwd — including when such a path would happen to resolve inside the workdir."""
+    registry = policy(tmp_path, mode=AgentMode.WORKSPACE_WRITE, read_only=False)
+    with pytest.raises(BridgeError) as exc:
+        registry.authorize(
+            workdir="repo", runtime="fake", profile="review", relative_cwd=relative_cwd
+        )
+    assert exc.value.code == "INVALID_WORKDIR_PATH"
 
 
 def test_relative_cwd_confined_to_root(tmp_path: Path) -> None:
@@ -105,6 +130,7 @@ def test_host_path_redaction(tmp_path: Path) -> None:
     assert redact_host_path(tmp_path, tmp_path.parent / "secret.txt") == "<outside-workdir>"
 
 
+@linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
 def test_symlink_escape_is_rejected(tmp_path: Path) -> None:
     outside = tmp_path.parent / f"{tmp_path.name}-outside"
     outside.mkdir()

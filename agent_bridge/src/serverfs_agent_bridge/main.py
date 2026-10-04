@@ -7,7 +7,7 @@ import asyncio
 import signal
 from pathlib import Path
 
-from .adapters import ClaudeAdapter, CodexAdapter, FakeAdapter, QoderAdapter
+from . import adapters as runtime_adapters
 from .config import BridgeConfig
 from .leases import LeaseManager
 from .preflight import JevTaskPreflight
@@ -23,16 +23,16 @@ async def _serve(
 ) -> None:
     adapters = {}
     if config.enable_fake_runtime:
-        fake = FakeAdapter()
+        fake = runtime_adapters.FakeAdapter()
         adapters[fake.name] = fake
     if config.codex.enabled:
-        codex = CodexAdapter(config.codex)
+        codex = runtime_adapters.CodexAdapter(config.codex)
         adapters[codex.name] = codex
     if config.claude.enabled:
-        claude = ClaudeAdapter(config.claude)
+        claude = runtime_adapters.ClaudeAdapter(config.claude)
         adapters[claude.name] = claude
     if config.qoder.enabled:
-        qoder = QoderAdapter(config.qoder)
+        qoder = runtime_adapters.QoderAdapter(config.qoder)
         adapters[qoder.name] = qoder
 
     preflight = (

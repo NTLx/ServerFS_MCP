@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import BridgeError
+from .platform_seams import LOCAL_IPC, require_linux_seam
 from .service import BridgeService
 
 PROTOCOL_VERSION = 1
@@ -30,6 +31,7 @@ class BridgeProtocolServer:
         allowed_peer_uid: int | None = None,
         allowed_peer_gid: int | None = None,
     ):
+        require_linux_seam(LOCAL_IPC)
         self.service = service
         self.socket_path = socket_path
         if not self.socket_path.is_absolute():

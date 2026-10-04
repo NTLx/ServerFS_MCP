@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import BridgeError
+from .platform_seams import PRIVATE_STATE, require_linux_seam
 from .util import utc_now
 
 
@@ -22,6 +23,7 @@ class ActiveGuard:
 
 class ActiveGuardManager:
     def __init__(self, lock_dir: Path, *, shared_gid: int | None = None):
+        require_linux_seam(PRIVATE_STATE)
         self.guard_dir = lock_dir / "active"
         directory_mode = 0o750 if shared_gid is not None else 0o700
         file_mode = 0o640 if shared_gid is not None else 0o600

@@ -66,6 +66,38 @@ jobs:
       - name: Test
         run: uv run pytest
 
+  # The root pytest configuration does not collect agent_bridge/tests, so the
+  # standalone Bridge gate runs as its own job (see AGENTS.md → Change protocol).
+  bridge-test:
+    name: Agent Bridge test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent_bridge
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format
+        run: uv run ruff format --check .
+
+      - name: Test
+        run: uv run pytest
+
   container-check:
     name: Container check
     if: github.event_name == 'pull_request'

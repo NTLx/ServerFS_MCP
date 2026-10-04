@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import BridgeError
+from .platform_seams import PRIVATE_STATE, require_linux_seam
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class ResultMetadata:
 
 class ResultSpool:
     def __init__(self, state_dir: Path):
+        require_linux_seam(PRIVATE_STATE)
         self.results_dir = state_dir / "results"
         try:
             directory_stat = self.results_dir.lstat()

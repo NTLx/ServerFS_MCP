@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from websockets.asyncio.server import unix_serve
 
+from platform_contract import require_linux_kernel
 from serverfs_agent_bridge.adapters.base import ReconcileResult
 from serverfs_agent_bridge.adapters.codex import CodexAdapter
 from serverfs_agent_bridge.config import CodexSettings
@@ -54,6 +55,7 @@ class MockCodexServer:
         self.native_responses: dict[str, dict[str, Any]] = {}
 
     async def start(self) -> None:
+        require_linux_kernel("the mock Codex daemon serves an AF_UNIX control socket")
         self.server = await unix_serve(self._handler, path=str(self.socket_path))
 
     async def close(self) -> None:
@@ -475,6 +477,7 @@ def make_service(
     event_idle_timeout_seconds: float | None = 2,
 ) -> BridgeService:
     repo = tmp_path / "repo"
+    require_linux_kernel("a real Bridge service owns a UID/mode state dir and a flock lease dir")
     repo.mkdir(exist_ok=True)
     adapter = CodexAdapter(
         CodexSettings(
