@@ -1,6 +1,6 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
-Status: Phase 0 CLOSED · Phase A CLOSED
+Status: Phase 0 CLOSED · Phase A CLOSED · Phase B CLOSED
 
 ```text
 0A PASS — LockFileEx
@@ -11,10 +11,12 @@ Status: Phase 0 CLOSED · Phase A CLOSED
 0F PASS — Runtime Egress Proxy
 A  PASS — portability foundation (root suite and Bridge suite run on Windows;
       Linux root + Linux Bridge gates green in CI)
+B  PASS — Windows Named Pipe IPC, measured client-SID peer identity and owner-SID/DACL
+      private state, with the Windows data home and a real two-process FakeAdapter E2E
 ```
 
-No Phase 0 gate or design decision is outstanding (§18). Phase B (Windows IPC and private state)
-is the next phase.
+No Phase 0 gate or design decision is outstanding (§18). Phase C (Windows writer lease and
+recovery) is the next phase.
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -1277,7 +1279,147 @@ Exit:
 
 A real Windows ServerFS process can invoke the Fake Bridge through the existing MCP Agent tool contract.
 
+Phase B closure (2026-10-05): **CLOSED-PASS** on Windows 11 x64 + local NTFS.
+
+Implemented — only the three frozen seams, plus the data home and the client half of the IPC seam:
+
+- **LOCAL_IPC** — `agent_bridge/src/serverfs_agent_bridge/windows_ipc.py` (a bounded pool of byte
+  Named Pipe instances behind a `StreamReader`/`StreamWriter` facade) on top of `windows_pipe.py`
+  (overlapped connect/read/write, `CancelIoEx`, bounded waits, peer measurement). The RPC core in
+  `protocol.py` is shared: same `PROTOCOL_VERSION`, envelope, method names, error vocabulary,
+  `MAX_REQUEST_BYTES`/`MAX_RESPONSE_BYTES` (§5, §16–§18).
+- **PEER_IDENTITY** — the first frame is read and buffered, then the client is impersonated, its
+  token SID/PID/session measured, `RevertToSelf` run in `finally`, and only then is the frame
+  dispatched (§9, §10). A peer that was never measured is refused. Authorization is the SID;
+  PID/session are recorded evidence (§11). The client half (`src/serverfs_mcp/windows_agent_pipe.py`,
+  reached from `agent_client.py` only on Windows) measures `GetNamedPipeServerProcessId` plus that
+  process's token SID and asserts it equals this process's own SID **before** writing a request
+  byte (§12). ctypes throughout — no new dependency, no private asyncio or multiprocessing API (§20).
+- **PRIVATE_STATE** — `private_state.py` converges the scattered POSIX owner/mode logic that used
+  to be restated in `store.py`, `recovery.py`, `result_spool.py`, `leases.py` and the spool reader
+  (§24). Linux semantics are byte-identical. Windows creates each object with an explicit
+  protected descriptor (`D:P(A;OICI;GA;;;<sid>)`), verifies owner SID + ACE set + reparse state,
+  and **never repairs** an object it did not create (§25–§29); SQLite `-wal`/`-shm` companions are
+  verified against the protected state directory's inheritance.
+- **Data home** — `data_home.py` mirrors the v0.10 `SERVERFS_DATA_HOME` / `%LOCALAPPDATA%\ServerFS`
+  contract Bridge-side with parity tests instead of a cross-package import, and fails closed when
+  neither is configured; no `platformdirs`, no cwd/TEMP guess (§22, §23).
+- **Pipe name** — `local_ipc.derive_pipe_name` hashes the user SID into
+  `\\.\pipe\serverfs-agent-bridge-v1-<16 hex>`; the name is disambiguation, never authentication
+  (§6). `FILE_FLAG_FIRST_PIPE_INSTANCE` is claimed by the process's first instance and a collision
+  fails closed with `PIPE_NAME_UNAVAILABLE` (§7).
+- No `WindowsBridgeService`/`WindowsTaskStore`/`WindowsAgentService` and no parallel core were
+  added (§4); no new MCP tool was introduced (§34); the writer lease, process containment, native
+  `[agent]` TOML lifecycle, runtime egress proxy, doctor and real provider runtimes remain in their
+  own phases (§3, §33).
+
+Executed gates:
+
+| Gate | Result |
+| --- | --- |
+| Windows root `ruff check` / `ruff format --check` | All checks passed / 208 files already formatted — VERIFIED |
+| Windows root `uv run pytest` | **912 passed, 127 skipped, 1 xfailed** — VERIFIED (Phase A recorded 905/127/1: the delta is exactly the 7 new Windows Agent-E2E cases, no skip lost, no failure) |
+| Windows v0.10 native set (`test_native_windows`, `test_native_config`, `test_native_tunnel`, `test_windows_backend`, `test_windows_mcp_e2e`, `test_windows_native_stdio`, `test_windows_path_acceptance`, `test_doctor`, `test_cli`) | **204 passed, 2 skipped** — VERIFIED |
+| Windows `agent_bridge` `ruff check` / `ruff format --check` | All checks passed / 56 files already formatted — VERIFIED |
+| Windows `agent_bridge` `uv run pytest` | **129 passed, 93 skipped** — VERIFIED (Phase A: 51/103; the 52 moved cases are the store's private-state contract, the local-IPC contract and the new Windows seam suites) |
+| Linux root suite in a `python:3.12` container from a git-tracked + Phase B working tree, `ripgrep` installed: `ruff check`, `ruff format --check` | All checks passed / 208 files already formatted — VERIFIED |
+| Linux root suite collected-test comparison against `origin/main` in the identical image | main 1080 → Phase B 1087, and the per-file diff is exactly one added line (`tests/test_windows_mcp_agent_e2e.py: 7`). No Linux file or case left the suite, so §35's no-coverage-loss requirement holds — VERIFIED |
+| Linux root `pytest` in that container | **Indicative only.** Repeated runs of the same image and tree ranged 1070–1097 passed / 13 skipped with 0–6 failures, the failures always in `tests/test_agent_deployment.py` (Phase E `systemctl` and `set -o pipefail` script cases) or `tests/test_revision.py` opacity — container-environment cases, not reproducible evidence. One run of the Phase B tree finished at 1070 passed / 13 skipped with no failures. The authoritative Linux totals are the CI job in §39 — **Not verified here** |
+| Linux `agent_bridge` suite in the same container: `ruff check`, `ruff format --check`, `pytest` | All checks passed / 56 files already formatted / **162 passed, 0 failed** in two independent runs — VERIFIED (§35's 154-passed baseline plus the 8 new platform-neutral `test_local_ipc_contract.py` cases; the four Windows-only files are `collect_ignore`d on Linux by the new `agent_bridge/tests/conftest.py`) |
+| Linux root pass/skip totals and the CI `Container / Test`, `Container / Agent Bridge test`, `Container check` and `windows-native` jobs | To be recorded from the Phase B PR's CI run (§39) — **Not verified here** until that run is green |
+| `bash -n deployment/agent-bridge/*.sh` | Not run — no Phase E shell script changed |
+| `docker compose config`, image build | Not run — no compose or Dockerfile change in Phase B |
+
+Security evidence, by requirement:
+
+- §6/§7: `agent_bridge/tests/test_local_ipc_contract.py` (SID-derived name, canonical-SID refusal,
+  determinism), `test_windows_pipe_ipc.py::test_first_instance_collision_fails_closed`.
+- §8: `test_explicit_dacl_admits_the_expected_identity` and `test_explicit_dacl_denies_a_non_trustee`
+  (the pipe DACL, not the name, is the gate; the default descriptor's Everyone/Anonymous read
+  grant is replaced). The second is the automated negative proof; a real cross-account logon is
+  recorded below as not verified.
+- §9/§10/§11/§12: `test_windows_peer_identity.py` — impersonation before a completed read fails
+  with `ERROR_CANT_IMPERSONATE_NAMED_PIPE`, identity is measured after it, `thread_is_impersonating()`
+  is false on the same thread after success, after a failed impersonation, and after the caller's
+  own assertion raises; PID/session are measured both directions; the client reads the server's
+  SID. `test_unauthorized_peer_sid_is_refused_before_dispatch` shows an unmeasured/foreign SID is
+  answered with `PEER_NOT_AUTHORIZED` and no `request_id`, i.e. nothing was dispatched. `§11`
+  also has `test_the_peer_identity_never_prints_its_sid`.
+- §13–§19: `test_windows_pipe_ipc.py` — pool bounds and replenishment, bounded connect retry,
+  exact-1 MiB dispatch vs 1 MiB+1 → `REQUEST_TOO_LARGE`, `INVALID_REQUEST` on malformed JSON,
+  split/coalesced frames, partial-frame idle release, client close mid-frame, server stop and
+  restart reclaiming the name.
+- §22–§30: `test_windows_private_state.py` — data home, override, missing-`LOCALAPPDATA` fail
+  closed, protected creation of directories/files/ancestors, pre-planted broad or foreign-trustee
+  descriptors refused without repair, junction reparse points refused at the target and along the
+  parent chain, SQLite `-wal`/`-shm` confinement, spool directory/file protection, active-guard
+  protection, `shared_gid` refused on Windows, and the writer lease still failing closed.
+- §31/§32/§34: `agent_bridge/tests/test_windows_pipe_e2e.py` drives a real Bridge **subprocess**
+  over the real pipe through `runtime.list`, `runtime.models`, `task.submit`, `task.get`,
+  `task.events`, `task.result.read` (spooled, multi-chunk, and a 60 KB single frame reassembled),
+  approval, question, message, cancel and idempotent replay, then asserts the SQLite state and the
+  results tree. `tests/test_windows_mcp_agent_e2e.py` drives the published ten MCP tools over the
+  same pipe against the same harness process.
+
+Measured platform facts that changed a Phase B design assumption:
+
+- A directory created by another process under `%TEMP%` on this machine inherits grants for two
+  foreign user SIDs in addition to SYSTEM, Administrators and SELF. §25 forbids repairing an
+  existing object, so the E2E fixtures let the Bridge create its own state/lock trees, and
+  `_assert_windows_private` tolerates exactly `S-1-5-18`, `S-1-5-32-544` and `S-1-3-4` (SELF, which
+  resolves to the owner §26 has already asserted) on an object the Bridge did not create. A foreign
+  user SID is still refused. `windows_security.SYSTEM_TRUSTEES` carries the reason.
+- The impersonated client token is `TokenImpersonation` at `SecurityImpersonation` level, and the
+  client-side read of a same-process server reports that process's own SID — both are asserted in
+  the identity suite rather than assumed.
+- `CreateFileW` with `CREATE_NEW` reports `ERROR_ACCESS_DENIED`, not `ERROR_FILE_EXISTS`, when the
+  path already exists and its descriptor denies this create; that code is therefore the §25
+  pre-planting signal, and `create_private_file` returns "already exists" for it so the caller
+  verifies and refuses instead of repairing.
+
+Not verified, with reasons:
+
+- Cross-account pipe and NTFS denial (a second real Windows user logon) — §8 allowed the DACL-based
+  negative proof instead; it stays a Phase H/acceptance item.
+- A file-level symlink reparse point: creating one needs Developer Mode or privilege, so
+  `test_symlink_as_final_state_object_fails_closed` skips with that reason on this host and the
+  junction cases carry the §28 evidence.
+- A *completed* task through the ten MCP tools on Windows. The frozen rule in
+  `agent_tools._authorize_submit` requires a native runtime name to submit with `workspace-write`,
+  and that profile is the writer lease's — Phase C. The lifecycle is instead proven over the same
+  pipe and the same subprocess with the review profile, and the MCP case asserts the lease seam's
+  own `BRIDGE_PLATFORM_UNSUPPORTED` answer arriving back through the published surface.
+- Supervisor PID binding (§12's Phase D strengthening), `SERVERFS_DATA_HOME` production rendering,
+  and any live ChatGPT → Tunnel acceptance, which belongs to the maintainer.
+
 ### Phase C — writer lease and recovery
+
+Recorded prerequisites (maintainer decision 2026-10-05, from the Phase A closure findings; Phase B
+did not touch either, because both are mutation/kernel semantics rather than IPC or private state):
+
+- **Error precedence must be unified before the lease lands.** A directory target combined with a
+  stale `expected_revision` answers `NOT_A_FILE` on Linux and `REVISION_CONFLICT` on the Windows
+  native kernel. Phase C unifies this backend-neutrally with the **type check first**, so a
+  directory returns `NOT_A_FILE` on both platforms regardless of revision state.
+- **Revision precision is a real correctness risk, and test settling does not fix it.** Measured on
+  the native kernel: 17 of 20 same-size external rewrites kept an identical revision token, because
+  the public Windows revision material is volume serial, `FILE_ID`, attributes, size, link count and
+  `LastWriteTime`, and `LastWriteTime` has a coarse sampled resolution. `settle_file_time()` in the
+  tests only hides this for ServerFS's own mutations; it does nothing for an external non-ServerFS
+  writer, and the writer lease does not cover that writer either. Phase C must therefore first run
+  a revision experiment across `LastWriteTime`, `ChangeTime`, `FILE_ID`, size, attributes and link
+  count for the mutation and external-write events it cares about, and must prioritize
+  **stale-mutation safety over rename stability**. If `ChangeTime` is not sufficient, evaluate
+  handle-based, bounded, documented and public O(1) change signals (for example the USN journal)
+  with no admin-only assumption and no raw host identifier exposure; if none is viable, stop and
+  report rather than ship a weaker guard. Do not adopt a SHA-256 of full contents on every `stat`
+  without a new formal performance and contract decision. `settle_file_time()` stays a temporary
+  Phase A test mechanism to be re-evaluated after Phase C, and the revision token *shape* decision
+  waits for Phase C as well.
+- **Phase B adds one exit requirement to this phase:** the ten MCP Agent tools cannot complete a
+  task on Windows until the lease exists, because `_authorize_submit` requires a native runtime name
+  to use `workspace-write`. Phase C's acceptance therefore includes a *completed* task through the
+  published surface on Windows, not only the lease tests below.
 
 Implement:
 
@@ -1501,6 +1643,15 @@ Phase A status (2026-10-05): **CLOSED-PASS** (§15 Phase A closure). Windows roo
 359 passed / 3 skipped, the Bridge core imports on Windows with the §3 seams failing closed
 (51 portable tests pass, 103 Linux-contract tests classified), and both Linux gates are green in CI
 (root 1074 passed / 11 skipped; Bridge 154 passed, newly a CI job). Phase B is next and unblocked.
+Phase B status (2026-10-05): **CLOSED-PASS** (§15 Phase B closure). The three frozen seams
+`LOCAL_IPC`, `PEER_IDENTITY` and `PRIVATE_STATE` now have real Windows twins behind them, plus the
+Windows data home and the client half of the IPC seam, and a real Windows Bridge **subprocess**
+serves FakeAdapter tasks over a real Named Pipe. Windows root 912 passed / 127 skipped / 1 xfailed
+(Phase A: 905 / 127 / 1 — the delta is the 7 new E2E cases), Windows Bridge 129 passed / 93 skipped
+(Phase A: 51 / 103), Linux Bridge 162 passed in the matched container with the §35 154 baseline
+intact, and no Windows test weakened a Linux contract. `WRITER_LEASE` and `PROCESS_CONTAINMENT`
+still fail closed, and Phase C has three recorded prerequisites (§15 Phase C). Phase C is next and
+unblocked.
 The WorkPC deployment requirement — Codex and
 OpenAI traffic only reachable through an outbound proxy — is now a measured product contract instead of
 ambient developer-shell state, and Phase D may not implement an environment builder that contradicts
