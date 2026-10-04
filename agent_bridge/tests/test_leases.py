@@ -5,8 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from platform_contract import linux_only
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.leases import LeaseManager
+
+pytestmark = linux_only("workdir leases are the flock writer-lease backend")
 
 
 def test_exclusive_lease_rejects_second_holder(tmp_path: Path) -> None:

@@ -6,8 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from platform_contract import linux_only
 from serverfs_agent_bridge.config import BridgeConfig
 from serverfs_agent_bridge.main import _serve
+
+pytestmark = linux_only("the Bridge entry point starts the Unix-socket RPC server")
 
 
 @pytest.mark.asyncio

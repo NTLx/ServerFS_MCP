@@ -5,9 +5,12 @@ from pathlib import Path
 
 import pytest
 
+from platform_contract import linux_only
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.models import TaskStatus
 from serverfs_agent_bridge.store import TaskStore
+
+pytestmark = linux_only("the task store guards its state directory by owner UID and mode bits")
 
 
 def make_task(store: TaskStore, task_id: str = "agt_test"):

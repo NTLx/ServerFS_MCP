@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from platform_contract import linux_only
 from serverfs_agent_bridge.adapters import FakeAdapter
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.leases import LeaseManager
@@ -16,6 +17,8 @@ from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
 from serverfs_agent_bridge.protocol import MAX_REQUEST_BYTES, BridgeProtocolServer
 from serverfs_agent_bridge.service import BridgeService
 from serverfs_agent_bridge.store import TaskStore
+
+pytestmark = linux_only("the RPC server is a Unix socket guarded by SO_PEERCRED")
 
 
 def make_protocol_service(tmp_path: Path) -> BridgeService:

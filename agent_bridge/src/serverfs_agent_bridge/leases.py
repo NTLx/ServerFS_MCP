@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-import fcntl
 import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import BridgeError
+from .platform_seams import WRITER_LEASE, require_linux_seam
+
+try:
+    import fcntl
+except ModuleNotFoundError:  # §3 writer-lease seam: no POSIX locking off Linux
+    fcntl = None
 
 
 @dataclass
@@ -34,6 +39,7 @@ class WorkdirLease:
 
 class LeaseManager:
     def __init__(self, lock_dir: Path, *, shared_gid: int | None = None):
+        require_linux_seam(WRITER_LEASE)
         self.lock_dir = lock_dir
         if shared_gid is not None and (type(shared_gid) is not int or shared_gid < 0):
             raise ValueError("shared_gid must be a non-negative integer")

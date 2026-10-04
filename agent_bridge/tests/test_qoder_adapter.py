@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 import serverfs_agent_bridge.adapters.qoder as qoder_module
+from platform_contract import linux_only
 from serverfs_agent_bridge.adapters.qoder import QoderAdapter
 from serverfs_agent_bridge.config import QoderSettings
 from serverfs_agent_bridge.errors import BridgeError
@@ -16,6 +17,10 @@ from serverfs_agent_bridge.models import AgentMode
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
 from serverfs_agent_bridge.service import BridgeService
 from serverfs_agent_bridge.store import TaskStore
+
+pytestmark = linux_only(
+    "the Qoder test service stores tasks in UID/mode private state under a flock lease"
+)
 
 
 @dataclass

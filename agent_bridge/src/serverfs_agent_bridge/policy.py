@@ -10,6 +10,7 @@ from .errors import BridgeError
 from .models import KNOWN_RUNTIME_NAMES, AgentMode, AgentProfile
 
 _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+_DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:")
 _MAX_WORKDIR_SLOTS = 16
 
 
@@ -129,6 +130,14 @@ def resolve_relative_cwd(root: Path, relative_cwd: str) -> Path:
         raise BridgeError("INVALID_WORKDIR_PATH", "relative cwd must be a string")
     if "\x00" in relative_cwd:
         raise BridgeError("INVALID_WORKDIR_PATH", "relative cwd contains NUL")
+    # §8.2: relative_cwd is a virtual "/" path on every platform. A backslash or a
+    # drive prefix is native host-path syntax, and on Windows `Path("C:\\dir")`
+    # would otherwise be joined as an absolute path and accepted whenever it
+    # happened to land inside the workdir.
+    if "\\" in relative_cwd:
+        raise BridgeError("INVALID_WORKDIR_PATH", "relative cwd must use / separators")
+    if _DRIVE_PREFIX_RE.match(relative_cwd):
+        raise BridgeError("INVALID_WORKDIR_PATH", "relative cwd must not be a drive path")
     pure = PurePosixPath(relative_cwd or ".")
     if pure.is_absolute():
         raise BridgeError("INVALID_WORKDIR_PATH", "relative cwd must not be absolute")

@@ -8,7 +8,10 @@ from typing import Any
 import pytest
 from websockets.asyncio.server import unix_serve
 
+from platform_contract import linux_only
 from serverfs_agent_bridge.adapters.codex_transport import CodexConnection
+
+pytestmark = linux_only("the Codex App Server control socket is a Unix-domain socket")
 
 
 @pytest.mark.asyncio
