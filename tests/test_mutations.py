@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from typing import Any
 
 import pytest
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
@@ -18,6 +19,7 @@ from helpers import (
     read_write,
     registry_for,
 )
+from platform_contract import LINUX, linux_only
 from serverfs_mcp.config import Settings
 from serverfs_mcp.main import create_server
 from serverfs_mcp.workdirs import EffectiveWorkdirPolicy, Workdir
@@ -429,7 +431,7 @@ class TestMutationAudit:
 
     def test_edit_event_has_no_text(self, workdir, captured) -> None:
         srv = make_server(workdir, read_write_access=True)
-        (workdir.container_path / "a.txt").write_text("OLDVALUE\n")
+        (workdir.container_path / "a.txt").write_bytes(b"OLDVALUE\n")
         revision = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
         call_success(
             srv,
@@ -452,7 +454,7 @@ class TestMutationAudit:
 
     def test_delete_events(self, workdir, captured) -> None:
         srv = make_server(workdir, read_write_access=True)
-        (workdir.container_path / "a.txt").write_text("BYTES\n")
+        (workdir.container_path / "a.txt").write_bytes(b"BYTES\n")
         os.mkdir(workdir.container_path / "dir")
         revision = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
         call_success(
@@ -504,6 +506,7 @@ class TestMutationAudit:
             assert events[0]["success"] is True, tool
 
 
+@linux_only("durability is injected through the Linux fsync/FD pipeline (fdio)")
 class TestDurabilityReporting:
     """A directory fsync failure lands AFTER the entry is visible to readers.
     The mutation must be reported as what it is — done — with a warning for
@@ -592,12 +595,37 @@ class TestNoInternalLeak:
 
     def collect_errors(self, workdir) -> list[str]:
         srv = make_server(workdir, read_write_access=True, max_write_bytes=16, max_edits_per_call=1)
-        (workdir.container_path / "a.txt").write_text("SECRETCONTENT\n")
+        (workdir.container_path / "a.txt").write_bytes(b"SECRETCONTENT\n")
         os.mkdir(workdir.container_path / "dir")
         (workdir.container_path / "dir" / "child").write_text("x")
-        os.symlink("a.txt", workdir.container_path / "lnk")
-        os.mkfifo(workdir.container_path / "pipe")
         (workdir.container_path / "bin").write_bytes(b"\x00\x01SECRETBYTES")
+        posix_cases: list[tuple[str, dict[str, Any]]] = []
+        if LINUX:
+            # A symlink and a FIFO are the two POSIX special-file objects the
+            # error surface must code without leaking; the Windows native
+            # kernel covers its own reparse-point behaviour.
+            os.symlink("a.txt", workdir.container_path / "lnk")
+            os.mkfifo(workdir.container_path / "pipe")
+            posix_cases = [
+                (
+                    "edit_text_file",
+                    {
+                        "path": "lnk",
+                        "expected_revision": "v1:x",
+                        "edits": [{"old_text": "SECRETCONTENT", "new_text": "y"}],
+                    },
+                ),
+                (
+                    "edit_text_file",
+                    {
+                        "path": "pipe",
+                        "expected_revision": "v1:x",
+                        "edits": [{"old_text": "SECRETCONTENT", "new_text": "y"}],
+                    },
+                ),
+                ("delete_file", {"path": "lnk", "expected_revision": "v1:x"}),
+                ("delete_directory", {"path": "lnk", "expected_revision": "v1:x"}),
+            ]
         revision = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
         cases = [
             ("create_text_file", {"path": "a.txt", "content": "SECRETCONTENT"}),
@@ -611,22 +639,6 @@ class TestNoInternalLeak:
                 "edit_text_file",
                 {
                     "path": "ghost",
-                    "expected_revision": "v1:x",
-                    "edits": [{"old_text": "SECRETCONTENT", "new_text": "y"}],
-                },
-            ),
-            (
-                "edit_text_file",
-                {
-                    "path": "lnk",
-                    "expected_revision": "v1:x",
-                    "edits": [{"old_text": "SECRETCONTENT", "new_text": "y"}],
-                },
-            ),
-            (
-                "edit_text_file",
-                {
-                    "path": "pipe",
                     "expected_revision": "v1:x",
                     "edits": [{"old_text": "SECRETCONTENT", "new_text": "y"}],
                 },
@@ -656,11 +668,10 @@ class TestNoInternalLeak:
                 },
             ),
             ("delete_file", {"path": "dir", "expected_revision": "v1:x"}),
-            ("delete_file", {"path": "lnk", "expected_revision": "v1:x"}),
             ("delete_directory", {"path": "dir", "expected_revision": "v1:x"}),
-            ("delete_directory", {"path": "lnk", "expected_revision": "v1:x"}),
             ("delete_directory", {"path": "a.txt", "expected_revision": "v1:x"}),
             ("delete_directory", {"path": "ghost", "expected_revision": "v1:x"}),
+            *posix_cases,
         ]
         messages = []
         for tool, extra in cases:

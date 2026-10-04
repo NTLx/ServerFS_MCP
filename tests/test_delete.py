@@ -8,6 +8,9 @@ import socket
 import pytest
 
 from helpers import call_error, call_success, error_code, make_server
+from platform_contract import IS_ROOT as _IS_ROOT
+from platform_contract import LINUX as _LINUX
+from platform_contract import linux_only
 
 
 def seed(workdir, name: str, data: bytes = b"content\n") -> None:
@@ -118,6 +121,7 @@ class TestDeleteTargetRequirements:
         assert error_code(msg) == "NOT_A_FILE"
         assert (workdir.container_path / "sub").is_dir()
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_symlink_target(self, workdir) -> None:
         """A symlink is never followed, and never removed by delete_file."""
         srv = make_server(workdir, read_write_access=True)
@@ -130,6 +134,7 @@ class TestDeleteTargetRequirements:
         assert (workdir.container_path / "lnk").is_symlink()
         assert (workdir.container_path / "real.txt").read_text() == "target\n"
 
+    @linux_only("mkfifo special files are a POSIX object type")
     def test_fifo_target(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         os.mkfifo(workdir.container_path / "pipe")
@@ -139,6 +144,7 @@ class TestDeleteTargetRequirements:
         assert error_code(msg) == "UNSUPPORTED_FILE_TYPE"
         assert (workdir.container_path / "pipe").exists()
 
+    @linux_only("AF_UNIX sockets do not exist on Windows")
     def test_socket_target(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -151,6 +157,7 @@ class TestDeleteTargetRequirements:
         )
         assert error_code(msg) == "UNSUPPORTED_FILE_TYPE"
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_parent_is_a_symlink(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         os.mkdir(workdir.container_path / "real")
@@ -180,7 +187,7 @@ class TestDeleteTargetRequirements:
         )
         assert error_code(msg) == "ROOT_MUTATION_NOT_ALLOWED"
 
-    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permission bits")
+    @pytest.mark.skipif(not _LINUX or _IS_ROOT, reason="POSIX permission bits; root ignores them")
     def test_file_without_read_permission_is_refused(self, workdir) -> None:
         """§51: unlink permission alone must not let the agent delete a file
         it cannot read."""

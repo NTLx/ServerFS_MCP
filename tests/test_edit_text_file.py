@@ -9,6 +9,7 @@ import stat as stat_module
 import pytest
 
 from helpers import call_error, call_success, error_code, make_server
+from platform_contract import linux_only, windows_difference
 
 BOM = b"\xef\xbb\xbf"
 
@@ -143,7 +144,7 @@ class TestEditTextFidelity:
             revision_of(srv, "cn.txt"),
             [{"old_text": "端口 8080", "new_text": "端口 9090"}],
         )
-        assert (workdir.container_path / "cn.txt").read_text() == "配置项：端口 9090\n"
+        assert (workdir.container_path / "cn.txt").read_bytes() == "配置项：端口 9090\n".encode()
 
     def test_bom_is_preserved(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
@@ -408,6 +409,10 @@ class TestEditTargetRequirements:
         assert error_code(msg) == "PATH_NOT_FOUND"
         assert sorted(p.name for p in (workdir.container_path / "config").iterdir()) == ["app.yaml"]
 
+    @windows_difference(
+        "the native kernel checks the revision guard before the target type, so a "
+        "stale revision on a directory reports REVISION_CONFLICT instead of NOT_A_FILE"
+    )
     def test_directory_target(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         os.mkdir(workdir.container_path / "sub")
@@ -423,6 +428,7 @@ class TestEditTargetRequirements:
         )
         assert error_code(msg) == "NOT_A_FILE"
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_symlink_target(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         seed(workdir, "real.txt", "content\n")
@@ -440,6 +446,7 @@ class TestEditTargetRequirements:
         assert error_code(msg) == "SYMLINK_NOT_ALLOWED"
         assert (workdir.container_path / "real.txt").read_text() == "content\n"
 
+    @linux_only("mkfifo special files are a POSIX object type")
     def test_fifo_target(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         os.mkfifo(workdir.container_path / "pipe")
@@ -455,6 +462,7 @@ class TestEditTargetRequirements:
         )
         assert error_code(msg) == "UNSUPPORTED_FILE_TYPE"
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_parent_is_a_symlink(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         os.mkdir(workdir.container_path / "real")
@@ -697,6 +705,7 @@ class TestEditPolicy:
 
 
 class TestEditMetadata:
+    @linux_only("POSIX permission bits")
     def test_mode_is_preserved(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         seed(workdir, "a.txt", "content\n", mode=0o640)
@@ -709,6 +718,7 @@ class TestEditMetadata:
         mode = stat_module.S_IMODE(os.lstat(workdir.container_path / "a.txt").st_mode)
         assert mode == 0o640
 
+    @linux_only("POSIX permission bits")
     def test_executable_bit_is_preserved(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         seed(workdir, "script.sh", "#!/bin/sh\necho hi\n", mode=0o755)
@@ -734,6 +744,7 @@ class TestEditMetadata:
         after = os.lstat(workdir.container_path / "a.txt")
         assert (after.st_uid, after.st_gid) == (before.st_uid, before.st_gid)
 
+    @linux_only("extended attributes are a POSIX filesystem feature")
     def test_xattrs_are_preserved(self, workdir) -> None:
         srv = make_server(workdir, read_write_access=True)
         seed(workdir, "a.txt", "content\n")
@@ -753,6 +764,7 @@ class TestEditMetadata:
         assert os.getxattr(target, "user.serverfs-test") == b"keep-me"
         assert (target).read_text() == "changed\n"
 
+    @linux_only("POSIX permission enforcement")
     def test_mode_preservation_failure_aborts_the_edit(self, workdir, monkeypatch) -> None:
         srv = make_server(workdir, read_write_access=True)
         seed(workdir, "a.txt", "content\n")
@@ -775,6 +787,7 @@ class TestEditMetadata:
         assert (workdir.container_path / "a.txt").read_text() == "content\n"
         assert sorted(p.name for p in workdir.container_path.iterdir()) == ["a.txt"]
 
+    @linux_only("extended attributes are a POSIX filesystem feature")
     def test_xattr_preservation_failure_aborts_the_edit(self, workdir, monkeypatch) -> None:
         srv = make_server(workdir, read_write_access=True)
         seed(workdir, "a.txt", "content\n")
@@ -804,6 +817,7 @@ class TestEditMetadata:
         assert (workdir.container_path / "a.txt").read_text() == "content\n"
         assert sorted(p.name for p in workdir.container_path.iterdir()) == ["a.txt"]
 
+    @linux_only("POSIX stat device identity")
     def test_ownership_preservation_failure_is_reported(self, workdir, monkeypatch) -> None:
         """A file owned by someone else cannot be replaced with an identical
         owner by a non-root process: that must fail loudly, not silently
@@ -842,6 +856,7 @@ class TestEditMetadata:
             os.close(src_fd)
             os.close(dst_fd)
 
+    @linux_only("POSIX uid/gid ownership")
     def test_setgid_bit_survives_an_ownership_change(self, workdir) -> None:
         """§45: chown(2) clears S_ISUID/S_ISGID, so ownership must be applied
         *before* the mode. In the other order the edit publishes a file whose
@@ -869,6 +884,7 @@ class TestEditMetadata:
         assert published.st_gid == group
         assert target.read_text() == "changed\n"
 
+    @linux_only("extended attributes are a POSIX filesystem feature")
     def test_metadata_is_applied_ownership_then_mode_then_xattrs(
         self, workdir, monkeypatch
     ) -> None:
@@ -995,6 +1011,7 @@ class TestEditBinaryContent:
 
 
 class TestEditAtomicity:
+    @linux_only("fault injected into the Linux os.replace publish primitive")
     def test_replace_failure_leaves_the_original_untouched(self, workdir, monkeypatch) -> None:
         srv = make_server(workdir, read_write_access=True)
         seed(workdir, "a.txt", "original content\n")

@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from platform_contract import linux_only, require_linux_kernel
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _MODULE_PATH = _REPO_ROOT / "deployment" / "agent-bridge" / "render_config.py"
 _SPEC = importlib.util.spec_from_file_location("serverfs_render_agent_config", _MODULE_PATH)
@@ -35,6 +37,10 @@ def make_executable(path: Path) -> Path:
 
 
 def valid_env(tmp_path: Path) -> dict[str, str]:
+    # The Phase E renderer compares SERVERFS_UID/GID and the measured peer identity
+    # against the POSIX login identity, so this whole contract has no Windows shape:
+    # v0.11 configures the native Bridge through the `[agent]` TOML instead.
+    require_linux_kernel("Phase E config render asserts the POSIX login uid/gid")
     repo = tmp_path / "repo"
     repo.mkdir()
     codex = make_executable(tmp_path / "codex")
@@ -429,6 +435,7 @@ def test_peercred_probe_is_user_scoped_and_uses_linux_so_peercred() -> None:
     assert "sudo " not in text
 
 
+@linux_only("AF_UNIX sockets do not exist on Windows")
 def test_peercred_probe_creates_its_own_directory_tree(tmp_path: Path) -> None:
     # The documented order runs the probe before install.sh creates the
     # deployment tree, so the probe must build its own missing parent
@@ -459,6 +466,7 @@ def test_peercred_probe_creates_its_own_directory_tree(tmp_path: Path) -> None:
     assert directory.is_dir()
 
 
+@linux_only("AF_UNIX sockets do not exist on Windows")
 def test_verify_host_waits_for_bridge_socket_startup_race(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -495,6 +503,7 @@ def test_verify_host_waits_for_bridge_socket_startup_race(
     assert sleep_calls >= 1
 
 
+@linux_only("AF_UNIX sockets do not exist on Windows")
 def test_verify_host_retries_transient_rpc_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -530,6 +539,7 @@ def test_verify_host_retries_transient_rpc_failures(
     assert attempts == 3
 
 
+@linux_only("AF_UNIX sockets do not exist on Windows")
 def test_verify_host_distinguishes_missing_socket_from_unready_rpc(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -912,6 +922,7 @@ def _run_deployment_script(
     )
 
 
+@linux_only("Phase E Linux deployment script")
 def test_installer_activation_failure_restores_previous_deployment(tmp_path: Path) -> None:
     harness = _fake_deployment_harness(tmp_path, fail_enable_now=True)
     old_release = _seed_release(harness["releases"], "A")
@@ -950,6 +961,7 @@ def test_installer_activation_failure_restores_previous_deployment(tmp_path: Pat
     assert sorted(path.name for path in releases.iterdir()) == ["A", "B"]
 
 
+@linux_only("Phase E Linux deployment script")
 def test_installer_first_run_failure_leaves_no_previous_deployment(tmp_path: Path) -> None:
     harness = _fake_deployment_harness(tmp_path, fail_enable_now=True)
     _set_service_state(harness, enabled=False, active=False)
@@ -982,6 +994,7 @@ def test_installer_first_run_failure_leaves_no_previous_deployment(tmp_path: Pat
     assert list(releases.iterdir()) == []
 
 
+@linux_only("Phase E systemd user service lifecycle")
 def test_rollback_restart_failure_restores_original_links(tmp_path: Path) -> None:
     harness = _fake_deployment_harness(tmp_path, fail_first_start=True)
     release_a = _seed_release(harness["releases"], "A")
@@ -1009,6 +1022,7 @@ def test_rollback_restart_failure_restores_original_links(tmp_path: Path) -> Non
     assert leftovers == []
 
 
+@linux_only("Phase E Linux deployment script")
 def test_normal_update_moves_current_to_previous(tmp_path: Path) -> None:
     harness = _fake_deployment_harness(tmp_path)
     old_release = _seed_release(harness["releases"], "A")
@@ -1039,6 +1053,7 @@ def test_normal_update_moves_current_to_previous(tmp_path: Path) -> None:
     assert _service_state(harness) == (True, True)
 
 
+@linux_only("Phase E Linux deployment script")
 def test_no_start_stages_update_without_stopping_active_service(tmp_path: Path) -> None:
     harness = _fake_deployment_harness(tmp_path)
     old_release = _seed_release(harness["releases"], "A")
@@ -1073,6 +1088,7 @@ def test_no_start_stages_update_without_stopping_active_service(tmp_path: Path) 
         assert not any(line.startswith(f"--user {lifecycle} ") for line in commands)
 
 
+@linux_only("POSIX symlink swap driven by the bash rollback script")
 def test_normal_rollback_swaps_current_and_previous(tmp_path: Path) -> None:
     harness = _fake_deployment_harness(tmp_path)
     release_a = _seed_release(harness["releases"], "A")

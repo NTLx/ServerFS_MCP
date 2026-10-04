@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from platform_contract import linux_only
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _LAUNCHER = _REPO_ROOT / "deployment" / "tunnel" / "tunnel-launcher.sh"
 
@@ -54,6 +56,7 @@ def _run_launcher(tmp_path: Path, **proxy_env: str) -> subprocess.CompletedProce
     )
 
 
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
 def test_proxy_disabled_unsets_derived_value_and_runs_tunnel(tmp_path: Path) -> None:
     result = _run_launcher(tmp_path)
 
@@ -62,6 +65,7 @@ def test_proxy_disabled_unsets_derived_value_and_runs_tunnel(tmp_path: Path) -> 
     assert (tmp_path / "args-result").read_text(encoding="utf-8").strip() == "run"
 
 
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
 def test_proxy_without_authentication_has_no_userinfo(tmp_path: Path) -> None:
     result = _run_launcher(
         tmp_path,
@@ -75,6 +79,7 @@ def test_proxy_without_authentication_has_no_userinfo(tmp_path: Path) -> None:
     )
 
 
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
 def test_proxy_auth_percent_encodes_reserved_characters_and_spaces(tmp_path: Path) -> None:
     result = _run_launcher(
         tmp_path,
@@ -90,6 +95,7 @@ def test_proxy_auth_percent_encodes_reserved_characters_and_spaces(tmp_path: Pat
     )
 
 
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
 def test_proxy_username_enables_authentication_with_empty_password(tmp_path: Path) -> None:
     result = _run_launcher(
         tmp_path,
@@ -104,6 +110,7 @@ def test_proxy_username_enables_authentication_with_empty_password(tmp_path: Pat
     )
 
 
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
 @pytest.mark.parametrize(
     ("proxy_env", "message"),
     [

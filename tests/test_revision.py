@@ -13,6 +13,7 @@ import re
 import time
 
 from helpers import call_error, call_success, error_code, make_server, read_write
+from platform_contract import linux_only, settle_file_time
 
 REVISION_RE = re.compile(r"^v1:[0-9a-f]{16}$")
 
@@ -96,10 +97,12 @@ class TestRevisionChanges:
         target = workdir.container_path / "a.txt"
         target.write_text("one\n")
         before = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})
+        settle_file_time()
         target.write_text("two\n")
         after = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})
         assert before["revision"] != after["revision"]
 
+    @linux_only("POSIX permission bits")
     def test_metadata_change_changes_revision(self, workdir) -> None:
         srv = make_server(workdir)
         target = workdir.container_path / "a.txt"
@@ -113,10 +116,12 @@ class TestRevisionChanges:
         srv = make_server(workdir)
         os.mkdir(workdir.container_path / "sub")
         before = call_success(srv, "stat_file", {"workdir": "test", "path": "sub"})
+        settle_file_time()
         (workdir.container_path / "sub" / "child.txt").write_text("x")
         after = call_success(srv, "stat_file", {"workdir": "test", "path": "sub"})
         assert before["revision"] != after["revision"]
 
+    @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_symlink_stat_has_revision(self, workdir) -> None:
         srv = make_server(workdir)
         (workdir.container_path / "real.txt").write_text("x")
@@ -162,7 +167,7 @@ class TestPagedReads:
         import asyncio
 
         srv = make_server(workdir)
-        (workdir.container_path / "small.txt").write_text("hello\n")
+        (workdir.container_path / "small.txt").write_bytes(b"hello\n")
 
         async def _read():
             result = await srv.read_resource("serverfs://test/small.txt")
@@ -178,6 +183,7 @@ class TestRevisionOpacity:
         data = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})
         assert REVISION_RE.match(data["revision"]), data["revision"]
 
+    @linux_only("POSIX stat device identity")
     def test_raw_identity_values_are_not_exposed(self, workdir) -> None:
         srv = make_server(workdir)
         target = workdir.container_path / "a.txt"
@@ -207,13 +213,14 @@ class TestRevisionOpacity:
 class TestFileChangedDuringRead:
     """A read must never return content whose revision does not describe it."""
 
+    @linux_only("simulated through the Linux FD revision path (mutations/fdio)")
     def test_read_detects_a_change_mid_read(self, workdir, monkeypatch) -> None:
         """Simulated by making the second identity check disagree with the
         first — the real trigger is an external write during the read."""
         from serverfs_mcp import mutations
 
         srv = make_server(workdir)
-        (workdir.container_path / "a.txt").write_text("content\n")
+        (workdir.container_path / "a.txt").write_bytes(b"content\n")
         real = mutations.compute_revision
         calls = {"n": 0}
 
@@ -231,7 +238,7 @@ class TestFileChangedDuringRead:
 
     def test_unchanged_file_is_not_flagged(self, workdir) -> None:
         srv = make_server(workdir)
-        (workdir.container_path / "a.txt").write_text("content\n")
+        (workdir.container_path / "a.txt").write_bytes(b"content\n")
         assert (
             call_success(srv, "read_text_file", {"workdir": "test", "path": "a.txt"})["content"]
             == "content\n"
