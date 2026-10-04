@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
-import stat
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from . import private_state
 from .errors import BridgeError
 from .models import (
     TERMINAL_STATUSES,
@@ -19,7 +18,6 @@ from .models import (
     TaskRecord,
     TaskStatus,
 )
-from .platform_seams import PRIVATE_STATE, require_linux_seam
 from .state import validate_transition
 from .util import utc_now
 
@@ -33,27 +31,20 @@ _UNSET = _Unset()
 
 class TaskStore:
     def __init__(self, state_dir: Path):
-        require_linux_seam(PRIVATE_STATE)
         self.state_dir = state_dir
-        try:
-            state_stat = self.state_dir.lstat()
-        except FileNotFoundError:
-            self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-            state_stat = self.state_dir.lstat()
-        if stat.S_ISLNK(state_stat.st_mode) or not stat.S_ISDIR(state_stat.st_mode):
-            raise ValueError("state_dir must be a real directory")
-        if state_stat.st_uid != os.getuid() or state_stat.st_mode & 0o077:
-            raise ValueError("state_dir must be owned by the bridge user and mode 0700")
-        os.chmod(self.state_dir, 0o700)
+        private_state.ensure_private_directory(
+            state_dir,
+            mode=0o700,
+            parents=True,
+            messages=private_state.DirectoryMessages(
+                not_a_directory="state_dir must be a real directory",
+                not_owned="state_dir must be owned by the bridge user and mode 0700",
+            ),
+        )
         self.db_path = self.state_dir / "state.sqlite3"
-        try:
-            db_stat = self.db_path.lstat()
-        except FileNotFoundError:
-            db_stat = None
-        if db_stat is not None and (
-            stat.S_ISLNK(db_stat.st_mode) or not stat.S_ISREG(db_stat.st_mode)
-        ):
-            raise ValueError("state database path must be a regular file")
+        private_state.require_regular_file(
+            self.db_path, not_regular="state database path must be a regular file"
+        )
         self._initialize()
 
     @contextmanager
@@ -74,18 +65,20 @@ class TaskStore:
             self._secure_database_files()
 
     def _secure_database_files(self) -> None:
+        # §29: the WAL and SHM companions SQLite creates must not end up less confined than
+        # the database. They inherit the state directory's protection, and each one is
+        # re-verified (Windows) or re-set (Linux) after every connection.
         for path in (
             self.db_path,
             self.db_path.with_name("state.sqlite3-wal"),
             self.db_path.with_name("state.sqlite3-shm"),
         ):
-            try:
-                path_stat = path.lstat()
-            except FileNotFoundError:
-                continue
-            if stat.S_ISLNK(path_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
-                raise ValueError("state database sidecar must be a regular file")
-            os.chmod(path, 0o600)
+            private_state.require_regular_file(
+                path, not_regular="state database sidecar must be a regular file"
+            )
+            private_state.protect_existing_file(
+                path, mode=0o600, not_private="state database sidecar must be private"
+            )
 
     def _initialize(self) -> None:
         with self._connect() as con:

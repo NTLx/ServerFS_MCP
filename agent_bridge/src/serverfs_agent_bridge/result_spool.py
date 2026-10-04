@@ -5,12 +5,11 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import private_state
 from .errors import BridgeError
-from .platform_seams import PRIVATE_STATE, require_linux_seam
 
 
 @dataclass(frozen=True)
@@ -21,25 +20,22 @@ class ResultMetadata:
 
 class ResultSpool:
     def __init__(self, state_dir: Path):
-        require_linux_seam(PRIVATE_STATE)
         self.results_dir = state_dir / "results"
-        try:
-            directory_stat = self.results_dir.lstat()
-        except FileNotFoundError:
-            self.results_dir.mkdir(mode=0o700)
-            directory_stat = self.results_dir.lstat()
-        if stat.S_ISLNK(directory_stat.st_mode) or not stat.S_ISDIR(directory_stat.st_mode):
-            raise ValueError("results_dir must be a real directory")
-        if directory_stat.st_uid != os.getuid() or directory_stat.st_mode & 0o077:
-            raise ValueError("results_dir must be owned by the bridge user and mode 0700")
-        os.chmod(self.results_dir, 0o700)
+        private_state.ensure_private_directory(
+            self.results_dir,
+            mode=0o700,
+            messages=private_state.DirectoryMessages(
+                not_a_directory="results_dir must be a real directory",
+                not_owned="results_dir must be owned by the bridge user and mode 0700",
+            ),
+        )
 
     def write(self, task_id: str, text: str) -> ResultMetadata:
         data = text.encode("utf-8")
         digest = hashlib.sha256(data).hexdigest()
         final_path = self._path(task_id)
         tmp_path = self.results_dir / f".{task_id}.{secrets.token_hex(8)}.tmp"
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        flags = private_state.open_flags("write", create=True, exclusive=True)
         fd = -1
         try:
             fd = os.open(tmp_path, flags, 0o600)
@@ -51,7 +47,7 @@ class ResultSpool:
                     raise OSError("short write")
                 written += count
             os.fsync(fd)
-            os.fchmod(fd, 0o600)
+            private_state.apply_private_file_mode(fd, mode=0o600)
             os.close(fd)
             fd = -1
             if final_path.exists() or final_path.is_symlink():
@@ -60,7 +56,9 @@ class ResultSpool:
                     "result spool path already exists",
                 )
             os.replace(tmp_path, final_path)
-            os.chmod(final_path, 0o600)
+            private_state.protect_existing_file(
+                final_path, mode=0o600, not_private="result spool file is unsafe"
+            )
         except BridgeError:
             raise
         except OSError as exc:
@@ -90,7 +88,7 @@ class ResultSpool:
             raise BridgeError("INVALID_RESULT_LIMIT", "max_bytes must be between 1 and 65536")
 
         path = self._path(task_id)
-        flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        flags = private_state.open_flags("read")
         try:
             fd = os.open(path, flags)
         except FileNotFoundError as exc:
@@ -100,11 +98,7 @@ class ResultSpool:
 
         try:
             file_stat = os.fstat(fd)
-            if (
-                not stat.S_ISREG(file_stat.st_mode)
-                or file_stat.st_uid != os.getuid()
-                or file_stat.st_mode & 0o077
-            ):
+            if not private_state.opened_file_is_private(path, file_stat):
                 raise BridgeError("AGENT_RESULT_STORAGE_ERROR", "result spool file is unsafe")
             size = int(file_stat.st_size)
             if offset_bytes > size:
@@ -148,7 +142,7 @@ class ResultSpool:
             file_stat = path.lstat()
         except FileNotFoundError:
             return
-        if stat.S_ISLNK(file_stat.st_mode) or not stat.S_ISREG(file_stat.st_mode):
+        if not private_state.state_entry_is_regular(file_stat):
             raise BridgeError("AGENT_RESULT_STORAGE_ERROR", "result spool file is unsafe")
         try:
             path.unlink()
