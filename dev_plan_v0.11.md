@@ -687,6 +687,13 @@ constraint: the platform wheels are ~98 MB (Qoder) and ~105 MB (Claude) and the 
 made them unreliable, while the sdists (143 KB / 347 KB) installed cleanly. Packaging and CI must
 therefore treat the Windows wheel as the intended artifact but keep the sdist path verified.
 
+A sdist-installed SDK carries **no bundled provider CLI** (measured: `qoder_agent_sdk` 41 files with
+no executable; `claude_agent_sdk` `_bundled/` holding only a `.gitignore`). Its transport falls back to
+`shutil.which(...)` for a native `.exe`, and the Claude resolver explicitly refuses an npm
+`claude.cmd` shim. Phase H must therefore decide per runtime: ship the platform wheel that bundles the
+CLI, or ship pure Python and require an explicit native CLI plus the `cli_path` the adapters already
+pass. Both shapes are measured working; the second is what the current adapters assume.
+
 When Agent mode is disabled, filesystem-only ServerFS must not require provider SDKs.
 
 ## 15. Development phases

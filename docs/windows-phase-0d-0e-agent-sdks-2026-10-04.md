@@ -83,6 +83,16 @@ Two consequences recorded in the plan:
 - Both probe environments pulled **`pywin32==312` transitively** (through `mcp`). Plan §21 requires
   Windows-specific dependencies to be declared explicitly rather than trusting a transitive
   coincidence — this is now a measured instance of exactly that trap.
+- **What the sdist install actually contains.** `qoder-agent-sdk` 1.0.15 from sdist installs 41 files
+  with **no bundled executable** (`has bundled cli: False`); `claude-agent-sdk` 0.2.156 from sdist
+  installs 34 files and its `_bundled/` directory contains only a `.gitignore`. Both transports still
+  connected, because the CLI resolver falls back to `shutil.which(...)` and this host has native
+  `claude.EXE` and `qodercli.EXE` on `PATH`. Note the Claude resolver's own comment that an npm
+  `claude.cmd` shim is refused — a real `.exe` is required.
+- Packaging consequence for Phase H: the Windows release artifact must either ship the platform
+  wheel that bundles the CLI, or ship the pure-Python distribution and require a native provider CLI
+  plus the explicit `cli_path` the adapters already pass. Both shapes are measured working; the
+  second one is what the current adapters assume.
 - Bulk download reality on this host: PyPI metadata queries answered in ~0.5–1.2 s, but the CDN
   transfer of a 97.9 MB wheel crawled at a few KB/s and `uv pip install` stalled twice and had to be
   killed. The sdist paths (143 KB / 347 KB) completed. Packaging and CI work must not assume those
