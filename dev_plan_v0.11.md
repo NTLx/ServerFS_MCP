@@ -1,7 +1,18 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
-Status: Phase 0 CLOSED — 0A/0B/0C/0D/0E/0F all PASS (§18). Architecture assumptions are frozen;
-Phase A (portability foundation) is next, on its own branch.
+Status: Phase 0 CLOSED
+
+```text
+0A PASS — LockFileEx
+0B PASS — Named Pipe + SID
+0C PASS — authenticated loopback Codex WebSocket
+0D PASS — Qoder SDK
+0E PASS — Claude SDK
+0F PASS — Runtime Egress Proxy
+```
+
+No Phase 0 gate or design decision is outstanding (§18). Phase A (portability foundation) proceeds on
+its own branch.
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -523,6 +534,54 @@ Local bypass rule (defense in depth, both belts required):
 - Codex genuinely honours `NO_PROXY`: excluding the provider domains it had just requested made the
   observer see zero tunnel requests and the provider health check fail again.
 
+
+### 7.3 Authenticated proxy broker — OUT OF SCOPE for v0.11 (maintainer decision 2026-10-05)
+
+v0.11 supports exactly two proxy shapes:
+
+- a credentialless HTTP runtime egress proxy, configured through §7.1 and mapped by §7.2; and
+- an operator- or externally supplied credentialless local broker that the Agent proxy endpoint simply
+  points at. ServerFS treats it as an ordinary credentialless HTTP endpoint and owns nothing of it.
+
+ServerFS v0.11 does **not** implement an authenticated-upstream credential broker. Phase 0F proved an
+environment-injected proxy credential is not a security boundary: the provider child sees it, an
+agent-executed grandchild inherits it, and a same-user process can inspect the provider process. A real
+broker would therefore be a separate purpose-built trust component, which is a bigger design than this
+release can carry honestly.
+
+Frozen for v0.11:
+
+- no upstream proxy username or password is stored by ServerFS anywhere;
+- no proxy credential is injected into any Bridge or provider environment;
+- no broker listener, process or credential store is added, so the Job Object, private-state ACL and
+  secret-lifecycle surfaces do not grow;
+- if a later deployment needs an authenticated upstream, the shape is
+  `provider runtime -> credentialless local broker -> authenticated upstream proxy`, designed and
+  reviewed as its own version.
+
+Release documentation may state only: `credentialless Agent Runtime HTTP proxy supported`. It must not
+claim native authenticated proxy support.
+
+### 7.4 Jev advisory egress (maintainer decision 2026-10-05)
+
+Jev may reuse the same operator-facing source — `SERVERFS_AGENT_PROXY_URL` and
+`SERVERFS_AGENT_NO_PROXY` — but not the same mechanism. Providers are given a per-child environment;
+Jev is an HTTP client inside the Bridge process, so:
+
+- the Bridge parses the dedicated Agent proxy configuration and passes the endpoint explicitly into
+  the Jev HTTP client construction;
+- the endpoint exists only in that in-memory client configuration: it is never written back to
+  `os.environ`, never handed to a provider SDK, never rendered into generated Bridge config, never
+  logged and never returned through MCP;
+- the hard rule still stands that the **Bridge process environment MUST remain proxy-free**. Setting
+  `HTTPS_PROXY`, `HTTP_PROXY` or `ALL_PROXY` in the Bridge environment just to make Jev work is
+  forbidden, because §7.2 measured that the provider SDKs inherit that environment wholesale;
+- if the installed `typesafe-sdk`/Jev client exposes no explicit proxy parameter, Jev stays direct under
+  its existing fail-open semantics. The dependency is not patched, wrapped in a monkeypatch or
+  worked around in this release.
+
+Jev stays optional, advisory and fail-open: a Jev network failure must never block an Agent task, and
+Jev authority is unchanged. Implementation belongs to Phase D, not Phase A.
 
 ## 8. Agent tool portability fixes
 
@@ -1090,10 +1149,11 @@ variables are absent from the Bridge environment and therefore from provider chi
 passes `proxy=None`, a fake HTTP proxy sees external targets but never loopback ones, and doctor
 output stays endpoint-free.
 
-Not verified, with reasons: Claude CLI proxy consumption needs a real request (Phase G); the local
-credential broker is measured viable but deliberately not designed or implemented; the Bridge's own
-advisory (Jev) HTTP egress is a separate question for Phase D; no machine-wide or provider-persistent
-configuration was touched.
+Not verified, with reasons: Claude CLI proxy consumption needs a real request (Phase G); no
+machine-wide or provider-persistent configuration was touched. Two follow-on questions are now
+**decided**, not open: the authenticated-upstream broker is out of scope for v0.11 (§7.3), and Jev
+advisory egress may consume the dedicated Agent proxy configuration only through an explicit client
+parameter, never through the Bridge environment (§7.4, implemented in Phase D).
 
 ### Phase A — portability foundation
 
@@ -1289,7 +1349,10 @@ v0.11.0 may be released only when all applicable items are satisfied:
 29. Codex loopback WebSocket control traffic is proven to bypass the egress proxy.
 30. `SERVERFS_PROXY_*` / Tunnel proxy secrets are never automatically forwarded into Bridge/provider children.
 31. Proxy endpoint or credentials never appear in MCP output, logs, doctor output, generated Bridge config or repository evidence.
-32. If authenticated Agent proxy support is claimed, its credentials are proven unavailable to agent-executed provider/tool code; otherwise v0.11 documents support as credentialless/local-broker proxy only.
+32. Agent runtime proxy support is claimed only as credentialless Agent Runtime HTTP proxy (§7.3): no
+    upstream proxy credential is stored or injected, no broker process is added, and an
+    operator-supplied credentialless local broker is the only authenticated-upstream path a deployment
+    may use. Release documentation must not claim native authenticated proxy support.
 
 ## 17. Explicit non-goals
 
@@ -1309,7 +1372,9 @@ v0.11 does not add:
 - persistent ServerFS model defaults;
 - native file-parameter ingress;
 - ReFS/SMB Agent support claims;
-- macOS Agent Bridge work.
+- macOS Agent Bridge work;
+- an authenticated-upstream proxy credential broker (§7.3): no stored proxy credential, no injected proxy
+  credential, no broker listener or process; a credentialless local broker may be supplied externally.
 
 ## 18. Implementation order
 
@@ -1336,10 +1401,13 @@ The default implementation order is:
 
 The first six are experiments rather than product code. Their purpose is to eliminate the remaining expensive assumptions before architecture is frozen.
 
-Phase 0 status (2026-10-04): 0A LockFileEx CLOSED-PASS, 0B Named Pipe + SID CLOSED-PASS, 0C Codex
-transport CLOSED-PASS with authenticated loopback WebSocket selected (§10.2), 0D Qoder SDK
-CLOSED-PASS, 0E Claude SDK CLOSED-PASS, 0F Agent Runtime Egress Proxy CLOSED-PASS (§7.1-§7.2).
-Phase 0 is frozen; Phase A may start on its own branch. The WorkPC deployment requirement — Codex and
+Phase 0 status (2026-10-04/05): 0A LockFileEx CLOSED-PASS, 0B Named Pipe + SID CLOSED-PASS, 0C
+Codex transport CLOSED-PASS with authenticated loopback WebSocket selected (§10.2), 0D Qoder SDK
+CLOSED-PASS, 0E Claude SDK CLOSED-PASS, 0F Agent Runtime Egress Proxy CLOSED-PASS (§7.1-§7.2). The two
+decisions 0F left behind are now settled too: the authenticated-upstream broker is out of scope for
+v0.11 (§7.3) and Jev may consume the dedicated Agent proxy configuration only through an explicit HTTP
+client parameter, never through the Bridge environment (§7.4, Phase D work). Nothing in Phase 0 or in
+the phase ordering is blocked on an open decision; Phase A proceeds on its own branch. The WorkPC deployment requirement — Codex and
 OpenAI traffic only reachable through an outbound proxy — is now a measured product contract instead of
 ambient developer-shell state, and Phase D may not implement an environment builder that contradicts
 §7.2.
