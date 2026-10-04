@@ -1,7 +1,7 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
-Status: IN PROGRESS — Phase 0 experiments; 0A CLOSED, 0B CLOSED, 0D CLOSED, 0E CLOSED; 0C measured with
-the Windows Codex transport selection left as a maintainer decision (§10.1-§10.2)
+Status: Phase 0 CLOSED — 0A/0B/0C/0D/0E/0F all PASS (§18). Architecture assumptions are frozen;
+Phase A (portability foundation) is next, on its own branch.
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -426,6 +426,104 @@ The Windows launcher may render a private internal Bridge JSON file from serverf
 
 agent.enabled=false remains the default. An existing v0.10 native installation upgrades to v0.11 with the same filesystem-only surface until Agent delegation is explicitly enabled.
 
+### 7.1 Agent Runtime Egress Proxy
+
+Windows Agent runtimes need an explicit outbound-proxy capability. This is a separate trust domain from the v0.10 Tunnel / Control Plane proxy and MUST NOT be implemented by blindly inheriting or copying `SERVERFS_PROXY_*` into the Bridge or provider children.
+
+The frozen design goals are:
+
+- Agent runtime proxy is disabled by default.
+- v0.11 supports an HTTP proxy endpoint for provider egress; HTTPS provider destinations use normal HTTP CONNECT semantics. SOCKS5 is out of scope.
+- operator-facing non-secret enablement belongs in `serverfs.toml`;
+- endpoint material is supplied from a dedicated Agent proxy namespace, not the Tunnel proxy namespace;
+- the dedicated environment contract is `SERVERFS_AGENT_PROXY_URL` (required when enabled) plus optional `SERVERFS_AGENT_NO_PROXY`. These names are frozen by Phase 0F; no provider consumes them, so the product must map them downward (§7.2);
+- `SERVERFS_AGENT_PROXY_URL` must not contain URL userinfo. Phase 0F measured the credential-safety question and answered it negatively: with userinfo present the provider child sends `Proxy-Authorization` itself, injected env variables reach tool code executed by the runtime (grandchild verified), and an unrelated same-user process can open the runtime process with `PROCESS_QUERY_INFORMATION|PROCESS_VM_READ`. So an authenticated upstream is not supported by environment injection in v0.11; the only acceptable future shape is a credentialless local forwarder/broker owned by ServerFS (measured technically viable);
+- if the real deployment proxy requires authentication, v0.11 does not ship it. The approved shape for a later release is a ServerFS-owned credentialless local forwarder that chains to the authenticated upstream and keeps the credential in its own process state only. Do not ship naive credential injection merely to make connectivity work;
+- the provider child receives only the proxy variables it actually needs, derived from the dedicated Agent proxy configuration;
+- the Bridge/supervisor must not copy Tunnel / Control Plane proxy credentials into provider children;
+- local control traffic must bypass egress proxy. The effective no-proxy set MUST include `127.0.0.1`, `localhost` and `::1`, so the selected Codex loopback WebSocket transport can never be routed through the egress proxy;
+- provider runtime proxy injection must not alter machine-wide proxy settings, WinHTTP global proxy, registry state, provider persistent config, or the user's shell environment;
+- proxy endpoint/credential values never appear in MCP output, normal logs, generated evidence, test fixtures, plan text or doctor output. Diagnostics report only redacted state such as configured/reachable/auth-mode;
+- runtime-specific behavior is measured rather than assumed: Codex, Claude and Qoder may consume standard proxy environment variables differently, and SDK-side versus CLI-child network ownership must be verified in Phase 0F.
+
+Frozen non-secret TOML shape (Phase 0F confirmed the per-runtime policy values):
+
+```toml
+[agent.proxy]
+enabled = false
+source = "env"
+
+[agent.codex]
+enabled = false
+codex_bin = "codex"
+use_proxy = true
+
+[agent.claude]
+enabled = false
+claude_bin = "claude"
+use_proxy = false
+
+[agent.qoder]
+enabled = false
+qoder_bin = "qodercli"
+use_proxy = false
+```
+
+The booleans above are per-runtime routing policy, not proxy secrets. The endpoint itself remains outside TOML. `use_proxy = true` for Codex is a measured requirement on WorkPC (`api.openai.com` and `chatgpt.com` time out direct); Qoder's provider endpoint is reachable directly here and Claude's requirement is not yet measurable without a real turn, so both stay `false` by default and per-workdir/per-runtime policy decides.
+
+### 7.2 Frozen proxy mapping (Phase 0F closed)
+
+Evidence: `docs/windows-phase-0f-runtime-egress-proxy-2026-10-04.md`.
+
+Parse-time validation of the dedicated namespace:
+
+- `SERVERFS_AGENT_PROXY_URL` must be an absolute `http://` (or `https://`) URL with host and port;
+  userinfo is rejected at parse time, not warned about;
+- SOCKS5 and any non-HTTP scheme are rejected (out of scope by §7.1);
+- the value is never written into `serverfs.toml`, generated Bridge config, logs, MCP results or
+  evidence; doctor reports only `enabled / source / auth mode / per-runtime reachable / local bypass`.
+
+Per-child environment mapping (nothing is bulk-inherited):
+
+| Runtime | Network-owning process | Variables the child actually needs (measured) | Mechanism |
+| --- | --- | --- | --- |
+| Codex | the Bridge-spawned `codex app-server` child | `HTTPS_PROXY` + merged `NO_PROXY` | explicit env dict passed by the Bridge when it spawns the child |
+| Claude | the `claude.exe` child (the SDK↔CLI channel is stdio; the SDK makes no provider connection during connect/control) | `HTTPS_PROXY` + merged `NO_PROXY` (consumption by the CLI itself is not yet observable without a turn) | `ClaudeAgentOptions.env` |
+| Qoder | the `qodercli.exe` child — verified by attributing observer tunnel requests to that process, in both parent-env and child-env cases | `HTTPS_PROXY` + merged `NO_PROXY` | `QoderAgentOptions.env`; `env={NAME: None}` additionally removes inherited names |
+
+Case behaviour is measured, not assumed: the installed Codex build accepts both `HTTPS_PROXY` and
+`https_proxy` (and `ALL_PROXY`/`all_proxy`), and `HTTP_PROXY` alone is insufficient for HTTPS
+destinations. The canonical product form is upper case `HTTPS_PROXY` + `NO_PROXY`, and nothing else is
+injected.
+
+Environment inheritance is the hard security rule this experiment produced:
+
+1. Both SDKs build the provider child environment by copying the **whole** Bridge environment
+   (`os.environ`, minus one internal marker) and then layering `options.env` on top. A
+   Tunnel-namespace variable planted in the Bridge process was measured present in the child for both
+   SDKs.
+2. Claude's SDK offers no way to unset an inherited variable; Qoder's does (`None`). Therefore
+   prevention must happen in the Bridge, not in the child mapping.
+3. Consequently: the Bridge process environment MUST NOT contain Tunnel / Control Plane credentials,
+   and MUST NOT contain any proxy variable. The native supervisor scrubs both before starting the
+   Bridge (extending the v0.10 `native_tunnel` env-stripping discipline), and per-runtime proxy policy
+   is applied strictly downward into the child environment.
+4. `SERVERFS_AGENT_PROXY_*` names are not forwarded to providers at all — they exist only to be mapped.
+   Measured: providers do not consume those names, and setting only the Tunnel namespace leaves Codex
+   health failing, which proves the two domains are independent.
+
+Local bypass rule (defense in depth, both belts required):
+
+- the effective child `NO_PROXY` is the operator value **merged with** `127.0.0.1`, `localhost`, `::1`;
+  an operator value can add entries but can never remove a mandatory one, and an empty operator value
+  must not disable the bypass (measured: empty `NO_PROXY` re-enables proxying of loopback);
+- the Bridge's own Codex control client keeps `proxy=None` on the WebSocket connection, because
+  `websockets` was measured to route even `ws://127.0.0.1` through a configured proxy when `NO_PROXY`
+  does not cover it;
+- Codex genuinely honours `NO_PROXY`: excluding the provider domains it had just requested made the
+  observer see zero tunnel requests and the provider health check fail again.
+
+
 ## 8. Agent tool portability fixes
 
 ### 8.1 Remove demonstrated Linux import-time failures
@@ -493,7 +591,11 @@ stop accepting new Agent work
 
 Existing tunnel API-key and proxy secret isolation remains unchanged.
 
-The Bridge environment must not receive Tunnel / Control Plane secrets or tunnel-only proxy credentials, while provider-native environment required by Codex/Claude/Qoder must remain available.
+The Bridge environment must not receive Tunnel / Control Plane secrets or tunnel-only proxy credentials. Provider-native auth/config required by Codex/Claude/Qoder remains available according to the runtime adapter contract.
+
+Agent egress proxy is the one deliberate network-environment exception: when a runtime has `use_proxy=true`, the supervisor/adapter injects only the dedicated Agent proxy variables frozen in §7.2 into that runtime's network-owning process. It must not bulk-forward the parent process proxy environment. The effective child environment must force local control endpoints (`127.0.0.1`, `localhost`, `::1`) into no-proxy so Codex's authenticated loopback WebSocket remains local.
+
+Phase 0F measured why "must not receive Tunnel secrets" has to be enforced one level earlier than this paragraph assumed: both provider SDKs build the CLI child environment by inheriting the entire Bridge environment, and Claude's SDK cannot unset an inherited variable. So the Bridge environment itself must be free of Tunnel / Control Plane credentials and of any proxy variable — scrubbing happens when the supervisor starts the Bridge, and per-runtime policy is applied only downward. See §7.2.
 
 ## 10. Codex runtime
 
@@ -522,9 +624,9 @@ Python cannot reuse the Linux transport directly either: `socket.AF_UNIX` is abs
 3.12.10 and 3.13.3 on this OS build. A raw Winsock `AF_UNIX` shim was deliberately not attempted —
 that is the forbidden private workaround.
 
-### 10.2 Selected candidate (awaiting maintainer confirmation)
+### 10.2 Selected Windows transport — maintainer decision
 
-Measured working, and recommended:
+Maintainer decision (2026-10-04): select the measured loopback WebSocket transport:
 
 ```text
 codex app-server --listen ws://127.0.0.1:<ephemeral> --ws-auth capability-token --ws-token-file <private path>
@@ -538,18 +640,42 @@ codex app-server --listen ws://127.0.0.1:<ephemeral> --ws-auth capability-token 
 - `--ws-token-file` and `--ws-token-sha256` are mutually exclusive;
 - the answering `userAgent` version is the CLI version (0.159.2 here), not the managed daemon's.
 
-Cost of this choice, stated plainly: the Bridge owns its own `codex app-server` child (inside the Job
-Object per §9) instead of attaching to the provider-managed daemon, so an in-flight turn does not
-survive a Bridge restart. Windows Codex then has the same reconciliation floor as Windows
-Claude/Qoder, while Linux Codex keeps the stronger daemon-backed `thread/read` proof. Thread resume
-by ID still works because the shared `codexHome` state is the same.
+This trade-off is accepted deliberately. The Bridge owns its own `codex app-server` child (inside
+the Job Object per §9) instead of attaching to the provider-managed daemon, so an in-flight Windows
+Codex turn does not survive a Bridge restart. Windows Codex therefore uses the same conservative
+reconciliation floor as Windows Claude/Qoder, while Linux Codex keeps the stronger daemon-backed
+`thread/read` proof. Thread resume by ID still works because the shared `codexHome` state is the
+same. This platform-specific recovery difference must be explicit in runtime capability/evidence;
+it must not be hidden behind a stronger provider-neutral claim.
 
-Never, in any option: seize the managed daemon, bind non-loopback, run without authentication, or
-reverse-engineer the daemon control protocol.
+The alternative `app-server proxy` is rejected for production because it would require ServerFS to
+own a new RFC 6455 implementation over subprocess pipes solely to preserve the managed daemon. That
+complexity is not justified by the recovery benefit when the official loopback WebSocket transport
+already works with the existing `websockets` stack. The managed daemon's remote-control setting is
+also not part of this design: it is a separate persisted provider feature, still leaves the daemon's
+local control path Unix-socket based, and changing it would mutate/restart user-managed Codex state
+without solving the CPython AF_UNIX boundary.
 
-`codex app-server daemon enable-remote-control` is an official unexplored avenue that might expose
-the managed daemon over loopback WebSocket and combine both options' benefits. Measuring it changes
-the user's running provider configuration, so it is left for the maintainer to decide.
+Security/lifecycle requirements for the selected transport are frozen as follows:
+
+- bind only `127.0.0.1` on an ephemeral port; never `0.0.0.0`, LAN, or a fixed public port;
+- require `--ws-auth capability-token`; anonymous connections must remain rejected;
+- generate a fresh high-entropy token for each Bridge-owned Codex child start;
+- store the token only in a private generated file under the Windows Agent Bridge state area, outside
+  every workdir, protected by the Windows private-state ACL contract from §6;
+- pass the token file with `--ws-token-file`; do not put the token value in config, command-line
+  arguments, normal logs, audit records, MCP results, or persistent provider settings;
+- retain the token in Bridge memory only as long as needed for the authenticated WebSocket session
+  and delete the generated token file when the child is torn down;
+- use a bounded readiness wait sized for the measured ~24 s startup rather than assuming immediate
+  availability;
+- place the Bridge-owned `codex app-server` process in the Windows Job Object; do not place the
+  provider-managed daemon in that Job Object;
+- do not seize, stop, restart, reconfigure, or enable remote control on the user's managed daemon;
+- keep Linux Codex transport unchanged.
+
+Never: seize the managed daemon, bind non-loopback, run without authentication, reverse-engineer the
+daemon control protocol, or implement a private Winsock AF_UNIX workaround.
 
 ### 10.3 Protocol drift
 
@@ -815,7 +941,7 @@ Test loopback WebSocket only if proxy is unsuitable.
 
 Gate: select exactly one production Windows Codex transport.
 
-Status: **MEASURED — gate NOT closed, selection needs a maintainer decision** (2026-10-04).
+Status: **CLOSED — gate PASS; maintainer selected authenticated loopback WebSocket** (2026-10-04).
 PR: https://github.com/NTLx/ServerFS_MCP/pull/32 (Phase 0 branch `v0.11-phase0-experiments`)
 
 Implemented:
@@ -834,16 +960,15 @@ anonymous clients with 401, accepts `Authorization: Bearer <token>`, refuses the
 `Sec-WebSocket-Protocol: bearer.<token>` form, rejects `--ws-token-file` together with
 `--ws-token-sha256`, takes ~24 s before it answers, and releases the port on terminate.
 
-Blocker for the gate: the plan's preferred transport is disproved, and each remaining candidate
-gives up something the plan promised to keep — the proxy preserves the managed daemon and its strong
-`thread/read` reconciliation but requires an invented RFC 6455 client over stdio; loopback WebSocket
-uses only official flags with near-zero new protocol code but moves Codex onto the same "in-flight
-work dies with the Bridge" reconciliation floor as Windows Claude/Qoder. This is a product trade-off,
-recorded with the recommendation in §10.1-§10.2 and `docs/windows-phase-0c-codex-transport-2026-10-04.md` §5.
+Gate decision: use the official authenticated loopback WebSocket listener described in §10.2.
+`app-server proxy` is rejected because preserving the managed daemon would require a ServerFS-owned
+RFC 6455 client over subprocess pipes; that extra protocol implementation is not justified. The
+accepted cost is weaker Windows in-flight Codex recovery across a Bridge crash, explicitly surfaced
+as a platform capability difference. Managed-daemon remote control is out of the v0.11 local
+transport design and does not need a Phase 0 mutation experiment.
 
-Not verified: `codex app-server daemon enable-remote-control` (would change the user's running
-provider configuration), non-loopback bind behaviour (would expose a LAN listener), and real approval
-server→client request round-trips (needs a turn, i.e. Phase E).
+Not verified, by design: non-loopback bind behaviour (it is forbidden and therefore need not be
+probed), and real approval server→client request round-trips (needs a turn, so remains Phase E).
 
 #### Phase 0D — Qoder SDK
 
@@ -902,6 +1027,73 @@ and the upgrade condition are in §12 and `docs/windows-phase-0d-0e-agent-sdks-2
 Not done here, deliberately: no prompt, no turn, no session content, and the WorkPC-specific
 `ANTHROPIC_BASE_URL` configuration observed in the server-info payload is not generalized to standard
 Claude environments (instruction §17). Real approvals/questions/cancel/resume belong to Phase G.
+
+#### Phase 0F — Agent Runtime Egress Proxy
+
+This is an additive gate introduced after Phase 0A-0E because the WorkPC deployment has a real network constraint: Codex/OpenAI services require an outbound proxy.
+
+The WorkPC AI Agent is allowed to discover and use the actual development-environment proxy for this experiment. It must not record the raw endpoint, credentials or account-specific values in the repository, plan, logs or report.
+
+Prove, without changing machine-wide/provider-persistent settings:
+
+- what proxy form is actually available on WorkPC (HTTP endpoint, auth required or not), reported only as redacted metadata;
+- direct Codex/OpenAI network health fails or is degraded when the proxy is absent, where a safe provider-supported health check can demonstrate that;
+- the same health path succeeds when the dedicated Agent proxy is injected only into the Bridge-owned Codex app-server process;
+- the selected Codex loopback `ws://127.0.0.1:<ephemeral>` control connection bypasses the proxy even while provider egress uses it;
+- which standard variables the installed Codex build actually consumes (`HTTP_PROXY`, `HTTPS_PROXY`, lowercase variants, `ALL_PROXY`, `NO_PROXY`, or provider-specific settings), using measured behavior rather than assumptions;
+- whether Claude SDK networking is owned by the SDK process or native `claude.exe` child, and the minimum proxy injection point required;
+- whether Qoder SDK networking is owned by the SDK process or native `qodercli.exe` child, and the minimum proxy injection point required;
+- provider control connect/disconnect remains clean with proxy enabled and no model inference;
+- proxy variables are not copied from `SERVERFS_PROXY_*`; dedicated Agent proxy configuration works independently;
+- diagnostics can report configured/reachable without exposing endpoint/user/password;
+- if the actual proxy requires credentials, determine whether a provider process or agent-launched tool can read those credentials. If yes, STOP the credentialed-proxy implementation and propose a credential-brokering/local-forwarder design before product code. Do not accept secret exposure as the price of connectivity.
+
+Gate: freeze the dedicated Agent runtime proxy contract and the exact per-runtime injection points before Phase A/D product implementation relies on them.
+
+Status: **CLOSED — gate PASS** (2026-10-04, WorkPC). PR: https://github.com/NTLx/ServerFS_MCP/pull/32 (Phase 0 branch `v0.11-phase0-experiments`)
+
+Implemented:
+Nothing in product code. Isolated probes under `%TEMP%\serverfs-phase0f\`: registry/env/WinINet/WinHTTP
+discovery that classifies instead of echoing, raw TLS and `CONNECT` health probes, `codex doctor`
+health in eight environment configurations, a loopback fake/observer proxy that attributes each tunnel
+request to its owning process and records only non-sensitive classifications, a
+`--ws-auth capability-token` app-server run with the proxy injected, a `websockets` loopback matrix, an
+environment-inheritance capture at the SDK's own process-spawn boundary, and a credential/descendant
+visibility test using synthetic values.
+
+Measured:
+WorkPC's available proxy is an HTTP CONNECT forwarder on a public-network address with **no
+credentials required**; `api.openai.com` and `chatgpt.com` time out direct and succeed through it, so a
+true no-proxy baseline exists and Codex health legitimately flips `fail → ok`. Codex consumes
+`HTTPS_PROXY` (upper or lower case) or `ALL_PROXY`, and `HTTP_PROXY` alone is insufficient; it honours
+`NO_PROXY` for real. With the proxy injected into the Bridge-shaped app-server, `initialize` and
+`model/list` still work and the observer recorded seventeen external tunnel attempts and **zero**
+loopback-target attempts. On the client side, `websockets` was proven to route `ws://127.0.0.1` through
+a configured proxy unless `proxy=None` or a covering `NO_PROXY` is present, and an empty operator
+`NO_PROXY` re-enables that routing — which is why the mandatory local set is merged, never replaced.
+Qoder's provider connections are owned by `qodercli.exe` and are steered by `QoderAgentOptions.env`
+exactly as by the parent environment; its endpoint is directly reachable here and it falls back to
+direct when the proxy fails. Claude's control path performs no provider network at all, so its proxy
+consumption cannot be observed without a turn and is deferred to Phase G with that reason recorded.
+The decisive finding is environment inheritance: both SDKs copy the entire Bridge environment into the
+provider child (a planted Tunnel-namespace variable arrived there in every case) and Claude offers no
+removal mechanism, so the Bridge environment itself must be secret-free and proxy-free. Finally,
+authenticated-proxy injection was measured to be unsafe in this trust model — the provider child sends
+`Proxy-Authorization` itself, descendant tool code inherits the variable, and a same-user process can
+open the child for memory reads — so v0.11 ships credentialless/local-broker support only.
+
+Tests:
+No automated test in Phase 0. Phase D's environment builder and Phase H's CI must prove each frozen
+row: `use_proxy=false` injects nothing, `use_proxy=true` injects exactly `HTTPS_PROXY` + merged
+`NO_PROXY`, mandatory entries survive an operator value and an empty value, Tunnel secrets and proxy
+variables are absent from the Bridge environment and therefore from provider children, the Codex client
+passes `proxy=None`, a fake HTTP proxy sees external targets but never loopback ones, and doctor
+output stays endpoint-free.
+
+Not verified, with reasons: Claude CLI proxy consumption needs a real request (Phase G); the local
+credential broker is measured viable but deliberately not designed or implemented; the Bridge's own
+advisory (Jev) HTTP egress is a separate question for Phase D; no machine-wide or provider-persistent
+configuration was touched.
 
 ### Phase A — portability foundation
 
@@ -967,7 +1159,9 @@ Implement:
 - per-workdir agent_mode;
 - agent_runtimes;
 - private Bridge config renderer;
-- doctor integration;
+- dedicated Agent runtime egress-proxy config and environment builder from §7.1 / Phase 0F;
+- per-runtime `use_proxy` policy and forced local no-proxy set;
+- doctor integration with redacted proxy configured/reachable diagnostics;
 - optional Bridge startup from native supervisor;
 - Job Object containment;
 - graceful shutdown.
@@ -984,6 +1178,8 @@ Implement the selected Windows Codex transport and run deterministic adapter tes
 Then run a real smoke proving:
 
 - runtime probe;
+- real OpenAI/provider connectivity through the configured Agent runtime proxy on WorkPC;
+- the provider egress proxy and Codex loopback WebSocket coexist, with localhost traffic bypassing the proxy;
 - model discovery;
 - new task;
 - native thread/session ID persistence;
@@ -1001,6 +1197,7 @@ Then run a real smoke proving:
 Install/freeze Windows SDK dependency and run deterministic adapter tests plus real smoke covering:
 
 - runtime probe;
+- when `use_proxy=true`, real provider connectivity through the dedicated Agent runtime proxy with local control traffic bypassed;
 - model discovery;
 - new session;
 - continuation;
@@ -1020,6 +1217,7 @@ Use the proven Phase 0E SDK/native-CLI path.
 Run deterministic adapter tests plus real smoke covering:
 
 - runtime probe;
+- when `use_proxy=true`, real provider connectivity through the dedicated Agent runtime proxy with local SDK/CLI control traffic bypassed;
 - session creation;
 - continuation;
 - file mutation;
@@ -1047,6 +1245,8 @@ Required Windows CI includes:
 - deterministic Codex adapter tests;
 - deterministic Qoder adapter tests;
 - deterministic Claude adapter tests when the dependency path is available;
+- runtime-proxy environment-builder tests proving Tunnel proxy isolation and forced local no-proxy;
+- a fake/local HTTP proxy test where practical so CI can prove routing without external provider traffic;
 - three-wheel clean install;
 - doctor smoke.
 
@@ -1084,6 +1284,12 @@ v0.11.0 may be released only when all applicable items are satisfied:
 24. Release assets install into a clean Windows environment.
 25. Documentation/site matches the actual supported runtime matrix.
 26. Live ChatGPT E2E succeeds before the stable tag.
+27. Agent runtime egress proxy is explicit, disabled by default and independently configurable from the Tunnel/Control Plane proxy.
+28. WorkPC Codex real-provider acceptance succeeds with the actual development proxy attached through the dedicated Agent proxy path.
+29. Codex loopback WebSocket control traffic is proven to bypass the egress proxy.
+30. `SERVERFS_PROXY_*` / Tunnel proxy secrets are never automatically forwarded into Bridge/provider children.
+31. Proxy endpoint or credentials never appear in MCP output, logs, doctor output, generated Bridge config or repository evidence.
+32. If authenticated Agent proxy support is claimed, its credentials are proven unavailable to agent-executed provider/tool code; otherwise v0.11 documents support as credentialless/local-broker proxy only.
 
 ## 17. Explicit non-goals
 
@@ -1114,27 +1320,29 @@ The default implementation order is:
 3. Phase 0C Codex proxy transport
 4. Phase 0D Qoder SDK
 5. Phase 0E Claude SDK
-6. Windows test-collection fixes
-7. Platform seams
-8. Fake Bridge E2E
-9. Writer lease/recovery
-10. native config/lifecycle
-11. Codex
-12. Qoder
-13. Claude
-14. packaging/CI
-15. live ChatGPT acceptance
-16. docs/site alignment
-17. v0.11.0 tag/release
+6. Phase 0F Agent Runtime Egress Proxy
+7. Windows test-collection fixes
+8. Platform seams
+9. Fake Bridge E2E
+10. Writer lease/recovery
+11. native config/lifecycle + runtime proxy
+12. Codex
+13. Qoder
+14. Claude
+15. packaging/CI
+16. live ChatGPT acceptance
+17. docs/site alignment
+18. v0.11.0 tag/release
 
-The first five are experiments rather than product code. Their purpose is to eliminate the remaining expensive assumptions before architecture is frozen.
+The first six are experiments rather than product code. Their purpose is to eliminate the remaining expensive assumptions before architecture is frozen.
 
-Phase 0 status (2026-10-04): 1 LockFileEx CLOSED-PASS, 2 Named Pipe + SID CLOSED-PASS, 3 Codex
-transport measured with the selection open (§10.1-§10.2), 4 Qoder SDK CLOSED-PASS, 5 Claude SDK
-CLOSED-PASS. Because item 3 is still open, Phase 0 is not frozen and no implementation phase starts
-before that decision: §9 lifecycle, the Phase D `[agent.codex]` config shape and the Job Object
-membership all depend on whether the Bridge owns an app-server child or attaches to the
-provider-managed daemon.
+Phase 0 status (2026-10-04): 0A LockFileEx CLOSED-PASS, 0B Named Pipe + SID CLOSED-PASS, 0C Codex
+transport CLOSED-PASS with authenticated loopback WebSocket selected (§10.2), 0D Qoder SDK
+CLOSED-PASS, 0E Claude SDK CLOSED-PASS, 0F Agent Runtime Egress Proxy CLOSED-PASS (§7.1-§7.2).
+Phase 0 is frozen; Phase A may start on its own branch. The WorkPC deployment requirement — Codex and
+OpenAI traffic only reachable through an outbound proxy — is now a measured product contract instead of
+ambient developer-shell state, and Phase D may not implement an environment builder that contradicts
+§7.2.
 
 ## 19. Development discipline
 
