@@ -1,16 +1,28 @@
-"""Thin client for the host-side ServerFS Agent Bridge UDS protocol."""
+"""Thin client for the host-side ServerFS Agent Bridge local-IPC protocol.
+
+The request/response contract is provider-neutral and identical on every platform; the
+transport is a §3 seam. Linux connects to the Bridge's AF_UNIX socket, where the kernel
+supplies the peer credentials. Windows connects to the Bridge's Named Pipe, measures the
+process on the server side, and asserts that process's SID before a request byte is written
+(see ``windows_agent_pipe.py``).
+"""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import secrets
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
 PROTOCOL_VERSION = 1
 MAX_REQUEST_BYTES = 1_048_576
 MAX_RESPONSE_BYTES = 1_048_576
+PIPE_PREFIX = "\\\\.\\pipe\\"
+
+WINDOWS = sys.platform == "win32"
 
 
 class AgentBridgeClientError(Exception):
@@ -34,6 +46,8 @@ class AgentBridgeClient:
     def __init__(self, socket_path: Path, *, timeout_seconds: float = 15.0):
         if not socket_path.is_absolute():
             raise ValueError("agent bridge socket path must be absolute")
+        if WINDOWS and not str(socket_path).startswith(PIPE_PREFIX):
+            raise ValueError("agent bridge endpoint must be a named pipe on Windows")
         if timeout_seconds <= 0:
             raise ValueError("agent bridge timeout must be positive")
         self.socket_path = socket_path
@@ -77,6 +91,8 @@ class AgentBridgeClient:
             raise AgentBridgeClientError("agent bridge returned an invalid response") from exc
 
     async def _exchange(self, encoded: bytes, request_id: str) -> dict[str, Any]:
+        if WINDOWS:
+            return await self._exchange_pipe(encoded, request_id)
         reader: asyncio.StreamReader | None = None
         writer: asyncio.StreamWriter | None = None
         try:
@@ -100,6 +116,44 @@ class AgentBridgeClient:
                     await writer.wait_closed()
                 except (ConnectionError, OSError):
                     pass
+
+    async def _exchange_pipe(self, encoded: bytes, request_id: str) -> dict[str, Any]:
+        """The Windows half of the same exchange, with the identity assertion the pipe needs.
+
+        Every Win32 call is blocking, so it runs on a worker thread against one deadline for
+        the whole request: the event loop stays free, and no thread can outlive the timeout.
+        The server's SID is measured and asserted before a request byte is written, because
+        being able to open the pipe proves nothing (§12).
+        """
+        from . import windows_agent_pipe as transport
+
+        deadline = time.monotonic() + self.timeout_seconds
+        connection = await asyncio.to_thread(
+            transport.BridgePipe.open, str(self.socket_path), deadline=deadline
+        )
+        try:
+            identity = await asyncio.to_thread(connection.server_identity)
+            expected_sid = await asyncio.to_thread(transport.current_user_sid)
+            if identity.user_sid != expected_sid:
+                # Deliberately no SID, PID or path in the message: identity is measured evidence,
+                # not something to publish through the MCP surface (§11).
+                raise AgentBridgeUnavailable("the agent bridge pipe is owned by another identity")
+            await asyncio.to_thread(connection.write_all, encoded, deadline=deadline)
+            raw = await asyncio.to_thread(
+                connection.read_line, limit=MAX_RESPONSE_BYTES + 1, deadline=deadline
+            )
+        finally:
+            connection.close()
+        return _response_result(raw, request_id)
+
+
+def _response_result(raw: bytes, request_id: str) -> dict[str, Any]:
+    if not raw:
+        raise ConnectionError("agent bridge closed the connection")
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise ValueError("agent bridge response exceeds configured limit")
+    response = json.loads(raw, parse_constant=_reject_json_constant)
+    return _parse_response(response, request_id)
 
 
 def _parse_response(response: Any, request_id: str) -> dict[str, Any]:
