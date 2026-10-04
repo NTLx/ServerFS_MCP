@@ -13,17 +13,17 @@ Acceptance preconditions:
 
 Step 1 — prepare and review the release-closeout PR (do not merge yet):
 
-- [ ] `pyproject.toml`: `version = "0.10.0"` (SERVER_VERSION resolves through
+- [x] `pyproject.toml`: `version = "0.10.0"` (SERVER_VERSION resolves through
       package metadata, no code change).
-- [ ] `uv lock` to refresh `uv.lock` (committed together).
-- [ ] `native/windows/Cargo.toml`: `version = "0.10.0"` (drops `-dev`; owns the
+- [x] `uv lock` to refresh `uv.lock` (committed together).
+- [x] `native/windows/Cargo.toml`: `version = "0.10.0"` (drops `-dev`; owns the
       wheel METADATA version the tag gate checks) + refresh
       `native/windows/Cargo.lock` via `cargo update --workspaces` or
       `cargo generate-lockfile` in `native/windows` — no other dependency churn.
-- [ ] README: "Current stable release" line, Docker image & release channels
+- [x] README: "Current stable release" line, Docker image & release channels
       table (`ghcr.io/ntlx/serverfs_mcp:0.10.0` / `0.10`), upgrade section with
       a v0.10.0 entry (Windows native section already documents the surface).
-- [ ] Website (`site/`): news/release page per the site gate
+- [x] Website (`site/`): news/release page per the site gate
       (`cd site && npm ci && npm run build`, `git diff --check`).
 - [x] Review PR #27, including any README/site stable copy, and confirm all
       required checks are green.
@@ -35,14 +35,14 @@ Step 2 — confirm closeout, run live E2E, then tag and publish:
 - [x] Merge PR #27 to `main`.
 - [x] Run the live ChatGPT tunnel E2E per section 8 of
       `docs/phase-f-acceptance-2026-10.md`.
-- [ ] Only if live E2E passes, immediately create and push the release tag
+- [x] Only if live E2E passes, immediately create and push the release tag
       (tags are immutable once published):
       `git tag v0.10.0 && git push origin v0.10.0`.
-- [ ] If live E2E fails, do not create or push the tag; resolve the failure and
+- [x] (did not occur) If live E2E fails, do not create or push the tag; resolve the failure and
       rerun the live E2E first.
-- [ ] Container and `wheel-release` workflows publish from the tag.
-- [ ] Container workflow publishes `0.10.0`, `0.10`, `latest` images.
-- [ ] `wheel-release` workflow runs on the tag: version gate reads METADATA
+- [x] Container and `wheel-release` workflows publish from the tag.
+- [x] Container workflow publishes `0.10.0`, `0.10`, `latest` images.
+- [x] `wheel-release` workflow runs on the tag: version gate reads METADATA
       versions of both wheels (must equal `0.10.0`), clean two-wheel acceptance,
       then attaches `serverfs_mcp-0.10.0-py3-none-any.whl` and
       `serverfs_windows_native-0.10.0-cp312-abi3-win_amd64.whl` to the GitHub
@@ -50,20 +50,20 @@ Step 2 — confirm closeout, run live E2E, then tag and publish:
 
 Step 3 — post-publish verification:
 
-- [ ] Clean Windows machine (or fresh profile): download both release assets,
+- [x] Clean Windows machine (or fresh profile): download both release assets,
       `uv venv` + two-wheel install, `serverfs doctor` exit 0, one stdio
       mutation round-trip. This is the GA-facing install story.
 - [ ] Optionally wire the `uv` URL source for the native wheel into
       `pyproject.toml` (`[tool.uv.sources] ... url = <asset>`) now that the
       asset resolves, and record the universal-lock refresh in a follow-up
       commit; until then the two-command `uv pip install` story is the contract.
-- [ ] GHCR package visibility per release process (UI; GitHub has no API for it).
-- [ ] `serverfs bootstrap native-wheel --url <asset> --sha256 <notes digest>`
+- [x] GHCR package visibility per release process (UI; GitHub has no API for it).
+- [x] `serverfs bootstrap native-wheel --url <asset> --sha256 <notes digest>`
       verified once against the live asset.
 
 Step 4 — post-tag documentation follow-up:
 
-- [ ] After tagging and publishing, make a separate commit
+- [x] After tagging and publishing, make a separate commit
       `docs: mark v0.10.0 as released` for the AGENTS.md current-stable
       paragraphs (`dev_plan_v0.10.md` first, v0.9 plan becomes the frozen prior
       record) and the dev_plan status line.
