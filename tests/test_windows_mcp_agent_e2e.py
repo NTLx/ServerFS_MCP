@@ -224,9 +224,17 @@ def test_client_reports_an_absent_bridge_without_a_hang() -> None:
     missing = rf"\\.\pipe\serverfs-agent-bridge-absent-{secrets.token_hex(6)}"
     client = AgentBridgeClient(Path(missing), timeout_seconds=2.0)
     started = time.monotonic()
-    with pytest.raises(AgentBridgeUnavailable):
+    with pytest.raises(AgentBridgeUnavailable) as raised:
         asyncio.run(client.call("runtime.list", {}))
-    assert time.monotonic() - started < 10.0
+    elapsed = time.monotonic() - started
+    assert elapsed < 10.0, f"the bounded retry took {elapsed:.1f}s"
+    # The published outcome is the frozen code-free message: neither the Win32 text, the pipe
+    # name nor any identity material reaches the caller (§11).
+    assert str(raised.value) in {
+        "agent bridge is unavailable",
+        "agent bridge request timed out",
+    }, str(raised.value)
+    assert missing not in str(raised.value)
 
 
 def test_client_refuses_a_filesystem_endpoint_on_windows(tmp_path: Path) -> None:
