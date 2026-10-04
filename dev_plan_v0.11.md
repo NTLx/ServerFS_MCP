@@ -1,6 +1,6 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
-Status: IN PROGRESS — Phase 0 experiments; Phase 0A CLOSED (2026-10-04)
+Status: IN PROGRESS — Phase 0 experiments; Phase 0A CLOSED, Phase 0B CLOSED (2026-10-04)
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -167,6 +167,64 @@ Layer 2: after connection, measure the peer:
 SID equality is authoritative. PID/session are evidence and diagnostics.
 
 The rule remains: measure the real connecting identity and then assert it; never infer trust from the pipe name.
+
+### 4.5 Measured ordering constraint (Phase 0B)
+
+`ImpersonateNamedPipeClient` fails with `1368 ERROR_CANT_IMPERSONATE_NAMED_PIPE` until at least one
+read has been performed on the connected instance. The Windows order is therefore:
+
+```text
+ConnectNamedPipe
+-> read the first complete frame
+-> impersonate, read TokenUser SID, RevertToSelf
+-> assert SID equality            # fail closed here, before any dispatch
+-> dispatch
+```
+
+Linux asserts at connection setup; Windows asserts between first read and dispatch. No request may
+be dispatched before the assertion, and the frame is buffered, not executed, while identity is
+measured. Impersonation may be performed on a worker thread that did not do the read (measured).
+The measured level is SecurityIdentification: the Bridge can read the peer SID but cannot use the
+peer token for object access, which is the narrower capability we want.
+
+### 4.6 Instance pool, connect retry and single-owner name
+
+A byte pipe serves at most as many simultaneous clients as there are listening instances. Measured:
+one listening instance plus six simultaneous clients answered 3/6 (4/6 on the first run), every
+failure being `231 ERROR_PIPE_NOT_CONNECTED`; with a bounded client-side retry the same run answered
+6/6 needing at most 2 retries; four instances plus twelve clients answered 12/12, and a
+replenishing six-instance pool served 12/12.
+
+Therefore:
+
+- the Bridge keeps a pool of listening instances (at least two, configurable) and replenishes an
+  instance immediately after a connection finishes; both a fresh instance per connection and
+  `DisconnectNamedPipe` + re-`ConnectNamedPipe` on the same instance are measured working;
+- the MCP-side client treats `ERROR_PIPE_BUSY`, `ERROR_PIPE_NOT_CONNECTED` and
+  `ERROR_FILE_NOT_FOUND` on connect as retryable inside the existing request timeout, with a short
+  bounded backoff;
+- the Bridge creates its first instance with `FILE_FLAG_FIRST_PIPE_INSTANCE`, so a second Bridge
+  process cannot silently join an existing name and fails closed instead (measured
+  `ERROR_ACCESS_DENIED`); without the flag a second process succeeds and steals connections;
+- the client additionally asserts the connected server's real PID and SID
+  (`GetNamedPipeServerProcessId` + process token, both measured working), so a squatted or stale
+  name is detected rather than trusted;
+- the Bridge must not report readiness until at least one instance is inside `ConnectNamedPipe`;
+  a created-but-never-connected instance makes client opens block indefinitely (measured).
+
+### 4.7 Pipe DACL and framing
+
+The default pipe DACL is not safe: a pipe created through the default path carries
+`(A;;FR;;;WD)(A;;FR;;;AN)`, i.e. Everyone and Anonymous get read access. The Bridge must create the
+pipe with an explicit protected descriptor (`D:P(A;;GA;;;S-1-5-…)`), and this is enforced, not
+cosmetic: with a DACL granting only `SY`/`BA`, the same local user is refused at
+`CreateFileW` with `ERROR_ACCESS_DENIED` (measured negative control).
+
+Framing transfers 1:1 (`MAX_REQUEST_BYTES` accepted exactly, oversized refused, ~1 MiB response
+delivered complete, malformed line refused with `INVALID_REQUEST`), but byte mode coalesces writes:
+two frames in one `WriteFile` arrive together, so the reader must keep a persistent frame buffer and
+drain every complete line before waiting again. A client that sends no newline pins one connection
+until it closes, so the Windows server needs an idle read timeout that Linux gets from asyncio.
 
 ## 5. Windows writer lease
 
@@ -651,6 +709,38 @@ Prove:
 - practical negative identity cases fail closed.
 
 Gate: freeze the Windows IPC + peer identity contract.
+
+Status: **CLOSED — gate PASS** (2026-10-04, WorkPC, Windows 11 Pro 10.0.26200).
+
+Implemented:
+Nothing in product code. Throwaway `ctypes` pipe harness under `%TEMP%\serverfs-phase0b\` with real
+separate server/client processes, per-stage error reporting and hard deadlines, plus two follow-ups
+that isolated the impersonation ordering (`imp_diag3`) and the listening-instance/retry behaviour
+(`conc_probe`).
+
+Measured:
+Byte-stream JSON-lines framing reproduces the Linux contract exactly, including the exact 1 MiB
+boundary, `REQUEST_TOO_LARGE`, `INVALID_REQUEST` and a complete ~1 MiB response. Peer identity is
+real and measurable: client PID, session and `TokenUser` SID, `RevertToSelf` clean afterwards, and
+the client can also measure the connected server's PID/SID. Two constraints were proven rather than
+assumed: impersonation is impossible before the first read (`1368`), so assertion moves between
+"first frame read" and "dispatch"; and a byte pipe only serves as many simultaneous clients as
+there are listening instances (4/6 without retry, 6/6 with a bounded retry), so the Bridge needs an
+instance pool and the MCP client needs retryable connect. The default pipe DACL grants Everyone and
+Anonymous read access, so the explicit protected DACL is mandatory and its enforcement was proven
+with a real negative control. `FILE_FLAG_FIRST_PIPE_INSTANCE` fails closed on a taken name.
+Full matrix in `docs/windows-phase-0b-namedpipe-identity-2026-10-04.md`; the plan text it forced is
+the new §4.5-§4.7.
+
+Tests:
+No new automated test in Phase 0. Phase B implements the pipe server/client and its tests must cover
+each measured row: framing sizes, coalesced and partial writes, malformed frame, idle client,
+either-side abrupt death, SID assertion (including the read-before-impersonate ordering), explicit
+DACL allow/deny, instance pool plus connect retry, and first-instance-name fail-closed.
+
+Residual, recorded in the evidence doc §6: no second real Windows account on this host (the DACL
+negative control stands in; a cross-account row belongs to the Windows CI matrix), no low-integrity
+client, and no remote/network client against `PIPE_REJECT_REMOTE_CLIENTS`.
 
 #### Phase 0C — Codex transport
 
