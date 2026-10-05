@@ -129,17 +129,18 @@ def _session(resolved: ResolvedPath):
 
 
 def _mutation_lease(settings: Settings, resolved: ResolvedPath):
-    """The shared cross-process Agent writer lease for this workdir slot.
+    """The shared cross-process Agent writer lease for this workdir.
 
-    The Unix lease manager is imported lazily and only on the Agent-enabled
-    path, so an Agent-disabled process (and the future non-Linux kernel)
-    never loads it and keeps the exact v0.2 no-op behaviour.
+    The lease manager is imported lazily and only on the Agent-enabled path, so an Agent-disabled
+    process never loads it and keeps the exact v0.2 no-op behaviour.
     """
     if not settings.agent_bridge_enabled:
         return contextlib.nullcontext()
     from .agent_leases import mutation_agent_lease
 
-    return mutation_agent_lease(Path(settings.agent_lock_dir), resolved.workdir.slot, enabled=True)
+    return mutation_agent_lease(
+        Path(settings.agent_lock_dir), resolved.workdir.lease_id, enabled=True
+    )
 
 
 def _resolve(

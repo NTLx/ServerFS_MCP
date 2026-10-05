@@ -12,6 +12,7 @@ from platform_contract import linux_only
 from serverfs_agent_bridge.adapters.claude import ClaudeAdapter
 from serverfs_agent_bridge.config import ClaudeSettings
 from serverfs_agent_bridge.errors import BridgeError
+from serverfs_agent_bridge.lease_identity import slot_lease_id
 from serverfs_agent_bridge.leases import LeaseManager
 from serverfs_agent_bridge.models import AgentMode, ReconciliationStatus
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
@@ -439,7 +440,7 @@ async def test_claude_cancel_interrupts_active_client(
             await asyncio.sleep(0.01)
         else:
             raise AssertionError("cancelled Claude task background cleanup did not finish")
-        assert service.guard_manager.read(1) is None
+        assert service.guard_manager.read(slot_lease_id(1)) is None
     finally:
         await service.close()
 

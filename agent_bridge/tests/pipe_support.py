@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import secrets
+import sys
 import threading
 import time
 from pathlib import Path
@@ -48,22 +49,21 @@ def new_pipe_name() -> str:
 def make_service(tmp_path: Path, *, workspace_write: bool = False) -> BridgeService:
     repo = tmp_path / "repo"
     repo.mkdir(exist_ok=True)
+    # A native deployment carries no slots (§5.3), so this fixture keys the lease the way the
+    # platform's own deployment does, and pre-creates exactly that artifact.
+    policy = WorkdirAgentPolicy(
+        slot=None if sys.platform == "win32" else 1,
+        alias="repo",
+        host_path=repo,
+        mode=AgentMode.WORKSPACE_WRITE if workspace_write else AgentMode.REVIEW,
+        runtimes=frozenset({"fake"}),
+        read_only=not workspace_write,
+    )
     return BridgeService(
         store=TaskStore(tmp_path / "state"),
-        policies=PolicyRegistry(
-            [
-                WorkdirAgentPolicy(
-                    slot=1,
-                    alias="repo",
-                    host_path=repo,
-                    mode=AgentMode.WORKSPACE_WRITE if workspace_write else AgentMode.REVIEW,
-                    runtimes=frozenset({"fake"}),
-                    read_only=not workspace_write,
-                )
-            ]
-        ),
+        policies=PolicyRegistry([policy]),
         adapters={"fake": FakeAdapter()},
-        lease_manager=LeaseManager(tmp_path / "locks"),
+        lease_manager=LeaseManager(tmp_path / "locks", lease_ids=[policy.lease_id]),
     )
 
 

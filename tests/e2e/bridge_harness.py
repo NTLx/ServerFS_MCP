@@ -13,15 +13,18 @@ surface -- whose public allowlist is exactly codex/claude/qoder -- can be driven
 to end without a provider. The production ``FakeAdapter`` keeps
 ``name == "fake"`` and is never added to the MCP runtime allowlist.
 
-``--read-only`` serves a review workdir instead of a workspace-write one. Linux ignores the
-distinction, but on Windows the writer lease is Phase C: a workspace-write task must fail
-closed there, so the Windows E2E drives review tasks, which need no lease.
+``--read-only`` serves a review workdir instead of a workspace-write one: a review task needs no
+writer lease, so the driver can exercise the Agent lifecycle without contending for the workdir.
+The lease artifact is pre-created here for exactly the one lease key this process will use, and the
+key follows the platform's own deployment shape (§5.3) — a native deployment has no slots, and the
+ServerFS reader beside it derives the alias-based name.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 
 from serverfs_agent_bridge.adapters import FakeAdapter
@@ -57,7 +60,7 @@ class CodexNamedFakeAdapter(FakeAdapter):
 
 async def _serve(args: argparse.Namespace) -> None:
     policy = WorkdirAgentPolicy(
-        slot=1,
+        slot=None if sys.platform == "win32" else 1,
         alias=WORKDIR_ALIAS,
         host_path=args.workdir,
         mode=AgentMode.REVIEW if args.read_only else AgentMode.WORKSPACE_WRITE,
@@ -68,7 +71,7 @@ async def _serve(args: argparse.Namespace) -> None:
         store=TaskStore(args.state_dir),
         policies=PolicyRegistry([policy]),
         adapters={args.runtime_name: CodexNamedFakeAdapter(args.runtime_name)},
-        lease_manager=LeaseManager(args.lock_dir),
+        lease_manager=LeaseManager(args.lock_dir, lease_ids=[policy.lease_id]),
         limits=BridgeLimits(
             task_timeout_seconds=60,
             interaction_timeout_seconds=1,

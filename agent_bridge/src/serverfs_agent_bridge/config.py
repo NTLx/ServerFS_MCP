@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import lease_identity
 from .models import KNOWN_RUNTIME_NAMES, AgentMode
 from .policy import PolicyRegistry, WorkdirAgentPolicy
 
@@ -18,6 +19,7 @@ _CONFIG_KEYS = frozenset(
         "socket_path",
         "state_dir",
         "lock_dir",
+        "lease_key",
         "allowed_peer_uid",
         "allowed_peer_gid",
         "allowed_peer_sid",
@@ -65,7 +67,29 @@ _LIMIT_KEYS = frozenset(
     {"task_timeout_seconds", "interaction_timeout_seconds", "max_active_tasks", "retention_seconds"}
 )
 _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
-_MAX_WORKDIR_SLOTS = 16
+_LEASE_KEY_SLOT = "slot"
+_LEASE_KEY_ALIAS = "alias"
+_LEASE_KEYS = frozenset({_LEASE_KEY_SLOT, _LEASE_KEY_ALIAS})
+
+
+def _workdir_slot(item: dict[str, Any], lease_key: str) -> int | None:
+    """The numeric slot of one workdir entry, or None when the deployment keys leases by alias.
+
+    The choice is a single explicit switch for the whole config, never a per-entry accident, and it
+    defaults to the legacy layout. The ServerFS reader and the Bridge derive lease artifact names
+    independently, so a deployment whose two sides disagree would lock two different files and still
+    report success: a Compose deployment always carries slots, a native deployment never does, and
+    one config cannot mix the two (§5.3).
+    """
+    raw = item.get("slot")
+    if lease_key == _LEASE_KEY_ALIAS:
+        if raw is not None:
+            raise ValueError("workdir.slot is not used when lease_key is alias")
+        return None
+    slot = _strict_int(raw, "workdir.slot")
+    if not 1 <= slot <= lease_identity.MAX_WORKDIR_SLOTS:
+        raise ValueError("workdir.slot must be between 1 and 16")
+    return slot
 
 
 def _default_codex_home() -> Path:
@@ -146,6 +170,10 @@ class BridgeConfig:
             raise ValueError("bridge config root must be an object")
         _reject_unknown_keys(data, _CONFIG_KEYS, "bridge config")
 
+        lease_key = _strict_string(data.get("lease_key", _LEASE_KEY_SLOT), "lease_key")
+        if lease_key not in _LEASE_KEYS:
+            raise ValueError("lease_key must be slot or alias")
+
         policies: list[WorkdirAgentPolicy] = []
         workdirs = data.get("workdirs", [])
         if not isinstance(workdirs, list):
@@ -154,9 +182,7 @@ class BridgeConfig:
             if not isinstance(item, dict):
                 raise ValueError("workdirs entries must be objects")
             _reject_unknown_keys(item, _WORKDIR_KEYS, "workdir")
-            slot = _strict_int(item.get("slot"), "workdir.slot")
-            if not 1 <= slot <= _MAX_WORKDIR_SLOTS:
-                raise ValueError("workdir.slot must be between 1 and 16")
+            slot = _workdir_slot(item, lease_key)
             alias = _strict_string(item.get("alias"), "workdir.alias")
             if _ALIAS_RE.fullmatch(alias) is None:
                 raise ValueError("workdir.alias has an invalid format")

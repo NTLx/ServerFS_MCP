@@ -151,7 +151,7 @@ def test_symlink_escape_is_rejected(tmp_path: Path) -> None:
 
 
 def test_duplicate_slots_are_rejected(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="duplicate workdir slot"):
+    with pytest.raises(ValueError, match="duplicate workdir lease"):
         PolicyRegistry(
             [
                 WorkdirAgentPolicy(1, "one", tmp_path, runtimes=frozenset({"fake"})),

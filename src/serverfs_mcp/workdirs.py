@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import Settings
+from .lease_identity import alias_lease_id, slot_lease_id
 from .models import ListWorkdirsResult, WorkdirInfo
 
 SLOT_COUNT = 16
@@ -71,8 +72,8 @@ class Workdir:
     trusted anchor (a POSIX container path on the legacy Docker deployment,
     a native absolute path for native deployments). ``legacy_slot`` is
     populated ONLY by the legacy Compose/env adapter: the filesystem core
-    never requires a numeric slot, and the Agent writer lease is the one
-    consumer that still keys on it (a frozen v0.9 contract).
+    never requires a numeric slot, and the Agent writer lease keys on it when
+    it is present and on the exact alias when it is not (v0.11 §5.3).
     """
 
     alias: str
@@ -131,21 +132,19 @@ class Workdir:
         return self.root
 
     @property
-    def slot(self) -> int:
-        """Legacy numeric slot (1..16) or a fail-closed sentinel for native
-        workdirs.
+    def lease_id(self) -> str:
+        """Platform-neutral Agent writer-lease key for this workdir (v0.11 §5.3).
 
-        The Agent writer lease (agent_leases.mutation_agent_lease) rejects
-        anything outside 1..16, so a native workdir with no legacy slot can
-        never take the lease: mutations in Agent-integrated deployments are
-        a frozen Linux/Docker capability in v0.10. This property exists so
-        that failure stays a runtime rejection at the lease boundary rather
-        than an AttributeError in the mutation tools.
+        A legacy Compose workdir keeps the numeric slot it was configured with, so its lease
+        artifacts are still the `NN.lock` files a running v0.10 Bridge created. A native workdir has
+        no slot and is keyed by its exact alias; ``lease_identity`` turns either kind into a
+        filesystem-safe artifact name, and the Bridge derives the same name from the same id. Keying
+        on the exact alias rather than the alias text is what keeps case-only-different aliases from
+        merging into one lease on a case-folding filesystem.
         """
         if self.legacy_slot is None:
-            # Not a real slot; agent_leases.mutation_agent_lease must refuse it.
-            return 0
-        return self.legacy_slot
+            return alias_lease_id(self.alias)
+        return slot_lease_id(self.legacy_slot)
 
     @property
     def access(self) -> str:
