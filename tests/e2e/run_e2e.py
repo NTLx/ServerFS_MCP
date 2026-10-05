@@ -154,6 +154,10 @@ def build_server(socket_path: Path, lock_dir: Path, workdir: Path):
         read_only=False,
         agent_mode=AGENT_MODE_WORKSPACE_WRITE,
         agent_runtimes=frozenset({"codex"}),
+        # The same lease key the harness's Bridge policy uses on this deployment (slot:01, §5.3).
+        # Two sides that derive different artifact names would not contend at all, and the
+        # mutual-exclusion step below would report a successful write instead of a busy workdir.
+        legacy_slot=1,
     )
     registry = WorkdirRegistry([policy_workdir])
     return create_server(settings, registry, AgentBridgeClient(socket_path)), policy_workdir

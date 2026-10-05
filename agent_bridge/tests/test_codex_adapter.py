@@ -670,7 +670,7 @@ async def test_reconcile_clears_guard_after_control_socket_failure_before_thread
         unresolved = await adapter.reconcile_task(ambiguous)
         assert unresolved.provider_active is None
 
-        result = await service._reconcile_guard(1)
+        result = await service._reconcile_guard(slot_lease_id(1))
         assert result is not None
         assert result.provider_active is False
         assert service.guard_manager.read(slot_lease_id(1)) is None

@@ -311,6 +311,12 @@ bounded 45-character name and independent concurrent leases.
 
 Linux may preserve the existing NN.lock layout for backwards compatibility.
 
+Phase C implementation: the key kind is one explicit per-config switch (`lease_key: slot | alias`,
+default `slot`, never mixed inside one config) rather than a per-entry choice. The two sides derive
+artifact names independently, so a deployment where only one of them carries slots would lock two
+different files and still report success; one switch per deployment makes that unrepresentable, and
+the native renderer (Phase D) writes `alias`.
+
 ### 5.4 Recovery guard
 
 Keep existing semantics:
@@ -361,6 +367,20 @@ use:
 9. Private-state ACLs must be set and verified per artifact with an explicit non-inherited DACL.
    Replacing a parent directory DACL on this profile also emptied the child artifact's inherited
    ACEs, which silently denied the reader's open. Inheritance is not a security boundary here.
+
+Phase C implementation notes against this frozen shape (both are clarifications, neither changes the
+acquisition):
+
+- Item 2's error mapping is stated per process. The Bridge answers an unopenable or invalid artifact
+  with its existing `LOCK_PATH_UNSAFE`; the ServerFS reader answers with the three MCP codes the
+  Linux lease already produced (`AGENT_LOCK_UNAVAILABLE`, `WORKDIR_BUSY`, `WORKDIR_RECOVERY_REQUIRED`).
+  They are the same condition seen from the two sides, and the reader keeps the frozen public
+  vocabulary instead of gaining a new code.
+- `LockFileEx` reads `Overlapped.Offset` for the range start even when the handle was opened without
+  `FILE_FLAG_OVERLAPPED`, and a NULL `lpOverlapped` faults on this OS build (measured while
+  implementing: `None` raised an access violation at offset `0x10`, a real zeroed `OVERLAPPED`
+  succeeded, with and without `use_last_error`). Both backends pass a fresh zeroed structure per
+  call. Evidence: `docs/windows-phase-c-revision-correctness-2026-10-05.md` §10.
 
 ## 6. Windows private state
 
@@ -1599,6 +1619,109 @@ Required tests:
   evidence level — not as a permanent product xfail, and not described as fixed;
 - a public-surface Windows Agent task submitted with `workspace-write` completes a real workspace
   mutation through the ten MCP tools and the pipe.
+
+**Phase C closure (2026-10-06): C1–C5 implemented.** Each item below is the shipped shape, not a
+plan, and every one of the required tests above has a named case behind it.
+
+*C1 — platform-neutral lease identity.* `lease_identity` exists on both sides of the lease (the
+packages must not import each other, §23), and cross-boundary agreement is pinned by an identical
+11-vector table in `tests/test_lease_identity.py` and `agent_bridge/tests/test_lease_identity.py` —
+shared data, not a shared import. A legacy Compose deployment keeps `slot:NN` and therefore the exact
+`01..16.lock` and `active/NN` artifact names a running v0.10 Bridge created, so an upgrade finds its
+own locks and guards. A native deployment is keyed by `alias:<exact alias>`, whose artifact name is
+`sha256(lease_id)[:40]` (`.lock` for the lease, bare for the guard): 45 characters bounded, hex-only,
+and — the reason alias text is never used — `Repo` and `repo` cannot merge into one lease on a
+case-folding filesystem. Reserved DOS names (`con`, `nul`) and a 200-character alias are covered.
+The key kind is one explicit config switch (`lease_key: slot | alias`, default `slot`, never mixed
+inside one config) rather than a per-entry accident, because the two sides derive names
+independently and a disagreement would silently lock two different files. Tasks store no new column:
+`TaskRecord.lease_id` is derived from the stored `(workdir_slot, workdir_alias)` pair, with
+`NO_LEGACY_SLOT = 0` as the "no slot" marker — no schema change, and the RPC payload shape is
+untouched. The guard payload
+carries `lease_id` additively and `read()` still accepts a v0.10 slot-only payload; a payload that
+contradicts the artifact it occupies is invalid.
+
+*C2 — the LockFileEx backend.* `windows_lease` on both sides implements the §5.5 shape: `GENERIC_READ`
+plus `OPEN_EXISTING`, share `READ|WRITE|DELETE`, validated on the same locking handle
+(`FileAttributeTagInfo`: a directory or a reparse object is refused), exclusive
+`LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY` over the full range. Nothing on the reader path
+ever creates the artifact, and an absent, denied, non-regular or planted object fails closed.
+One deviation from §5.5 item 2 is deliberate and is recorded here instead of being glossed over: the
+Bridge maps every open failure to its existing `LOCK_PATH_UNSAFE` code, and the ServerFS reader maps
+to the three MCP codes the Linux lease already produced (`AGENT_LOCK_UNAVAILABLE`, `WORKDIR_BUSY`,
+`WORKDIR_RECOVERY_REQUIRED`). `LOCK_PATH_UNSAFE` and `AGENT_LOCK_UNAVAILABLE` are the same condition
+seen from the two processes; §5.5 listed both against one side, and inventing a new public MCP code
+would have changed the frozen tool surface for a wording improvement.
+
+One new measurement, found while implementing this and worth recording because Phase 0A did not state
+it: **`LockFileEx` reads `Overlapped.Offset` even for a handle opened without `FILE_FLAG_OVERLAPPED`,
+and a NULL `lpOverlapped` faults on this OS build** — every call with `None` raised an access
+violation at offset `0x10` (the `Offset` member) while the identical call with a real zeroed
+`OVERLAPPED` succeeded, on both `use_last_error` settings. The range start is therefore a fresh
+zeroed structure per call, not a sentinel; per-call rather than shared so two threads cannot touch
+the same structure.
+
+*C3 — mutation integration and the held edit transaction.* `tests/test_mutation_lease_coverage.py`
+observes the lease boundary through the published surface: each of the six mutation tools takes the
+lease, `upload_binary_file(overwrite)` takes it too, no read channel takes one, and a mutation refused
+for a stale revision still went through the lease. It runs on both platforms, so a future mutation
+tool that forgets the lease fails in either gate. The edit channel is now one kernel transaction:
+`replace_source_with` opens the target with the frozen restricted share, answers object kind and
+revision, reads the source from *that held handle* (`read::read_open`, extracted from the existing
+bounded read so both channels share one implementation), hands `(data, revision_before)` to the
+caller's build step and publishes the result without releasing the hold. A build step that raises
+aborts the mutation and its own exception reaches the caller unchanged — a text-edit refusal is not a
+filesystem failure. Measured at the boundary (`tests/test_native_windows.py`): while the hold is
+live an external `O_WRONLY` open is refused and a read of the same object still succeeds, and after
+the transaction both succeed. Per contract decision B this narrows the **active-writer** race only;
+it is not, and is not described as, a fix for the same-tick token alias.
+
+Two kernel findings came out of this. `check_file_target` now answers a reparse object before a
+directory, matching `entry_type`, `capture_snapshot` and the traversal gate, so every mutation channel
+gives the precise Windows code for a junction target. And the mutation leaf open *follows* a junction
+(the `IsADirectory`/`NotADirectory` answer comes from the followed object), which is why the edit
+channel keeps its non-following `stat` classification ahead of the transaction: that is what produces
+`REPARSE_POINT_NOT_ALLOWED`, the code v0.10 shipped, and removing it changed the code — a real
+regression caught by the v0.10 gate, not a theoretical one. The transaction still re-answers kind and
+revision on the handle it holds, so the classification is a precision concern and never the guard.
+
+*C4 — recovery parity by moving evidence, not by duplicating code.* `recovery.py`, `service.py` and
+provider reconciliation are shared, so instead of a Windows shadow implementation the two Linux-marked
+lifecycle suites now run on Windows: the Bridge service suite (33 cases) and the runtime-reliability
+suite (12 cases), i.e. 43 tests that used to skip on Windows and cover busy acquisition, guard
+creation and clearing, cancellation, idempotency, timeouts, spooling, live-lease-beats-guard and
+restart reconciliation against the LockFileEx lease and the Windows descriptor. One reliability case
+stays Linux-marked, because its fixture pre-creates a `0700` state directory and Windows private state
+must create its own tree rather than repair an inherited foreign grant (§25). A new portable
+`agent_bridge/tests/test_recovery_identity.py` pins the guard identity rules for both platforms,
+including the upgrade path for a v0.10 slot-only guard and the rule that an unreadable guard is a
+recovery condition rather than something a scan may skip.
+
+*C5 — the public Windows surface.* `tests/test_windows_mcp_agent_e2e.py` drives a real second process
+over a real Named Pipe: a `workspace-write` task submitted through the ten MCP tools completes, the
+Bridge-created artifact is the alias-derived one ServerFS opens, an MCP mutation during the turn is
+refused `WORKDIR_BUSY` and writes nothing, the same mutation succeeds after the turn and the guard is
+gone. The crash matrix runs against `TerminateProcess`: the guard survives, the lock does not, the
+surface answers `WORKDIR_RECOVERY_REQUIRED`, and a Bridge restarted on the same state and lock trees
+reconciles the task and clears the guard. The other direction is proven too: a lease held by a
+separate process makes the Bridge refuse a `workspace-write` submission with `WORKDIR_BUSY`.
+The accepted blind window is measured, not xfailed: `SERVERFS_MEASURE_BLIND_WINDOW=1` runs 200 tight
+same-size external rewrites through the published `stat_file`/write path. On WorkPC: **75 unchanged,
+125 detected**. That is the documented boundary of contract decision B, and the release suite carries
+no permanent expected-failure for it.
+
+Gates executed on WorkPC for Phase C: `cargo fmt --check`, `cargo clippy --all-targets -D warnings`
+with and without the `pyo3` feature, `cargo test --locked` (13 lib + 17 ntfs_mutation + 9 ntfs_read +
+9 ntfs_traversal, 3 symlink cases ignored without `SERVERFS_REQUIRE_SYMLINK`), the wheel rebuilt with
+`maturin build --release --features pyo3 --locked` and reinstalled, Windows root suite **992 passed /
+128 skipped / no xfail**, Windows Bridge suite **249 passed / 50 skipped**, `ruff check` and `ruff
+format --check` clean in both packages. Linux is carried by this branch's CI (PR #35
+`Container / Test`, `Container / Agent Bridge test`, `Container check`, `Windows native`); the first
+Linux run caught two defects this section records (`agent_leases` POSIX guard branch reading an
+unassigned value, and a Windows-only test file being collected on Linux), which is exactly why the PR
+jobs are the authoritative Linux evidence. Not verified: ReFS/SMB, a second Windows account or
+integrity level, file-symlink (non-directory) reparse artifacts on the lease paths, and real-provider
+`workspace-write` through Codex/Claude/Qoder (Phases E–G).
 
 Exit: Windows reaches v0.7 lifecycle safety semantics.
 

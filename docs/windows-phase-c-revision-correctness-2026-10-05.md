@@ -294,3 +294,56 @@ research is closed: `ChangeTime`, per-file USN, bounded digests and full-content
 settled by this decision and are not to be re-opened inside Phase C. `AGENTS.md` carries a narrow
 Windows revision clarification so the token's guarantee level is readable without reading this
 document; `dev_plan_v0.10.md` is history and is not rewritten.
+
+## 10. Phase C implementation evidence (2026-10-06)
+
+What §9 committed to is now implemented, and the parts of it that needed a measurement got one.
+This section records only those; §3–§6 remain the experiment as it happened.
+
+**The accepted blind window, measured through the published surface.** A probe drives 200 tight
+same-object same-size external rewrites and reads the revision back through `stat_file` on the real
+MCP surface: **75 unchanged, 125 detected** on WorkPC (Windows 11 x64, local NTFS `C:`, ordinary
+non-elevated login, `%TEMP%` scratch files, no `settle` wait). It is run on demand, not as a release
+gate:
+
+```text
+SERVERFS_MEASURE_BLIND_WINDOW=1 uv run pytest tests/test_revision.py -k same_tick -s
+```
+
+That is the §9.2 boundary restated as a count instead of a claim. It is deliberately **not** an
+`xfail`: the suite must not carry a permanent expected-failure for behaviour the product now documents
+as out of scope for the token. The guarantees decision B *does* make are asserted normally, in
+`tests/test_revision.py::TestWindowsAcceptedRevisionBoundary`: an explicit timestamp move, a size
+change and a same-name replacement all move the revision.
+
+**Item 5, held across read and commit.** `edit_text_file`'s source read now happens on the object the
+replacement is holding, inside one kernel transaction. The seam is deterministic and measured rather
+than argued: with the transaction live, an external `O_WRONLY` open of the target is refused and a read
+of the same object still succeeds, and after the transaction both succeed
+(`tests/test_native_windows.py::test_source_transaction_reads_from_the_object_it_holds`). Kernel-level
+cases cover the ordering (kind and revision answered before any read, bounded read before the build,
+no publication when the build raises). As §9.6 requires, this is described as narrowing the
+**active-writer** race — it does not close the same-tick alias above.
+
+**A LockFileEx implementation fact Phase 0A did not state.** §5.5 item 2 describes
+`LockFileEx(LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY)` over the full file range. While
+implementing it: `LockFileEx` reads `Overlapped.Offset` for the range start **even for a handle opened
+without `FILE_FLAG_OVERLAPPED`**, and passing a NULL `lpOverlapped` faults on this OS build — every
+call with `None` raised an access violation at offset `0x10`, the `Offset` member, while the identical
+call with a real zeroed `OVERLAPPED` succeeded, with and without `use_last_error`. Both lease backends
+therefore pass a fresh zeroed structure per call. This is a clarification of the frozen shape, not a
+change to it: the acquisition, share mask, access mask, dispositions and error mapping are exactly as
+§5.5 and `docs/windows-phase-0a-lockfileex-2026-10-04.md` §4 specify.
+
+**Layers 1 and 2 of §9.4 are now observed behaviour, not design intent.** Layer 1 (ServerFS-coordinated
+writers) is proven both directions on the real Named Pipe and two processes: an Agent
+`workspace-write` turn blocks an MCP mutation with `WORKDIR_BUSY`, and a lease held by a separate
+process makes the Bridge refuse a `workspace-write` submission with `WORKDIR_BUSY`. Layer 2 (active
+external writer) is the sharing refusal measured in §6 and re-asserted by the transaction seam above.
+Layer 3 (completed external writer) is the revision, with §9.2 as its documented limit.
+
+**Crash and reconciliation.** `TerminateProcess` leaves the guard and releases the lock, the published
+surface answers `WORKDIR_RECOVERY_REQUIRED`, and a Bridge restarted on the same state and lock trees
+reconciles the task and clears the guard so the workdir is writable again. The lifecycle evidence is
+the Linux suites running against the Windows lease rather than a second implementation of it
+(43 previously-skipped Bridge cases), which is what makes the parity claim checkable.
