@@ -9,8 +9,9 @@
 //! `cargo test` builds without this feature, so the kernel stays testable
 //! even where no Python toolchain is present; the wheel build enables it.
 
-use pyo3::exceptions::PyException;
+use pyo3::exceptions::{PyException, PyTypeError};
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 use pyo3::wrap_pyfunction;
 
 use crate::error::NativeError;
@@ -304,6 +305,62 @@ impl NativeWorkdirSession {
         let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
         crate::mutation::replace_bytes(&self.root.0, &refs, &bytes, expected_revision)
             .map_err(map_error)
+    }
+
+    /// The edit channel's transaction. Reads the source from the handle the replacement holds,
+    /// hands `(data, revision_before)` to `transform`, and publishes the bytes it returns — all
+    /// without releasing the restricted-share hold between the read and the commit
+    /// (dev_plan_v0.11 §15, C0 completion contract item 5).
+    ///
+    /// A `transform` that raises aborts the mutation and its exception reaches the caller
+    /// unchanged: a text-edit refusal is not a filesystem failure and must not be rewritten into
+    /// one. Raw handles never cross this boundary; the callback sees bytes and returns bytes.
+    fn replace_bytes_from_source(
+        &self,
+        parts: Vec<String>,
+        expected_revision: &str,
+        max_read_bytes: u64,
+        transform: Bound<'_, PyAny>,
+    ) -> Result<String, PyErr> {
+        self.ensure_mutable()?;
+        if !transform.is_callable() {
+            return Err(pyo3::exceptions::PyTypeError::new_err(
+                "transform must be callable",
+            ));
+        }
+        let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
+        let raised: std::cell::RefCell<Option<PyErr>> = std::cell::RefCell::new(None);
+        let outcome = crate::mutation::replace_source_with(
+            &self.root.0,
+            &refs,
+            expected_revision,
+            max_read_bytes,
+            |data, revision_before| -> Result<Vec<u8>, ()> {
+                let py = transform.py();
+                let value = match transform.call1((PyBytes::new(py, &data), revision_before)) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        *raised.borrow_mut() = Some(error);
+                        return Err(());
+                    }
+                };
+                match value.extract::<Bound<'_, PyBytes>>() {
+                    Ok(payload) => Ok(payload.as_bytes().to_vec()),
+                    Err(error) => {
+                        *raised.borrow_mut() = Some(error);
+                        Err(())
+                    }
+                }
+            },
+        );
+        match outcome {
+            Ok(revision) => Ok(revision),
+            Err(crate::mutation::SourceError::Callback(())) => Err(raised
+                .borrow_mut()
+                .take()
+                .unwrap_or_else(|| PyTypeError::new_err("the replacement build failed"))),
+            Err(crate::mutation::SourceError::Native(error)) => Err(map_error(error)),
+        }
     }
 
     /// Internal plain-data D1 primitive for the later Windows backend.

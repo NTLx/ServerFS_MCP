@@ -73,5 +73,11 @@ def settle_file_time() -> None:
     differs. A real caller is separated by far more than one step, so tests that
     assert "the revision changed because the object changed" wait past a step
     instead of depending on how fast the test process happens to run.
+
+    Re-evaluated after Phase C and kept: under contract decision B this is not a workaround for a
+    defect but the shape of the promise — the Windows revision detects an observable metadata
+    change, and a same-tick same-size rewrite is the documented blind window
+    (dev_plan_v0.11 §15). The accepted boundary itself is asserted in
+    ``test_revision.TestWindowsAcceptedRevisionBoundary``, not hidden behind this wait.
     """
     time.sleep(0.05)
