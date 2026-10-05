@@ -13,6 +13,21 @@
 #   separate .env consumed by `serverfs tunnel` (see SERVERFS_PROXY_* in
 #   README), and the Control Plane API key lives in a file OUTSIDE every
 #   workdir referenced below.
+#
+# Agent delegation (v0.11) is DISABLED by default. A file with no [agent]
+# section at all behaves exactly like v0.10: no Bridge process, no Agent
+# tools, filesystem-only surface. Nothing below needs to be present unless you
+# want Agent delegation.
+#
+# The [agent] section below is documentation, not a requirement -- it is
+# commented out so this example stays filesystem-only by default. Uncomment it
+# to opt in.
+#
+# Agent secrets are NOT configured here either. The dedicated egress proxy
+# endpoint arrives through the SERVERFS_AGENT_PROXY_URL environment variable
+# (plus optional SERVERFS_AGENT_NO_PROXY) and is deliberately absent from this
+# file, from the generated Bridge configuration, and from every log and MCP
+# result. The booleans below are routing policy only.
 
 [server]
 # DEBUG | INFO | WARNING | ERROR (default: INFO)
@@ -46,3 +61,50 @@ alias = "workspace"
 path = "D:\\agent-data\\workspace"
 description = "Writable scratch area for agent tasks"
 read_only = false
+
+# ---------------------------------------------------------------------------
+# Agent delegation -- opt in by uncommenting. Absent means v0.10 behavior.
+# ---------------------------------------------------------------------------
+# [agent]
+# enabled = true
+# # Lifecycle limits. The defaults shown are the Agent Bridge's own; they are
+# # written here only so an operator can see and tune them.
+# task_timeout_seconds = 7200
+# interaction_timeout_seconds = 1800
+# max_active_tasks = 4
+# retention_seconds = 604800
+#
+# [agent.proxy]
+# # Disabled by default. v0.11 supports exactly one source: the environment.
+# enabled = false
+# source = "env"
+#
+# [agent.codex]
+# enabled = false
+# codex_bin = "codex"
+# # true is required where provider egress is unreachable direct (measured on
+# # the reference Windows host: api.openai.com and chatgpt.com time out).
+# use_proxy = true
+#
+# [agent.claude]
+# enabled = false
+# claude_bin = "claude"
+# use_proxy = false
+#
+# [agent.qoder]
+# enabled = false
+# qoder_bin = "qodercli"
+# # Measured directly reachable, so proxying is a policy choice here.
+# use_proxy = false
+#
+# Per-workdir Agent policy. agent_mode is one of disabled | review |
+# workspace-write. A workdir that allowlists a native runtime must be
+# workspace-write, because a native runtime may only submit with that profile,
+# and workspace-write in turn requires read_only = false above.
+#
+# [[workdirs]]
+# alias = "project"
+# path = "D:\\agent-data\\project"
+# read_only = false
+# agent_mode = "workspace-write"
+# agent_runtimes = ["codex", "claude"]
