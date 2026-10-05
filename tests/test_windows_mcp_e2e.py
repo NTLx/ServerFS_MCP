@@ -800,6 +800,78 @@ class TestMutationsE2E:
         assert not (rw_root / "dir").exists()
         assert created["revision"].startswith("v1:")
 
+    def test_directory_target_precedence(self, rw_server, rw_root) -> None:
+        """dev_plan_v0.11 C0.7: the object type is decided before the revision guard.
+
+        A directory answers NOT_A_FILE on both backends whether the caller's token is stale or
+        current; the native path used to report REVISION_CONFLICT for the stale token because the
+        guard ran first.
+        """
+        import base64
+
+        (rw_root / "gate").mkdir()
+        stale = "v1:0000000000000000"
+        assert (
+            error_code(
+                call_error(
+                    rw_server,
+                    "edit_text_file",
+                    {
+                        "workdir": "rw",
+                        "path": "gate",
+                        "expected_revision": stale,
+                        "edits": [{"old_text": "a", "new_text": "b"}],
+                    },
+                )
+            )
+            == "NOT_A_FILE"
+        )
+        current = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "gate"})[
+            "revision"
+        ]
+        assert (
+            error_code(
+                call_error(
+                    rw_server,
+                    "edit_text_file",
+                    {
+                        "workdir": "rw",
+                        "path": "gate",
+                        "expected_revision": current,
+                        "edits": [{"old_text": "a", "new_text": "b"}],
+                    },
+                )
+            )
+            == "NOT_A_FILE"
+        )
+        assert (
+            error_code(
+                call_error(
+                    rw_server,
+                    "upload_binary_file",
+                    {
+                        "workdir": "rw",
+                        "path": "gate",
+                        "data_base64": base64.b64encode(b"x").decode(),
+                        "overwrite": True,
+                        "expected_revision": stale,
+                    },
+                )
+            )
+            == "NOT_A_FILE"
+        )
+        assert (
+            error_code(
+                call_error(
+                    rw_server,
+                    "delete_file",
+                    {"workdir": "rw", "path": "gate", "expected_revision": stale},
+                )
+            )
+            == "NOT_A_FILE"
+        )
+        assert (rw_root / "gate").is_dir()
+
     def test_binary_upload_create_and_revision_guarded_replace(self, rw_server, rw_root) -> None:
         import base64
 

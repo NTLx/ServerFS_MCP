@@ -9,7 +9,7 @@ import stat as stat_module
 import pytest
 
 from helpers import call_error, call_success, error_code, make_server
-from platform_contract import linux_only, windows_difference
+from platform_contract import linux_only
 
 BOM = b"\xef\xbb\xbf"
 
@@ -409,11 +409,8 @@ class TestEditTargetRequirements:
         assert error_code(msg) == "PATH_NOT_FOUND"
         assert sorted(p.name for p in (workdir.container_path / "config").iterdir()) == ["app.yaml"]
 
-    @windows_difference(
-        "the native kernel checks the revision guard before the target type, so a "
-        "stale revision on a directory reports REVISION_CONFLICT instead of NOT_A_FILE"
-    )
-    def test_directory_target(self, workdir) -> None:
+    def test_directory_target_stale_revision(self, workdir) -> None:
+        """C0.7: a stale token must not turn a type error into REVISION_CONFLICT."""
         srv = make_server(workdir, read_write_access=True)
         os.mkdir(workdir.container_path / "sub")
         msg = call_error(
@@ -427,6 +424,24 @@ class TestEditTargetRequirements:
             },
         )
         assert error_code(msg) == "NOT_A_FILE"
+
+    def test_directory_target_current_revision(self, workdir) -> None:
+        """The same answer with the directory's own current revision, on both backends."""
+        srv = make_server(workdir, read_write_access=True)
+        os.mkdir(workdir.container_path / "sub2")
+        current = call_success(srv, "stat_file", {"workdir": "test", "path": "sub2"})["revision"]
+        msg = call_error(
+            srv,
+            "edit_text_file",
+            {
+                "workdir": "test",
+                "path": "sub2",
+                "expected_revision": current,
+                "edits": [{"old_text": "a", "new_text": "b"}],
+            },
+        )
+        assert error_code(msg) == "NOT_A_FILE"
+        assert (workdir.container_path / "sub2").is_dir()
 
     @linux_only("POSIX symlink semantics; reparse handling is covered on Windows")
     def test_symlink_target(self, workdir) -> None:

@@ -475,11 +475,11 @@ class WindowsWorkdirSession:
             max_edits_per_call=max_edits_per_call,
         )
         parts = list(resolved.rel_parts)
-        # ordering parity with Linux edit_text_file: stale revision is
-        # refused before any content is read or sized
+        # Object type is decided before the revision guard, which is what Linux effectively
+        # does by opening the target as a regular file: a directory answers NOT_A_FILE whether
+        # or not the caller's token is stale. Comparing the revision first turned that type
+        # error into REVISION_CONFLICT (dev_plan_v0.11 C0.7).
         etype, size, _modified, revision_now = _call(self._native.stat, parts)
-        if revision_now != expected_revision:
-            raise RevisionConflictError()
         if etype == "directory":
             raise NotAFileError()
         if etype == "reparse_point":
@@ -488,6 +488,8 @@ class WindowsWorkdirSession:
             raise BackendError(
                 "REPARSE_POINT_NOT_ALLOWED", "reparse point is not allowed on this channel"
             )
+        if revision_now != expected_revision:
+            raise RevisionConflictError()
         if size is not None and size > max_write_bytes:
             raise WriteTooLargeError(f"file exceeds {max_write_bytes} bytes")
         try:
