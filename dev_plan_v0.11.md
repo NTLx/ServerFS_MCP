@@ -1,6 +1,6 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
-Status: Phase 0/A/B CLOSED · Phase C: C0 CLOSED (contract decision B), C0.7 CLOSED, C1–C5 in progress
+Status: Phase 0/A/B CLOSED · Phase C: C0, C0.7 and C1–C5 CLOSED (contract decision B implemented)
 
 ```text
 0A PASS — LockFileEx
@@ -21,11 +21,21 @@ C  C0  CLOSED — CONTRACT DECISION B (maintainer, 2026-10-05). No O(1) NTFS sig
       token, the same-tick same-size external-rewrite blind window is an accepted and documented
       product boundary, and edit/overwrite/delete must hold the restricted-share target across
       validate → commit (see docs/windows-phase-c-revision-correctness-2026-10-05.md).
-      C0.7 error precedence is closed on both backends. Lease work (C1–C5) is the remaining scope.
+      C0.7 error precedence is closed on both backends.
+C  C1–C5 PASS (2026-10-06) — the writer lease has a Windows twin: a platform-neutral lease id
+      (`slot:NN` keeps the legacy `01..16.lock`/`active/NN` layout byte-for-byte, `alias:<exact>`
+      hashes so case folding cannot merge workdirs), an exclusive non-blocking full-range
+      `LockFileEx` opened `GENERIC_READ`/`OPEN_EXISTING` on both sides and never created by the
+      reader, every published mutation channel behind that lease and no read channel in front of it,
+      `edit_text_file` reading its source from the held object inside one transaction, and a real
+      Windows workspace-write task that completes over the pipe while an MCP mutation is refused,
+      survives a `TerminateProcess` as recovery state, and is cleared by a restarted Bridge.
+      Windows Bridge 249 passed / 50 skipped, Windows root 992 passed / 128 skipped, Linux root 1137
+      passed / 32 skipped and Linux Bridge 230 passed in CI, cargo green on both feature settings.
 ```
 
-No Phase 0 gate or design decision is outstanding (§18). Phase C (Windows writer lease and
-recovery) is the next phase.
+No Phase 0 gate or design decision is outstanding (§18). Phase D (native configuration and
+lifecycle) is the next phase.
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -1964,10 +1974,28 @@ window becomes an explicitly documented product boundary, and the full content-d
 (Option A) is rejected for v0.11 on published-performance grounds. The replacement C0 completion
 contract and the mandatory hold-before-read transaction shape are recorded in §15 Phase C. C0b did
 prove the active-writer half of the model: a writer that still holds `WRITE` is refused by the
-restricted-share target open, and the same open succeeds once it closes. `C1` and after are therefore
-unblocked. **C0.7** landed on its own: type-before-revision precedence on both backends, with the
-Phase A xfail retired (Windows root now 915 passed / 127 skipped / no xfail; Windows Bridge 128 /
-93; `cargo test` 10/10 lib plus the NTFS integration targets).
+restricted-share target open, and the same open succeeds once it closes. **C0.7** landed on its own:
+type-before-revision precedence on both backends, with the Phase A xfail retired (Windows root then
+915 passed / 127 skipped / no xfail; Windows Bridge 128 / 93; `cargo test` 10/10 lib plus the NTFS
+integration targets).
+
+Phase C status (2026-10-06): **C1–C5 CLOSED — exit PASS.** The lease identity, the `LockFileEx`
+backend, the mutation integration and the held edit transaction, the recovery/crash parity and the
+public Windows workspace-write E2E are implemented and recorded in §15 Phase C, with the two
+clarifications §5.5 needed (per-process error-code mapping; `LockFileEx` requires a real
+`OVERLAPPED` on this build). Gates as executed: cargo fmt, clippy `-D warnings` with and without the
+`pyo3` feature, `cargo test` (13 lib / 17 ntfs_mutation / 9 ntfs_read / 9 ntfs_traversal), wheel
+rebuilt with `maturin build --release --features pyo3 --locked`, Windows root 992 passed / 128
+skipped with no xfail, Windows Bridge 249 passed / 50 skipped, and PR #35 CI green at head
+`3344e8c` — Linux root 1137 passed / 32 skipped, Linux Bridge 230 passed, `Container check` and
+`Windows native` success. The Linux jobs earned their keep: the first run exposed a POSIX
+recovery-guard branch reading an unassigned value and a Windows-only test file being collected on
+Linux, both fixed normally. Residual limitations, recorded rather than papered over: ReFS/SMB and a
+second Windows account or integrity level are untested; file-symlink (non-directory) reparse
+artifacts on lease paths still need Developer Mode; the guard read is unbounded by size (unchanged
+v0.10 behaviour); `serverfs doctor` verification of the lease artifacts and the native config
+renderer that writes `lease_key: alias` are Phase D work; real-provider `workspace-write` and live
+ChatGPT acceptance belong to Phases E–G and to the maintainer.
 
 ## 19. Development discipline
 

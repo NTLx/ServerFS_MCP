@@ -1,9 +1,11 @@
 """Platform-neutral workdir lease identity — the ServerFS half (v0.11 §5.3).
 
 The mutation reader and the Bridge derive lease artifact names from the same logical lease id, and
-the two packages must stay independent (§23), so this module mirrors
-``serverfs_agent_bridge.lease_identity`` exactly. ``tests/test_lease_identity.py`` pins both sides
-against one table of golden vectors: the shared object is the derivation, not the import.
+the two packages must stay independent (§23), so this module repeats the derivation of
+``serverfs_agent_bridge.lease_identity`` for the functions the reader needs. What must agree
+byte-for-byte is `lock_artifact_name`/`guard_artifact_name` for a given lease id, and
+``tests/test_lease_identity.py`` pins it against the same vector table the Bridge suite uses: the
+shared object is the derivation, not the import.
 
 A lease is keyed by a logical identifier, never by a path: a legacy Docker deployment keeps its
 numeric slot, every other deployment is keyed by the exact workdir alias. The name shape follows
@@ -63,13 +65,6 @@ def validate_lease_id(lease_id: str) -> str:
     elif len(lease_id) == len(ALIAS_PREFIX):
         raise AgentLeaseError("alias lease id has an empty alias")
     return lease_id
-
-
-def slot_of(lease_id: str) -> int | None:
-    """The legacy numeric slot behind a lease id, or None for an alias-derived lease."""
-    validate_lease_id(lease_id)
-    match = _SLOT_LEASE_RE.match(lease_id)
-    return None if match is None else int(match.group(1))
 
 
 def _artifact_stem(lease_id: str) -> str:
