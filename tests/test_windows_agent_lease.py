@@ -221,3 +221,74 @@ def test_agent_disabled_deployment_never_opens_the_lease(tmp_path: Path) -> None
     server = mutation_server(tmp_path / "absent", workdir, enabled=False)
     call_success(server, "create_text_file", {"workdir": ALIAS, "path": "x.txt", "content": "hi\n"})
     assert (workdir / "x.txt").read_bytes() == b"hi\n"
+
+
+WRITER_HOLDER = """
+import sys
+handle = open(sys.argv[1], "r+b")
+print("WRITING", flush=True)
+sys.stdin.read()
+"""
+
+
+def test_an_active_external_writer_is_refused_at_the_mutation_target(tmp_path: Path) -> None:
+    """§15 layer 2: a writer that still holds `WRITE` excludes the transaction, and the refusal is
+    normalized. The mutation open carries the restricted share, so the kernel denies it outright —
+    the agent sees a coded failure, never a Win32 sharing message, a handle, or a host path.
+
+    This is the *active* writer only. A write that already finished is the revision's business, and
+    the same-tick same-size case is the boundary contract decision B accepts (dev_plan_v0.11 §15).
+    """
+    lock_dir, workdir, artifact = prepare(tmp_path)
+    artifact.touch()
+    (workdir / "t.txt").write_bytes(b"safe\n")
+    server = mutation_server(lock_dir, workdir)
+    holder = subprocess.Popen(
+        [sys.executable, "-c", WRITER_HOLDER, str(workdir / "t.txt")],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    line = holder.stdout.readline() if holder.stdout else ""
+    assert line.startswith("WRITING"), line
+    try:
+        stat_args = {"workdir": ALIAS, "path": "t.txt"}
+        revision = call_success(server, "stat_file", stat_args)["revision"]
+        for name, args in (
+            (
+                "edit_text_file",
+                {
+                    "workdir": ALIAS,
+                    "path": "t.txt",
+                    "expected_revision": revision,
+                    "edits": [{"old_text": "safe", "new_text": "unsafe"}],
+                },
+            ),
+            ("delete_file", {"workdir": ALIAS, "path": "t.txt", "expected_revision": revision}),
+        ):
+            message = call_error(server, name, args)
+            assert error_code(message) in {"NATIVE_IO_ERROR", "ACCESS_DENIED"}, message
+            assert "sharing" not in message.lower(), message
+            assert "win32" not in message.lower(), message
+            assert str(workdir) not in message, "a host path must never reach the agent"
+        assert (workdir / "t.txt").read_bytes() == b"safe\n"
+    finally:
+        stop(holder)
+        holder.wait(timeout=15)
+
+    # Released writer, same edit: the channel works again with no residue from the refusal.
+    revision = call_success(server, "stat_file", {"workdir": ALIAS, "path": "t.txt"})["revision"]
+    call_success(
+        server,
+        "edit_text_file",
+        {
+            "workdir": ALIAS,
+            "path": "t.txt",
+            "expected_revision": revision,
+            "edits": [{"old_text": "safe", "new_text": "free"}],
+        },
+    )
+    assert (workdir / "t.txt").read_bytes() == b"free\n"
