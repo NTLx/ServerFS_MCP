@@ -223,14 +223,25 @@ pub fn read_bounded(
     max_bytes: u64,
 ) -> Result<BoundedRead, NativeError> {
     let file = traversal::resolve(root, components, ffi::OpenKind::File)?;
-    let before = metadata::collect(&file)?;
+    read_open(&file, max_bytes)
+}
+
+/// The same bounded, identity-checked read on a handle the caller already owns.
+///
+/// The edit channel needs this: reading the source from the very handle the replacement holds is
+/// what keeps an active external writer out of the window between the read and the commit
+/// (`dev_plan_v0.11` §15, C0 completion contract item 5). The before/after identity check stays even
+/// though the restricted share already refuses a writer — it is cheap, and it is the property the
+/// read channel has always reported.
+pub fn read_open(file: &Handle, max_bytes: u64) -> Result<BoundedRead, NativeError> {
+    let before = metadata::collect(file)?;
     let size = before.size.unwrap_or(0);
     if size > max_bytes {
         return Err(NativeError::FileTooLarge);
     }
     let mut data = Vec::with_capacity(size as usize);
     loop {
-        let chunk = read_up_to(&file, CHUNK)?;
+        let chunk = read_up_to(file, CHUNK)?;
         if chunk.is_empty() {
             break;
         }
@@ -240,7 +251,7 @@ pub fn read_bounded(
         data.extend_from_slice(&chunk);
     }
     fire_after_pass_hook();
-    if metadata::collect(&file)?.revision() != before.revision() {
+    if metadata::collect(file)?.revision() != before.revision() {
         return Err(NativeError::ChangedDuringRead);
     }
     Ok(BoundedRead {

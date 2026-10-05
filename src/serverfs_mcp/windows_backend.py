@@ -83,6 +83,24 @@ def _call(fn, *args):
         raise _to_backend_error(exc) from None
 
 
+def _edit_transaction_failure(exc: BackendError, max_write_bytes: int) -> Exception:
+    """Map the source transaction's kernel codes onto the edit channel's error vocabulary.
+
+    The kernel answers in the order both backends use — object type, then revision, then the bounded
+    read (dev_plan_v0.11 C0.7) — so only those conditions need translating. Everything else already
+    carries the agent-visible code and crosses unchanged.
+    """
+    if exc.code == "NOT_A_FILE":
+        return NotAFileError()
+    if exc.code == "REVISION_CONFLICT":
+        return RevisionConflictError()
+    if exc.code == "FILE_TOO_LARGE":
+        return WriteTooLargeError(f"file exceeds {max_write_bytes} bytes")
+    if exc.code == "FILE_CHANGED_DURING_READ":
+        return FileChangedDuringReadError()
+    return exc
+
+
 def _rfc3339_from_100ns(ticks: int) -> str | None:
     if ticks <= 0:
         return None
@@ -475,16 +493,16 @@ class WindowsWorkdirSession:
             max_edits_per_call=max_edits_per_call,
         )
         parts = list(resolved.rel_parts)
-        # Object type is decided before the revision guard, which is what Linux effectively
-        # does by opening the target as a regular file: a directory answers NOT_A_FILE whether
-        # or not the caller's token is stale. Comparing the revision first turned that type
-        # error into REVISION_CONFLICT (dev_plan_v0.11 C0.7).
+        # Classification ahead of the transaction, for the *precise* Windows code and the cheap
+        # early refusal: `stat` opens the leaf as itself, so a reparse object answers
+        # REPARSE_POINT_NOT_ALLOWED rather than the follow-then-type-refusal the mutation open
+        # produces. It is not the guard — the transaction below re-answers kind and revision on the
+        # handle it holds, which is what Linux also does by opening the target as a regular file
+        # (dev_plan_v0.11 C0.7), and v0.10 shipped these codes so they must not drift.
         etype, size, _modified, revision_now = _call(self._native.stat, parts)
         if etype == "directory":
             raise NotAFileError()
         if etype == "reparse_point":
-            # the kernel refuses at the open too; the code is Windows-native
-            # (§14 additive) where Linux reports SYMLINK_NOT_ALLOWED
             raise BackendError(
                 "REPARSE_POINT_NOT_ALLOWED", "reparse point is not allowed on this channel"
             )
@@ -492,31 +510,44 @@ class WindowsWorkdirSession:
             raise RevisionConflictError()
         if size is not None and size > max_write_bytes:
             raise WriteTooLargeError(f"file exceeds {max_write_bytes} bytes")
-        try:
-            data, _sha, revision_before = _call(self._native.read_bounded, parts, max_write_bytes)
-        except BackendError as exc:
-            if exc.code == "FILE_TOO_LARGE":
-                raise WriteTooLargeError(f"file exceeds {max_write_bytes} bytes") from None
-            if exc.code == "FILE_CHANGED_DURING_READ":
-                raise FileChangedDuringReadError() from None
-            raise
-        if revision_before != expected_revision:
-            raise RevisionConflictError()
-        text, has_bom = decode_text(data)
-        edited_text = apply_edits(text, edits)
-        body = edited_text.encode("utf-8")
-        payload = (UTF8_BOM + body) if has_bom else body
-        if len(payload) > max_write_bytes:
-            raise WriteTooLargeError(f"result exceeds {max_write_bytes} bytes")
-        revision = self._replace(parts, payload, expected_revision)
+        measured: dict[str, int | str] = {}
+
+        def build(data: bytes, revision_before: str) -> bytes:
+            text, has_bom = decode_text(data)
+            body = apply_edits(text, edits).encode("utf-8")
+            payload = (UTF8_BOM + body) if has_bom else body
+            if len(payload) > max_write_bytes:
+                raise WriteTooLargeError(f"result exceeds {max_write_bytes} bytes")
+            measured["bytes_before"] = len(data)
+            measured["bytes_after"] = len(payload)
+            measured["revision_before"] = revision_before
+            return payload
+
+        # One transaction: the kernel opens the target with the restricted share, answers object
+        # type before the revision guard (C0.7), reads the source from that same held handle and
+        # publishes what `build` returns, without releasing the hold in between. That is C0
+        # completion contract item 5 in dev_plan_v0.11 §15 — it keeps an *active* external writer
+        # out of the read-to-commit window. It does not close the same-tick same-size token alias,
+        # which contract decision B accepts and documents.
+        with mutation_lock():
+            try:
+                revision = _call(
+                    self._native.replace_bytes_from_source,
+                    parts,
+                    expected_revision,
+                    max_write_bytes,
+                    build,
+                )
+            except BackendError as exc:
+                raise _edit_transaction_failure(exc, max_write_bytes) from None
         return EditTextFileResult(
             workdir=resolved.workdir.alias,
             path=resolved.rel_path,
             edited=True,
             edits_applied=len(edits),
-            bytes_before=len(data),
-            bytes_after=len(payload),
-            revision_before=revision_before,
+            bytes_before=int(measured["bytes_before"]),
+            bytes_after=int(measured["bytes_after"]),
+            revision_before=str(measured["revision_before"]),
             revision=revision,
         )
 

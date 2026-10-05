@@ -22,7 +22,7 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 
 use crate::error::NativeError;
-use crate::{ffi, metadata, traversal, Handle};
+use crate::{ffi, metadata, read, traversal, Handle};
 
 const TEMP_ATTEMPTS: usize = 16;
 const WRITE_CHUNK: usize = 64 * 1024;
@@ -315,16 +315,21 @@ fn check_expected(
 
 /// The file-target gate, in the order both backends must answer.
 ///
-/// Object type is decided before the revision guard, so a directory target reports
-/// `IsADirectory` whether the caller's `expected_revision` is current or stale. The plain
-/// revision guard cannot do that: a directory's revision never equals a stale file token, so
-/// checking it first turns a type error into `RevisionConflict`, which is the divergence
-/// dev_plan_v0.11 §15 C0.7 closes.
+/// Object kind is decided before the revision guard: a reparse object is refused because policy
+/// forbids entering it, a directory is refused because the channel takes a file, and either answer
+/// must win over `RevisionConflict` — a directory's or junction's revision never equals a stale
+/// file token, so checking the guard first turned a kind error into `RevisionConflict`, which is
+/// the divergence dev_plan_v0.11 §15 C0.7 closes. Reparse precedes directory for the same reason
+/// `NativeMetadata::entry_type` does: a junction is a reparse object that also happens to look like
+/// a directory, and the precise policy code is the useful one.
 fn check_file_target(
     handle: &Handle,
     expected: &str,
 ) -> Result<metadata::NativeMetadata, NativeError> {
     let md = metadata::collect(handle)?;
+    if md.is_reparse {
+        return Err(NativeError::ReparsePoint);
+    }
     if md.is_directory {
         return Err(NativeError::IsADirectory);
     }
@@ -390,7 +395,34 @@ fn replace_bytes_transaction(
         REPLACEMENT_HELD_SHARE,
     )?;
     let initial_md = check_file_target(&original, expected_revision)?;
-    let snapshot = capture_snapshot(&original)?;
+    publish_replacement(
+        parent,
+        name,
+        &original,
+        &initial_md,
+        expected_revision,
+        bytes,
+        before_gate,
+    )
+}
+
+/// Stage, preserve, re-verify and atomically publish a replacement for a target the caller is
+/// already holding and has already validated.
+///
+/// Every caller reaches this with `original` still open, which is what makes the restricted-share
+/// hold span the whole window from validation to commit — including the source read the edit
+/// channel performs (`replace_source_with`), so no external writer can be live against the bytes
+/// the edit was computed from.
+fn publish_replacement(
+    parent: &Handle,
+    name: &str,
+    original: &Handle,
+    initial_md: &metadata::NativeMetadata,
+    expected_revision: &str,
+    bytes: &[u8],
+    before_gate: impl FnOnce(),
+) -> Result<String, NativeError> {
+    let snapshot = capture_snapshot(original)?;
     if snapshot.id != initial_md.id || snapshot.has_unsupported_state() {
         return Err(NativeError::MetadataPreservationFailed);
     }
@@ -439,6 +471,65 @@ fn replace_bytes_transaction(
     drop(temp);
     let published = traversal::open_component(parent, name, ffi::OpenKind::File)?;
     metadata::revision_of(&published)
+}
+
+/// Why a source transaction stopped. Either the kernel's own condition, or whatever the caller's
+/// transform raised — the caller's error is never rewritten into a filesystem error.
+#[derive(Debug)]
+pub enum SourceError<E> {
+    Native(NativeError),
+    Callback(E),
+}
+
+impl<E> From<NativeError> for SourceError<E> {
+    fn from(value: NativeError) -> Self {
+        SourceError::Native(value)
+    }
+}
+
+/// The edit channel's single transaction: validate the target, read its bytes from the handle the
+/// replacement holds, build the replacement from them, and publish — without ever releasing the
+/// restricted-share hold between the read and the commit.
+///
+/// This is C0 completion contract item 5 in `dev_plan_v0.11.md` §15. It narrows the
+/// **active-writer** race: while this transaction is open, an external process that still wants
+/// `WRITE` access cannot open the target at all, so the bytes the edit was computed from cannot be
+/// under a live writer. It does not close the same-tick same-size token alias, which contract
+/// decision B accepts as a documented boundary, and no claim here says otherwise.
+pub fn replace_source_with<E>(
+    root: &Handle,
+    parts: &[&str],
+    expected_revision: &str,
+    max_read_bytes: u64,
+    transform: impl FnOnce(Vec<u8>, String) -> Result<Vec<u8>, E>,
+) -> Result<String, SourceError<E>> {
+    let name = target_name(parts)?;
+    let owned_parent = resolve_parent(root, parts)?;
+    let parent = parent_handle(root, &owned_parent);
+    let original = open_leaf(
+        parent,
+        name,
+        REPLACEMENT_ACCESS,
+        ffi::OpenKind::File,
+        REPLACEMENT_HELD_SHARE,
+    )?;
+    let initial_md = check_file_target(&original, expected_revision)?;
+    let source = read::read_open(&original, max_read_bytes)?;
+    if source.metadata.id != initial_md.id || source.metadata.revision() != expected_revision {
+        return Err(NativeError::RevisionConflict.into());
+    }
+    let revision_before = source.metadata.revision();
+    let payload = transform(source.data, revision_before).map_err(SourceError::Callback)?;
+    publish_replacement(
+        parent,
+        name,
+        &original,
+        &initial_md,
+        expected_revision,
+        &payload,
+        || {},
+    )
+    .map_err(SourceError::Native)
 }
 
 pub fn delete_file(
@@ -580,6 +671,10 @@ mod tests {
         DACL_SECURITY_INFORMATION,
     };
 
+    /// The build step's return type, spelled out so a test closure that only panics or only fails
+    /// still pins the transaction's error type.
+    type Build = Result<Vec<u8>, &'static str>;
+
     struct TestRoot(std::path::PathBuf);
 
     impl TestRoot {
@@ -685,6 +780,117 @@ mod tests {
             NativeError::IsADirectory
         );
         assert!(sandbox.0.join("sub").is_dir());
+        let mut scan = ffi::DirectoryScan::new();
+        while let Some(batch) = scan.next_batch(&root).unwrap() {
+            assert!(!batch
+                .iter()
+                .any(|name| name.starts_with(INTERNAL_TEMP_PREFIX)));
+        }
+    }
+
+    #[test]
+    fn source_transaction_reads_the_held_target_and_publishes_the_build() {
+        // dev_plan_v0.11 §15, C0 completion contract item 5: the edit channel's read happens on the
+        // object the replacement is holding, so an external writer that still wants WRITE access is
+        // refused for the whole window from validation to commit.
+        let sandbox = TestRoot::new("source_transaction");
+        let root = sandbox.open();
+        let expected = create_bytes(&root, &["target"], b"old bytes").unwrap();
+        let seen: std::cell::RefCell<Option<Vec<u8>>> = std::cell::RefCell::new(None);
+        let revision = replace_source_with(
+            &root,
+            &["target"],
+            &expected,
+            4096,
+            |data, before| -> Build {
+                assert_eq!(before, expected);
+                let probe = std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(sandbox.0.join("target"));
+                assert!(probe.is_err(), "the hold must refuse a new writer");
+                *seen.borrow_mut() = Some(data.clone());
+                Ok(b"edited bytes".to_vec())
+            },
+        )
+        .unwrap();
+        assert_eq!(*seen.borrow(), Some(b"old bytes".to_vec()));
+        assert_eq!(
+            std::fs::read(sandbox.0.join("target")).unwrap(),
+            b"edited bytes"
+        );
+        assert_eq!(
+            metadata::revision_of(
+                &traversal::resolve(&root, &["target"], ffi::OpenKind::File).unwrap()
+            )
+            .unwrap(),
+            revision
+        );
+        // A new writer is admitted again once the transaction is over.
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(sandbox.0.join("target"))
+            .unwrap();
+    }
+
+    #[test]
+    fn source_transaction_validates_before_reading_anything() {
+        let sandbox = TestRoot::new("source_transaction_preconditions");
+        let root = sandbox.open();
+        let expected = create_bytes(&root, &["target"], b"payload").unwrap();
+        let stale = replace_source_with(
+            &root,
+            &["target"],
+            "v1:0000000000000000",
+            4096,
+            |_, _| -> Build {
+                panic!("a stale token must not reach the read");
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(
+            stale,
+            SourceError::Native(NativeError::RevisionConflict)
+        ));
+
+        std::fs::create_dir(sandbox.0.join("sub")).unwrap();
+        for token in ["v1:0000000000000000", &expected] {
+            let error = replace_source_with(&root, &["sub"], token, 4096, |_, _| -> Build {
+                panic!("a directory target must not reach the read");
+            })
+            .unwrap_err();
+            assert!(
+                matches!(error, SourceError::Native(NativeError::IsADirectory)),
+                "type must be answered before the revision guard, with token {token}"
+            );
+        }
+
+        let too_large = replace_source_with(&root, &["target"], &expected, 4, |_, _| -> Build {
+            panic!("an over-bound source must not be transformed")
+        })
+        .unwrap_err();
+        assert!(matches!(
+            too_large,
+            SourceError::Native(NativeError::FileTooLarge)
+        ));
+        assert_eq!(std::fs::read(sandbox.0.join("target")).unwrap(), b"payload");
+    }
+
+    #[test]
+    fn source_transaction_aborts_without_publishing_when_the_build_fails() {
+        // A text-edit refusal is the caller's condition, not a filesystem failure: nothing may be
+        // written and no staging entry may survive.
+        let sandbox = TestRoot::new("source_transaction_abort");
+        let root = sandbox.open();
+        let expected = create_bytes(&root, &["target"], b"payload").unwrap();
+        let error = replace_source_with(&root, &["target"], &expected, 4096, |_, _| -> Build {
+            Err("TEXT_EDIT_NOT_FOUND")
+        })
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            SourceError::Callback("TEXT_EDIT_NOT_FOUND")
+        ));
+        assert_eq!(std::fs::read(sandbox.0.join("target")).unwrap(), b"payload");
         let mut scan = ffi::DirectoryScan::new();
         while let Some(batch) = scan.next_batch(&root).unwrap() {
             assert!(!batch

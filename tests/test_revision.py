@@ -12,8 +12,10 @@ import os
 import re
 import time
 
+import pytest
+
 from helpers import call_error, call_success, error_code, make_server, read_write
-from platform_contract import linux_only, settle_file_time
+from platform_contract import WINDOWS, linux_only, settle_file_time
 
 REVISION_RE = re.compile(r"^v1:[0-9a-f]{16}$")
 
@@ -253,3 +255,68 @@ class TestRevisionForReadOnlyWorkdir:
         (workdir.container_path / "a.txt").write_text("x\n")
         assert call_success(srv, "read_text_file", {"workdir": "test", "path": "a.txt"})["revision"]
         assert read_write(workdir).read_only is False
+
+
+BLIND_WINDOW_TRIALS = 200
+
+
+@pytest.mark.skipif(not WINDOWS, reason="the Windows clock-step boundary has no POSIX equivalent")
+class TestWindowsAcceptedRevisionBoundary:
+    """What contract decision B promises, and what it deliberately does not (dev_plan_v0.11 §15).
+
+    The Windows revision is a metadata-derived optimistic-concurrency token. An observable metadata
+    change is therefore detected; a same-object, same-size in-place rewrite that completes inside
+    one filesystem timestamp tick is the single accepted blind window. The second case is measured
+    on demand rather than carried as a permanent expected-failure, because the release suite must
+    not encode a guarantee the contract does not make.
+    """
+
+    def test_an_explicit_timestamp_move_changes_the_revision(self, workdir) -> None:
+        srv = make_server(workdir)
+        target = workdir.container_path / "a.txt"
+        target.write_text("same size\n")
+        before = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
+        stamp = time.time() + 5.0
+        os.utime(target, (stamp, stamp))
+        after = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
+        assert before != after
+
+    def test_a_size_change_and_a_replacement_change_the_revision(self, workdir) -> None:
+        srv = make_server(workdir)
+        target = workdir.container_path / "a.txt"
+        target.write_text("one\n")
+        first = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
+        target.write_text("much longer content\n")
+        second = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
+        assert first != second
+        staged = workdir.container_path / "staged.txt"
+        staged.write_text("much longer content\n")
+        os.replace(staged, target)
+        third = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
+        assert second != third, "object replacement must be visible to the token"
+
+    @pytest.mark.skipif(
+        not os.environ.get("SERVERFS_MEASURE_BLIND_WINDOW"),
+        reason="measurement probe; run it when the revision contract is revisited",
+    )
+    def test_same_tick_same_size_rewrite_is_measured(self, workdir) -> None:
+        srv = make_server(workdir)
+        target = workdir.container_path / "a.txt"
+        target.write_bytes(b"x" * 32 + b"\n")
+        unchanged = 0
+        changed = 0
+        for _ in range(BLIND_WINDOW_TRIALS):
+            before = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})[
+                "revision"
+            ]
+            target.write_bytes(b"y" * 32 + b"\n")
+            after = call_success(srv, "stat_file", {"workdir": "test", "path": "a.txt"})["revision"]
+            if before == after:
+                unchanged += 1
+            else:
+                changed += 1
+        print(
+            f"blind-window probe: {unchanged} unchanged, {changed} detected "
+            f"over {BLIND_WINDOW_TRIALS} tight same-size rewrites"
+        )
+        assert unchanged + changed == BLIND_WINDOW_TRIALS
