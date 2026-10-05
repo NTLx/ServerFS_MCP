@@ -13,10 +13,12 @@ A  PASS — portability foundation (root suite and Bridge suite run on Windows;
       Linux root + Linux Bridge gates green in CI)
 B  PASS — Windows Named Pipe IPC, measured client-SID peer identity and owner-SID/DACL
       private state, with the Windows data home and a real two-process FakeAdapter E2E
-C  C0  BLOCKED — no O(1) NTFS signal detects a same-tick same-size rewrite; the two
-      candidate answers change a frozen contract, so the maintainer decides (see
-      docs/windows-phase-c-revision-correctness-2026-10-05.md). C0.7 error precedence
-      is closed on both backends; no lease code has been written.
+C  C0  BLOCKED — no O(1) NTFS signal detects a same-tick same-size rewrite. Measured and
+      rejected in order: ChangeTime (no extra detection, costs rename stability), every other
+      metadata field, and the per-file `FSCTL_READ_FILE_USN_DATA` USN (reachable without
+      elevation, but static: 200/200 unchanged). The remaining choice is contract-level and
+      belongs to the maintainer (see docs/windows-phase-c-revision-correctness-2026-10-05.md).
+      C0.7 error precedence is closed on both backends; no lease code has been written.
 ```
 
 No Phase 0 gate or design decision is outstanding (§18). Phase C (Windows writer lease and
@@ -1454,13 +1456,33 @@ and a rename/attribute/replacement matrix. Outcome: `ChangeTime` moves in exactl
 `LastWriteTime` moves (`only ChangeTime moved = 0` of 120) and additionally moves on 2 of 10
 renames, so it buys no detection and costs rename stability; size, allocation size, attributes, link
 count and file identity are unchanged in 120/120 same-size rewrites; the undetectable window is the
-~0.25 ms clock tick (≥0.25 ms apart ⇒ 40/40 detected); the volume USN route needs a privileged
-volume handle and is disqualified by §7's ordinary-user requirement. So §15's conditions 1 and 2
-cannot be met by any metadata material, and entering `C1`+ would violate §15's gate. Two candidate
+~0.25 ms clock tick (≥0.25 ms apart ⇒ 40/40 detected). The first round also disqualified the USN route
+on the premise that it needs a privileged volume handle; that premise was wrong —
+`FSCTL_READ_FILE_USN_DATA` is a distinct per-file/per-directory query — so it was measured separately
+(C0b below). So §15's conditions 1 and 2 cannot be met by metadata material, and entering `C1`+ would
+violate §15's gate. Two candidate
 answers are laid out in that document — hold-before-read (removes the lost-update race, no hash, no
 public token change, does not satisfy §10's literal regression) and a bounded content digest in the
 mutation final gate only (satisfies §10, ≈0.1 ms per mutation, needs a read-size contract decision);
 neither is adopted unilaterally, per §7/§8.
+
+**C0b — the per-file USN route, measured and failed.** `FSCTL_READ_FILE_USN_DATA` (`0x000900EB`) does
+work without elevation and without a volume handle: on an ordinary non-elevated file handle it returns
+a `USN_RECORD_V2` with a nonzero USN, it works on a directory handle opened with
+`FILE_FLAG_BACKUP_SEMANTICS`, and it behaves the same on both local fixed NTFS volumes. The value is
+simply static: unchanged across 200/200 completed same-size rewrites with no sleep, and unchanged for
+a different-size rewrite, an attribute toggle, a rename away-and-back, a same-name replacement, a
+directory child create/remove, and ServerFS's own `replace_bytes`, with `Reason` zero throughout. §5's
+gate is `unchanged = 0`, so C0b fails and §16's instruction applies: do not enter `C1`, and do not
+substitute a bounded content digest. What C0b did confirm, independently: while an external writer
+still holds `WRITE` access the ServerFS restricted-share target open is refused
+(`ERROR_SHARING_VIOLATION`, never surfaced raw) and succeeds once that writer closes — so the
+active-writer half of the combined model holds by sharing, while nothing available today reveals a
+write that finished earlier. The remaining choice is therefore contract-level and belongs to the
+maintainer: **A** — a full content-derived component in the published revision, changing the
+`stat_file`/`read_text_file` read and performance contract; or **B** — formally lower the
+external-writer guarantee, documenting the tick-sized blind window together with the share-mask hold
+and stating that the Windows revision compares metadata rather than content.
 
 Closed independently of that decision: **C0.7 error precedence**, now green on both backends.
 Tracing the channel showed the divergence lived in *two* layers, and the one that actually produced
@@ -1719,17 +1741,20 @@ The WorkPC deployment requirement — Codex and
 OpenAI traffic only reachable through an outbound proxy — is now a measured product contract instead of
 ambient developer-shell state, and Phase D may not implement an environment builder that contradicts
 §7.2.
-Phase C status (2026-10-05): **C0 GATE OPEN — BLOCKED ON A DECISION**. The revision experiment is
-done and recorded (`docs/windows-phase-c-revision-correctness-2026-10-05.md`): no O(1)
-non-elevated NTFS signal detects a same-tick same-size external rewrite, and `ChangeTime` in
-particular adds zero detection while costing rename stability. §15 conditions 1 and 2 therefore
-cannot be met by metadata material, so `C1` and everything after it are untouched — no lease
-identity, no `LockFileEx` backend, no guard/recovery change, no Windows workspace-write E2E. The
-two candidate answers (hold-before-read; bounded content digest in the mutation gate only) each
-change a frozen contract and are the maintainer's call per §7/§8. What this phase has landed on
-its own is **C0.7**: type-before-revision precedence on both backends, with the Phase A xfail
-retired (Windows root now 915 passed / 127 skipped / no xfail; Windows Bridge 128 / 93; `cargo test`
-10/10 lib plus the NTFS integration targets).
+Phase C status (2026-10-05): **C0 GATE OPEN — BLOCKED ON A CONTRACT DECISION**. The revision experiment
+and its C0b follow-up are done and recorded
+(`docs/windows-phase-c-revision-correctness-2026-10-05.md`): no O(1) non-elevated NTFS signal detects
+a same-tick same-size external rewrite — `ChangeTime` adds zero detection and costs rename stability,
+size/allocation/attributes/links/identity never move, and the per-file USN query, though it works
+without elevation on both local NTFS volumes, returns a record that is static across 200/200 completed
+rewrites. §15 conditions 1 and 2 therefore cannot be met, so `C1` and everything after it are untouched
+— no lease identity, no `LockFileEx` backend, no guard/recovery change, no Windows workspace-write E2E
+— and per §16 no bounded content digest is implemented as a stand-in. The maintainer's choice is
+between a full content-derived revision component (changes the metadata-channel contract) and a
+formally lowered external-writer guarantee (documents the tick window plus the share-mask hold). What
+this phase has landed on its own is **C0.7**: type-before-revision precedence on both backends, with
+the Phase A xfail retired (Windows root now 915 passed / 127 skipped / no xfail; Windows Bridge 128 /
+93; `cargo test` 10/10 lib plus the NTFS integration targets).
 
 ## 19. Development discipline
 

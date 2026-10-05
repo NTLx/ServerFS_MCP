@@ -83,11 +83,9 @@ Granularity sweep — external same-size rewrite separated from the recorded rev
 3. **The residual window is a clock tick, not unbounded staleness.** Once the rewrite is separated
    from the recorded revision by ≥0.25 ms, detection is 40/40. The failing case is a rewrite that
    lands inside the same ~0.25 ms tick as the revision the caller was given.
-4. **The USN route is disqualified as written.** A per-file change sequence number is readable only
-   through the volume journal (`FSCTL_READ_USN_JOURNAL` on a volume handle), which an ordinary
-   non-elevated login cannot open, and it is not a per-handle O(1) query. Phase C §7 requires
-   "ordinary current-user usable, no admin-only assumption", so USN cannot be selected here without a
-   separate, larger decision.
+4. **`ChangeTime` is available and costs rename stability, and it adds no detection.** See the
+   head-to-head above: `only ChangeTime moved = 0`, so this is not a material worth trading
+   rename-stability for — independently of the question answered in §8 below.
 5. **A bounded content read is cheap.** One 128 KiB window read measured median ≈0.101 ms,
    p95 ≈0.122 ms on warm cache (4 KiB ≈0.006 ms, 64 KiB ≈0.052 ms). A *mutation-gate* content
    comparison therefore costs about a tenth of a millisecond per mutation, while the same work in
@@ -127,7 +125,65 @@ They are not equivalent: the first removes the race, the second also makes the t
 change. Choosing between them — or accepting the tick-sized window together with the share-mask hold as
 the documented boundary — changes a frozen contract, so it is the maintainer's call per §7/§8.
 
-## 6. Closed by this phase independently of that decision
+Update after §6: the per-file USN route was then measured and failed on this platform, which removes
+the "cheap exact signal" possibility. What is left is the contract-level choice, and only these two:
+
+- **A — full content-derived identity in the published revision.** `stat_file`, `read_text_file` and
+  the mutation guard would carry a content component, so an external same-size rewrite is always
+  visible. Cost: the read/perf contract of the metadata channels changes, which is exactly what §8 of
+  the Phase C instruction forbids doing by default; it needs an explicit decision.
+- **B — formally lower the external-writer guarantee.** Keep metadata material, document the tick-sized
+  blind window plus the share-mask hold (which does make an *active* writer and a transaction
+  mutually exclusive), and state that Windows revision is compare-against-metadata, not
+  compare-against-content.
+
+No third option survives measurement: `ChangeTime` adds nothing (§4.1), no other O(1) field moves
+(§4.2), and per-file USN is unreachable as a change signal here (§6).
+
+## 6. C0b — per-file USN follow-up (correction to the first-round USN claim)
+
+The first round concluded from the *volume-journal* APIs that "USN requires a volume handle and
+elevation", and used that to disqualify the route. That conclusion was wrong in its premise, and the
+route had to be measured separately: **`FSCTL_READ_FILE_USN_DATA` (`0x000900EB`) is a distinct
+per-file / per-directory query**, documented against "a specified file or directory" and returning
+the most recent change-journal record for the object behind the handle. Volume-wide enumeration
+needs the volume-oriented APIs; this does not.
+
+Second experiment, same discipline: `%TEMP%` scratch files, no elevation, no journal creation, no
+`fsutil`, no machine setting touched, no raw USN recorded.
+
+Measured:
+
+| question | result |
+| --- | --- |
+| does the call work on an ordinary non-elevated **file** handle | **yes** — `ERROR_SUCCESS`, a `USN_RECORD_V2` is returned, USN nonzero (input may be `NULL`; the `READ_FILE_USN_DATA` variants are accepted too) |
+| does it work on a **directory** handle | **yes**, when the handle is opened with `FILE_FLAG_BACKUP_SEMANTICS` (without it the open itself fails with `ERROR_ACCESS_DENIED`, which is the directory-open rule, not a USN limitation) |
+| second local fixed NTFS volume (read-only repeat) | same: query succeeds, record returned |
+| completed same-size rewrite (writer flushed and closed), 200 rounds, no sleep | USN **unchanged in 200/200**; the record's own timestamp unchanged in 200/200; `Reason` zero |
+| writer still open / writer flushed but still open | USN unchanged (acceptable on its own — see the sharing result below) |
+| different-size rewrite | USN unchanged |
+| DOS attribute toggle | USN unchanged |
+| rename away and back | USN unchanged |
+| same-name replacement | USN unchanged (queried through the still-held handle of the old object) |
+| **ServerFS's own kernel replacement** (`open_workdir(...).replace_bytes`) | USN unchanged |
+| directory: child created and removed | USN unchanged |
+| pure read / stat-only on the held handle | unchanged, as required |
+
+On these volumes the per-file query returns a static record with `Reason = 0` and a timestamp that
+never moves, so it is not an available change signal here even though the API itself is reachable
+without elevation. §5's gate is `unchanged = 0`; measured `unchanged = 200/200`. **C0b therefore
+FAILS**, and per §16 the response is not to fall back to a bounded content digest: C0 stays blocked
+and the remaining choice is the contract-level one.
+
+Independently confirmed while testing §4A: with an external writer still holding `WRITE` access, the
+ServerFS restricted-share target open is **refused** (`ERROR_SHARING_VIOLATION`, mapped internally and
+never surfaced raw), and the same open succeeds once that writer closes. So the sharing half of the
+combined model — an active writer cannot coexist with a mutation transaction — holds on this
+platform, exactly as the v0.10 kernel's own test asserts; what sharing cannot do is reveal a write
+that finished earlier. Those two halves have to be described together: neither USN nor share mask
+alone gives compare-and-swap against a non-cooperating writer.
+
+## 7. Closed by this phase independently of that decision
 
 **C0.7 error precedence.** The native kernel checked the revision guard before the target type, so
 `edit_text_file`/`delete_file` on a directory with a stale `expected_revision` answered
@@ -140,7 +196,7 @@ including the new `directory_target_is_refused_before_the_revision_guard`, which
 equivalent (retiring the Phase A `windows_difference` xfail) needs the rebuilt wheel and is recorded
 in the Phase C status entry.
 
-## 7. Not tested here
+## 8. Not tested here
 
 - ReFS, SMB/remote shares and non-NTFS volumes: out of scope, v0.11 claims local NTFS only.
 - Elevated/admin USN journal reads (not selected; the ordinary-user requirement disqualifies them).
