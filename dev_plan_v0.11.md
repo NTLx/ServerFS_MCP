@@ -1742,10 +1742,14 @@ count of the assertions that still need it.
 Gates executed on WorkPC for Phase C: `cargo fmt --check`, `cargo clippy --all-targets -D warnings`
 with and without the `pyo3` feature, `cargo test --locked` (13 lib + 17 ntfs_mutation + 9 ntfs_read +
 9 ntfs_traversal, 3 symlink cases ignored without `SERVERFS_REQUIRE_SYMLINK`), the wheel rebuilt with
-`maturin build --release --features pyo3 --locked` and reinstalled, `docker compose config` validated,
-the local `docker compose build` not finished at reporting time (CI's build job covers it), Windows
+`maturin build --release --features pyo3 --locked` and reinstalled, `docker compose config` validated
+and `SERVERFS_IMAGE=serverfs-mcp:dev docker compose build` completed under the scratch tag, Windows
 root suite **993 passed / 128 skipped / no xfail**, Windows Bridge suite **249 passed / 50
-skipped**, `ruff check` and `ruff format --check` clean in both packages. Linux is evidenced by this
+skipped**, `ruff check` and `ruff format --check` clean in both packages. One root-gate step was
+deliberately not re-run locally: `uv sync --frozen` would reinstall the pinned published
+`serverfs-windows-native` and shadow the wheel built from this branch — the trap §38 records — and the
+`Windows native` CI job runs the frozen sync and then tests the built wheel as an artifact, so that
+step is covered where it can be covered honestly. Linux is evidenced by this
 branch's CI (`Container / Test`, `Container / Agent Bridge test`, `Container check`, `Windows
 native`), all green at code head `24a2830`: Linux root **1137 passed / 33 skipped**, Linux Bridge
 **230 passed**. Those jobs earned their keep — the first Linux run caught a POSIX guard branch
@@ -2008,11 +2012,12 @@ clarifications §5.5 needed (per-process error-code mapping; `LockFileEx` requir
 `OVERLAPPED` on this build). Gates as executed: cargo fmt, clippy `-D warnings` with and without the
 `pyo3` feature, `cargo test` (13 lib / 17 ntfs_mutation / 9 ntfs_read / 9 ntfs_traversal), wheel
 rebuilt with `maturin build --release --features pyo3 --locked`, Windows root 993 passed / 128
-skipped with no xfail, Windows Bridge 249 passed / 50 skipped, `docker compose config` validated, and
+skipped with no xfail, Windows Bridge 249 passed / 50 skipped, `docker compose config` validated and
+`SERVERFS_IMAGE=serverfs-mcp:dev docker compose build` completed, and
 PR #35 CI green at the code head `24a2830` — Linux root 1137 passed / 33 skipped, Linux Bridge 230
-passed, `Container check` and `Windows native` success. The local `docker compose build` did not
-finish before the phase was reported, so the image-build gate is evidenced by CI's build job rather
-than locally. The Linux jobs earned their keep: the first run exposed a POSIX
+passed, `Container check` and `Windows native` success. `uv sync --frozen` was not re-run in the local
+root venv because it would shadow the locally rebuilt native wheel (§38); the `Windows native` job runs
+it and tests the wheel artifact. The Linux jobs earned their keep: the first run exposed a POSIX
 recovery-guard branch reading an unassigned value and a Windows-only test file being collected on
 Linux, both fixed normally. Residual limitations, recorded rather than papered over: ReFS/SMB and a
 second Windows account or integrity level are untested; file-symlink (non-directory) reparse
