@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from platform_contract import linux_only
+from platform_contract import WINDOWS, linux_only
 from serverfs_agent_bridge.adapters.base import (
     AdapterResult,
     ReconcileResult,
@@ -16,7 +16,7 @@ from serverfs_agent_bridge.adapters.base import (
 )
 from serverfs_agent_bridge.adapters.fake import FakeAdapter
 from serverfs_agent_bridge.errors import BridgeError
-from serverfs_agent_bridge.lease_identity import slot_lease_id
+from serverfs_agent_bridge.lease_identity import alias_lease_id, slot_lease_id
 from serverfs_agent_bridge.leases import LeaseManager
 from serverfs_agent_bridge.models import AgentMode, ReconciliationStatus, TaskStatus
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
@@ -25,9 +25,12 @@ from serverfs_agent_bridge.service import BridgeLimits, BridgeService
 from serverfs_agent_bridge.store import TaskStore
 from serverfs_agent_bridge.util import utc_after, utc_before
 
-pytestmark = linux_only(
-    "reliability evidence is written through UID/mode private state and a flock lease"
-)
+# Portable since Phase C: the reliability evidence used to depend on two Linux mechanisms —
+# a flock lease and UID/mode private state — and both now have Windows twins behind the same
+# seams (LockFileEx, owner SID plus an explicit DACL). The cases that remain Linux-only are
+# marked individually.
+
+REPO_LEASE_ID = alias_lease_id("repo") if WINDOWS else slot_lease_id(1)
 
 
 class LargeResultAdapter(FakeAdapter):
@@ -100,8 +103,10 @@ def make_service(
 ) -> BridgeService:
     repo = tmp_path / "repo"
     repo.mkdir(exist_ok=True)
+    # Each platform keys the lease the way its own deployment does (§5.3), and the artifacts are
+    # pre-created for exactly that key.
     policy = WorkdirAgentPolicy(
-        slot=1,
+        slot=None if WINDOWS else 1,
         alias="repo",
         host_path=repo,
         mode=AgentMode.WORKSPACE_WRITE,
@@ -112,7 +117,7 @@ def make_service(
         store=TaskStore(tmp_path / "state"),
         policies=PolicyRegistry([policy]),
         adapters={"fake": adapter or FakeAdapter()},
-        lease_manager=LeaseManager(tmp_path / "locks"),
+        lease_manager=LeaseManager(tmp_path / "locks", lease_ids=[policy.lease_id]),
         limits=limits,
     )
 
@@ -324,11 +329,11 @@ async def test_timeout_keeps_recovery_guard_when_provider_stop_is_unproven(
 
     timed_out = await wait_for_status(service, submitted["task_id"], "interrupted")
     assert timed_out["error_code"] == "AGENT_TASK_TIMED_OUT"
-    guard = service.guard_manager.read(slot_lease_id(1))
+    guard = service.guard_manager.read(REPO_LEASE_ID)
     assert guard is not None
     assert guard.payload["task_id"] == submitted["task_id"]
 
-    lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
     lease.release()
 
     with pytest.raises(BridgeError) as blocked:
@@ -370,7 +375,7 @@ async def test_interaction_timeout_keeps_guard_when_provider_stop_is_unproven(
 
     for _ in range(200):
         try:
-            lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
+            lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
         except BridgeError as exc:
             assert exc.code == "WORKDIR_BUSY"
             await asyncio.sleep(0.01)
@@ -380,7 +385,7 @@ async def test_interaction_timeout_keeps_guard_when_provider_stop_is_unproven(
     else:
         raise AssertionError("writer lease was not released")
 
-    guard = service.guard_manager.read(slot_lease_id(1))
+    guard = service.guard_manager.read(REPO_LEASE_ID)
     assert guard is not None
     assert guard.payload["task_id"] == submitted["task_id"]
     with pytest.raises(BridgeError) as blocked:
@@ -415,21 +420,21 @@ async def test_lazy_guard_reconciliation_terminalizes_inactive_running_task(
     service.store.transition_task(task_id, TaskStatus.STARTING)
     service.store.transition_task(task_id, TaskStatus.RUNNING)
     service.guard_manager.create(
-        lease_id=slot_lease_id(1),
+        lease_id=REPO_LEASE_ID,
         task_id=task_id,
         runtime="fake",
         workdir_alias="repo",
         correlation_id=None,
     )
 
-    result = await service._reconcile_guard(1)
+    result = await service._reconcile_guard(REPO_LEASE_ID)
 
     assert result is not None
     assert result.provider_active is False
     task = service.get_task(task_id)
     assert task["status"] == "interrupted"
     assert task["error_code"] == "AGENT_PROVIDER_INACTIVE"
-    assert service.guard_manager.read(slot_lease_id(1)) is None
+    assert service.guard_manager.read(REPO_LEASE_ID) is None
     events = service.read_events(task_id)["events"]
     assert any(
         event["event_type"] == "task.interrupted"
@@ -468,14 +473,14 @@ async def test_lazy_guard_reconciliation_stales_pending_request_when_provider_in
         expires_at=utc_after(60),
     )
     service.guard_manager.create(
-        lease_id=slot_lease_id(1),
+        lease_id=REPO_LEASE_ID,
         task_id=task_id,
         runtime="fake",
         workdir_alias="repo",
         correlation_id=None,
     )
 
-    result = await service._reconcile_guard(1)
+    result = await service._reconcile_guard(REPO_LEASE_ID)
 
     assert result is not None
     assert result.provider_active is False
@@ -484,7 +489,7 @@ async def test_lazy_guard_reconciliation_stales_pending_request_when_provider_in
     assert task["pending_request_id"] is None
     assert task["error_code"] == "AGENT_PROVIDER_INACTIVE"
     assert service.store.get_request(request_id).status == "stale"
-    assert service.guard_manager.read(slot_lease_id(1)) is None
+    assert service.guard_manager.read(REPO_LEASE_ID) is None
     await service.close()
 
 
@@ -507,7 +512,7 @@ async def test_provider_failure_clears_guard_when_reconciliation_proves_stopped(
     )
     failed = await wait_for_status(service, submitted["task_id"], "failed")
     assert failed["error_code"] == "AGENT_PROVIDER_ERROR"
-    assert service.guard_manager.read(slot_lease_id(1)) is None
+    assert service.guard_manager.read(REPO_LEASE_ID) is None
     await service.close()
 
 
@@ -567,7 +572,7 @@ async def test_restart_reconciliation_never_blindly_reruns_and_keeps_unknown_gua
     service.store.transition_task(task_id, TaskStatus.STARTING)
     service.store.transition_task(task_id, TaskStatus.RUNNING)
     service.guard_manager.create(
-        lease_id=slot_lease_id(1),
+        lease_id=REPO_LEASE_ID,
         task_id=task_id,
         runtime="fake",
         workdir_alias="repo",
@@ -579,7 +584,7 @@ async def test_restart_reconciliation_never_blindly_reruns_and_keeps_unknown_gua
     assert task["status"] == "interrupted"
     assert task["error_code"] == "BRIDGE_RESTARTED"
     assert adapter.runs == 0
-    assert service.guard_manager.read(slot_lease_id(1)) is not None
+    assert service.guard_manager.read(REPO_LEASE_ID) is not None
 
     events = service.read_events(task_id)["events"]
     types = [event["event_type"] for event in events]
@@ -589,6 +594,10 @@ async def test_restart_reconciliation_never_blindly_reruns_and_keeps_unknown_gua
     await service.close()
 
 
+@linux_only(
+    "the fixture pre-creates a 0700 state directory; Windows private state must create its own "
+    "tree, because %TEMP% inheritance carries foreign grants the Bridge refuses to repair (§25)"
+)
 def test_v06_sqlite_schema_migrates_additively_without_fabricating_evidence(
     tmp_path: Path,
 ) -> None:
