@@ -30,8 +30,9 @@ C  C1–C5 PASS (2026-10-06) — the writer lease has a Windows twin: a platform
       `edit_text_file` reading its source from the held object inside one transaction, and a real
       Windows workspace-write task that completes over the pipe while an MCP mutation is refused,
       survives a `TerminateProcess` as recovery state, and is cleared by a restarted Bridge.
-      Windows Bridge 249 passed / 50 skipped, Windows root 992 passed / 128 skipped, Linux root 1137
-      passed / 32 skipped and Linux Bridge 230 passed in CI, cargo green on both feature settings.
+      Windows Bridge 249 passed / 50 skipped, Windows root 993 passed / 128 skipped, Linux root 1137
+      passed / 33 skipped and Linux Bridge 230 passed in CI at code head `24a2830`; cargo green on
+      both feature settings.
 ```
 
 No Phase 0 gate or design decision is outstanding (§18). Phase D (native configuration and
@@ -1727,18 +1728,32 @@ leave the file intact, and the agent-visible text carries only a redacted code (
 writer is gone the same edit succeeds. The refusal is a refusal of the *open* — it is not a
 compare-and-swap claim, and the observed code is deliberately not widened into a new public value.
 
+**Re-evaluated test mechanism.** `settle_file_time()` was recorded as a temporary Phase A device to
+be revisited after Phase C. The re-evaluation keeps it, for a reason that is now stated in
+`tests/platform_contract.py`: four assertions (a same-size content change, a directory gaining an
+entry, and the two directory-revision cases) depend on the clock having stepped, and under contract
+decision B that is exactly the shape of the promise — the token detects a change once the timestamp
+moves, and the same-tick same-size case is the documented limit. It is therefore an expression of the
+boundary, not a workaround for a defect, and the boundary itself is asserted directly in
+`tests/test_revision.py::TestWindowsAcceptedRevisionBoundary` rather than hidden behind the wait. The
+Phase C instruction to remove it as obsolete is recorded here as considered and rejected, with the
+count of the assertions that still need it.
+
 Gates executed on WorkPC for Phase C: `cargo fmt --check`, `cargo clippy --all-targets -D warnings`
 with and without the `pyo3` feature, `cargo test --locked` (13 lib + 17 ntfs_mutation + 9 ntfs_read +
 9 ntfs_traversal, 3 symlink cases ignored without `SERVERFS_REQUIRE_SYMLINK`), the wheel rebuilt with
-`maturin build --release --features pyo3 --locked` and reinstalled, Windows root suite **992 passed /
-128 skipped / no xfail**, Windows Bridge suite **249 passed / 50 skipped**, `ruff check` and `ruff
-format --check` clean in both packages. Linux is carried by this branch's CI (PR #35
-`Container / Test`, `Container / Agent Bridge test`, `Container check`, `Windows native`); the first
-Linux run caught two defects this section records (`agent_leases` POSIX guard branch reading an
-unassigned value, and a Windows-only test file being collected on Linux), which is exactly why the PR
+`maturin build --release --features pyo3 --locked` and reinstalled, `docker compose config` validated,
+the local `docker compose build` not finished at reporting time (CI's build job covers it), Windows
+root suite **993 passed / 128 skipped / no xfail**, Windows Bridge suite **249 passed / 50
+skipped**, `ruff check` and `ruff format --check` clean in both packages. Linux is evidenced by this
+branch's CI (`Container / Test`, `Container / Agent Bridge test`, `Container check`, `Windows
+native`), all green at code head `24a2830`: Linux root **1137 passed / 33 skipped**, Linux Bridge
+**230 passed**. Those jobs earned their keep — the first Linux run caught a POSIX guard branch
+reading an unassigned value and a Windows-only test file being collected on Linux, and the next one
+caught a call site still passing a raw slot number, all fixed normally, which is exactly why the PR
 jobs are the authoritative Linux evidence. Not verified: ReFS/SMB, a second Windows account or
-integrity level, file-symlink (non-directory) reparse artifacts on the lease paths, and real-provider
-`workspace-write` through Codex/Claude/Qoder (Phases E–G).
+integrity level, file-symlink (non-directory) reparse artifacts on the lease paths, and
+real-provider `workspace-write` through Codex/Claude/Qoder (Phases E–G).
 
 Exit: Windows reaches v0.7 lifecycle safety semantics.
 
@@ -1992,10 +2007,12 @@ public Windows workspace-write E2E are implemented and recorded in §15 Phase C,
 clarifications §5.5 needed (per-process error-code mapping; `LockFileEx` requires a real
 `OVERLAPPED` on this build). Gates as executed: cargo fmt, clippy `-D warnings` with and without the
 `pyo3` feature, `cargo test` (13 lib / 17 ntfs_mutation / 9 ntfs_read / 9 ntfs_traversal), wheel
-rebuilt with `maturin build --release --features pyo3 --locked`, Windows root 992 passed / 128
-skipped with no xfail, Windows Bridge 249 passed / 50 skipped, and PR #35 CI green at head
-`3344e8c` — Linux root 1137 passed / 32 skipped, Linux Bridge 230 passed, `Container check` and
-`Windows native` success. The Linux jobs earned their keep: the first run exposed a POSIX
+rebuilt with `maturin build --release --features pyo3 --locked`, Windows root 993 passed / 128
+skipped with no xfail, Windows Bridge 249 passed / 50 skipped, `docker compose config` validated, and
+PR #35 CI green at the code head `24a2830` — Linux root 1137 passed / 33 skipped, Linux Bridge 230
+passed, `Container check` and `Windows native` success. The local `docker compose build` did not
+finish before the phase was reported, so the image-build gate is evidenced by CI's build job rather
+than locally. The Linux jobs earned their keep: the first run exposed a POSIX
 recovery-guard branch reading an unassigned value and a Windows-only test file being collected on
 Linux, both fixed normally. Residual limitations, recorded rather than papered over: ReFS/SMB and a
 second Windows account or integrity level are untested; file-symlink (non-directory) reparse
