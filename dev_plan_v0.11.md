@@ -1,6 +1,6 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
-Status: Phase 0 CLOSED · Phase A CLOSED · Phase B CLOSED
+Status: Phase 0 CLOSED · Phase A CLOSED · Phase B CLOSED · Phase C C0 gate OPEN (decision required)
 
 ```text
 0A PASS — LockFileEx
@@ -13,6 +13,10 @@ A  PASS — portability foundation (root suite and Bridge suite run on Windows;
       Linux root + Linux Bridge gates green in CI)
 B  PASS — Windows Named Pipe IPC, measured client-SID peer identity and owner-SID/DACL
       private state, with the Windows data home and a real two-process FakeAdapter E2E
+C  C0  BLOCKED — no O(1) NTFS signal detects a same-tick same-size rewrite; the two
+      candidate answers change a frozen contract, so the maintainer decides (see
+      docs/windows-phase-c-revision-correctness-2026-10-05.md). C0.7 error precedence
+      is closed on both backends; no lease code has been written.
 ```
 
 No Phase 0 gate or design decision is outstanding (§18). Phase C (Windows writer lease and
@@ -1437,6 +1441,47 @@ did not touch either, because both are mutation/kernel semantics rather than IPC
   to use `workspace-write`. Phase C's acceptance therefore includes a *completed* task through the
   published surface on Windows, not only the lease tests below.
 
+- **Phase B adds one exit requirement to this phase:** the ten MCP Agent tools cannot complete a
+  task on Windows until the lease exists, because `_authorize_submit` requires a native runtime name
+  to submit with `workspace-write`, and that profile is the writer lease's. Phase C's acceptance
+  therefore includes a *completed* task through the published surface on Windows, not only the lease
+  tests below.
+
+**C0 gate result (2026-10-05): OPEN — decision required, lease work not started.** The experiment in
+`docs/windows-phase-c-revision-correctness-2026-10-05.md` measured the candidate signals on held
+handles over 120-trial rapid same-size rewrites at three durability points, plus a granularity sweep
+and a rename/attribute/replacement matrix. Outcome: `ChangeTime` moves in exactly the trials
+`LastWriteTime` moves (`only ChangeTime moved = 0` of 120) and additionally moves on 2 of 10
+renames, so it buys no detection and costs rename stability; size, allocation size, attributes, link
+count and file identity are unchanged in 120/120 same-size rewrites; the undetectable window is the
+~0.25 ms clock tick (≥0.25 ms apart ⇒ 40/40 detected); the volume USN route needs a privileged
+volume handle and is disqualified by §7's ordinary-user requirement. So §15's conditions 1 and 2
+cannot be met by any metadata material, and entering `C1`+ would violate §15's gate. Two candidate
+answers are laid out in that document — hold-before-read (removes the lost-update race, no hash, no
+public token change, does not satisfy §10's literal regression) and a bounded content digest in the
+mutation final gate only (satisfies §10, ≈0.1 ms per mutation, needs a read-size contract decision);
+neither is adopted unilaterally, per §7/§8.
+
+Closed independently of that decision: **C0.7 error precedence**, now green on both backends.
+Tracing the channel showed the divergence lived in *two* layers, and the one that actually produced
+`REVISION_CONFLICT` for `edit_text_file` was the Python backend: `windows_backend.replace_file`
+compared the freshly statted revision before looking at the object type, with a comment claiming
+that ordering was Linux parity — it is not, because Linux opens the target as a regular file and so
+answers the type first. That check is now type → reparse → revision, and
+`native/windows/src/mutation.rs` gates type-then-revision too (`check_file_target`) on the file-target
+channels — replacement and `delete_file`, initial and final gate — while `delete_directory` keeps its
+revision guard, since a directory is its correct target type.
+
+Evidence: `cargo test` 10/10 lib tests plus the NTFS integration targets green, including
+`directory_target_is_refused_before_the_revision_guard` (stale and current token); the Phase A
+`windows_difference` xfail is retired and replaced by
+`test_directory_target_stale_revision`/`test_directory_target_current_revision`, plus a
+Windows-native MCP case covering `edit_text_file`, `upload_binary_file(overwrite)` and `delete_file`
+on a directory, and a Linux-side stale-token case in the Linux-only overwrite suite. Full Windows
+root gate on the locally rebuilt wheel (`maturin build --release --features pyo3 --locked`, the same
+command CI uses): **915 passed, 127 skipped, no xfail** (was 912/127/1 xfail); Windows Bridge suite
+unchanged at 128 passed / 93 skipped; root `ruff check`/`ruff format --check` clean.
+
 Implement:
 
 - platform-neutral lease identifier;
@@ -1674,6 +1719,17 @@ The WorkPC deployment requirement — Codex and
 OpenAI traffic only reachable through an outbound proxy — is now a measured product contract instead of
 ambient developer-shell state, and Phase D may not implement an environment builder that contradicts
 §7.2.
+Phase C status (2026-10-05): **C0 GATE OPEN — BLOCKED ON A DECISION**. The revision experiment is
+done and recorded (`docs/windows-phase-c-revision-correctness-2026-10-05.md`): no O(1)
+non-elevated NTFS signal detects a same-tick same-size external rewrite, and `ChangeTime` in
+particular adds zero detection while costing rename stability. §15 conditions 1 and 2 therefore
+cannot be met by metadata material, so `C1` and everything after it are untouched — no lease
+identity, no `LockFileEx` backend, no guard/recovery change, no Windows workspace-write E2E. The
+two candidate answers (hold-before-read; bounded content digest in the mutation gate only) each
+change a frozen contract and are the maintainer's call per §7/§8. What this phase has landed on
+its own is **C0.7**: type-before-revision precedence on both backends, with the Phase A xfail
+retired (Windows root now 915 passed / 127 skipped / no xfail; Windows Bridge 128 / 93; `cargo test`
+10/10 lib plus the NTFS integration targets).
 
 ## 19. Development discipline
 

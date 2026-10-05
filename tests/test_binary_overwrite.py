@@ -137,6 +137,24 @@ class TestOverwriteContract:
         )
         assert error_code(msg) == "PATH_NOT_FOUND"
 
+    def test_directory_target_stale_revision_rejected(self, workdir) -> None:
+        """C0.7: type before revision, so a stale token still answers NOT_A_FILE."""
+        (workdir.container_path / "dirs").mkdir()
+        server = _server(workdir)
+        msg = call_error(
+            server,
+            "upload_binary_file",
+            {
+                "workdir": "test",
+                "path": "dirs",
+                "data_base64": _b64(b"NEW"),
+                "overwrite": True,
+                "expected_revision": "v1:0000000000000000",
+            },
+        )
+        assert error_code(msg) == "NOT_A_FILE"
+        assert (workdir.container_path / "dirs").is_dir()
+
     def test_directory_target_rejected(self, workdir) -> None:
         (workdir.container_path / "dir").mkdir()
         server = _server(workdir)
