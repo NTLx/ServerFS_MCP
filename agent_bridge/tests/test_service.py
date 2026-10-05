@@ -6,11 +6,11 @@ from pathlib import Path
 import pytest
 
 import serverfs_agent_bridge.service as service_module
-from platform_contract import require_linux_kernel
+from platform_contract import WINDOWS
 from serverfs_agent_bridge.adapters import FakeAdapter
 from serverfs_agent_bridge.adapters.base import AdapterResult
 from serverfs_agent_bridge.errors import BridgeError
-from serverfs_agent_bridge.lease_identity import slot_lease_id
+from serverfs_agent_bridge.lease_identity import alias_lease_id, slot_lease_id
 from serverfs_agent_bridge.leases import LeaseManager
 from serverfs_agent_bridge.models import AgentMode
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
@@ -21,29 +21,29 @@ from serverfs_agent_bridge.service import (
 )
 from serverfs_agent_bridge.store import TaskStore
 
+# The service contract is portable since Phase C: the lease has a Windows backend and private state
+# has a Windows descriptor, so the same lifecycle assertions run on both. The lease key follows the
+# platform's own deployment shape (§5.3), which is what the artifacts are pre-created for.
+REPO_LEASE_ID = alias_lease_id("repo") if WINDOWS else slot_lease_id(1)
+
 
 def make_service(tmp_path: Path) -> BridgeService:
     repo = tmp_path / "repo"
-    require_linux_kernel("a real Bridge service owns a UID/mode state dir and a flock lease dir")
     repo.mkdir()
-    policies = PolicyRegistry(
-        [
-            WorkdirAgentPolicy(
-                slot=1,
-                alias="repo",
-                host_path=repo,
-                mode=AgentMode.WORKSPACE_WRITE,
-                runtimes=frozenset({"fake"}),
-                read_only=False,
-            )
-        ]
+    policy = WorkdirAgentPolicy(
+        slot=None if WINDOWS else 1,
+        alias="repo",
+        host_path=repo,
+        mode=AgentMode.WORKSPACE_WRITE,
+        runtimes=frozenset({"fake"}),
+        read_only=False,
     )
     fake = FakeAdapter()
     return BridgeService(
         store=TaskStore(tmp_path / "state"),
-        policies=policies,
+        policies=PolicyRegistry([policy]),
         adapters={"fake": fake},
-        lease_manager=LeaseManager(tmp_path / "locks"),
+        lease_manager=LeaseManager(tmp_path / "locks", lease_ids=[policy.lease_id]),
     )
 
 
@@ -502,7 +502,7 @@ async def test_interaction_timeout_interrupts_task_and_releases_writer_lease(
 
         for _ in range(200):
             try:
-                lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
+                lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
             except BridgeError as exc:
                 assert exc.code == "WORKDIR_BUSY"
                 await asyncio.sleep(0.01)
@@ -511,7 +511,7 @@ async def test_interaction_timeout_interrupts_task_and_releases_writer_lease(
             break
         else:
             raise AssertionError("writer lease was not released after interaction timeout")
-        assert service.guard_manager.read(slot_lease_id(1)) is None
+        assert service.guard_manager.read(REPO_LEASE_ID) is None
 
         with pytest.raises(BridgeError) as late:
             await service.respond_approval(
@@ -682,7 +682,7 @@ async def test_cancel_task_approval_uses_terminal_cancel_semantics(tmp_path: Pat
     else:
         raise AssertionError("approval-driven cancellation did not finish background cleanup")
 
-    lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
     lease.release()
     await service.close()
 
@@ -830,7 +830,7 @@ async def test_workspace_write_busy_is_rejected_at_submit(tmp_path: Path) -> Non
         await asyncio.sleep(0.01)
     else:
         raise AssertionError("cancelled task background cleanup did not finish")
-    lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
     lease.release()
     await service.close()
 
@@ -978,7 +978,7 @@ async def test_provider_exception_fails_task(tmp_path: Path) -> None:
     )
     failed = await wait_for_status(service, submitted["task_id"], "failed")
     assert failed["error_code"] == "AGENT_PROVIDER_ERROR"
-    lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
     lease.release()
     await service.close()
 
@@ -996,7 +996,7 @@ async def test_close_before_background_start_interrupts_and_releases_lease(tmp_p
     )
     await service.close()
     assert service.store.get_task(submitted["task_id"]).status == "interrupted"
-    lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
     lease.release()
 
 
@@ -1034,7 +1034,7 @@ async def test_cancel_is_terminal_before_slow_provider_cleanup_releases_lease(
     assert service.get_task(submitted["task_id"])["status"] == "cancelled"
 
     with pytest.raises(BridgeError) as busy:
-        service.lease_manager.acquire_exclusive(slot_lease_id(1))
+        service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
     assert busy.value.code == "WORKDIR_BUSY"
 
     adapter.release.set()
@@ -1045,7 +1045,7 @@ async def test_cancel_is_terminal_before_slow_provider_cleanup_releases_lease(
     else:
         raise AssertionError("cancelled task background cleanup did not finish")
 
-    lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
     lease.release()
     await service.close()
 
@@ -1088,7 +1088,7 @@ async def test_cancel_provider_interrupt_is_bounded(
     else:
         raise AssertionError("bounded provider cancel did not finish background cleanup")
 
-    lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
     lease.release()
     await service.close()
 
@@ -1117,7 +1117,7 @@ async def test_shutdown_is_interrupted_even_if_adapter_swallows_cancel(
     await wait_for_status(service, submitted["task_id"], "running")
     await service.close()
     assert service.store.get_task(submitted["task_id"]).status == "interrupted"
-    lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
     lease.release()
 
 
