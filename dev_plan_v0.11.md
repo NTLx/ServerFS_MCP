@@ -1709,13 +1709,23 @@ including the upgrade path for a v0.10 slot-only guard and the rule that an unre
 recovery condition rather than something a scan may skip.
 
 *C5 — the public Windows surface.* `tests/test_windows_mcp_agent_e2e.py` drives a real second process
-over a real Named Pipe: a `workspace-write` task submitted through the ten MCP tools completes, the
-Bridge-created artifact is the alias-derived one ServerFS opens, an MCP mutation during the turn is
-refused `WORKDIR_BUSY` and writes nothing, the same mutation succeeds after the turn and the guard is
-gone. The crash matrix runs against `TerminateProcess`: the guard survives, the lock does not, the
-surface answers `WORKDIR_RECOVERY_REQUIRED`, and a Bridge restarted on the same state and lock trees
-reconciles the task and clears the guard. The other direction is proven too: a lease held by a
-separate process makes the Bridge refuse a `workspace-write` submission with `WORKDIR_BUSY`.
+over a real Named Pipe, in two cases that are kept separate because they are separate contracts.
+The completed-task exit requirement is
+`test_a_workspace_write_task_succeeds_and_writes_the_authorized_workdir`: a `workspace-write` task
+submitted through the ten MCP tools with a native runtime name must reach exactly `succeeded` — not
+merely any terminal state — and the Bridge process itself must have written a fixed file under the
+`cwd` it resolved for the authorized workdir, which is only observable because the turn really
+finished. It then reads the answer back through `get_agent_task`, `read_agent_task_events` and
+`read_agent_task_result`, and proves normal-completion cleanup: the guard is gone, the lease is
+released, and a mutation succeeds immediately. The mutual-exclusion case
+`test_workspace_write_lease_serializes_the_workdir_until_cancelled` is deliberately a cancellation
+path and claims no completion: it holds the workdir against an MCP mutation for the whole turn
+(`WORKDIR_BUSY`, nothing written) and frees it by cancelling. In both, the Bridge-created artifact is
+the alias-derived one ServerFS opens. The crash matrix runs against `TerminateProcess`: the guard
+survives, the lock does not, the surface answers `WORKDIR_RECOVERY_REQUIRED`, and a Bridge restarted
+on the same state and lock trees reconciles the task and clears the guard. The other direction is
+proven too: a lease held by a separate process makes the Bridge refuse a `workspace-write`
+submission with `WORKDIR_BUSY`.
 The accepted blind window is measured, not xfailed: `SERVERFS_MEASURE_BLIND_WINDOW=1` runs 200 tight
 same-size external rewrites through the published `stat_file`/write path. On WorkPC: **75 unchanged,
 125 detected**. That is the documented boundary of contract decision B, and the release suite carries
@@ -2009,10 +2019,14 @@ Phase C status (2026-10-06): **C1–C5 CLOSED — exit PASS.** The lease identit
 backend, the mutation integration and the held edit transaction, the recovery/crash parity and the
 public Windows workspace-write E2E are implemented and recorded in §15 Phase C, with the two
 clarifications §5.5 needed (per-process error-code mapping; `LockFileEx` requires a real
-`OVERLAPPED` on this build). Gates as executed: cargo fmt, clippy `-D warnings` with and without the
-`pyo3` feature, `cargo test` (13 lib / 17 ntfs_mutation / 9 ntfs_read / 9 ntfs_traversal), wheel
-rebuilt with `maturin build --release --features pyo3 --locked`, Windows root 993 passed / 128
-skipped with no xfail, Windows Bridge 249 passed / 50 skipped, `docker compose config` validated and
+`OVERLAPPED` on this build). The completed-task exit requirement is carried by
+`test_a_workspace_write_task_succeeds_and_writes_the_authorized_workdir`, which asserts exactly
+`succeeded` plus a Bridge-written artifact under the resolved cwd; the live-contention case is a
+separate cancellation-path test and is not counted as a completion. Gates as executed: cargo fmt,
+clippy `-D warnings` with and without the `pyo3` feature, `cargo test` (13 lib / 17 ntfs_mutation /
+9 ntfs_read / 9 ntfs_traversal), wheel rebuilt with `maturin build --release --features pyo3
+--locked`, Windows root 994 passed / 128 skipped with no xfail, Windows Bridge 249 passed /
+50 skipped, `docker compose config` validated and
 `SERVERFS_IMAGE=serverfs-mcp:dev docker compose build` completed, and
 PR #35 CI green at the code head `24a2830` — Linux root 1137 passed / 33 skipped, Linux Bridge 230
 passed, `Container check` and `Windows native` success. `uv sync --frozen` was not re-run in the local

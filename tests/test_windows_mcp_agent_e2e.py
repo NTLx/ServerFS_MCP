@@ -13,12 +13,21 @@ allowlist is codex/claude/qoder.
 What Phase B could not show was a *completed* task. The frozen rule in
 ``agent_tools._authorize_submit`` requires a native runtime name to submit with the
 ``workspace-write`` profile, and that profile is the one the writer lease guards -- its Windows
-twin is Phase C. Phase C closes that gap: the same real pipe and Bridge process now run a
-workspace-write turn to completion while an MCP mutation on the same workdir is refused, then
-accept the mutation once the turn ends. The full
-submit/poll/events/result/approval/question/message/cancel lifecycle over the same real pipe and a
-real Bridge process is proven in ``agent_bridge/tests/test_windows_pipe_e2e.py``, which drives the
-review profile the Bridge accepts.
+twin is Phase C. Phase C closes that gap over the same real pipe and Bridge process, with two
+separate cases because they are two separate contracts:
+
+* ``test_a_workspace_write_task_succeeds_and_writes_the_authorized_workdir`` is the acceptance
+  case. The turn must reach exactly ``succeeded``, and the Bridge process itself must have written
+  a fixed file under the cwd it resolved for the authorized workdir -- which is only observable if
+  the turn really completed. It then reads the answer back through the public task readers and
+  proves normal-completion cleanup.
+* ``test_workspace_write_lease_serializes_the_workdir_until_cancelled`` is the live
+  mutual-exclusion case. It holds the workdir against an MCP mutation for the whole turn and frees
+  it by cancelling, so it is a contention test and deliberately does not claim a completion.
+
+The full submit/poll/events/result/approval/question/message/cancel lifecycle over the same real
+pipe and a real Bridge process is proven in ``agent_bridge/tests/test_windows_pipe_e2e.py``, which
+drives the review profile the Bridge accepts.
 """
 
 from __future__ import annotations
@@ -49,24 +58,31 @@ pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows Named P
 
 
 def _launch(
-    pipe_name: str, state_dir: Path, lock_dir: Path, workdir: Path
+    pipe_name: str,
+    state_dir: Path,
+    lock_dir: Path,
+    workdir: Path,
+    max_final_response_bytes: int | None = None,
 ) -> subprocess.Popen[str]:
     """Start a real Bridge process on one endpoint and wait for its readiness line."""
     if not BRIDGE_PYTHON.exists():
         pytest.skip(f"bridge virtualenv interpreter is missing at {BRIDGE_PYTHON}")
+    command = [
+        str(BRIDGE_PYTHON),
+        str(BRIDGE_HARNESS),
+        "--pipe-name",
+        pipe_name,
+        "--lock-dir",
+        str(lock_dir),
+        "--state-dir",
+        str(state_dir),
+        "--workdir",
+        str(workdir),
+    ]
+    if max_final_response_bytes is not None:
+        command += ["--max-final-response-bytes", str(max_final_response_bytes)]
     process = subprocess.Popen(
-        [
-            str(BRIDGE_PYTHON),
-            str(BRIDGE_HARNESS),
-            "--pipe-name",
-            pipe_name,
-            "--lock-dir",
-            str(lock_dir),
-            "--state-dir",
-            str(state_dir),
-            "--workdir",
-            str(workdir),
-        ],
+        command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -91,7 +107,24 @@ def _terminate(process: subprocess.Popen[str]) -> None:
 
 @pytest.fixture()
 def bridge(tmp_path: Path):
-    pipe_name = rf"\\.\pipe\serverfs-agent-bridge-e2e-{secrets.token_hex(8)}"
+    yield from _bridge_fixture(tmp_path, "e2e")
+
+
+@pytest.fixture()
+def spooled_bridge(tmp_path: Path):
+    """A Bridge whose inline response bound is below the harness's fixed success answer.
+
+    ``read_agent_task_result`` reads the result spool, and an inline result is refused with
+    ``AGENT_RESULT_NOT_RETRIEVABLE`` by contract. Lowering the bound here rather than enlarging the
+    prompt keeps the published readers on their real path with a prompt at its ordinary size.
+    """
+    yield from _bridge_fixture(tmp_path, "spool", max_final_response_bytes=8)
+
+
+def _bridge_fixture(
+    tmp_path: Path, tag: str, *, max_final_response_bytes: int | None = None
+) -> SimpleNamespace:
+    pipe_name = rf"\\.\pipe\serverfs-agent-bridge-{tag}-{secrets.token_hex(8)}"
     state_dir = tmp_path / "state"
     lock_dir = tmp_path / "locks"
     workdir = tmp_path / "repo"
@@ -100,7 +133,7 @@ def bridge(tmp_path: Path):
     # inherits grants for two other user SIDs, and §25 requires the Bridge to refuse such a
     # pre-planted directory rather than quietly re-securing it.
     workdir.mkdir(parents=True)
-    process = _launch(pipe_name, state_dir, lock_dir, workdir)
+    process = _launch(pipe_name, state_dir, lock_dir, workdir, max_final_response_bytes)
     try:
         yield SimpleNamespace(
             pipe_name=pipe_name,
@@ -200,15 +233,19 @@ def test_read_only_tools_carry_the_bridge_error_codes_over_the_pipe(bridge) -> N
     )
 
 
-def test_a_workspace_write_task_completes_and_the_lease_serializes_the_workdir(bridge) -> None:
-    """Phase C: a published Windows workspace-write task runs, and its lease is exclusive.
+def test_workspace_write_lease_serializes_the_workdir_until_cancelled(bridge) -> None:
+    """Live mutual exclusion: the lease holds the workdir for the whole turn, and cancel frees it.
 
     The request travels the whole path — MCP tool, strict envelope, pipe, measured client SID,
     Agent policy, task store, writer lease — and the task is the profile the lease guards. While an
     Agent turn is live, an MCP mutation on the same workdir is refused with the frozen busy code;
-    once the turn ends the same mutation succeeds and the recovery guard is gone. The artifact the
-    Bridge created is the one ServerFS opened, which is the alias-derived name both sides derive
-    independently (§5.3).
+    cancelling the turn ends the lease and the same mutation succeeds with the recovery guard gone.
+    The artifact the Bridge created is the one ServerFS opened, which is the alias-derived name both
+    sides derive independently (§5.3).
+
+    This case deliberately ends in cancellation: it is the live-contention contract, and the
+    completed workspace-write contract is
+    ``test_a_workspace_write_task_succeeds_and_writes_the_authorized_workdir``.
     """
     server = agent_server(bridge.pipe_name, bridge.lock_dir, bridge.workdir)
     artifact = bridge.lock_dir / lease_identity.lock_artifact_name(
@@ -264,6 +301,88 @@ def _wait_for_status(server, task_id: str, wanted: set[str], timeout: float = 30
             return status
         time.sleep(0.05)
     raise AssertionError(f"task {task_id} stayed in {status!r} for {timeout}s")
+
+
+def _wait_for_terminal(server, task_id: str, timeout: float = 30.0) -> str:
+    """Poll until the task is terminal and return whichever terminal state it reached.
+
+    The caller must still assert the exact state it requires. Returning the four frozen terminal
+    states as one group would let a cancellation or a provider failure satisfy a success assertion.
+    """
+    deadline = time.monotonic() + timeout
+    status = ""
+    while time.monotonic() < deadline:
+        status = call_success(server, "get_agent_task", {"task_id": task_id})["status"]
+        if status in {"succeeded", "failed", "cancelled", "interrupted"}:
+            return status
+        time.sleep(0.05)
+    raise AssertionError(f"task {task_id} stayed in {status!r} for {timeout}s")
+
+
+def test_a_workspace_write_task_succeeds_and_writes_the_authorized_workdir(spooled_bridge) -> None:
+    """Phase C acceptance: a published Windows workspace-write task completes and writes the work.
+
+    This is the completed-task exit requirement Phase B could not meet. The turn is submitted
+    through the real surface — MCP tool, strict envelope, Named Pipe, measured client SID, Agent
+    policy, task store, writer lease — with the native runtime name the frozen
+    ``_authorize_submit`` requires, and it has to reach exactly ``succeeded``.
+
+    The load-bearing assertion is the file. A task that merely returned ``"ok"`` would prove the
+    transport and nothing about the workspace-write contract, so the test instead requires the
+    Bridge process itself to have written a fixed artifact under the ``cwd`` it resolved for the
+    authorized workdir. That single fact ties the workdir policy, the resolved cwd, the
+    workspace-write profile, the writer lease held for the task's whole lifetime, and a
+    provider-side mutation together — and it is only observable because the turn really finished.
+    """
+    server = agent_server(spooled_bridge.pipe_name, spooled_bridge.lock_dir, spooled_bridge.workdir)
+    lease_id = lease_identity.alias_lease_id(WORKDIR_ALIAS)
+    guard = spooled_bridge.lock_dir / "active" / lease_identity.guard_artifact_name(lease_id)
+
+    submitted = call_success(
+        server,
+        "submit_agent_task",
+        {
+            "runtime": "codex",
+            "workdir": WORKDIR_ALIAS,
+            "profile": "workspace-write",
+            "prompt": "phase-c-workspace-write",
+        },
+    )
+    task_id = submitted["task_id"]
+
+    # Exactly succeeded. A cancelled, interrupted or failed turn fails this test even though the
+    # mutation file may already exist, because the completed-task contract is the exit requirement.
+    assert _wait_for_terminal(server, task_id) == "succeeded"
+
+    created = spooled_bridge.workdir / "phase-c-agent-write.txt"
+    assert created.is_file(), "the completed turn did not write into the authorized workdir"
+    assert created.read_bytes() == b"written by workspace-write fake adapter\n"
+
+    events = call_success(server, "read_agent_task_events", {"task_id": task_id})
+    types = [event["event_type"] for event in events["events"]]
+    assert "turn.started" in types, types
+    assert "agent.message" in types, types
+    assert "task.completed" in types, types
+
+    # The fixed answer is longer than this Bridge's inline bound, so the result is spooled and the
+    # published byte-ranged reader returns the real provider text rather than an inline copy.
+    final = call_success(server, "get_agent_task", {"task_id": task_id})
+    assert final["status"] == "succeeded", final
+    assert final["result"]["storage"] == "spool", final["result"]
+    assert final["result"]["retrievable"] is True, final["result"]
+    result = call_success(server, "read_agent_task_result", {"task_id": task_id})
+    assert result["text"] == "phase-c-workspace-write"
+    assert result["eof"] is True
+
+    # Normal completion is its own cleanup contract, distinct from the cancellation path: the
+    # guard is gone, the lease is released, and a mutation succeeds immediately with no recovery.
+    assert not guard.exists(), "a normally completed task must clear its recovery guard"
+    call_success(
+        server,
+        "create_text_file",
+        {"workdir": WORKDIR_ALIAS, "path": "after-success.txt", "content": "released\n"},
+    )
+    assert (spooled_bridge.workdir / "after-success.txt").read_bytes() == b"released\n"
 
 
 def test_the_bridge_created_its_own_private_state_tree(bridge) -> None:
