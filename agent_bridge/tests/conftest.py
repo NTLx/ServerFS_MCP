@@ -19,7 +19,10 @@ WINDOWS_ONLY_TEST_FILES = [
     "test_windows_peer_identity.py",
     "test_windows_pipe_e2e.py",
     "test_windows_private_state.py",
+    "test_windows_lease.py",
 ]
 
 if not sys.platform.startswith("win"):
+    # Same reason as the docstring: these files import the Win32 modules at module scope
+    # (`windows_pipe`, `windows_security`, `windows_lease`), which load `kernel32`/`advapi32`.
     collect_ignore = WINDOWS_ONLY_TEST_FILES

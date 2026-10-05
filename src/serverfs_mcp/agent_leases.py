@@ -86,16 +86,19 @@ def _refuse_unrecovered_workdir(lock_dir: Path, lease_id: str) -> None:
 
         state = windows_lease.guard_state(guard_path)
     else:
-        try:
-            guard_stat = os.lstat(guard_path)
-        except FileNotFoundError:
-            return
-        except OSError as exc:
-            raise AgentLeaseError("shared Agent recovery guard is unavailable") from exc
-        if not stat.S_ISREG(guard_stat.st_mode):
-            raise AgentLeaseError("shared Agent recovery guard is unsafe")
+        state = _posix_guard_state(guard_path)
     if state is None:
         return
     if not state:
         raise AgentLeaseError("shared Agent recovery guard is unsafe")
     raise WorkdirRecoveryRequiredError
+
+
+def _posix_guard_state(guard_path: Path) -> bool | None:
+    try:
+        guard_stat = os.lstat(guard_path)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise AgentLeaseError("shared Agent recovery guard is unavailable") from exc
+    return bool(stat.S_ISREG(guard_stat.st_mode))
