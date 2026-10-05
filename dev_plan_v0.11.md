@@ -1,6 +1,6 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
-Status: Phase 0 CLOSED · Phase A CLOSED · Phase B CLOSED · Phase C C0 gate OPEN (decision required)
+Status: Phase 0/A/B CLOSED · Phase C: C0 CLOSED (contract decision B), C0.7 CLOSED, C1–C5 in progress
 
 ```text
 0A PASS — LockFileEx
@@ -13,12 +13,15 @@ A  PASS — portability foundation (root suite and Bridge suite run on Windows;
       Linux root + Linux Bridge gates green in CI)
 B  PASS — Windows Named Pipe IPC, measured client-SID peer identity and owner-SID/DACL
       private state, with the Windows data home and a real two-process FakeAdapter E2E
-C  C0  BLOCKED — no O(1) NTFS signal detects a same-tick same-size rewrite. Measured and
-      rejected in order: ChangeTime (no extra detection, costs rename stability), every other
-      metadata field, and the per-file `FSCTL_READ_FILE_USN_DATA` USN (reachable without
-      elevation, but static: 200/200 unchanged). The remaining choice is contract-level and
-      belongs to the maintainer (see docs/windows-phase-c-revision-correctness-2026-10-05.md).
-      C0.7 error precedence is closed on both backends; no lease code has been written.
+C  C0  CLOSED — CONTRACT DECISION B (maintainer, 2026-10-05). No O(1) NTFS signal detects a
+      same-tick same-size rewrite; measured and rejected in order: ChangeTime (no extra detection,
+      costs rename stability), every other metadata field, and the per-file
+      `FSCTL_READ_FILE_USN_DATA` USN (reachable without elevation, but static: 200/200 unchanged).
+      The Windows revision is therefore frozen as a metadata-derived opaque optimistic-concurrency
+      token, the same-tick same-size external-rewrite blind window is an accepted and documented
+      product boundary, and edit/overwrite/delete must hold the restricted-share target across
+      validate → commit (see docs/windows-phase-c-revision-correctness-2026-10-05.md).
+      C0.7 error precedence is closed on both backends. Lease work (C1–C5) is the remaining scope.
 ```
 
 No Phase 0 gate or design decision is outstanding (§18). Phase C (Windows writer lease and
@@ -1438,33 +1441,30 @@ did not touch either, because both are mutation/kernel semantics rather than IPC
   without a new formal performance and contract decision. `settle_file_time()` stays a temporary
   Phase A test mechanism to be re-evaluated after Phase C, and the revision token *shape* decision
   waits for Phase C as well.
-- **Phase B adds one exit requirement to this phase:** the ten MCP Agent tools cannot complete a
-  task on Windows until the lease exists, because `_authorize_submit` requires a native runtime name
-  to use `workspace-write`. Phase C's acceptance therefore includes a *completed* task through the
-  published surface on Windows, not only the lease tests below.
-
+  *(Recorded as written. The experiment ran, no viable O(1) signal was found, the stop-and-report
+  branch was exercised rather than bypassed, and the maintainer resolved the resulting contract
+  choice as **Option B** — see the C0 decision below, whose completion contract supersedes this
+  bullet's gate condition.)*
 - **Phase B adds one exit requirement to this phase:** the ten MCP Agent tools cannot complete a
   task on Windows until the lease exists, because `_authorize_submit` requires a native runtime name
   to submit with `workspace-write`, and that profile is the writer lease's. Phase C's acceptance
   therefore includes a *completed* task through the published surface on Windows, not only the lease
   tests below.
 
-**C0 gate result (2026-10-05): OPEN — decision required, lease work not started.** The experiment in
+**C0 as measured (2026-10-05).** The experiment in
 `docs/windows-phase-c-revision-correctness-2026-10-05.md` measured the candidate signals on held
 handles over 120-trial rapid same-size rewrites at three durability points, plus a granularity sweep
 and a rename/attribute/replacement matrix. Outcome: `ChangeTime` moves in exactly the trials
 `LastWriteTime` moves (`only ChangeTime moved = 0` of 120) and additionally moves on 2 of 10
 renames, so it buys no detection and costs rename stability; size, allocation size, attributes, link
 count and file identity are unchanged in 120/120 same-size rewrites; the undetectable window is the
-~0.25 ms clock tick (≥0.25 ms apart ⇒ 40/40 detected). The first round also disqualified the USN route
-on the premise that it needs a privileged volume handle; that premise was wrong —
-`FSCTL_READ_FILE_USN_DATA` is a distinct per-file/per-directory query — so it was measured separately
-(C0b below). So §15's conditions 1 and 2 cannot be met by metadata material, and entering `C1`+ would
-violate §15's gate. Two candidate
-answers are laid out in that document — hold-before-read (removes the lost-update race, no hash, no
-public token change, does not satisfy §10's literal regression) and a bounded content digest in the
-mutation final gate only (satisfies §10, ≈0.1 ms per mutation, needs a read-size contract decision);
-neither is adopted unilaterally, per §7/§8.
+timestamp tick (on WorkPC, ≥ ~0.25 ms separation detected 40/40 — evidence about that machine, not a
+guaranteed maximum). The first round disqualified the USN route on the premise that it needs a
+privileged volume handle; that premise was wrong — `FSCTL_READ_FILE_USN_DATA` is a distinct
+per-file/per-directory query — so it was measured separately (C0b below). At that point §15's
+conditions 1 and 2 could not be met by metadata material, and entering `C1`+ would have violated the
+gate, so the two candidate answers and then the contract-level A/B choice went to the maintainer
+rather than being adopted here.
 
 **C0b — the per-file USN route, measured and failed.** `FSCTL_READ_FILE_USN_DATA` (`0x000900EB`) does
 work without elevation and without a volume handle: on an ordinary non-elevated file handle it returns
@@ -1484,7 +1484,70 @@ maintainer: **A** — a full content-derived component in the published revision
 external-writer guarantee, documenting the tick-sized blind window together with the share-mask hold
 and stating that the Windows revision compares metadata rather than content.
 
-Closed independently of that decision: **C0.7 error precedence**, now green on both backends.
+**C0 status (2026-10-05): CLOSED — CONTRACT DECISION B.** Not "closed because the blind window was
+fixed": the window was measured, the candidate strong signals were measured, none qualified, and the
+maintainer converged the residual into an explicit product concurrency boundary. The experiments and
+the USN follow-up stay recorded as they happened (§9 of the evidence document); what changed is what
+the product promises.
+
+Frozen Windows revision semantics:
+
+- the public revision stays `v1:<16 hex>`, computed from object identity plus the relevant observable
+  NTFS metadata — an **opaque optimistic-concurrency token**;
+- it is not a content hash, not a cryptographic content identity, and not an atomic
+  compare-and-swap token against arbitrary same-user processes;
+- the deliberately accepted Windows-11-x64 + local-NTFS boundary: a non-ServerFS-coordinated external
+  writer that completes a same-object, same-size in-place rewrite **within one filesystem timestamp
+  tick** may leave the public revision unchanged. The WorkPC measurement (`≥ ~0.25 ms` separation ⇒
+  40/40 detected) is recorded as measured evidence on that machine, never as a guaranteed maximum
+  window; product wording stays "same timestamp tick".
+- Option A (full content-derived public revision) was rejected because it turns `stat_file` and every
+  other path that produces a real revision from an O(1) metadata query into an O(file-size) content
+  scan for a size that has no natural bound — a published-performance regression, hidden I/O, added
+  latency, and a new resource-exhaustion surface, all to close one narrow non-cooperating-writer
+  alias. A strong content-identity revision mode, if ever wanted, is a separate product design and is
+  not v0.11.
+
+The three-layer concurrency model Phase C must implement and document:
+
+1. **ServerFS-coordinated writers** — MCP mutation versus Agent `workspace-write`, serialized by the
+   writer lease (C1–C5, the main object of this phase).
+2. **Active external writer** — while another process still holds `WRITE` access, the frozen
+   restricted-share strategy on the mutation target must refuse the ServerFS open
+   (`ERROR_SHARING_VIOLATION` internally, never surfaced raw), so the transaction cannot even start.
+   Measured in C0b: writer open ⇒ refusal; writer closed ⇒ the same open succeeds.
+3. **Completed external writer** — object replacement (file identity change), size change and any
+   observable metadata change are detected by the revision; the single accepted blind spot is the
+   same-tick same-size in-place rewrite above.
+
+**C0 completion contract, replacing the old gate condition** ("a rapid same-size external rewrite must
+always change the revision" is no longer a release gate):
+
+1. metadata and USN capability fully measured;
+2. no ordinary-user O(1) strong change signal exists;
+3. the blind window is precisely documented;
+4. an active external writer is excluded by the restricted-share transaction;
+5. `edit_text_file`'s read → commit runs entirely inside one target hold;
+6. ServerFS-coordinated writers are serialized by the Phase C lease;
+7. the public revision makes no content-identity or arbitrary-process-CAS claim.
+
+Item 5 is a requirement, not an observation: the Windows edit channel currently reads the source bytes
+*before* the replacement transaction opens the target, so an external writer can enter between the two.
+Phase C must turn it into one transaction — acquire the restricted-share target hold → validate
+regular-file type → validate `expected_revision` → read the source bytes from that same held object →
+apply text semantics → build the replacement → final identity/revision/fingerprint gate → atomic
+handle-relative publication — with the hold kept throughout. This narrows the **active-writer** race;
+it does not and must not be described as closing the historical same-tick token alias, which Option B
+accepts.
+
+`upload_binary_file(overwrite)` and `delete_file` have no pre-read content problem, but the same
+acquire-hold → validate → commit shape applies: the restricted-share target handle must stay held
+across type validation, revision validation and the final commit/delete, rather than being released
+and reacquired. Read channels (`read_text_file`, `download_binary_file`, `stat_file`) must not gain
+long-lived writer-excluding sharing, and plain reads must still coexist with Agent `workspace-write`;
+the existing before/after metadata check stays.
+
+Closed independently of the decision: **C0.7 error precedence**, now green on both backends.
 Tracing the channel showed the divergence lived in *two* layers, and the one that actually produced
 `REVISION_CONFLICT` for `edit_text_file` was the Python backend: `windows_backend.replace_file`
 compared the freshly statted revision before looking at the object type, with a comment claiming
@@ -1511,7 +1574,11 @@ Implement:
 - MCP read-only lease probe;
 - alias-derived Windows lock/guard artifacts;
 - active recovery guards;
-- native mutation integration.
+- native mutation integration;
+- the C0 decision's transaction shape: `edit_text_file` reads the source bytes from the held
+  restricted-share target object inside one acquire-hold → validate → commit transaction, and
+  `upload_binary_file(overwrite)` / `delete_file` keep that hold across type validation, revision
+  validation and the commit instead of releasing and reacquiring.
 
 Required tests:
 
@@ -1520,7 +1587,18 @@ Required tests:
 - live lease beats guard;
 - stale guard returns WORKDIR_RECOVERY_REQUIRED;
 - provider reconciliation clears guard only when safe;
-- crash releases live lock but leaves guard.
+- crash releases live lock but leaves guard;
+- every mutating MCP tool goes through the writer lease — a guard test over the tool list, not a
+  per-tool spot check — and no read channel takes one;
+- an active external writer that still holds `WRITE` is refused on the mutation target, normalized
+  and never surfaced as a raw `ERROR_SHARING_VIOLATION`;
+- a deterministic seam proving the edit read happens on the held object inside the transaction (the
+  hold is observable as held at read time, not merely before and after);
+- binary overwrite and delete hold the target across validate → commit;
+- a completed same-tick same-size external rewrite is recorded as accepted-boundary evidence, at
+  evidence level — not as a permanent product xfail, and not described as fixed;
+- a public-surface Windows Agent task submitted with `workspace-write` completes a real workspace
+  mutation through the ten MCP tools and the pipe.
 
 Exit: Windows reaches v0.7 lifecycle safety semantics.
 
@@ -1666,6 +1744,12 @@ v0.11.0 may be released only when all applicable items are satisfied:
     upstream proxy credential is stored or injected, no broker process is added, and an
     operator-supplied credentialless local broker is the only authenticated-upstream path a deployment
     may use. Release documentation must not claim native authenticated proxy support.
+33. The Windows revision token is documented and tested at its actual guarantee level (C0 decision B):
+    a metadata-derived opaque optimistic-concurrency token; an active external writer is excluded by
+    the restricted-share target open; ServerFS-coordinated writers are serialized by the writer lease;
+    the same-tick same-size external rewrite is published as an accepted boundary. No release, README,
+    site or tool text may claim content identity or compare-and-swap against arbitrary processes, and
+    no machine-specific window size may be quoted as a guarantee.
 
 ## 17. Explicit non-goals
 
@@ -1688,6 +1772,9 @@ v0.11 does not add:
 - macOS Agent Bridge work;
 - an authenticated-upstream proxy credential broker (§7.3): no stored proxy credential, no injected proxy
   credential, no broker listener or process; a credentialless local broker may be supplied externally.
+- a content-derived Windows revision identity (C0 Option A): no content hash in `stat_file`,
+  `read_text_file` or any other channel that produces a revision, and no strong content-identity
+  revision mode. That would be a separate performance and contract design, not v0.11.
 
 ## 18. Implementation order
 
@@ -1741,19 +1828,22 @@ The WorkPC deployment requirement — Codex and
 OpenAI traffic only reachable through an outbound proxy — is now a measured product contract instead of
 ambient developer-shell state, and Phase D may not implement an environment builder that contradicts
 §7.2.
-Phase C status (2026-10-05): **C0 GATE OPEN — BLOCKED ON A CONTRACT DECISION**. The revision experiment
-and its C0b follow-up are done and recorded
+Phase C status (2026-10-05): **C0 CLOSED — CONTRACT DECISION B; C0.7 CLOSED — PASS.** The revision
+experiment and its C0b follow-up are done and recorded
 (`docs/windows-phase-c-revision-correctness-2026-10-05.md`): no O(1) non-elevated NTFS signal detects
 a same-tick same-size external rewrite — `ChangeTime` adds zero detection and costs rename stability,
 size/allocation/attributes/links/identity never move, and the per-file USN query, though it works
 without elevation on both local NTFS volumes, returns a record that is static across 200/200 completed
-rewrites. §15 conditions 1 and 2 therefore cannot be met, so `C1` and everything after it are untouched
-— no lease identity, no `LockFileEx` backend, no guard/recovery change, no Windows workspace-write E2E
-— and per §16 no bounded content digest is implemented as a stand-in. The maintainer's choice is
-between a full content-derived revision component (changes the metadata-channel contract) and a
-formally lowered external-writer guarantee (documents the tick window plus the share-mask hold). What
-this phase has landed on its own is **C0.7**: type-before-revision precedence on both backends, with
-the Phase A xfail retired (Windows root now 915 passed / 127 skipped / no xfail; Windows Bridge 128 /
+rewrites. §15's original conditions 1 and 2 therefore cannot be met by any ordinary-user metadata
+channel, which the maintainer resolved as **Option B**: the Windows public revision stays a
+metadata-derived opaque optimistic-concurrency token, the same-tick same-size external-rewrite blind
+window becomes an explicitly documented product boundary, and the full content-derived revision
+(Option A) is rejected for v0.11 on published-performance grounds. The replacement C0 completion
+contract and the mandatory hold-before-read transaction shape are recorded in §15 Phase C. C0b did
+prove the active-writer half of the model: a writer that still holds `WRITE` is refused by the
+restricted-share target open, and the same open succeeds once it closes. `C1` and after are therefore
+unblocked. **C0.7** landed on its own: type-before-revision precedence on both backends, with the
+Phase A xfail retired (Windows root now 915 passed / 127 skipped / no xfail; Windows Bridge 128 /
 93; `cargo test` 10/10 lib plus the NTFS integration targets).
 
 ## 19. Development discipline

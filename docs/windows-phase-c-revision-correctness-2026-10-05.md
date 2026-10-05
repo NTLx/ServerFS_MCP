@@ -5,6 +5,9 @@ what was measured and what it decides. All abstract: no volume serial, no raw `F
 host path, no SID, no user name. Everything ran on scratch files under `%TEMP%` on WorkPC (Windows 11
 x64, local NTFS, ordinary non-elevated login), and the experiment modified no product code.
 
+Outcome: **C0 CLOSED — CONTRACT DECISION B** (§9). §4–§6 preserve the measurement and the conclusion
+that was live while the gate was open.
+
 ## 1. Why this gate exists
 
 Phase A measured that a rapid **same-size external rewrite** of the same object left the published
@@ -140,6 +143,9 @@ the "cheap exact signal" possibility. What is left is the contract-level choice,
 No third option survives measurement: `ChangeTime` adds nothing (§4.1), no other O(1) field moves
 (§4.2), and per-file USN is unreachable as a change signal here (§6).
 
+*Decision since recorded: the maintainer selected **B** — see §9. §4–§6 are kept as the state of the
+record while the gate was open, including §6's then-blocking "C0 stays blocked" conclusion.*
+
 ## 6. C0b — per-file USN follow-up (correction to the first-round USN claim)
 
 The first round concluded from the *volume-journal* APIs that "USN requires a volume handle and
@@ -202,3 +208,89 @@ in the Phase C status entry.
 - Elevated/admin USN journal reads (not selected; the ordinary-user requirement disqualifies them).
 - File-symlink reparse artifacts for the lease paths (needs Developer Mode; belongs to the lease work).
 - Anything beyond single-machine warm-cache medians in item 5 — no performance claim is being made.
+
+## 9. C0 decision (maintainer, 2026-10-05): Option B — contract decision, not a fix
+
+The A/B choice in §5 was resolved as **Option B**. C0 is therefore **CLOSED — CONTRACT DECISION B**.
+It is explicitly *not* recorded as `PASS because the blind window was fixed`: the window was measured,
+every candidate strong signal was measured, none qualified, and the residual was converged into an
+accepted and documented product boundary. The experiment (§2–§5) and the USN follow-up (§6) stand as
+written; nothing here re-reads them.
+
+### 9.1 Frozen Windows revision semantics
+
+- The public revision stays `v1:<16 hex>`, computed from object identity plus the relevant observable
+  NTFS metadata. It is an **opaque optimistic-concurrency token**.
+- It is **not** a content hash, **not** a cryptographic content identity, and **not** an atomic
+  compare-and-swap token against arbitrary same-user processes. No code, test or document in this
+  phase may claim otherwise.
+
+### 9.2 The accepted boundary, in product wording
+
+On Windows 11 x64 with local NTFS, a non-ServerFS-coordinated external writer that completes a
+same-object, same-size in-place rewrite **within one filesystem timestamp tick** may leave the public
+revision unchanged. The §3.3 figure (separations of ≥ ~0.25 ms detected 40/40 on WorkPC) is recorded as
+**measured evidence about that machine**, never as a normative or guaranteed maximum window, and no
+product text, test or error message may quote 0.25 ms as the size of the window.
+
+### 9.3 Why Option A was rejected
+
+A full content-derived component turns `stat_file` — and every other channel that must produce a real
+revision — from an O(1) metadata query into an O(file-size) content scan against a size that has no
+natural bound. That is a published-performance regression, hidden I/O on a read channel, added latency,
+and a new resource-exhaustion surface, all to close one narrow non-cooperating-writer alias. A strong
+content-identity revision mode, if it is ever wanted, is a separate product design decision and is not
+part of v0.11.
+
+### 9.4 The three-layer concurrency model this closes
+
+1. **ServerFS-coordinated writers** (MCP mutation versus Agent `workspace-write`) are serialized by the
+   Phase C writer lease. This is the layer the phase is actually built for.
+2. **An active external writer** is excluded by the frozen restricted-share strategy on the mutation
+   target: while another process still holds `WRITE` access, the ServerFS open is refused
+   (`ERROR_SHARING_VIOLATION` internally, normalized, never surfaced raw). Measured in §6.
+3. **A completed external writer** is detected through object replacement (file identity change), size
+   change, and any observable metadata change. The single accepted blind spot is the same-tick same-size
+   in-place rewrite of §9.2.
+
+### 9.5 Replacement C0 completion contract
+
+The old gate condition — "a rapid same-size external rewrite must always change the revision" — is no
+longer a release gate. C0 is complete when all of the following hold:
+
+1. metadata and USN capability are fully measured (§2–§6);
+2. no ordinary-user O(1) strong change signal exists (§4, §6);
+3. the blind window is precisely documented (§9.2);
+4. an active external writer is excluded by the restricted-share transaction (§9.4 layer 2);
+5. `edit_text_file`'s read → commit runs entirely inside one target hold;
+6. ServerFS-coordinated writers are serialized by the Phase C lease;
+7. the public revision makes no content-identity or arbitrary-process-CAS claim (§9.1).
+
+### 9.6 Item 5 is a requirement, and it is not a revision fix
+
+The Windows edit channel currently reads the source bytes *before* the replacement transaction opens
+the target, so an external writer can enter between those two opens. Phase C must make it one
+transaction: acquire the restricted-share target hold → validate regular-file type → validate
+`expected_revision` → read the source bytes **from that same held object** → validate text/edit
+semantics → build the replacement → final identity/revision/fingerprint gate → atomic handle-relative
+replacement, with the hold kept throughout.
+
+This must be described as narrowing the **active-writer** race. It does not close the historical
+same-tick token alias, and must never be presented as if it did — that alias is what §9.2 accepts.
+
+`upload_binary_file(overwrite)` and `delete_file` have no pre-read content problem, but the same
+acquire-hold → validate → commit shape applies: the restricted-share target handle stays held across
+type validation, revision validation and the final commit/delete, rather than being released and
+reacquired.
+
+Read channels (`read_text_file`, `download_binary_file`, `stat_file`) must **not** gain long-lived
+writer-excluding sharing: plain reads still have to coexist with Agent `workspace-write`, and the
+existing before/after metadata check stays as it is.
+
+### 9.7 Consequences for the phase
+
+`C1` (platform-neutral lease identity) is unblocked, and C1→C5 proceed on the frozen §5.5 shape. Signal
+research is closed: `ChangeTime`, per-file USN, bounded digests and full-content hashes are all
+settled by this decision and are not to be re-opened inside Phase C. `AGENTS.md` carries a narrow
+Windows revision clarification so the token's guarantee level is readable without reading this
+document; `dev_plan_v0.10.md` is history and is not rewritten.

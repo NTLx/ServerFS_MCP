@@ -292,6 +292,22 @@ from the whole tuple (size, mtime_ns, ctime_ns, nlink) so metadata changes are v
 revision. `edit`/`delete` verify `expected_revision` inside the lock *and* immediately
 before the commit.
 
+On the native Windows backend the token is computed from object identity plus observable NTFS
+metadata instead of the POSIX stat tuple, and its guarantee level must be stated correctly (v0.11 C0
+decision, `docs/windows-phase-c-revision-correctness-2026-10-05.md` §9): a Windows revision is a
+**metadata-derived optimistic-concurrency token** — not a content hash, not a cryptographic content
+identity, and not a compare-and-swap guard against arbitrary same-user processes. A same-object,
+same-size external rewrite that completes within one NTFS timestamp tick may therefore keep the same
+token; that blind window is an accepted, documented product boundary, so never describe it as fixed
+and never quote a millisecond figure for it. What the Windows channel does guarantee: an external
+writer that still holds `WRITE` access is refused by the restricted-share target open before the
+transaction can start, and ServerFS-coordinated writers (MCP mutation versus Agent `workspace-write`)
+serialize through the Phase C writer lease. The Windows mutation channels hold that restricted-share
+target across validate → read → commit rather than reopening it — `edit_text_file` reads the source
+bytes from the held object, which narrows the active-writer race and nothing more — and read channels
+must not acquire long-lived writer-excluding sharing, because plain reads still have to coexist with
+Agent `workspace-write`. Linux revision semantics are unchanged.
+
 ## Streamable HTTP transport security (v0.4)
 
 GitHub Issue #10 established that Docker `internal: true` networking and an unpublished
