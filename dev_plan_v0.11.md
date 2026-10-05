@@ -1720,6 +1720,13 @@ same-size external rewrites through the published `stat_file`/write path. On Wor
 125 detected**. That is the documented boundary of contract decision B, and the release suite carries
 no permanent expected-failure for it.
 
+Layer 2 is also asserted at the published surface, in both directions: with an outside process
+holding `WRITE` on a target, `edit_text_file` and `delete_file` refuse the mutation, write nothing and
+leave the file intact, and the agent-visible text carries only a redacted code (the frozen
+`NATIVE_IO_ERROR` family on this build) with no Win32 sharing message and no host path; once the
+writer is gone the same edit succeeds. The refusal is a refusal of the *open* — it is not a
+compare-and-swap claim, and the observed code is deliberately not widened into a new public value.
+
 Gates executed on WorkPC for Phase C: `cargo fmt --check`, `cargo clippy --all-targets -D warnings`
 with and without the `pyo3` feature, `cargo test --locked` (13 lib + 17 ntfs_mutation + 9 ntfs_read +
 9 ntfs_traversal, 3 symlink cases ignored without `SERVERFS_REQUIRE_SYMLINK`), the wheel rebuilt with
