@@ -16,6 +16,7 @@ from serverfs_agent_bridge.adapters.base import (
 )
 from serverfs_agent_bridge.adapters.fake import FakeAdapter
 from serverfs_agent_bridge.errors import BridgeError
+from serverfs_agent_bridge.lease_identity import slot_lease_id
 from serverfs_agent_bridge.leases import LeaseManager
 from serverfs_agent_bridge.models import AgentMode, ReconciliationStatus, TaskStatus
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
@@ -323,11 +324,11 @@ async def test_timeout_keeps_recovery_guard_when_provider_stop_is_unproven(
 
     timed_out = await wait_for_status(service, submitted["task_id"], "interrupted")
     assert timed_out["error_code"] == "AGENT_TASK_TIMED_OUT"
-    guard = service.guard_manager.read(1)
+    guard = service.guard_manager.read(slot_lease_id(1))
     assert guard is not None
     assert guard.payload["task_id"] == submitted["task_id"]
 
-    lease = service.lease_manager.acquire_exclusive(1)
+    lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
     lease.release()
 
     with pytest.raises(BridgeError) as blocked:
@@ -369,7 +370,7 @@ async def test_interaction_timeout_keeps_guard_when_provider_stop_is_unproven(
 
     for _ in range(200):
         try:
-            lease = service.lease_manager.acquire_exclusive(1)
+            lease = service.lease_manager.acquire_exclusive(slot_lease_id(1))
         except BridgeError as exc:
             assert exc.code == "WORKDIR_BUSY"
             await asyncio.sleep(0.01)
@@ -379,7 +380,7 @@ async def test_interaction_timeout_keeps_guard_when_provider_stop_is_unproven(
     else:
         raise AssertionError("writer lease was not released")
 
-    guard = service.guard_manager.read(1)
+    guard = service.guard_manager.read(slot_lease_id(1))
     assert guard is not None
     assert guard.payload["task_id"] == submitted["task_id"]
     with pytest.raises(BridgeError) as blocked:
@@ -414,7 +415,7 @@ async def test_lazy_guard_reconciliation_terminalizes_inactive_running_task(
     service.store.transition_task(task_id, TaskStatus.STARTING)
     service.store.transition_task(task_id, TaskStatus.RUNNING)
     service.guard_manager.create(
-        slot=1,
+        lease_id=slot_lease_id(1),
         task_id=task_id,
         runtime="fake",
         workdir_alias="repo",
@@ -428,7 +429,7 @@ async def test_lazy_guard_reconciliation_terminalizes_inactive_running_task(
     task = service.get_task(task_id)
     assert task["status"] == "interrupted"
     assert task["error_code"] == "AGENT_PROVIDER_INACTIVE"
-    assert service.guard_manager.read(1) is None
+    assert service.guard_manager.read(slot_lease_id(1)) is None
     events = service.read_events(task_id)["events"]
     assert any(
         event["event_type"] == "task.interrupted"
@@ -467,7 +468,7 @@ async def test_lazy_guard_reconciliation_stales_pending_request_when_provider_in
         expires_at=utc_after(60),
     )
     service.guard_manager.create(
-        slot=1,
+        lease_id=slot_lease_id(1),
         task_id=task_id,
         runtime="fake",
         workdir_alias="repo",
@@ -483,7 +484,7 @@ async def test_lazy_guard_reconciliation_stales_pending_request_when_provider_in
     assert task["pending_request_id"] is None
     assert task["error_code"] == "AGENT_PROVIDER_INACTIVE"
     assert service.store.get_request(request_id).status == "stale"
-    assert service.guard_manager.read(1) is None
+    assert service.guard_manager.read(slot_lease_id(1)) is None
     await service.close()
 
 
@@ -506,7 +507,7 @@ async def test_provider_failure_clears_guard_when_reconciliation_proves_stopped(
     )
     failed = await wait_for_status(service, submitted["task_id"], "failed")
     assert failed["error_code"] == "AGENT_PROVIDER_ERROR"
-    assert service.guard_manager.read(1) is None
+    assert service.guard_manager.read(slot_lease_id(1)) is None
     await service.close()
 
 
@@ -566,7 +567,7 @@ async def test_restart_reconciliation_never_blindly_reruns_and_keeps_unknown_gua
     service.store.transition_task(task_id, TaskStatus.STARTING)
     service.store.transition_task(task_id, TaskStatus.RUNNING)
     service.guard_manager.create(
-        slot=1,
+        lease_id=slot_lease_id(1),
         task_id=task_id,
         runtime="fake",
         workdir_alias="repo",
@@ -578,7 +579,7 @@ async def test_restart_reconciliation_never_blindly_reruns_and_keeps_unknown_gua
     assert task["status"] == "interrupted"
     assert task["error_code"] == "BRIDGE_RESTARTED"
     assert adapter.runs == 0
-    assert service.guard_manager.read(1) is not None
+    assert service.guard_manager.read(slot_lease_id(1)) is not None
 
     events = service.read_events(task_id)["events"]
     types = [event["event_type"] for event in events]

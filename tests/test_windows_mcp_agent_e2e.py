@@ -10,11 +10,12 @@ code a Windows deployment runs. The runtime name ``codex`` maps to the determini
 ``FakeAdapter`` in the harness, exactly as the Linux E2E harness does, because the MCP public
 allowlist is codex/claude/qoder.
 
-What this surface cannot show on Windows yet is a *completed* task. The frozen rule in
+What Phase B could not show was a *completed* task. The frozen rule in
 ``agent_tools._authorize_submit`` requires a native runtime name to submit with the
-``workspace-write`` profile, and that profile is the one the writer lease guards — whose Windows
-twin is Phase C. So the submit case below asserts that boundary itself: the request travels the
-whole path and comes back as the Bridge's own coded refusal. The full
+``workspace-write`` profile, and that profile is the one the writer lease guards -- its Windows
+twin is Phase C. Phase C closes that gap: the same real pipe and Bridge process now run a
+workspace-write turn to completion while an MCP mutation on the same workdir is refused, then
+accept the mutation once the turn ends. The full
 submit/poll/events/result/approval/question/message/cancel lifecycle over the same real pipe and a
 real Bridge process is proven in ``agent_bridge/tests/test_windows_pipe_e2e.py``, which drives the
 review profile the Bridge accepts.
@@ -33,6 +34,7 @@ from types import SimpleNamespace
 import pytest
 
 from helpers import call_error, call_success, error_code
+from serverfs_mcp import lease_identity
 from serverfs_mcp.agent_client import AgentBridgeClient, AgentBridgeUnavailable
 from serverfs_mcp.config import Settings
 from serverfs_mcp.main import create_server
@@ -186,36 +188,75 @@ def test_read_only_tools_carry_the_bridge_error_codes_over_the_pipe(bridge) -> N
     )
 
 
-def test_submit_reaches_the_bridge_and_fails_closed_at_the_lease_seam(bridge) -> None:
-    """§3: the one seam Phase B did not implement refuses a write task instead of running one.
+def test_a_workspace_write_task_completes_and_the_lease_serializes_the_workdir(bridge) -> None:
+    """Phase C: a published Windows workspace-write task runs, and its lease is exclusive.
 
-    The request travels the entire path — MCP tool, strict envelope, pipe, measured client SID,
-    Agent policy, task store — and the Bridge stops it at the writer lease. The normalized code
-    arriving back through the published surface is the evidence that the boundary holds inside
-    the process that owns it, not merely in a test.
+    The request travels the whole path — MCP tool, strict envelope, pipe, measured client SID,
+    Agent policy, task store, writer lease — and the task is the profile the lease guards. While an
+    Agent turn is live, an MCP mutation on the same workdir is refused with the frozen busy code;
+    once the turn ends the same mutation succeeds and the recovery guard is gone. The artifact the
+    Bridge created is the one ServerFS opened, which is the alias-derived name both sides derive
+    independently (§5.3).
     """
     server = agent_server(bridge.pipe_name, bridge.lock_dir, bridge.workdir)
-    message = call_error(
+    artifact = bridge.lock_dir / lease_identity.lock_artifact_name(
+        lease_identity.alias_lease_id(WORKDIR_ALIAS)
+    )
+
+    holder = call_success(
         server,
         "submit_agent_task",
         {
             "runtime": "codex",
             "workdir": WORKDIR_ALIAS,
             "profile": "workspace-write",
-            "prompt": "complete: must not run unleased",
+            "prompt": "wait: this turn holds the workdir until it is cancelled",
         },
     )
-    assert error_code(message) == "BRIDGE_PLATFORM_UNSUPPORTED", message
-    assert "writer lease" in message, message
+    holder_id = holder["task_id"]
+    assert holder["status"] in {"queued", "starting", "running"}
+    _wait_for_status(server, holder_id, {"starting", "running"})
+    assert artifact.is_file(), "the Bridge owns lease creation, and it did not create this one"
+
+    busy = call_error(
+        server,
+        "create_text_file",
+        {"workdir": WORKDIR_ALIAS, "path": "during-task.txt", "content": "must wait\n"},
+    )
+    assert error_code(busy) == "WORKDIR_BUSY", busy
+
+    call_success(server, "cancel_agent_task", {"task_id": holder_id})
+    _wait_for_status(server, holder_id, {"cancelled", "interrupted", "failed", "succeeded"})
+
+    call_success(
+        server,
+        "create_text_file",
+        {"workdir": WORKDIR_ALIAS, "path": "after-task.txt", "content": "leased, released\n"},
+    )
+    assert (bridge.workdir / "after-task.txt").read_bytes() == b"leased, released\n"
+    guard = (
+        bridge.lock_dir
+        / "active"
+        / lease_identity.guard_artifact_name(lease_identity.alias_lease_id(WORKDIR_ALIAS))
+    )
+    assert not guard.exists(), "a terminal task must clear its recovery guard"
+
+
+def _wait_for_status(server, task_id: str, wanted: set[str], timeout: float = 30.0) -> str:
+    """Poll the published reader until the task reaches one of the wanted states."""
+    deadline = time.monotonic() + timeout
+    status = ""
+    while time.monotonic() < deadline:
+        status = call_success(server, "get_agent_task", {"task_id": task_id})["status"]
+        if status in wanted:
+            return status
+        time.sleep(0.05)
+    raise AssertionError(f"task {task_id} stayed in {status!r} for {timeout}s")
 
 
 def test_the_bridge_created_its_own_private_state_tree(bridge) -> None:
     server = agent_server(bridge.pipe_name, bridge.lock_dir, bridge.workdir)
-    call_error(
-        server,
-        "submit_agent_task",
-        {"runtime": "codex", "workdir": WORKDIR_ALIAS, "prompt": "complete: x"},
-    )
+    call_success(server, "list_agent_runtimes", {})
     assert (bridge.state_dir / "state.sqlite3").exists()
     assert (bridge.lock_dir / "active").is_dir()
 

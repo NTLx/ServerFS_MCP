@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass
 from enum import StrEnum
 from typing import Any
 
+from .lease_identity import NO_LEGACY_SLOT, alias_lease_id, slot_lease_id
+
 
 class TaskStatus(StrEnum):
     QUEUED = "queued"
@@ -117,6 +119,18 @@ class TaskRecord:
     error_code: str | None
     error_message: str | None
     pending_request_id: str | None
+
+    @property
+    def lease_id(self) -> str:
+        """The writer-lease key of this task (§5.3).
+
+        Derived from the stored pair instead of persisted a second time: a legacy row names its
+        slot, a native row carries ``NO_LEGACY_SLOT`` plus the exact alias — the same rule
+        ``WorkdirAgentPolicy.lease_id`` applies when the task is submitted.
+        """
+        if self.workdir_slot == NO_LEGACY_SLOT:
+            return alias_lease_id(self.workdir_alias)
+        return slot_lease_id(self.workdir_slot)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

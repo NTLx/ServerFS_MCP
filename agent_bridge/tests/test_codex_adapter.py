@@ -16,6 +16,7 @@ from platform_contract import require_linux_kernel
 from serverfs_agent_bridge.adapters.base import ReconcileResult
 from serverfs_agent_bridge.adapters.codex import CodexAdapter
 from serverfs_agent_bridge.config import CodexSettings
+from serverfs_agent_bridge.lease_identity import slot_lease_id
 from serverfs_agent_bridge.leases import LeaseManager
 from serverfs_agent_bridge.models import AgentMode, ReconciliationStatus
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
@@ -662,7 +663,7 @@ async def test_reconcile_clears_guard_after_control_socket_failure_before_thread
         task = service.store.get_task(submitted["task_id"])
         assert task.native_session_id is None
         assert task.native_turn_id is None
-        assert service.guard_manager.read(1) is not None
+        assert service.guard_manager.read(slot_lease_id(1)) is not None
 
         ambiguous = replace(task, error_message="official Codex daemon start failed")
         monkeypatch.setattr(adapter, "reconcile_task", reconcile)
@@ -672,7 +673,7 @@ async def test_reconcile_clears_guard_after_control_socket_failure_before_thread
         result = await service._reconcile_guard(1)
         assert result is not None
         assert result.provider_active is False
-        assert service.guard_manager.read(1) is None
+        assert service.guard_manager.read(slot_lease_id(1)) is None
     finally:
         await service.close()
 

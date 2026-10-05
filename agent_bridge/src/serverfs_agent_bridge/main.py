@@ -46,7 +46,11 @@ async def _serve(
         store=store,
         policies=config.policies,
         adapters=adapters,
-        lease_manager=LeaseManager(config.lock_dir, shared_gid=config.allowed_peer_gid),
+        lease_manager=LeaseManager(
+            config.lock_dir,
+            shared_gid=config.allowed_peer_gid,
+            lease_ids=config.policies.lease_ids(),
+        ),
         limits=BridgeLimits(
             task_timeout_seconds=config.limits.task_timeout_seconds,
             interaction_timeout_seconds=config.limits.interaction_timeout_seconds,

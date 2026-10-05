@@ -11,7 +11,9 @@ from typing import Any
 
 from .adapters.base import AgentAdapter, ReconcileResult, TaskContext
 from .errors import BridgeError
-from .leases import LeaseManager, WorkdirLease
+from .lease_identity import NO_LEGACY_SLOT
+from .lease_identity import describe as describe_lease
+from .leases import LeaseHandle, LeaseManager
 from .manifest import build_manifest
 from .models import (
     TERMINAL_STATUSES,
@@ -96,7 +98,7 @@ class BridgeService:
             shared_gid=lease_manager.shared_gid,
         )
         self._background: dict[str, asyncio.Task[None]] = {}
-        self._leases: dict[str, WorkdirLease] = {}
+        self._leases: dict[str, LeaseHandle] = {}
         self._pending_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._approval_advice_cache: dict[str, dict[str, dict[str, Any]]] = {}
         self._user_cancelled: set[str] = set()
@@ -412,20 +414,20 @@ class BridgeService:
                 if existing is not None:
                     return _idempotent_submission_result(existing, request_fingerprint)
 
-            lease: WorkdirLease | None = None
+            lease: LeaseHandle | None = None
             guard_created = False
             if requested_profile is AgentProfile.WORKSPACE_WRITE:
                 locally_leased = False
                 for active_task_id in self._leases:
                     try:
-                        if self.store.get_task(active_task_id).workdir_slot == policy.slot:
+                        if self.store.get_task(active_task_id).lease_id == policy.lease_id:
                             locally_leased = True
                             break
                     except BridgeError:
                         continue
                 if not locally_leased:
-                    await self._reconcile_guard(policy.slot)
-                lease = self.lease_manager.acquire_exclusive(policy.slot)
+                    await self._reconcile_guard(policy.lease_id)
+                lease = self.lease_manager.acquire_exclusive(policy.lease_id)
 
             task_id = new_id("agt")
             try:
@@ -433,7 +435,7 @@ class BridgeService:
                     task_id=task_id,
                     runtime=runtime,
                     workdir_alias=workdir,
-                    workdir_slot=policy.slot,
+                    workdir_slot=policy.slot if policy.slot is not None else NO_LEGACY_SLOT,
                     relative_cwd=normalized_path,
                     profile=requested_profile.value,
                     requested_model=requested_model,
@@ -448,7 +450,7 @@ class BridgeService:
                 )
                 if lease is not None:
                     self.guard_manager.create(
-                        slot=policy.slot,
+                        lease_id=policy.lease_id,
                         task_id=task_id,
                         runtime=runtime,
                         workdir_alias=workdir,
@@ -474,7 +476,7 @@ class BridgeService:
             except Exception:
                 self._leases.pop(task_id, None)
                 if guard_created:
-                    self.guard_manager.remove(slot=policy.slot, task_id=task_id)
+                    self.guard_manager.remove(lease_id=policy.lease_id, task_id=task_id)
                 if lease is not None:
                     lease.release()
                 if "task" in locals():
@@ -525,7 +527,7 @@ class BridgeService:
                 task = self.store.get_task(task_id)
                 if task.profile == AgentProfile.WORKSPACE_WRITE.value:
                     try:
-                        self.guard_manager.remove(slot=task.workdir_slot, task_id=task_id)
+                        self.guard_manager.remove(lease_id=task.lease_id, task_id=task_id)
                     except BridgeError:
                         pass
             except BridgeError:
@@ -545,7 +547,7 @@ class BridgeService:
         )
         if task.profile == AgentProfile.WORKSPACE_WRITE.value:
             self.guard_manager.update_native_ids(
-                slot=task.workdir_slot,
+                lease_id=task.lease_id,
                 task_id=task_id,
                 native_session_id=native_session_id,
                 native_turn_id=native_turn_id,
@@ -556,7 +558,7 @@ class BridgeService:
         deleted = 0
         for task in self.store.list_terminal_before(cutoff):
             try:
-                guard = self.guard_manager.read(task.workdir_slot)
+                guard = self.guard_manager.read(task.lease_id)
             except BridgeError:
                 continue
             if guard is not None and guard.payload.get("task_id") == task.task_id:
@@ -603,22 +605,23 @@ class BridgeService:
         )
         return result
 
-    async def _reconcile_guard(self, slot: int) -> ReconcileResult | None:
-        guard = self.guard_manager.read(slot)
+    async def _reconcile_guard(self, lease_id: str) -> ReconcileResult | None:
+        guard = self.guard_manager.read(lease_id)
         if guard is None:
             return None
+        label = describe_lease(lease_id)
         task_id = guard.payload.get("task_id")
         if not isinstance(task_id, str):
             raise BridgeError(
                 "WORKDIR_RECOVERY_REQUIRED",
-                f"workdir slot {slot:02d} has invalid recovery state",
+                f"{label} has invalid recovery state",
             )
         try:
             task = self.store.get_task(task_id)
         except BridgeError as exc:
             raise BridgeError(
                 "WORKDIR_RECOVERY_REQUIRED",
-                f"workdir slot {slot:02d} has orphaned recovery state",
+                f"{label} has orphaned recovery state",
             ) from exc
         result = await self._probe_reconciliation(task_id)
         self._try_append_event(
@@ -644,11 +647,11 @@ class BridgeService:
                     "task.interrupted",
                     {"error_code": error_code},
                 )
-            self.guard_manager.remove(slot=slot, task_id=task.task_id)
+            self.guard_manager.remove(lease_id=lease_id, task_id=task.task_id)
             return result
         raise BridgeError(
             "WORKDIR_RECOVERY_REQUIRED",
-            f"workdir slot {slot:02d} still has unresolved provider state",
+            f"{label} still has unresolved provider state",
         )
 
     async def _reconcile_startup(self) -> int:
@@ -692,7 +695,7 @@ class BridgeService:
                 and result.provider_active is False
             ):
                 try:
-                    self.guard_manager.remove(slot=task.workdir_slot, task_id=task.task_id)
+                    self.guard_manager.remove(lease_id=task.lease_id, task_id=task.task_id)
                 except BridgeError:
                     pass
             reconciled += 1
@@ -702,7 +705,7 @@ class BridgeService:
             if not isinstance(task_id, str) or task_id in handled:
                 continue
             try:
-                await self._reconcile_guard(guard.slot)
+                await self._reconcile_guard(guard.lease_id)
             except BridgeError:
                 pass
         return reconciled

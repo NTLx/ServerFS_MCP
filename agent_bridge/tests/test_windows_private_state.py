@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from platform_contract import require_windows_kernel
-from serverfs_agent_bridge import private_state, windows_security
+from serverfs_agent_bridge import lease_identity, private_state, windows_security
 from serverfs_agent_bridge.data_home import bridge_data_home, serverfs_data_dir
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.leases import LeaseManager
@@ -337,14 +337,15 @@ def test_active_guard_directory_and_guard_file_are_protected(tmp_path: Path) -> 
     locks = tmp_path / "locks"
     private_state.ensure_private_directory(locks, mode=0o700, messages=messages(), parents=True)
     manager = ActiveGuardManager(locks)
+    lease_id = lease_identity.alias_lease_id("repo")
     manager.create(
-        slot=1,
+        lease_id=lease_id,
         task_id="agt_win",
         runtime="fake",
         workdir_alias="repo",
         correlation_id=None,
     )
-    guard_path = manager._path(1)
+    guard_path = manager._path(lease_id)
     assert security(manager.guard_dir).owner_sid == expected
     descriptor = security(guard_path)
     assert descriptor.owner_sid == expected
@@ -363,11 +364,37 @@ def test_shared_gid_private_state_fails_closed_on_windows(tmp_path: Path) -> Non
     )
 
 
-def test_writer_lease_stays_a_phase_c_seam(tmp_path: Path) -> None:
-    """§3: Phase B owns the lock *directory*, not the advisory lock inside it."""
+def test_lease_artifact_is_private_state_and_is_leaseable(tmp_path: Path) -> None:
+    """Phase C replaced the WRITER_LEASE guard: the artifact is private state, and it locks.
+
+    The lease is the one §3 seam whose artifact the Bridge both creates and holds, so it gets the
+    same per-object descriptor as every other state file — never one inherited from the directory,
+    which Phase 0A measured as silently denying the reader's open.
+    """
+    expected = windows_security.current_user_sid()
+    lease_id = lease_identity.alias_lease_id("repo")
+    manager = LeaseManager(tmp_path / "locks", lease_ids=[lease_id])
+    artifact = manager.lock_dir / lease_identity.lock_artifact_name(lease_id)
+    assert artifact.is_file()
+    descriptor = security(artifact)
+    assert descriptor.owner_sid == expected
+    assert descriptor.broad_trustee() is None
+
+    held = manager.acquire_exclusive(lease_id)
+    with pytest.raises(BridgeError) as busy:
+        manager.acquire_exclusive(lease_id)
+    assert busy.value.code == "WORKDIR_BUSY"
+    held.release()
+    manager.acquire_exclusive(lease_id).release()
+
+
+def test_unprepared_lease_artifact_fails_closed(tmp_path: Path) -> None:
+    """Acquisition never creates: only startup pre-creation of a configured lease may."""
     manager = LeaseManager(tmp_path / "locks")
-    assert security(tmp_path / "locks").dacl_present
-    expect_bridge_error("BRIDGE_PLATFORM_UNSUPPORTED", lambda: manager.acquire_exclusive(1))
+    expect_bridge_error(
+        "LOCK_PATH_UNSAFE",
+        lambda: manager.acquire_exclusive(lease_identity.alias_lease_id("repo")),
+    )
 
 
 def test_private_state_module_reports_windows() -> None:

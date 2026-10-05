@@ -6,17 +6,24 @@ import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from . import lease_identity
 from .errors import BridgeError
 from .models import KNOWN_RUNTIME_NAMES, AgentMode, AgentProfile
 
 _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:")
-_MAX_WORKDIR_SLOTS = 16
 
 
 @dataclass(frozen=True)
 class WorkdirAgentPolicy:
-    slot: int
+    """One workdir's Agent policy plus the lease identity it keys on (§5.3).
+
+    ``slot`` is populated only by the legacy Compose deployment, which must keep the `NN.lock`
+    artifact names a running Bridge already created. A native deployment has no slots at all and is
+    keyed by the exact alias; the artifact names then follow from ``lease_identity``.
+    """
+
+    slot: int | None
     alias: str
     host_path: Path
     mode: AgentMode = AgentMode.DISABLED
@@ -24,7 +31,9 @@ class WorkdirAgentPolicy:
     read_only: bool = True
 
     def __post_init__(self) -> None:
-        if type(self.slot) is not int or not 1 <= self.slot <= _MAX_WORKDIR_SLOTS:
+        if self.slot is not None and (
+            type(self.slot) is not int or not 1 <= self.slot <= lease_identity.MAX_WORKDIR_SLOTS
+        ):
             raise ValueError("slot must be between 1 and 16")
         if not isinstance(self.alias, str) or _ALIAS_RE.fullmatch(self.alias) is None:
             raise ValueError("alias has an invalid format")
@@ -51,24 +60,40 @@ class WorkdirAgentPolicy:
         if self.mode is AgentMode.WORKSPACE_WRITE and self.read_only:
             raise ValueError("workspace-write agent mode requires a writable workdir")
 
+    @property
+    def lease_id(self) -> str:
+        """The platform-neutral writer-lease key for this workdir (§5.3)."""
+        if self.slot is None:
+            return lease_identity.alias_lease_id(self.alias)
+        return lease_identity.slot_lease_id(self.slot)
+
 
 class PolicyRegistry:
     def __init__(self, policies: list[WorkdirAgentPolicy]):
         self._by_alias: dict[str, WorkdirAgentPolicy] = {}
-        self._by_slot: dict[int, WorkdirAgentPolicy] = {}
+        self._by_lease: dict[str, WorkdirAgentPolicy] = {}
         for policy in policies:
             if policy.alias in self._by_alias:
                 raise ValueError(f"duplicate workdir alias: {policy.alias}")
-            if policy.slot in self._by_slot:
-                raise ValueError(f"duplicate workdir slot: {policy.slot}")
+            if policy.lease_id in self._by_lease:
+                raise ValueError(f"duplicate workdir lease: {policy.lease_id}")
             self._by_alias[policy.alias] = policy
-            self._by_slot[policy.slot] = policy
+            self._by_lease[policy.lease_id] = policy
 
     def get(self, alias: str) -> WorkdirAgentPolicy:
         policy = self._by_alias.get(alias)
         if policy is None:
             raise BridgeError("WORKDIR_NOT_FOUND", f"unknown workdir: {alias}")
         return policy
+
+    def lease_ids(self) -> tuple[str, ...]:
+        """Every configured lease key, in configuration order.
+
+        The Bridge pre-creates one artifact per key because the mutation reader may never create
+        one (§5.2) — including for workdirs whose Agent mode is not workspace-write, because a
+        ServerFS mutation takes the lease wherever Agent integration is enabled.
+        """
+        return tuple(policy.lease_id for policy in self._by_lease.values())
 
     def authorize(
         self,
