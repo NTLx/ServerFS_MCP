@@ -5,9 +5,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import signal
+import sys
+import threading
 from pathlib import Path
 
 from . import adapters as runtime_adapters
+from .bootstrap import (
+    BootstrapError,
+    BootstrapFrame,
+    parse_bootstrap_frame,
+)
 from .config import BridgeConfig
 from .leases import LeaseManager
 from .preflight import JevTaskPreflight
@@ -20,6 +27,8 @@ async def _serve(
     config: BridgeConfig,
     *,
     shutdown_event: asyncio.Event | None = None,
+    bootstrap: BootstrapFrame | None = None,
+    supervised: bool = False,
 ) -> None:
     adapters = {}
     if config.enable_fake_runtime:
@@ -74,7 +83,12 @@ async def _serve(
     stop = shutdown_event or asyncio.Event()
     loop = asyncio.get_running_loop()
     installed_signals: list[signal.Signals] = []
-    if own_shutdown_event:
+    # A supervised Bridge takes its shutdown cue from the lifecycle pipe (§15 D4/D5). Windows
+    # signal delivery is not a reliable control plane there, so the handlers below stay a
+    # compatibility path for an unsupervised launch rather than the primary mechanism.
+    # A supervised Bridge must not fall back to signal handling on Windows: the supervisor owns the
+    # lifecycle and closes the pipe when it wants the Bridge to stop (§15 D4).
+    if own_shutdown_event and not supervised and sys.platform != "win32":
         for sig in (signal.SIGTERM, signal.SIGINT):
             try:
                 loop.add_signal_handler(sig, stop.set)
@@ -110,9 +124,90 @@ def main() -> None:
         required=True,
         help="Path to the Agent Bridge JSON configuration file",
     )
+    parser.add_argument(
+        "--supervised",
+        action="store_true",
+        help=(
+            "run under a native supervisor: read one bounded runtime-only bootstrap frame from "
+            "stdin, then treat stdin EOF as the graceful shutdown request (section 15 D4)"
+        ),
+    )
     args = parser.parse_args()
-    config = BridgeConfig.load(args.config)
-    asyncio.run(_serve(config))
+    try:
+        config = BridgeConfig.load(args.config)
+    except (OSError, ValueError) as exc:
+        # Configuration refusals are redacted by construction and name no secret.
+        print(f"bridge configuration refused: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+    if not args.supervised:
+        asyncio.run(_serve(config))
+        return
+
+    asyncio.run(_serve_supervised(config))
+
+
+async def _serve_supervised(config: BridgeConfig) -> None:
+    """The supervised lifecycle: one bootstrap frame in, pipe-EOF shutdown out.
+
+    The frame is read before anything is started, so a malformed or absent handshake cannot leave a
+    half-configured Bridge running. The same pipe then stays open and its EOF is the shutdown cue,
+    which reuses ``_serve``'s existing close path rather than adding a second teardown (§15 D4).
+
+    stdin is read on a worker thread rather than through ``loop.connect_read_pipe``. That is a
+    measured platform constraint, not a preference: on Windows the default Proactor loop does not
+    deliver data from a connected pipe and its transport raises on close, so an asyncio reader
+    silently never sees the frame. A blocking read on a thread is the same pipe and the same
+    one-frame contract — §15 D4 forbids switching the *transport* to an environment variable or a
+    config file, and this does not.
+    """
+    loop = asyncio.get_running_loop()
+    inbox: asyncio.Queue[bytes | None] = asyncio.Queue()
+
+    def _pump() -> None:
+        try:
+            while True:
+                line = sys.stdin.buffer.readline()
+                if not line:
+                    break
+                loop.call_soon_threadsafe(inbox.put_nowait, line)
+        except (OSError, ValueError):
+            pass
+        finally:
+            loop.call_soon_threadsafe(inbox.put_nowait, None)
+
+    threading.Thread(target=_pump, name="serverfs-bootstrap-stdin", daemon=True).start()
+
+    async def _first_frame() -> BootstrapFrame:
+        line = await inbox.get()
+        if line is None:
+            raise BootstrapError(
+                "the supervisor closed the bootstrap channel before sending a frame"
+            )
+        return parse_bootstrap_frame(line)
+
+    try:
+        frame = await _first_frame()
+    except BootstrapError as exc:
+        # The message names the failure class only; the frame's contents never reach stderr.
+        print(f"bootstrap refused: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+    # The same queue then carries the shutdown cue: EOF is the supervisor asking for a graceful
+    # stop, which is simpler and more reliable than designing a second control protocol.
+    shutdown = asyncio.Event()
+
+    async def _watch_eof() -> None:
+        while True:
+            item = await inbox.get()
+            if item is None:
+                shutdown.set()
+                return
+            # Anything after the bootstrap frame is ignored: this channel carries exactly one
+            # frame, so a second instruction cannot arrive on it.
+
+    asyncio.ensure_future(_watch_eof())
+    await _serve(config, shutdown_event=shutdown, bootstrap=frame, supervised=True)
 
 
 if __name__ == "__main__":
