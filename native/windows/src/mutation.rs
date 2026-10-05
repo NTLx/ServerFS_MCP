@@ -313,6 +313,27 @@ fn check_expected(
     Ok(md)
 }
 
+/// The file-target gate, in the order both backends must answer.
+///
+/// Object type is decided before the revision guard, so a directory target reports
+/// `IsADirectory` whether the caller's `expected_revision` is current or stale. The plain
+/// revision guard cannot do that: a directory's revision never equals a stale file token, so
+/// checking it first turns a type error into `RevisionConflict`, which is the divergence
+/// dev_plan_v0.11 §15 C0.7 closes.
+fn check_file_target(
+    handle: &Handle,
+    expected: &str,
+) -> Result<metadata::NativeMetadata, NativeError> {
+    let md = metadata::collect(handle)?;
+    if md.is_directory {
+        return Err(NativeError::IsADirectory);
+    }
+    if md.revision() != expected {
+        return Err(NativeError::RevisionConflict);
+    }
+    Ok(md)
+}
+
 pub fn create_bytes(root: &Handle, parts: &[&str], bytes: &[u8]) -> Result<String, NativeError> {
     let name = target_name(parts)?;
     let owned_parent = resolve_parent(root, parts)?;
@@ -368,7 +389,7 @@ fn replace_bytes_transaction(
         ffi::OpenKind::File,
         REPLACEMENT_HELD_SHARE,
     )?;
-    let initial_md = check_expected(&original, expected_revision)?;
+    let initial_md = check_file_target(&original, expected_revision)?;
     let snapshot = capture_snapshot(&original)?;
     if snapshot.id != initial_md.id || snapshot.has_unsupported_state() {
         return Err(NativeError::MetadataPreservationFailed);
@@ -391,6 +412,9 @@ fn replace_bytes_transaction(
         Err(_) => return Err(NativeError::RevisionConflict),
     };
     let final_md = metadata::collect(&final_target).map_err(|_| NativeError::RevisionConflict)?;
+    if final_md.is_directory {
+        return Err(NativeError::IsADirectory);
+    }
     let final_snapshot =
         capture_snapshot(&final_target).map_err(|_| NativeError::RevisionConflict)?;
     if final_md.id != initial_md.id
@@ -432,7 +456,7 @@ pub fn delete_file(
         ffi::OpenKind::File,
         MUTATION_HELD_SHARE,
     )?;
-    let initial = check_expected(&original, expected_revision)?;
+    let initial = check_file_target(&original, expected_revision)?;
     // NT sharing is bidirectional (measured on WorkPC NTFS): a new open
     // must ALSO grant sharing that covers every already-held handle's
     // access, so the gate helper opens with the full SHARE_ALL mask even
@@ -454,6 +478,9 @@ pub fn delete_file(
         }
     })?;
     let final_md = metadata::collect(&final_target).map_err(|_| NativeError::RevisionConflict)?;
+    if final_md.is_directory {
+        return Err(NativeError::IsADirectory);
+    }
     if final_md.id != initial.id || final_md.revision() != expected_revision {
         return Err(NativeError::RevisionConflict);
     }
@@ -626,6 +653,44 @@ mod tests {
             },
             0
         );
+    }
+
+    #[test]
+    fn directory_target_is_refused_before_the_revision_guard() {
+        // dev_plan_v0.11 §15 C0.7. A directory answer must be IsADirectory whether the caller's
+        // token is stale or current: the stale case used to answer RevisionConflict because the
+        // guard ran before the type decision, which is the Linux/native divergence.
+        let sandbox = TestRoot::new("directory_precedence");
+        let root = sandbox.open();
+        std::fs::create_dir(sandbox.0.join("sub")).unwrap();
+        let stale = "v1:0000000000000000";
+        assert_eq!(
+            replace_bytes(&root, &["sub"], b"bytes", stale).unwrap_err(),
+            NativeError::IsADirectory
+        );
+        assert_eq!(
+            delete_file(&root, &["sub"], stale).unwrap_err(),
+            NativeError::IsADirectory
+        );
+        let current = metadata::revision_of(
+            &traversal::resolve(&root, &["sub"], ffi::OpenKind::Directory).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            replace_bytes(&root, &["sub"], b"bytes", &current).unwrap_err(),
+            NativeError::IsADirectory
+        );
+        assert_eq!(
+            delete_file(&root, &["sub"], &current).unwrap_err(),
+            NativeError::IsADirectory
+        );
+        assert!(sandbox.0.join("sub").is_dir());
+        let mut scan = ffi::DirectoryScan::new();
+        while let Some(batch) = scan.next_batch(&root).unwrap() {
+            assert!(!batch
+                .iter()
+                .any(|name| name.starts_with(INTERNAL_TEMP_PREFIX)));
+        }
     }
 
     #[test]
