@@ -1828,9 +1828,14 @@ Three defects the acceptance run found, all fixed in the same commits:
 3. `AgentLifecycleError` escaped `supervisor.main()` uncaught, so every Agent startup failure reached
    the operator as a Python stack trace containing the paths those messages exist to withhold.
 
-**Known gap, recorded not fixed:** a malformed config or a non-existent workdir root is refused by
-`run_native_tunnel` before the supervisor exists, and that path emits an unredacted traceback.
-Launcher-level diagnostics are follow-up work.
+**A recorded gap that was not real.** An earlier revision claimed that a malformed config or a
+non-existent workdir root is refused before the supervisor exists and emits an unredacted traceback.
+That was an artefact of the D9 harness, which launched the chain by calling `run_native_tunnel`
+directly and so skipped `cmd_tunnel` — and `cmd_tunnel` catches `(OSError, ValueError)` while
+`NativeTunnelError` is a `ValueError` subclass. Measured through the real
+`python -m serverfs_mcp.cli tunnel` entry point, both are normalized refusals: exit 2, a `serverfs:`
+message, no traceback, no host path, no supervisor, no Bridge, no Agent state.
+`TestLauncherRefusalsAreRedacted` pins both and fails if that normalization is removed.
 
 Phase D includes **no real Codex, Qoder or Claude integration.** The provider adapter at the end of
 the accepted lifecycle is a deterministic test double; the real transports are E, F and G.
