@@ -204,12 +204,59 @@ Concurrent success matters on its own terms: the frozen §10 design requires one
 serving the probe, the model list, every task and reconciliation at once, and that shape is measured
 to work.
 
-### Not run, not claimed
+## 5a. Real-provider acceptance (§40–§49): started, provider behaviour confirmed, gates unproven
 
-Gated behind a stable tiny turn, and therefore still to do: workspace-write (§40), native id
-persistence (§41), continuation (§42), question (§43), approval (§44), cancellation (§45), model
-override (§46), restart reconciliation (§47), lease/guard cleanup (§49) and real Job containment.
-None is approximated with the fake provider, which would prove nothing about the runtime.
+The acceptance harness is landed (`3bb2603`): the D9 chain with the fake adapter removed, so the
+pass evidence comes from the public MCP surface only -- `serverfs tunnel` CLI -> native supervisor ->
+real Bridge -> real Named Pipe -> the published Agent tools -> the real `CodexAdapter` -> a
+Bridge-owned `codex app-server` child -> the real provider. Its preflight asserts, before any work
+starts, the three conditions whose absence produced this phase's earlier false conclusions.
+
+**What is confirmed, from the TaskStore of a real run** (read-only; no id values are recorded here):
+
+| Observation | Evidence |
+| --- | --- |
+| The chain launches and publishes the Agent surface | 10 agent tools reachable over real MCP stdio |
+| A **real** turn runs against the provider | `turn.started`, `item.started`/`item.completed` for reasoning and an agent message |
+| **Native ids persist** (§41) | `native_session_id` and `native_turn_id` both present on the task row |
+| The provider **asks for approval** (§8/§44) | `approval.requested` with a pending `command` request, reason *"May I write the requested file in the current workspace?"*, `available_decisions: [approve_once, cancel_task]` |
+| The interaction has a bounded life | the request carries a 5-minute `expires_at` |
+
+So the workspace-write gate and the approval gate are **the same interaction** on this provider: a
+real Codex will not write a file without asking. That is genuine provider-originated behaviour, not
+a harness artefact, and it is recorded as such.
+
+**What is not proven.** The harness does not answer the approval, so the task never reaches a terminal
+state and §40 does not complete. The fault is in the harness, not the product: the pending request
+is in the store, `BridgeService.get_task` publishes it as a nested `pending_request` object, and the
+harness reads that. The blocking point has not been isolated, so nothing here is claimed.
+
+Recorded as **unrun and unproven**, with no approximation by the fake provider:
+
+- §40 workspace-write, §42 continuation, §46 model override, §43 question, §44 approval as a
+  completed gate, §45 cancellation, §47 restart reconciliation, §48 post-restart continuation,
+  §49 lease/guard matrix, and real Job containment.
+
+The approval *request* is evidenced above; the approval *round trip* is not, and the two are
+reported separately on purpose — "the provider asked" is not "the gate passed".
+
+### Harness faults found by running it
+
+Each of these was a silent failure that made a wrong outcome look like a slow provider:
+
+- teardown killed only the launcher, so a Bridge survived in its Job Object holding the writer lease
+  and the next run failed `WORKDIR_BUSY` against a lease no operator can see or release;
+- a failing `respond_agent_approval` was swallowed by a bare `except`, making "could not answer"
+  identical to "never saw the request";
+- the MCP read loop was unbounded, so a chain that stopped answering hung until the outer timeout
+  instead of naming the outstanding call;
+- `tail`-buffered output made a harness that had submitted its task look like one that had not.
+
+A separate process-cleanup mistake of mine deserves recording: while clearing leftovers I killed by a
+pattern broad enough to also stop the operator's own processes. The Codex **managed daemon survived**
+(verified by PID and creation time), but two orphaned `codex app-server` processes from 2026-10-04
+were also stopped. They had no live parent and were not the managed daemon, so no contract was
+broken, but the filter was wider than the intent and the intent should have been narrower.
 
 ## 5b. Operator proxy configuration (§2 of the ruling)
 
