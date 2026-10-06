@@ -271,8 +271,21 @@ class _RenderedPaths:
 
 
 def _bridge_render_env() -> dict[str, str]:
-    """The renderer's environment: scrubbed like any Bridge child, plus its data home override."""
-    env = sanitized_environment()
+    """The renderer's environment: fully scrubbed, then only SERVERFS_DATA_HOME re-added.
+
+    The renderer runs in its own process and has no reason to see the Agent proxy endpoint, the
+    Tunnel namespace or any proxy variable. ``SERVERFS_DATA_HOME`` is the single exception because
+    the operator (or a test) chose where the private state lives, and the renderer must honour the
+    same location the Bridge will use.
+
+    The v0.10 ``sanitized_environment`` is deliberately not used here: it predates the Agent
+    namespace and would pass ``SERVERFS_AGENT_PROXY_URL`` straight through. The Agent-enabled path
+    uses the stricter scrub and then re-adds by name, so the set of variables that survive is
+    exactly what is written below and nothing accumulates by accident.
+    """
+    from .agent_lifecycle import bridge_child_environment
+
+    env = bridge_child_environment(None)
     override = os.environ.get("SERVERFS_DATA_HOME", "").strip()
     if override:
         env["SERVERFS_DATA_HOME"] = override
@@ -300,13 +313,21 @@ def _start_stdio_child(
 
     The Agent policy itself reaches the child through its own parsed ``serverfs.toml``, so no
     operator-facing environment variable duplicates it (§15 D5 step 11).
-    """
-    from .agent_lifecycle import AgentLifecycleError
 
-    env = dict(base_env)
+    The environment is scrubbed rather than inherited, and the endpoint is deliberately *not* among
+    the three values re-added. The stdio child registers the Agent surface and talks to the Bridge
+    over the pipe; it has no reason to know where the runtime egress proxy points, and passing the
+    endpoint to a process that does not need it is the same exposure Phase 0F measured — the value
+    would be one ``os.environ`` read away from agent-executed tool code.
+    """
+    from .agent_lifecycle import AgentLifecycleError, bridge_child_environment
+
+    env = bridge_child_environment(None)
+    # Exactly three internal wiring values, re-added by name after the scrub.
     env["SERVERFS_AGENT_BRIDGE_ENABLED"] = "1"
     env["SERVERFS_AGENT_BRIDGE_SOCKET"] = str(rendered.socket_path)
     env["SERVERFS_AGENT_LOCK_DIR"] = str(rendered.lock_dir)
+    del base_env  # the scrubbed environment is authoritative, not an overlay on the parent
     try:
         return subprocess.Popen(
             [sys.executable, "-m", "serverfs_mcp.cli", "serve", "--config", config_path],
