@@ -16,6 +16,7 @@ readiness check would prove only that the mock returns.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import subprocess
@@ -434,3 +435,58 @@ class TestSpawnUnderContainment:
                 child_env={},
                 argv=[str(tmp_path / "definitely-not-an-executable")],
             )
+
+
+class TestLauncherReportsRedactedFailures:
+    """``main`` must turn an Agent startup refusal into a message, never a traceback.
+
+    D9 found this by running the real chain with a Bridge interpreter that does not exist. The Agent
+    path built the correct redacted message -- ``the Bridge configuration could not be rendered
+    (FileNotFoundError)`` -- and then the exception escaped ``main`` uncaught, so the operator saw a
+    Python stack trace containing the interpreter path those messages exist to withhold.
+
+    Two layers are asserted here. The handler exists and returns 2, and the ``__main__`` guard is a
+    last-resort net for anything else.
+    """
+
+    def test_a_lifecycle_failure_exits_two_without_a_traceback(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        import serverfs_mcp.supervisor as supervisor
+        from serverfs_mcp.agent_lifecycle import AgentLifecycleError
+
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+        config = _write_config(tmp_path, AGENT_CONFIG, workdir)
+        monkeypatch.setattr(
+            supervisor,
+            "run_with_agent",
+            lambda config_path, env: (_ for _ in ()).throw(
+                AgentLifecycleError(
+                    "the Bridge configuration could not be rendered (FileNotFoundError)"
+                )
+            ),
+        )
+
+        stderr = io.StringIO()
+        monkeypatch.setattr(sys, "stderr", stderr)
+        assert supervisor.main(["--config", str(config)]) == 2
+        text = stderr.getvalue()
+        assert "Traceback" not in text, text
+        assert "could not be rendered" in text, text
+        del config
+
+    def test_the_agent_disabled_path_is_not_affected(self, tmp_path: Path, monkeypatch) -> None:
+        """A v0.10 install must still reach ``serve`` and never import the Agent lifecycle."""
+        import serverfs_mcp.supervisor as supervisor
+
+        workdir = tmp_path / "repo"
+        workdir.mkdir()
+        config = _write_config(tmp_path, V010_CONFIG, workdir)
+        monkeypatch.setattr(supervisor, "forward_stdio", lambda command, env: 0)
+
+        def _explode(*_args, **_kwargs):
+            raise AssertionError("the Agent path must not be entered for a v0.10 config")
+
+        monkeypatch.setattr(supervisor, "run_with_agent", _explode)
+        assert supervisor.main(["--config", str(config)]) == 0
