@@ -19,6 +19,7 @@ reserved for protocol use even in diagnostic runs.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -107,6 +108,52 @@ def _load(path: Path):
         raise SystemExit(_fail(f"configuration error: {exc}")) from exc
 
 
+def _native_agent_settings(native_settings) -> tuple | None:
+    """Build Agent wiring for a native serve, or ``None`` when delegation is off.
+
+    ``serverfs.toml`` is the only operator-facing source of Agent policy: this function is gated on
+    ``native_settings.agent_enabled`` and never on an ambient environment variable, so a stray
+    ``SERVERFS_AGENT_BRIDGE_ENABLED`` in a shell cannot turn Agent delegation on. The supervisor's
+    injected variables supply only *placement* — which pipe and which lock directory — which is
+    wiring rather than policy and is not the operator's to type.
+
+    The Bridge process itself belongs to the supervisor (§15 D5), so this function never starts one.
+    A direct ``serverfs serve`` therefore registers the Agent surface and points it at the
+    deterministic native endpoint; if no Bridge is listening, the ten tools fail closed through the
+    frozen ``AgentBridgeUnavailable`` rather than disappearing from the surface. That is the
+    behaviour §15 D3 requires of a direct serve, and it is why the tools are registered even when
+    nothing is running.
+    """
+    from .config import Settings
+
+    if not native_settings.agent_enabled:
+        return None
+
+    endpoint = os.environ.get("SERVERFS_AGENT_BRIDGE_SOCKET", "").strip()
+    lock_dir = os.environ.get("SERVERFS_AGENT_LOCK_DIR", "").strip()
+    if not endpoint or not lock_dir:
+        # Delegation is on but the supervisor did not inject both placement values. Failing closed
+        # here beats registering tools against the Linux default socket path, which cannot exist on
+        # Windows and would surface as a confusing I/O error instead of a clear one.
+        missing = "endpoint" if not endpoint else "lock directory"
+        raise SystemExit(
+            _fail(
+                f"agent delegation is enabled but no Agent Bridge {missing} was provided; "
+                "start through 'serverfs tunnel' so the supervisor can supply it"
+            )
+        )
+    settings = Settings(
+        log_level=native_settings.log_level,
+        agent_bridge_enabled=True,
+        agent_bridge_socket=endpoint,
+        agent_lock_dir=lock_dir,
+    )
+    from .agent_client import AgentBridgeClient
+
+    client = AgentBridgeClient(Path(endpoint), timeout_seconds=30.0)
+    return settings, client
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     """Run the shared MCP tool registration over native stdio."""
     if sys.platform != "win32":
@@ -116,7 +163,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from .main import create_server
     from .workdirs import WorkdirRegistry
 
-    settings = Settings(log_level=native_settings.log_level)
+    agent_wiring = _native_agent_settings(native_settings)
+    if agent_wiring is None:
+        settings = Settings(log_level=native_settings.log_level)
+        client = None
+    else:
+        settings, client = agent_wiring
     registry = WorkdirRegistry(workdirs)
     jsonlog.set_level(settings.log_level)
     jsonlog.info(
@@ -124,8 +176,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         workdirs=len(workdirs),
         read_write_workdirs=sum(1 for w in workdirs if not w.read_only),
         platform=sys.platform,
+        agent_bridge_enabled=settings.agent_bridge_enabled,
     )
-    server = create_server(settings, registry)
+    server = create_server(settings, registry, client)
     server.run("stdio")
     return 0
 
