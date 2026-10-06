@@ -5,12 +5,11 @@ relaxing it:
 
 - **read-only.** Every check here inspects configuration, derives a path, or opens a socket for a
   reachability probe. Nothing creates the Agent data tree, renders a Bridge config, writes a lease,
-  or
-  starts a Bridge or a provider. A diagnostic that made the deployment startable would be a launcher
-  wearing a report's clothes.
+  or starts a Bridge or a provider. A diagnostic that made the deployment startable would be a
+  launcher wearing a report's clothes.
 - **never a launcher.** If the Bridge is not running, doctor says so and says the supervisor owns
-  owns starting it. When it *is* running, doctor may make a read-only authenticated probe,
-  because that is an observation of an existing process, not a decision to create one.
+  starting it. When it *is* running, doctor may make a read-only existence observation, because
+  that is an observation of an existing process, not a decision to create one.
 - **stdout stays empty.** Lines go to the writer (stderr in the CLI), because stdout is reserved for
   MCP frames (§27).
 - **the endpoint never appears.** Phase 0F §8 measured that a provider's own health report
@@ -20,19 +19,28 @@ relaxing it:
   exception text, which is why the reachability probe normalizes failures into a fixed vocabulary.
 
 A disabled Agent is a normal configuration, so it is reported as a *note* and never as WARN or
-FAIL. A FAIL. A doctor that cried wolf about the default state would train operators to ignore it.
+FAIL. A doctor that cried wolf about the default state would train operators to ignore it.
+
+**Two subprocesses, both bounded and both scrubbed.** The Bridge-package availability check and the
+private-state inspection each run a child under the interpreter the supervisor would use, because
+both questions are about what that interpreter can see rather than about what this process can see.
+Neither child is given the Agent proxy endpoint or any Tunnel or Control Plane credential, and
+neither is allowed to start a Bridge: the package probe asks ``importlib`` for a spec without
+importing anything, and the state inspector only reads descriptors.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import socket
+import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .native_endpoint import NativeEndpointError, derive_pipe_name
+from .native_endpoint import NativeEndpointError, data_home, derive_pipe_name
 
 OK = "OK"
 FAIL = "FAIL"
@@ -45,6 +53,32 @@ PROXY_SOURCE = "source"
 PROXY_AUTH = "authentication"
 PROXY_BYPASS = "mandatory local bypass"
 PROXY_REACH = "reachability"
+
+#: The same variable the supervisor reads, named here so the two cannot drift apart silently.
+BRIDGE_PYTHON_ENV = "SERVERFS_BRIDGE_PYTHON"
+
+#: A diagnostic must not hang because an interpreter did. Long enough for a cold Windows start of a
+#: pure-Python import check, short enough that a wedged child is reported rather than waited on.
+BRIDGE_PROBE_TIMEOUT_SECONDS = 20.0
+
+#: The private-state inspector lives in the Bridge package (§23/§70 keep the two independent), so
+#: doctor reaches it through a bounded child rather than reimplementing the ACL contract. A copy
+#: would be a second answer that could disagree with the first, which is the failure Phase B
+#: already demonstrated with the lease identity.
+INSPECT_TIMEOUT_SECONDS = 20.0
+
+
+def _lookup(env: Mapping[str, str] | None, name: str) -> str:
+    """One environment value, preferring the caller's narrowing override over the process value.
+
+    ``env`` is a narrowing device for the proxy probe, not a replacement environment, so a missing
+    key falls through to the process rather than reading as empty. An earlier version treated ``{}``
+    as "an environment with nothing in it", which made a real misconfiguration indistinguishable
+    from a deliberate narrowing.
+    """
+    if env is not None and name in env:
+        return env[name]
+    return os.environ.get(name, "")
 
 
 def _reachable(host: str, port: int, timeout: float = 3.0) -> tuple[bool, str]:
@@ -80,17 +114,21 @@ def _probe_agent_proxy(report, settings, env: Mapping[str, str] | None = None) -
 
     report.status("agent proxy", OK, "enabled")
     report.note(PROXY_SOURCE, proxy_settings.source)
-    # A credential in the URL is refused at parse time, so a configured proxy is credentialless by
-    # construction. Saying so is more useful than omitting it.
-    report.note(PROXY_AUTH, "none")
 
     try:
         parsed = parse_agent_proxy(proxy_settings, env)
     except AgentProxyError as exc:
         # AgentProxyError messages are redacted by construction: they name the failure class.
+        # The authentication line is deliberately *not* printed before this point -- claiming
+        # "authentication: none" about an endpoint that was refused would be a contradiction in a
+        # diagnostic, and a reader has no way to tell which half of it to believe.
         report.status(PROXY_BYPASS, FAIL, str(exc))
         report.status(PROXY_REACH, FAIL, "not evaluated (configuration refused)")
         return
+
+    # Only after a successful parse is the endpoint credentialless by construction, so only now is
+    # "authentication: none" a statement about something that was actually inspected.
+    report.note(PROXY_AUTH, "none")
 
     if parsed is None:
         report.note(PROXY_BYPASS, "not applicable (no endpoint)")
@@ -149,18 +187,124 @@ def _probe_data_home(report, env: Mapping[str, str] | None) -> None:
     from .native_endpoint import data_home
 
     try:
-        home = data_home()
+        data_home()
     except NativeEndpointError as exc:
         report.status("agent data home", FAIL, str(exc))
         return
     report.status("agent data home", OK, "resolvable")
+    _probe_private_state(report, env)
 
-    lock_dir = home / "agent-bridge" / "locks"
-    if lock_dir.exists():
-        report.status("agent lock dir", OK, "present")
-    else:
-        # Not creating it is the point: doctor reports what is there, and the supervisor creates it.
-        report.note("agent lock dir", "not created yet (the supervisor creates it on first start)")
+
+def _probe_private_state(report, env: Mapping[str, str] | None) -> None:
+    """Report whether the private state on disk is safe, via the Bridge's own inspector.
+
+    "Is the data home derivable" is a different question from "is the state that is already there
+    safe", and only the second one is the private-state safety check the D8 contract asks for. A
+    reparse point, a wrong object type, a foreign owner or a broad DACL under the Agent data home
+    all have to be visible here, because each of them is an object the Bridge would refuse to use at
+    startup -- and a diagnostic that cannot see them is not diagnosing anything.
+
+    The judgement is delegated rather than reimplemented. ``serverfs_mcp`` owns no ACL knowledge and
+    must not acquire any: §23/§70 freeze the packages as independent, and a second copy of the DACL
+    rules could disagree with the Bridge's, at which point doctor would reassure an operator about a
+    deployment the Bridge refuses to start. So the inspector runs in a child under the same
+    interpreter, returns four bounded statuses, and only those statuses are reported.
+    """
+    candidate = _bridge_interpreter(env)
+    home = _data_home_or_none(env)
+    if home is None:
+        report.status("agent private state", FAIL, "the Agent data home is not derivable here")
+        return
+
+    payload = _run_state_inspector(candidate, home)
+    if payload is None:
+        report.status(
+            "agent private state",
+            WARN,
+            "the private-state inspector could not run; safety was not established either way",
+        )
+        return
+
+    # An unrecognised status is treated as unknown rather than ignored. A renamed or extended
+    # vocabulary on the Bridge side must not silently become "nothing was wrong here".
+    unsafe = [key for key, value in payload.items() if value.get("status") == UNSAFE_STATUS]
+    unknown = [
+        key
+        for key, value in payload.items()
+        if value.get("status") not in {SAFE_STATUS, ABSENT_STATUS, UNSAFE_STATUS}
+    ]
+    if unsafe:
+        # Naming which locations are wrong is the useful part; the reasons come back already
+        # normalized by the inspector and contain no path, SID or descriptor detail.
+        detail = ", ".join(
+            f"{key} {payload[key].get('reason', UNSAFE_STATUS)}" for key in sorted(unsafe)
+        )
+        report.status("agent private state", FAIL, detail)
+        return
+    if unknown:
+        keys = ", ".join(sorted(unknown))
+        report.status("agent private state", WARN, f"could not be established for: {keys}")
+        return
+    absent = sum(1 for value in payload.values() if value.get("status") == ABSENT_STATUS)
+    if absent:
+        report.status(
+            "agent private state",
+            OK,
+            f"safe where present ({absent} of {len(payload)} not created yet)",
+        )
+        return
+    report.status("agent private state", OK, "all locations are present and private")
+
+
+#: The inspector's vocabulary, restated so a rename on the Bridge side is caught here rather than
+#: silently turning every location into "could not be established".
+ABSENT_STATUS = "absent"
+SAFE_STATUS = "safe"
+UNSAFE_STATUS = "unsafe"
+UNKNOWN_STATUS = "unknown"
+
+
+def _data_home_or_none(env: Mapping[str, str] | None) -> Path | None:
+    try:
+        return data_home()
+    except NativeEndpointError:
+        return None
+
+
+def _run_state_inspector(candidate: Path, home: Path) -> dict[str, dict[str, str]] | None:
+    """Run the Bridge's read-only inspector and return its report. ``None`` if it could not run."""
+    from .agent_proxy import bridge_environment
+
+    try:
+        completed = subprocess.run(  # noqa: S603 - a fixed argv against a resolved interpreter
+            [
+                str(candidate),
+                "-m",
+                "serverfs_agent_bridge.inspect_state",
+                "--data-home",
+                str(home),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=INSPECT_TIMEOUT_SECONDS,
+            env=bridge_environment(None),
+            cwd=str(Path.cwd()),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        payload = json.loads(completed.stdout)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return {
+        key: value
+        for key, value in payload.items()
+        if isinstance(value, dict) and isinstance(value.get("status"), str)
+    }
 
 
 def _probe_identity(report) -> None:
@@ -189,7 +333,17 @@ def _probe_endpoint(report, env: Mapping[str, str] | None) -> None:
         return
     report.status("agent endpoint", OK, "derivable from the current user identity")
 
-    if not _pipe_is_served(endpoint):
+    if _pipe_is_served(endpoint):
+        # Precisely what was observed and nothing more. WaitNamedPipe answers "an instance of this
+        # name exists right now"; it does not authenticate the peer, check the protocol version or
+        # confirm the service is healthy. Calling this "ready" or "healthy" would be a claim the
+        # probe did not support, and an operator who trusts it would skip the check that matters.
+        report.note(
+            "agent bridge",
+            "pipe present (a Named Pipe instance exists; identity and health are not established "
+            "here -- the supervisor's startup check verifies those)",
+        )
+    else:
         # The important wording: a static doctor must not become a launcher.
         report.note("agent bridge", "not running (start it with the native supervisor)")
 
@@ -213,27 +367,116 @@ def _pipe_is_served(endpoint: str, timeout: float = 1.0) -> bool:
     return bool(kernel32.WaitNamedPipeW(endpoint, 0))
 
 
-def _probe_bridge_availability(report, env: Mapping[str, str] | None) -> None:
-    """Whether a Bridge distribution could be started at all.
+def _bridge_interpreter(env: Mapping[str, str] | None) -> Path:
+    """The interpreter the supervisor would use, resolved exactly as the supervisor resolves it.
 
-    Availability only. Doctor never imports a second distribution into this process, because that
-    would pull that code into the diagnostic path.
+    ``SERVERFS_BRIDGE_PYTHON`` when set, otherwise ``sys.executable``. An earlier version warned
+    whenever the variable was absent, which is a false positive on the common deployment: the MCP
+    server and the Bridge frequently share one interpreter, so the supervisor needs no override and
+    a diagnostic that says "not configured" would send an operator looking for a problem that is not
+    there. The rule is restated here rather than imported, because the supervisor's constant is a
+    private detail of a module this one must not depend on, and a copy that is tested against the
+    real behaviour is safer than a stale import.
     """
-    override = (env or {}).get("SERVERFS_BRIDGE_PYTHON", "").strip() or os.environ.get(
-        "SERVERFS_BRIDGE_PYTHON", ""
-    ).strip()
-    candidate = Path(override) if override else None
-    if candidate is not None:
-        if candidate.is_file():
-            report.status("agent bridge package", OK, "configured interpreter is present")
-        else:
-            report.status("agent bridge package", WARN, "configured interpreter is not present")
+    override = _lookup(env, BRIDGE_PYTHON_ENV).strip()
+    return Path(override) if override else Path(sys.executable)
+
+
+def _probe_bridge_availability(report, env: Mapping[str, str] | None) -> None:
+    """Whether the Bridge could actually be started from this deployment.
+
+    Availability, not configuration. The question an operator needs answered is "will the supervisor
+    be able to launch the Bridge?", so the probe resolves the same interpreter the supervisor would
+    and asks that interpreter whether the Bridge distribution is importable. Warning because a
+    variable is unset answers a different, less useful question.
+
+    The check runs in a bounded subprocess rather than in this process: importing a second
+    distribution into the diagnostic path would pull that code into ``serverfs doctor``, and the
+    subprocess also proves the answer for the *candidate* interpreter rather than for whichever one
+    happens to be running the doctor. The child does one thing -- ask importlib for a module spec --
+    and is given the strict Bridge scrub so it cannot see the Agent proxy endpoint or any Tunnel or
+    Control Plane credential while doing it.
+    """
+    candidate = _bridge_interpreter(env)
+    if not candidate.is_file():
+        report.status(
+            "agent bridge package",
+            FAIL,
+            "the interpreter the supervisor would use is not present on this machine",
+        )
         return
-    report.status(
-        "agent bridge package",
-        WARN,
-        "not configured; set SERVERFS_BRIDGE_PYTHON or start through the native supervisor",
-    )
+
+    completed = _probe_bridge_package(candidate, env)
+    if completed is None:
+        report.status(
+            "agent bridge package",
+            FAIL,
+            "the Bridge distribution could not be inspected with the configured interpreter",
+        )
+        return
+    found, detail = completed
+    if found:
+        report.status(
+            "agent bridge package",
+            OK,
+            "importable by the interpreter the supervisor would use"
+            + (f" ({detail})" if detail else ""),
+        )
+    else:
+        report.status(
+            "agent bridge package",
+            FAIL,
+            "the Bridge distribution is not importable by the interpreter the supervisor would "
+            "use, so agent delegation cannot start",
+        )
+
+
+#: The child asks importlib for a spec and prints a single token. Nothing is imported, no module
+#: code runs, and no Bridge service is constructed -- a diagnostic must not start the thing it is
+#: diagnosing.
+_FIND_SPEC_SCRIPT = (
+    "import importlib.util,sys\n"
+    "spec = importlib.util.find_spec('serverfs_agent_bridge')\n"
+    "print('FOUND' if spec is not None else 'MISSING')\n"
+)
+
+
+def _probe_bridge_package(
+    candidate: Path, env: Mapping[str, str] | None
+) -> tuple[bool, str] | None:
+    """Ask one interpreter whether the Bridge distribution is importable. ``None`` on failure.
+
+    Bounded on both axes: a wall-clock timeout, because a hung interpreter must not hang a
+    diagnostic, and a scrubbed environment, because this process may hold the Agent proxy endpoint
+    and Tunnel credentials that have no business reaching a child.
+    """
+    # The child is scrubbed like any Bridge child. A narrowing override is forwarded so a test can
+    # redirect the probe, but it never reaches the child as a credential-bearing value: the scrub
+    # runs after the merge.
+    from .agent_proxy import bridge_environment
+
+    merged: dict[str, str] | None = None
+    if env:
+        merged = {**os.environ, **env}
+    try:
+        completed = subprocess.run(  # noqa: S603 - a fixed argv against a resolved interpreter
+            [str(candidate), "-c", _FIND_SPEC_SCRIPT],
+            capture_output=True,
+            text=True,
+            timeout=BRIDGE_PROBE_TIMEOUT_SECONDS,
+            env=bridge_environment(merged),
+            cwd=str(Path.cwd()),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    answer = completed.stdout.strip()
+    if answer == "FOUND":
+        return True, ""
+    if answer == "MISSING":
+        return False, ""
+    return None
 
 
 def _probe_workdir_policy(report, workdirs) -> None:
