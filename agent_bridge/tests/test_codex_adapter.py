@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import shutil
 import tempfile
 from collections.abc import Iterator
@@ -10,11 +9,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from websockets.asyncio.server import unix_serve
 
-from platform_contract import require_linux_kernel
+from codex_mock_provider import MockCodexServer
+from platform_contract import WINDOWS, linux_only
 from serverfs_agent_bridge.adapters.base import ReconcileResult
 from serverfs_agent_bridge.adapters.codex import CodexAdapter
+from serverfs_agent_bridge.adapters.codex_transport import CodexEndpoint
 from serverfs_agent_bridge.config import CodexSettings
 from serverfs_agent_bridge.lease_identity import slot_lease_id
 from serverfs_agent_bridge.leases import LeaseManager
@@ -41,445 +41,34 @@ def codex_home() -> Iterator[Path]:
         shutil.rmtree(root, ignore_errors=True)
 
 
-class MockCodexServer:
-    def __init__(self, codex_home: Path) -> None:
-        self.socket_path = codex_home / "app-server-control" / "app-server-control.sock"
-        self.socket_path.parent.mkdir(parents=True)
-        self.server = None
-        self.thread_starts = 0
-        self.thread_start_params: list[dict[str, Any]] = []
-        self.thread_resumes: list[str] = []
-        self.thread_resume_params: list[dict[str, Any]] = []
-        self.steers: list[str] = []
-        self.interrupts = 0
-        self.turn_starts: list[dict[str, Any]] = []
-        self.native_responses: dict[str, dict[str, Any]] = {}
-
-    async def start(self) -> None:
-        require_linux_kernel("the mock Codex daemon serves an AF_UNIX control socket")
-        self.server = await unix_serve(self._handler, path=str(self.socket_path))
-
-    async def close(self) -> None:
-        if self.server is not None:
-            self.server.close()
-            await self.server.wait_closed()
-
-    async def _handler(self, ws) -> None:
-        initialize = json.loads(await ws.recv())
-        assert initialize["method"] == "initialize"
-        await _send(
-            ws,
-            {
-                "jsonrpc": "2.0",
-                "id": initialize["id"],
-                "result": {
-                    "userAgent": "codex-app-server/0.153.4",
-                    "codexHome": str(self.socket_path.parents[1]),
-                },
-            },
-        )
-        initialized = json.loads(await ws.recv())
-        assert initialized["method"] == "initialized"
-
-        thread_id = "thread-1"
-        turn_id = "turn-1"
-        while True:
-            try:
-                message = json.loads(await ws.recv())
-            except Exception:
-                return
-
-            method = message.get("method")
-            if method == "model/list":
-                await _respond(
-                    ws,
-                    message,
-                    {
-                        "data": [
-                            {
-                                "model": "gpt-5.6-codex",
-                                "displayName": "GPT-5.6 Codex",
-                                "description": "Coding model",
-                                "isDefault": True,
-                                "hidden": False,
-                                "inputModalities": ["text", "image"],
-                                "supportedReasoningEfforts": ["medium", "high"],
-                                "defaultReasoningEffort": "medium",
-                            },
-                            {
-                                "model": "gpt-5.6-mini",
-                                "displayName": "GPT-5.6 Mini",
-                                "description": "Fast coding model",
-                                "isDefault": False,
-                                "hidden": False,
-                            },
-                        ],
-                        "nextCursor": None,
-                    },
-                )
-                continue
-            if method == "thread/start":
-                self.thread_starts += 1
-                params = message["params"]
-                self.thread_start_params.append(dict(params))
-                assert {"cwd", "serviceName"} <= set(params) <= {"cwd", "serviceName", "model"}
-                assert "sandbox" not in message["params"]
-                assert "approvalPolicy" not in message["params"]
-                assert "config" not in message["params"]
-                await _respond(ws, message, {"thread": {"id": thread_id}})
-                continue
-            if method == "thread/resume":
-                params = message["params"]
-                self.thread_resume_params.append(dict(params))
-                assert {"threadId", "cwd"} <= set(params) <= {"threadId", "cwd", "model"}
-                assert "sandbox" not in message["params"]
-                assert "approvalPolicy" not in message["params"]
-                assert "config" not in message["params"]
-                thread_id = message["params"]["threadId"]
-                self.thread_resumes.append(thread_id)
-                await _respond(ws, message, {"thread": {"id": thread_id}})
-                continue
-            if method == "turn/start":
-                params = message["params"]
-                self.turn_starts.append(params)
-                assert set(params) == {"threadId", "input", "cwd"}
-                assert "sandboxPolicy" not in params
-                assert "approvalPolicy" not in params
-                prompt = params["input"][0]["text"]
-                await _respond(
-                    ws,
-                    message,
-                    {"turn": {"id": turn_id, "status": "inProgress", "items": []}},
-                )
-                if prompt == "approval":
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "id": "native-approval",
-                            "method": "item/commandExecution/requestApproval",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "command": ["pytest", "-q"],
-                                "cwd": message["params"]["cwd"],
-                                "reason": "Run tests",
-                                "availableDecisions": [
-                                    "accept",
-                                    "acceptForSession",
-                                    "decline",
-                                    "cancel",
-                                ],
-                            },
-                        },
-                    )
-                elif prompt == "unsafe-network":
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "id": "native-network",
-                            "method": "item/commandExecution/requestApproval",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "command": ["curl", "https://example.com"],
-                                "cwd": message["params"]["cwd"],
-                                "networkApprovalContext": {
-                                    "host": "example.com",
-                                    "protocol": "https",
-                                },
-                                "availableDecisions": ["accept", "decline", "cancel"],
-                            },
-                        },
-                    )
-                elif prompt == "file-approval":
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "id": "native-file",
-                            "method": "item/fileChange/requestApproval",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "reason": "Apply patch",
-                                "grantRoot": message["params"]["cwd"],
-                            },
-                        },
-                    )
-                elif prompt == "file-outside":
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "id": "native-file-outside",
-                            "method": "item/fileChange/requestApproval",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "reason": "Outside write",
-                                "grantRoot": str(Path(message["params"]["cwd"]).parent),
-                            },
-                        },
-                    )
-                elif prompt == "permission":
-                    cwd = Path(message["params"]["cwd"])
-                    inside = str(cwd / "generated")
-                    outside = str(cwd.parent / "outside-generated")
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "id": "native-permission",
-                            "method": "item/permissions/requestApproval",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "reason": "Need generated output",
-                                "cwd": message["params"]["cwd"],
-                                "permissions": {
-                                    "fileSystem": {
-                                        "read": [inside, outside],
-                                        "write": [inside],
-                                    }
-                                },
-                            },
-                        },
-                    )
-                elif prompt == "mcp-elicitation":
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "id": "native-mcp-elicitation",
-                            "method": "mcpServer/elicitation/request",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "serverName": "example-mcp",
-                                "mode": "form",
-                                "message": "Need additional input",
-                                "requestedSchema": {
-                                    "type": "object",
-                                    "properties": {"value": {"type": "string"}},
-                                    "required": ["value"],
-                                },
-                            },
-                        },
-                    )
-                elif prompt == "malformed-question":
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "id": "native-malformed",
-                            "method": "item/tool/requestUserInput",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "questions": [42],
-                            },
-                        },
-                    )
-                elif prompt == "question":
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "id": "native-question",
-                            "method": "item/tool/requestUserInput",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "itemId": "item-q",
-                                "questions": [
-                                    {
-                                        "id": "q1",
-                                        "header": "Choice",
-                                        "question": "Which option?",
-                                        "isOther": True,
-                                        "isSecret": False,
-                                        "options": [
-                                            {"label": "A", "description": "first"},
-                                            {"label": "B", "description": "second"},
-                                        ],
-                                    }
-                                ],
-                                "isBlocking": True,
-                                "autoResolutionMs": None,
-                            },
-                        },
-                    )
-                elif prompt == "auto-resolve":
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "id": "native-auto",
-                            "method": "item/commandExecution/requestApproval",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "command": "echo wait",
-                                "availableDecisions": ["accept", "decline", "cancel"],
-                            },
-                        },
-                    )
-                    await asyncio.sleep(0.05)
-                    await _notify_resolved(ws, thread_id, "native-auto")
-                    await _complete(ws, thread_id, turn_id, "auto-done")
-                elif prompt == "integer-id":
-                    # The official protocol types a request id as `string | int64`,
-                    # so a numeric id must survive the response round trip.
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "id": 4242,
-                            "method": "item/commandExecution/requestApproval",
-                            "params": {
-                                "threadId": thread_id,
-                                "turnId": turn_id,
-                                "command": "echo int",
-                                "availableDecisions": ["accept", "decline"],
-                            },
-                        },
-                    )
-                elif prompt == "steer":
-                    await _send(
-                        ws,
-                        {
-                            "jsonrpc": "2.0",
-                            "method": "turn/started",
-                            "params": {
-                                "threadId": thread_id,
-                                "turn": {"id": turn_id, "status": "inProgress", "items": []},
-                            },
-                        },
-                    )
-                elif prompt == "wait":
-                    pass
-                else:
-                    await _complete(ws, thread_id, turn_id, f"done:{prompt}")
-                continue
-            if method == "turn/steer":
-                text = message["params"]["input"][0]["text"]
-                self.steers.append(text)
-                await _respond(ws, message, {"turnId": turn_id})
-                await _complete(ws, thread_id, turn_id, f"steered:{text}")
-                continue
-            if method == "turn/interrupt":
-                self.interrupts += 1
-                await _respond(ws, message, {})
-                await _send(
-                    ws,
-                    {
-                        "jsonrpc": "2.0",
-                        "method": "turn/completed",
-                        "params": {
-                            "threadId": thread_id,
-                            "turn": {
-                                "id": turn_id,
-                                "status": "interrupted",
-                                "items": [],
-                            },
-                        },
-                    },
-                )
-                continue
-
-            if "id" in message and "method" not in message:
-                request_id = str(message["id"])
-                self.native_responses[request_id] = message
-                await _notify_resolved(ws, thread_id, request_id)
-                if "error" in message:
-                    code = message["error"].get("code")
-                    await _complete(ws, thread_id, turn_id, f"request-error:{code}")
-                elif request_id == "native-question":
-                    answer = message["result"]["answers"]["q1"]["answers"]
-                    await _complete(
-                        ws,
-                        thread_id,
-                        turn_id,
-                        "question:" + ",".join(answer),
-                    )
-                elif request_id == "native-permission":
-                    permissions = message["result"].get("permissions", {})
-                    scope = message["result"].get("scope", "turn")
-                    await _complete(
-                        ws,
-                        thread_id,
-                        turn_id,
-                        f"permission:{scope}:{bool(permissions)}",
-                    )
-                else:
-                    decision = message["result"].get("decision", "unknown")
-                    await _complete(ws, thread_id, turn_id, f"approval:{decision}")
-
-
-async def _send(ws, payload: dict[str, Any]) -> None:
-    await ws.send(json.dumps(payload))
-
-
-async def _respond(ws, request: dict[str, Any], result: dict[str, Any]) -> None:
-    await _send(ws, {"jsonrpc": "2.0", "id": request["id"], "result": result})
-
-
-async def _notify_resolved(ws, thread_id: str, request_id: str) -> None:
-    await _send(
-        ws,
-        {
-            "jsonrpc": "2.0",
-            "method": "serverRequest/resolved",
-            "params": {"threadId": thread_id, "requestId": request_id},
-        },
-    )
-
-
-async def _complete(ws, thread_id: str, turn_id: str, text: str) -> None:
-    await _send(
-        ws,
-        {
-            "jsonrpc": "2.0",
-            "method": "item/completed",
-            "params": {
-                "threadId": thread_id,
-                "turnId": turn_id,
-                "item": {
-                    "type": "agentMessage",
-                    "text": text,
-                    "phase": "final_answer",
-                },
-            },
-        },
-    )
-    await _send(
-        ws,
-        {
-            "jsonrpc": "2.0",
-            "method": "turn/completed",
-            "params": {
-                "threadId": thread_id,
-                "turn": {
-                    "id": turn_id,
-                    "status": "completed",
-                    "items": [],
-                },
-            },
-        },
-    )
-
-
 def make_service(
     tmp_path: Path,
     codex_home: Path,
     *,
+    endpoint: CodexEndpoint | None = None,
     event_idle_timeout_seconds: float | None = 2,
 ) -> BridgeService:
+    """A BridgeService whose Codex adapter talks to the double over the endpoint it is serving.
+
+    ``endpoint=None`` is the Linux managed-daemon control socket, resolved from
+    ``CodexSettings.control_socket`` exactly as production does. A loopback endpoint is what the
+    Windows runtime uses instead. The lease and state directories go through this platform's own
+    implementations either way, so a Windows run exercises the real writer lease rather than a
+    stand-in -- which is why this no longer carries the Linux gate the module once needed.
+    """
     repo = tmp_path / "repo"
-    require_linux_kernel("a real Bridge service owns a UID/mode state dir and a flock lease dir")
     repo.mkdir(exist_ok=True)
+    # A native Windows deployment carries no slots (§5.3), so the lease is keyed by alias there and
+    # pre-created by the Bridge. Linux keeps the slot layout. Using the platform's real keying is
+    # what lets this fixture exercise the Windows writer lease instead of skipping around it.
+    policy = WorkdirAgentPolicy(
+        slot=None if WINDOWS else 1,
+        alias="repo",
+        host_path=repo,
+        mode=AgentMode.WORKSPACE_WRITE,
+        runtimes=frozenset({"codex"}),
+        read_only=False,
+    )
     adapter = CodexAdapter(
         CodexSettings(
             enabled=True,
@@ -487,25 +76,41 @@ def make_service(
             codex_home=codex_home,
             request_timeout_seconds=2,
             event_idle_timeout_seconds=event_idle_timeout_seconds,
-        )
+        ),
+        state_dir=tmp_path / "state",
     )
+    if endpoint is not None:
+        # The seam lives here rather than in the product: substituting the runtime object keeps the
+        # operator surface free of a fixture-only injection parameter, and it still drives the real
+        # ``_acquire_connection`` path that a Windows run takes.
+        adapter._windows_runtime = _FixedEndpointRuntime(endpoint)
     return BridgeService(
         store=TaskStore(tmp_path / "state"),
-        policies=PolicyRegistry(
-            [
-                WorkdirAgentPolicy(
-                    slot=1,
-                    alias="repo",
-                    host_path=repo,
-                    mode=AgentMode.WORKSPACE_WRITE,
-                    runtimes=frozenset({"codex"}),
-                    read_only=False,
-                )
-            ]
-        ),
+        policies=PolicyRegistry([policy]),
         adapters={"codex": adapter},
-        lease_manager=LeaseManager(tmp_path / "locks"),
+        lease_manager=LeaseManager(tmp_path / "locks", lease_ids=[policy.lease_id]),
     )
+
+
+class _FixedEndpointRuntime:
+    """Stands in for the Bridge-owned app-server, handing back an endpoint the test controls.
+
+    It implements only the two members the adapter calls, so it is not a second implementation of
+    the lifecycle: single-flight startup, token handling and readiness are covered against the real
+    object in test_codex_windows_runtime.py.
+    """
+
+    def __init__(self, endpoint: CodexEndpoint) -> None:
+        self._endpoint = endpoint
+        self.ensure_started_calls = 0
+        self.closed = False
+
+    async def ensure_started(self) -> CodexEndpoint:
+        self.ensure_started_calls += 1
+        return self._endpoint
+
+    async def close(self) -> None:
+        self.closed = True
 
 
 async def wait_for_status(service: BridgeService, task_id: str, *statuses: str) -> dict[str, Any]:
@@ -518,6 +123,11 @@ async def wait_for_status(service: BridgeService, task_id: str, *statuses: str) 
 
 
 @pytest.mark.asyncio
+@linux_only(
+    "the managed daemon is the Linux transport: on Windows the Bridge owns the app-server child "
+    "instead, so probe has to start it in order to answer at all. The Windows counterpart is "
+    "test_codex_windows_runtime.py::test_probe_starts_the_bridge_owned_app_server."
+)
 async def test_codex_probe_never_autostarts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -529,7 +139,8 @@ async def test_codex_probe_never_autostarts(
             autostart=True,
             codex_home=codex_home,
             request_timeout_seconds=0.1,
-        )
+        ),
+        state_dir=tmp_path / "state",
     )
     called = False
 
@@ -548,7 +159,7 @@ async def test_codex_probe_never_autostarts(
 async def test_codex_normal_task_and_continuation(tmp_path: Path, codex_home: Path) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         first = await service.submit_task(
@@ -585,7 +196,7 @@ async def test_codex_model_discovery_and_request_scoped_override(
 ) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         catalog = await service.list_models(runtime="codex")
@@ -626,11 +237,18 @@ async def test_codex_model_discovery_and_request_scoped_override(
 
 
 @pytest.mark.asyncio
+@linux_only(
+    "the failure under test is the absent Linux managed daemon, identified by its exact message. "
+    "The Windows runtime fails differently -- it starts its own app-server -- and its restart "
+    "recovery is covered in test_codex_windows_runtime.py."
+)
 async def test_reconcile_clears_guard_after_control_socket_failure_before_thread_start(
     tmp_path: Path,
     codex_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # No double here on purpose: the case is a transport that failed before any thread started, so
+    # the adapter must classify it from the recorded failure rather than from a live endpoint.
     service = make_service(tmp_path, codex_home)
     adapter = service.adapters["codex"]
     reconcile = adapter.reconcile_task
@@ -682,7 +300,7 @@ async def test_reconcile_clears_guard_after_control_socket_failure_before_thread
 async def test_codex_command_approval_round_trip(tmp_path: Path, codex_home: Path) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -716,7 +334,7 @@ async def test_codex_network_approval_round_trip_preserves_native_policy(
 ) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -750,7 +368,7 @@ async def test_codex_file_approval_inside_workdir_round_trip(
 ) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -784,7 +402,7 @@ async def test_codex_file_approval_outside_workdir_is_still_user_decided(
 ) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -816,7 +434,7 @@ async def test_codex_file_approval_outside_workdir_is_still_user_decided(
 async def test_codex_permission_request_round_trip(tmp_path: Path, codex_home: Path) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -847,9 +465,12 @@ async def test_codex_permission_request_round_trip(tmp_path: Path, codex_home: P
         native = mock.native_responses["native-permission"]["result"]
         assert native["scope"] == "session"
         native_fs = native["permissions"]["fileSystem"]
-        assert native_fs["write"][0].endswith("/generated")
-        assert native_fs["read"][0].endswith("/generated")
-        assert native_fs["read"][1].endswith("/outside-generated")
+        # Compared by path component, not by separator: the intent is "the granted root is the
+        # workdir's own generated directory", and a literal "/generated" would fail on Windows for a
+        # reason that has nothing to do with the permission contract under test.
+        assert Path(native_fs["write"][0]).name == "generated"
+        assert Path(native_fs["read"][0]).name == "generated"
+        assert Path(native_fs["read"][1]).name == "outside-generated"
     finally:
         await service.close()
         await mock.close()
@@ -861,7 +482,7 @@ async def test_codex_unsupported_mcp_elicitation_fails_promptly(
 ) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -886,7 +507,7 @@ async def test_codex_malformed_server_request_gets_error_response(
 ) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -909,7 +530,7 @@ async def test_codex_malformed_server_request_gets_error_response(
 async def test_codex_question_round_trip(tmp_path: Path, codex_home: Path) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -948,7 +569,7 @@ async def test_codex_question_round_trip(tmp_path: Path, codex_home: Path) -> No
 async def test_codex_steer_and_cancel(tmp_path: Path, codex_home: Path) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         steer = await service.submit_task(
@@ -987,7 +608,7 @@ async def test_codex_native_request_auto_resolution_stales_bridge_request(
 ) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -1014,7 +635,7 @@ async def test_codex_review_profile_is_rejected_in_native_mode(
 ) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -1038,7 +659,7 @@ async def test_codex_numeric_request_id_survives_response_round_trip(
 ) -> None:
     mock = MockCodexServer(codex_home)
     await mock.start()
-    service = make_service(tmp_path, codex_home)
+    service = make_service(tmp_path, codex_home, endpoint=mock.endpoint)
     await service.start()
     try:
         submitted = await service.submit_task(
@@ -1074,7 +695,9 @@ async def test_codex_idle_timeout_does_not_fail_a_turn_waiting_for_a_human(
     mock = MockCodexServer(codex_home)
     await mock.start()
     # The idle timeout is far shorter than the time the user takes to answer.
-    service = make_service(tmp_path, codex_home, event_idle_timeout_seconds=0.2)
+    service = make_service(
+        tmp_path, codex_home, endpoint=mock.endpoint, event_idle_timeout_seconds=0.2
+    )
     await service.start()
     try:
         submitted = await service.submit_task(
