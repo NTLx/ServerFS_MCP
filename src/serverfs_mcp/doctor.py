@@ -438,7 +438,7 @@ def run_doctor(
     report.say(f"ServerFS {SERVER_VERSION}")
     report.say(f"Python {sys.version.split()[0]} ({sys.platform} {platform.machine()})")
     try:
-        workdirs, _settings = load_native_config(config_path)
+        workdirs, settings = load_native_config(config_path)
     except NativeConfigError as exc:
         report.say(f"config: FAIL -- {exc}")
         return 2
@@ -461,6 +461,13 @@ def run_doctor(
     if backend is not None:
         for wd in workdirs:
             _probe_workdir(report, backend, wd)
+
+    # Agent diagnostics are static and read-only: they never render a Bridge config, create the
+    # Agent data tree, or start a Bridge or a provider (v0.11 §15 D8). A disabled configuration is
+    # a supported default and is reported as a single informational line.
+    from .agent_doctor import report_agent
+
+    report_agent(report, workdirs, settings)
 
     _tunnel_probe(report, tunnel_client)
     _proxy_probe(report, _resolve_env_file(env_file, config_path))
