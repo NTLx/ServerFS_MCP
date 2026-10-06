@@ -100,7 +100,21 @@ def main(argv: list[str] | None = None) -> int:
     if not agent_enabled:
         command = [sys.executable, "-m", "serverfs_mcp.cli", "serve", "--config", args.config]
         return forward_stdio(command, env)
-    return run_with_agent(args.config, env)
+    # Imported here, not at module scope, because this module must build its sanitized environment
+    # before it imports any runtime module; a top-level import would defeat that ordering. The Agent
+    # path is the only caller that needs it, so an installation without delegation never loads it.
+    from .agent_lifecycle import AgentLifecycleError
+
+    try:
+        return run_with_agent(args.config, env)
+    except AgentLifecycleError as exc:
+        # The Agent path already redacts its own failures, so this is the last place a refusal can
+        # be turned into a message rather than a traceback. Without it the exception escaped
+        # ``main`` and every Agent startup failure reached the operator as a Python stack trace --
+        # including
+        # the filesystem paths and interpreter locations those messages deliberately omit.
+        sys.stderr.write(f"serverfs-supervisor: {exc}\n")
+        return 2
 
 
 def _agent_delegation_enabled(config_path: str) -> bool:
@@ -376,4 +390,13 @@ def terminate_quietly(child: subprocess.Popen[bytes]) -> None:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except BaseException as _exc:  # noqa: BLE001 - the last line of defence for the launcher
+        # Nothing may reach the operator as a traceback from this entry point: the process is
+        # launched by a supervisor whose own diagnostics are the operator's only window into a
+        # failure. The class name identifies the failure without leaking a path.
+        sys.stderr.write(f"serverfs-supervisor: {type(_exc).__name__}\n")
+        raise SystemExit(2) from None
