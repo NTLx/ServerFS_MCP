@@ -67,6 +67,21 @@ BRIDGE_PROBE_TIMEOUT_SECONDS = 20.0
 #: already demonstrated with the lease identity.
 INSPECT_TIMEOUT_SECONDS = 20.0
 
+#: Codex CLI diagnostics (Phase E §35). Bounded like every other child here: `--version` and
+#: `--help` are pure reads, and a wedged CLI must be reported rather than waited on.
+CODEX_PROBE_TIMEOUT_SECONDS = 20.0
+
+#: The official app-server options the Windows transport is built on. Their absence is protocol
+#: drift against a CLI that has moved on, and it has to be visible in a diagnostic rather than
+#: surfacing later as an opaque "runtime not ready".
+CODEX_REQUIRED_FLAGS = ("--listen", "--ws-auth", "--ws-token-file")
+
+#: Report labels for the Codex checks. Separate from the proxy vocabulary above: these carry a
+#: version string and a fixed auth vocabulary, and neither is an endpoint.
+CODEX_CLI = "codex cli"
+CODEX_APP_SERVER_FLAGS = "codex app-server flags"
+CODEX_AUTH = "codex authentication"
+
 
 def _lookup(env: Mapping[str, str] | None, name: str) -> str:
     """One environment value, preferring the caller's narrowing override over the process value.
@@ -163,7 +178,20 @@ def _endpoint_parts(url: str) -> tuple[str | None, int | None]:
 
 
 def _probe_runtimes(report, settings) -> None:
-    """Static per-runtime policy. No probe, no login, no inference (Phases E–F–G)."""
+    """Static per-runtime policy, plus read-only Codex diagnostics when Codex is enabled.
+
+    The static part is unchanged and applies to all three runtimes: enabled/disabled and
+    ``use_proxy``, nothing more. Only Codex gains an executable probe, because on Windows the
+    Bridge owns a ``codex app-server`` child and an operator's first question is whether the CLI
+    they have is one this runtime can actually drive.
+
+    Nothing here starts an app-server, runs a turn, or touches provider state. The three checks are
+    ``--version``, whether the official app-server flags this runtime depends on are still offered,
+    and ``codex login status`` -- which the CLI documents as "Show login status" and which prints
+    only the authentication method. Its raw output is never reported: it is reduced to a fixed
+    vocabulary here, so a future CLI that prints an account identifier cannot leak one into a
+    report line.
+    """
     if settings is None or settings.agent is None:
         return
     agent = settings.agent
@@ -173,6 +201,86 @@ def _probe_runtimes(report, settings) -> None:
             report.note(f"agent {name}", "disabled")
             continue
         report.note(f"agent {name}", f"enabled, use_proxy={str(runtime.use_proxy).lower()}")
+        if name == "codex":
+            _probe_codex_cli(report, runtime)
+
+
+def _codex_argv(binary: str, *args: str) -> list[str]:
+    return [binary, *args]
+
+
+def _run_codex(binary: str, *args: str) -> subprocess.CompletedProcess[str] | None:
+    """Run one read-only Codex command, bounded and scrubbed. ``None`` if it could not run.
+
+    The child gets ``bridge_environment(None)``, the same scrub the other probes use, so a doctor
+    run cannot hand the Codex CLI an Agent proxy endpoint or any Tunnel/Control Plane credential
+    while diagnosing the proxy.
+    """
+    from .agent_proxy import bridge_environment
+
+    try:
+        return subprocess.run(  # noqa: S603 - argv is the configured binary plus fixed literals
+            _codex_argv(binary, *args),
+            capture_output=True,
+            text=True,
+            timeout=CODEX_PROBE_TIMEOUT_SECONDS,
+            env=bridge_environment(None),
+            cwd=str(Path.cwd()),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _probe_codex_cli(report, runtime) -> None:
+    """Bounded, read-only, redacted checks of the local Codex CLI."""
+    binary = runtime.codex_bin
+    version = _run_codex(binary, "--version")
+    if version is None:
+        report.status(CODEX_CLI, WARN, "not executable from this environment")
+        return
+    if version.returncode != 0:
+        report.status(CODEX_CLI, WARN, "did not report a version")
+        return
+    # The version string is not a secret, and it is the first thing an operator needs when a
+    # runtime refuses to start, so it is reported verbatim.
+    reported = version.stdout.strip().splitlines()
+    report.status(CODEX_CLI, OK, reported[0] if reported else "")
+
+    # The flags this runtime is built on. Their absence is protocol drift, and it must be visible
+    # here rather than as an opaque startup failure later.
+    help_text = _run_codex(binary, "app-server", "--help")
+    if help_text is None or help_text.returncode != 0:
+        report.status(CODEX_APP_SERVER_FLAGS, WARN, "app-server options not readable")
+    else:
+        missing = [flag for flag in CODEX_REQUIRED_FLAGS if flag not in help_text.stdout]
+        if missing:
+            report.status(
+                CODEX_APP_SERVER_FLAGS,
+                FAIL,
+                "this Codex CLI does not offer the flags the Windows runtime requires",
+            )
+        else:
+            report.status(CODEX_APP_SERVER_FLAGS, OK, "loopback listener and token flags available")
+
+    status = _run_codex(binary, "login", "status")
+    if status is None or status.returncode != 0:
+        report.status(CODEX_AUTH, WARN, "login status not readable")
+        return
+    # Reduced to a fixed vocabulary. The raw line is discarded, never reported.
+    #
+    # Both streams are read because this CLI writes the status to stderr: measured on
+    # codex-cli 0.159.2, `codex login status` leaves stdout empty. Reading stdout alone would
+    # report every correctly signed-in deployment as unrecognised, which is the kind of false
+    # negative that teaches operators to ignore the line.
+    combined = f"{status.stdout}\n{status.stderr}".lower()
+    if "chatgpt" in combined:
+        report.status(CODEX_AUTH, OK, "signed in with ChatGPT")
+    elif "api key" in combined or "apikey" in combined:
+        report.status(CODEX_AUTH, OK, "signed in with an API key")
+    elif "not logged in" in combined or "not signed in" in combined:
+        report.status(CODEX_AUTH, WARN, "not signed in")
+    else:
+        report.status(CODEX_AUTH, WARN, "sign-in state not recognised")
 
 
 def _probe_data_home(report, env: Mapping[str, str] | None) -> None:
