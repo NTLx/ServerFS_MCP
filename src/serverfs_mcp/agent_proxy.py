@@ -48,6 +48,20 @@ MANDATORY_NO_PROXY: tuple[str, ...] = ("127.0.0.1", "localhost", "::1")
 #: behind would be a silent egress leak rather than a harmless extra.
 PROXY_ENV_NAMES: frozenset[str] = frozenset({"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"})
 
+#: Suffix marking a name as an ambient proxy endpoint rather than a proxy setting.
+#:
+#: Measured on WorkPC during Phase E: a vendor tool exported ``*_PROXY_URL`` and the four standard
+#: names alone did not match it, so it reached the Bridge process and would have been forwarded
+#: on to a provider child. §7.1 requires the provider proxy environment to be decided by policy, so
+#: an unrelated ambient endpoint must not survive the scrub.
+#:
+#: The match is a suffix and not ``"proxy" in name.lower()``. A substring rule would also swallow
+#: names that merely mention proxying (``PROXY_PROTOCOL_VERSION``, ``PROXY_MODE``) and so remove
+#: provider configuration nobody measured. This captures the shape actually seen plus its obvious
+#: variants, and invents nothing further. The Bridge package carries the same rule independently, as
+#: §23/§70 require; tests pin the two to the same behaviour rather than sharing an import.
+PROXY_URL_SUFFIX = "_PROXY_URL"
+
 #: Namespaces that must never reach the Bridge process, because both provider SDKs copy its whole
 #: environment into the CLI child and from there into agent-executed tool code (Phase 0F §7).
 #:
@@ -104,8 +118,17 @@ _PROXY_NAMES_LOWER = {name.lower() for name in PROXY_ENV_NAMES}
 
 
 def _is_proxy_variable(name: str) -> bool:
-    """Whether a name is any spelling of any proxy variable, in either case."""
-    return name.upper() in PROXY_ENV_NAMES or name.lower() in _PROXY_NAMES_LOWER
+    """Whether a name configures proxying for this or any other consumer.
+
+    Two shapes, both measured: the four standard variables in either case, and an ambient
+    ``*_PROXY_URL`` endpoint exported by something other than ServerFS. The second exists because a
+    name outside this list would reach the Bridge process and then a provider child, which is
+    exactly the inheritance §7.1 forbids.
+    """
+    upper = name.upper()
+    if upper in PROXY_ENV_NAMES or name.lower() in _PROXY_NAMES_LOWER:
+        return True
+    return upper.endswith(PROXY_URL_SUFFIX) or name.lower().endswith(PROXY_URL_SUFFIX.lower())
 
 
 def _has_prefix(name: str, prefixes: tuple[str, ...]) -> bool:
