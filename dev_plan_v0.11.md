@@ -35,8 +35,12 @@ C  C1–C5 PASS (2026-10-06) — the writer lease has a Windows twin: a platform
       both feature settings.
 ```
 
-No Phase 0 gate or design decision is outstanding (§18). Phase D (native configuration and
-lifecycle) is the next phase.
+No Phase 0 gate or design decision is outstanding (§18). Phase D is **CLOSED-PASS** (merged at
+`bc3500f`). Phase E — the Windows Codex runtime — is the current phase and is **OPEN**: the
+transport, the Bridge-owned app-server lifecycle, the adapter wiring and the deterministic Windows
+suite are landed, and the real runtime probe and model discovery both pass against the installed
+CLI. Closure is blocked on real provider connectivity, because this host cannot reach the provider
+and no Agent proxy is configured (see `docs/windows-phase-e-codex-2026-10-06.md`).
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -1860,6 +1864,40 @@ Then run a real smoke proving:
 - per-task model override;
 - Bridge restart reconciliation;
 - clean lease/guard cleanup.
+
+Phase E status (2026-10-06): **OPEN.** The transport, the Bridge-owned app-server lifecycle, the
+adapter wiring and the deterministic Windows suite are landed on
+`v0.11-phase-e-windows-codex` (base `bc3500f`). Evidence in
+`docs/windows-phase-e-codex-2026-10-06.md`.
+
+Two plan premises were wrong by measurement and the implementation follows the measurement, not the
+plan. First, `--listen ws://127.0.0.1:0` **is** accepted and the CLI **announces the bound port on
+stderr**, so §5's reserve-an-ephemeral-port / release / retry-the-bind-race fallback is not needed
+and would have invented a race the provider does not have. Second, listener readiness is 0.26–0.28 s
+here rather than the ~24 s Phase 0C recorded; the 60 s bound is kept as over-provisioned, and the
+cause of the discrepancy is not established. Separately, `/readyz` answers 200 on loopback *without*
+the capability token and so cannot be the readiness signal; that stays an authenticated connect plus
+`initialize`.
+
+Against the installed `codex-cli 0.159.2` the real runtime probe (`available`, version `0.159.2`,
+0.23 s) and real model discovery (11 models, live catalog) both pass, and `serverfs doctor` reports
+the three new read-only Codex checks as OK.
+
+Closure is blocked on provider connectivity, which is an environment precondition rather than a
+product defect: this host cannot open a TCP connection to the provider and no
+`SERVERFS_AGENT_PROXY_URL` is configured, so a real turn ends in `responseStreamDisconnected` /
+"request timed out" before doing any work. The remaining items — workspace-write, native id
+persistence, continuation, question, approval, cancellation, per-task model override, restart
+reconciliation and lease/guard cleanup — therefore have **not** been run and are not claimed. They
+require a maintainer-provided credentialless HTTP proxy. Running them against the fake provider
+would prove nothing about the runtime.
+
+The deterministic side changed the coverage shape rather than just adding to it: the Codex adapter
+suite previously skipped entirely on Windows, because the double served an AF_UNIX socket. It now
+serves whichever transport the platform uses, so model list, threads, turns, steer, interrupt,
+approvals, permission, question, events, result, reconciliation and model override all execute on
+Windows. Bridge counts moved from 369 passed / 54 skipped to 440 tests / 0 failures / 40 skipped —
+Windows Codex coverage went from 0 to 32 cases and the skip count fell.
 
 ### Phase F — Qoder
 
