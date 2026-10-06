@@ -276,10 +276,22 @@ class TestBridgeProcessEnvironmentIsClean:
     def test_polluted_environment_is_reported_as_unclean(self, polluted):
         assert process_environment_is_clean() is False
 
-    def test_clean_environment_is_reported_clean(self, monkeypatch):
-        for name in PARENT_POLLUTION:
-            monkeypatch.delenv(name, raising=False)
-        assert process_environment_is_clean() is True
+    def test_clean_environment_is_reported_clean(self):
+        # An explicit environment rather than the live one with the fixture's names deleted. The
+        # previous version deleted a hardcoded set and then asserted the *process* was clean, which
+        # silently depended on this host exporting nothing else proxy-shaped; a vendor tool here
+        # does, and the assertion started failing for a reason that had nothing to do with the rule
+        # under test. The os.environ path stays covered by the polluted case above.
+        assert process_environment_is_clean({"PATH": "x", "HOME": "y"}) is True
+
+    def test_an_ambient_proxy_url_alone_makes_the_process_unclean(self, monkeypatch):
+        """The regression this rule exists to prevent, asserted on the process environment.
+
+        Naming the variable explicitly is the point: the assertion must keep working on a host that
+        happens to export something proxy-shaped, which is exactly when this matters.
+        """
+        monkeypatch.setenv("VENDOR_PROXY_URL", "http://127.0.0.1:19998")
+        assert process_environment_is_clean() is False
 
     def test_building_a_child_never_reads_the_bridges_own_namespace(self, tmp_path, polluted):
         """The parent namespace is stripped, so a child cannot inherit SERVERFS_AGENT_*."""
