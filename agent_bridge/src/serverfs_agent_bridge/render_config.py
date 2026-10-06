@@ -340,9 +340,7 @@ def _publish_private_file(path: Path, text: str) -> None:
     if _is_reparse(path):
         # Refused before anything else: a dangling symlink reports exists() == False, so testing
         # existence first would let the cheapest planted case through.
-        raise BridgeError(
-            "BRIDGE_CONFIG_INVALID", "the Bridge config path is a reparse point"
-        )
+        raise BridgeError("BRIDGE_CONFIG_INVALID", "the Bridge config path is a reparse point")
     if path.exists():
         if path.is_dir():
             raise BridgeError(
@@ -385,15 +383,15 @@ def _is_reparse(path: Path) -> bool:
     """Whether the path is a reparse point, including one whose target does not exist.
 
     The ``path.exists()`` guard that used to precede the Windows call was a real defect, not a
-    redundancy. ``Path.exists()`` follows the link, so a *dangling* symlink — one pointing at a target
-    that is not there — reports False while ``lstat`` still reports the reparse tag. Prefixing the
+    redundancy. ``Path.exists()`` follows the link, so a *dangling* symlink — one whose target is
+    absent — reports False while ``lstat`` still reports the reparse tag. Prefixing the
     check with ``exists()`` therefore classified exactly the case an attacker can plant cheaply and
     invisibly as "nothing there", and the publication proceeded to write through it.
 
     ``windows_security.is_reparse_point`` already answers the three cases correctly: a genuinely
-    absent path is False (``lstat`` raises ``FileNotFoundError``), an existing reparse point is True
-    from the tag or ``FILE_ATTRIBUTE_REPARSE_POINT``, and an inspection failure is refused closed by
-    raising. Adding a pre-check can only lose information, so none is added.
+    absent path is False (``lstat`` raises ``FileNotFoundError``), an existing reparse point is
+    True from the tag or ``FILE_ATTRIBUTE_REPARSE_POINT``, and an inspection failure is refused
+    closed by raising. Adding a pre-check can only lose information, so none is added.
     """
     import sys
 
