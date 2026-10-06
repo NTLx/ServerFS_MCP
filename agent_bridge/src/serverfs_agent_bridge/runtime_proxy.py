@@ -36,6 +36,20 @@ PROXY_VARIABLE_NAMES: frozenset[str] = frozenset(
 )
 _PROXY_NAMES_LOWER = {name.lower() for name in PROXY_VARIABLE_NAMES}
 
+#: Suffix marking a name as an ambient proxy endpoint rather than a proxy setting.
+#:
+#: Measured on WorkPC during Phase E: a vendor tool exported ``*_PROXY_URL`` and the four standard
+#: names alone did not match it, so it was forwarded into the provider child verbatim. That breaks
+#: the frozen rule above -- the child's egress is decided by policy, not by whatever the host
+#: happens to export -- and it is a trust-boundary defect, not a cosmetic one.
+#:
+#: The match is deliberately a suffix and not ``"proxy" in name.lower()``. A substring rule would
+#: also swallow names that merely mention proxying (``PROXY_PROTOCOL_VERSION``, ``PROXY_MODE``) and
+#: so silently remove provider configuration this phase never measured. The suffix captures the
+#: shape actually observed plus its obvious variants, and nothing is invented beyond that.
+PROXY_URL_SUFFIX = "_PROXY_URL"
+_PROXY_URL_SUFFIX_LOWER = PROXY_URL_SUFFIX.lower()
+
 #: Namespaces that must never be forwarded to a provider child. ``SERVERFS_AGENT_*`` is here because
 #: those names exist only to be mapped downward — providers do not consume them, so forwarding them
 #: would be pure exposure. ``SERVERFS_PROXY_*`` is the Tunnel trust domain, which is a *different*
@@ -62,7 +76,16 @@ PRESERVED_SAMPLE: tuple[str, ...] = (
 
 
 def _is_proxy_variable(name: str) -> bool:
-    return name.upper() in PROXY_VARIABLE_NAMES or name.lower() in _PROXY_NAMES_LOWER
+    """Whether a name configures proxying for this or any other consumer.
+
+    Two shapes, both measured: the four standard variables in either case, and an ambient
+    ``*_PROXY_URL`` endpoint exported by something other than ServerFS. The second exists because a
+    name outside this list would otherwise be forwarded to the provider child and decide its egress.
+    """
+    upper = name.upper()
+    if upper in PROXY_VARIABLE_NAMES or name.lower() in _PROXY_NAMES_LOWER:
+        return True
+    return upper.endswith(PROXY_URL_SUFFIX) or name.lower().endswith(_PROXY_URL_SUFFIX_LOWER)
 
 
 def _is_forbidden_prefix(name: str) -> bool:
