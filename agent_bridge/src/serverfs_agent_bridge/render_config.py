@@ -48,7 +48,12 @@ from .errors import BridgeError
 from .local_ipc import derive_pipe_name
 from .models import KNOWN_RUNTIME_NAMES, AgentMode
 from .policy import WorkdirAgentPolicy
-from .private_state import DirectoryMessages, ensure_private_directory, ensure_private_file
+from .private_state import (
+    DirectoryMessages,
+    ensure_private_directory,
+    ensure_private_file,
+    verify_private_file,
+)
 from .windows_security import current_user_sid
 
 #: The native lease key (§5.3). A native deployment has no legacy slot, so leases are keyed by the
@@ -149,7 +154,12 @@ def _validate_workdirs(entries: Any) -> list[WorkdirAgentPolicy]:
             raise BridgeError(
                 "BRIDGE_CONFIG_INVALID", "workdir.agent_mode is not a known agent mode"
             ) from exc
-        read_only = bool(item.get("read_only", True))
+        read_only = (
+            _strict_bool_field(item, "workdir", "read_only") if "read_only" in item else True
+        )
+        read_only = (
+            _strict_bool_field(item, "workdir", "read_only") if "read_only" in item else True
+        )
         if mode is AgentMode.DISABLED and runtimes:
             raise BridgeError("BRIDGE_CONFIG_INVALID", "disabled agent mode cannot allow runtimes")
         if mode is AgentMode.WORKSPACE_WRITE and read_only:
@@ -196,23 +206,30 @@ def _runtime_block(runtimes: object) -> dict[str, dict[str, Any]]:
         if not isinstance(policy, dict):
             raise BridgeError("BRIDGE_CONFIG_INVALID", f"runtime {name} policy must be an object")
         _reject_unknown(policy, _RUNTIME_KEYS[name], f"runtime {name}")
-        entry: dict[str, Any] = {"enabled": _strict_bool_field(policy, name, "enabled")}
+        entry: dict[str, Any] = {
+            "enabled": _strict_bool_field(policy, f"runtime {name}", "enabled")
+        }
         bin_key = _RUNTIME_BIN_KEY[name]
         entry[bin_key] = _strict_str(policy.get(bin_key), f"runtime {name} {bin_key}")
         if any(char in entry[bin_key] for char in ("\x00", "\n", "\r")):
             raise BridgeError(
                 "BRIDGE_CONFIG_INVALID", f"runtime {name} {bin_key} contains an invalid character"
             )
-        entry["use_proxy"] = _strict_bool_field(policy, name, "use_proxy")
+        entry["use_proxy"] = _strict_bool_field(policy, f"runtime {name}", "use_proxy")
         block[name] = entry
     return block
 
 
-def _strict_bool_field(policy: dict[str, Any], name: str, key: str) -> bool:
-    """A required JSON boolean. Absent or non-boolean is a refusal, never a coerced default."""
-    value = policy.get(key)
+def _strict_bool_field(data: dict[str, Any], label: str, key: str) -> bool:
+    """A required JSON boolean. Absent or non-boolean is a refusal, never a coerced default.
+
+    ``bool("false")`` is True in Python, so a string arriving in the render request would silently
+    invert the policy. The Bridge's own loader already applies this rule to ``read_only``; using it
+    here keeps the renderer from accepting what the loader would later refuse.
+    """
+    value = data.get(key)
     if type(value) is not bool:
-        raise BridgeError("BRIDGE_CONFIG_INVALID", f"runtime {name} {key} must be a JSON boolean")
+        raise BridgeError("BRIDGE_CONFIG_INVALID", f"{label} {key} must be a JSON boolean")
     return value
 
 
@@ -300,18 +317,43 @@ def render_native_bridge_config(
 
 
 def _publish_private_file(path: Path, text: str) -> None:
-    """Write the config atomically, with the Bridge's own private-state contract applied.
+    """Write the config atomically, verifying an existing target *before* replacing it.
 
-    Publication is write-temp-then-``os.replace`` so a reader never observes a half-written JSON
-    document, and the temp file is created inside the already-secured directory so it inherits the
-    protected descriptor rather than landing in a world-readable temp location.
+    The ordering here is the security property. §25 says an unsafe existing object is refused and
+    never repaired, and an earlier version of this function replaced the target first and verified
+    afterwards — which meant a pre-planted broad-DACL or reparse ``bridge.json`` was overwritten
+    before anything looked at it. Replacing an attacker-controlled object is exactly the outcome
+    §25 exists to prevent, so the check happens first and a refusal leaves the target untouched.
+
+    The logic is the Bridge's own ``private_state`` helpers rather than a second copy of the ACL
+    rules (§15 D2). Publication stays write-temp-then-``os.replace`` so a reader never observes a
+    half-written document, and the temp file is created inside the already-secured directory so it
+    inherits the protected descriptor instead of landing in a world-readable temp location.
     """
     ensure_private_directory(path.parent, mode=0o700, messages=_STATE_MESSAGES)
+
+    # Fail closed on an existing object we could not vouch for, *before* writing anything. A
+    # reparse point, a non-regular file or a foreign/broad DACL all leave the target exactly as they
+    # were: no temp file is created and no replacement happens.
+    #
+    # The regular-file check is explicit because ``verify_private_file``'s Windows branch verifies
+    # the descriptor but not the object type; without it a directory planted at bridge.json reached
+    # ``os.replace``, which then failed with a raw PermissionError after the temp file was already
+    # written. Refusing here is what makes the guarantee "the target is untouched".
+    if path.exists() or _is_reparse(path):
+        if path.is_dir() and not _is_reparse(path):
+            raise BridgeError(
+                "BRIDGE_CONFIG_INVALID", "the Bridge config path is a directory, not a file"
+            )
+        verify_private_file(
+            path,
+            not_regular="the existing Bridge config is not a regular file",
+            not_private="the existing Bridge config is not private",
+        )
+
     temp = path.parent / f".bridge.{secrets.token_hex(8)}.tmp"
     try:
-        # CREATE_NEW semantics plus the private-state contract: the object is created with the
-        # protected DACL and then verified, never silently re-secured.
-        created = _create_private(temp)
+        _create_private(temp)
         fd = os.open(temp, os.O_WRONLY | os.O_TRUNC)
         try:
             os.write(fd, text.encode("utf-8"))
@@ -323,13 +365,28 @@ def _publish_private_file(path: Path, text: str) -> None:
             mode=0o600,
             not_regular="the rendered Bridge config is not a regular file",
         )
-        del created
         os.replace(temp, path)
     except BaseException:
         temp.unlink(missing_ok=True)
         raise
-    # The published object is verified, not trusted: a pre-planted target must be refused (§25).
-    ensure_private_file(path, mode=0o600, not_regular="the rendered Bridge config is unsafe")
+    # The object this call published is verified too, so a substitution between the two steps would
+    # still be caught before the Bridge is told the path.
+    verify_private_file(
+        path,
+        not_regular="the rendered Bridge config is not a regular file",
+        not_private="the rendered Bridge config is not private",
+    )
+
+
+def _is_reparse(path: Path) -> bool:
+    """Whether the path exists as a reparse point, which ``Path.exists()`` alone would miss."""
+    import sys
+
+    if sys.platform != "win32":
+        return path.is_symlink()
+    from . import windows_security
+
+    return path.exists() and windows_security.is_reparse_point(path)
 
 
 def _create_private(path: Path) -> bool:
