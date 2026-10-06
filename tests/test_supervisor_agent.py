@@ -278,11 +278,21 @@ class TestRenderRequest:
         assert [entry["alias"] for entry in request["workdirs"]] == ["repo"]
 
     def test_render_request_carries_no_endpoint(self, tmp_path: Path, workdir: Path):
+        """The endpoint must not travel; the boolean policy legitimately does.
+
+        Checking for the substring "proxy" would be wrong now that ``use_proxy`` is part of the
+        request — that is the routing policy and it is supposed to be there. What must be absent is
+        the endpoint value itself.
+        """
         config = _write_config(tmp_path, AGENT_CONFIG, workdir)
         workdirs, settings = load_native_config(config)
         request = render_request_from_config(workdirs, settings)
-        assert "proxy" not in json.dumps(request).lower()
+        blob = json.dumps(request)
+        assert "127.0.0.1" not in blob
         assert "agent_proxy" not in request
+        # The policy itself is present, which is the point of the runtime-policy fix.
+        assert request["runtimes"]["codex"]["use_proxy"] is True
+        assert "codex_bin" in request["runtimes"]["codex"]
 
     def test_render_request_refuses_a_disabled_configuration(self, tmp_path: Path, workdir: Path):
         config = _write_config(tmp_path, V010_CONFIG, workdir)
