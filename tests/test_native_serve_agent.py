@@ -72,11 +72,28 @@ agent_mode = "workspace-write"
 agent_runtimes = ["codex"]
 """
 
+
 #: Placement values a supervisor would inject. Not policy: the config already opted in.
-WIRING = {
-    "SERVERFS_AGENT_BRIDGE_SOCKET": r"\\.\pipe\serverfs-agent-bridge-v1-0123456789abcdef",
-    "SERVERFS_AGENT_LOCK_DIR": r"C:\Users\test\AppData\Local\ServerFS\agent-bridge\locks",
-}
+def _wiring(monkeypatch, tmp_path) -> dict:
+    """Inject the *derived* endpoint and lock dir, which is what a supervisor now supplies.
+
+    This file predates the derived-endpoint contract and injected a fabricated pipe name. That
+    is no longer accepted: injection is an override that must agree with the derivation, so a
+    supervisor and a direct serve cannot end up in different pipe universes. The values here are
+    therefore derived, not invented.
+    """
+    from serverfs_mcp.native_endpoint import (
+        ENDPOINT_ENV,
+        LOCK_DIR_ENV,
+        derive_endpoint,
+        derive_lock_dir,
+    )
+
+    monkeypatch.setenv("SERVERFS_DATA_HOME", str(tmp_path / "data-home"))
+    values = {ENDPOINT_ENV: derive_endpoint(), LOCK_DIR_ENV: str(derive_lock_dir())}
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    return values
 
 
 def _write(tmp_path: Path, template: str, root: Path) -> Path:
@@ -120,16 +137,14 @@ class TestAgentDisabledSurface:
     """The v0.10 filesystem-only surface."""
 
     def test_no_agent_wiring_is_built(self, tmp_path: Path, workdir: Path, monkeypatch):
-        for name, value in WIRING.items():
-            monkeypatch.setenv(name, value)
+        _wiring(monkeypatch, tmp_path)
         config = _write(tmp_path, V010_CONFIG, workdir)
         assert _native_agent_settings(_settings_for(config)) is None
 
     def test_ambient_env_cannot_enable_delegation(self, tmp_path: Path, workdir: Path, monkeypatch):
         """The review's boundary: serverfs.toml is the only operator source of policy."""
         monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_ENABLED", "1")
-        monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_SOCKET", WIRING["SERVERFS_AGENT_BRIDGE_SOCKET"])
-        monkeypatch.setenv("SERVERFS_AGENT_LOCK_DIR", WIRING["SERVERFS_AGENT_LOCK_DIR"])
+        _wiring(monkeypatch, tmp_path)
         config = _write(tmp_path, V010_CONFIG, workdir)
         assert _settings_for(config).agent_enabled is False
         assert _native_agent_settings(_settings_for(config)) is None
@@ -147,34 +162,35 @@ class TestAgentEnabledSurface:
     def test_wiring_is_consumed_from_the_injected_placement(
         self, tmp_path: Path, workdir: Path, monkeypatch
     ):
-        for name, value in WIRING.items():
-            monkeypatch.setenv(name, value)
+        values = _wiring(monkeypatch, tmp_path)
         config = _write(tmp_path, AGENT_CONFIG, workdir)
         settings, client = _native_agent_settings(_settings_for(config))
         assert settings.agent_bridge_enabled is True
-        assert settings.agent_bridge_socket == WIRING["SERVERFS_AGENT_BRIDGE_SOCKET"]
-        assert settings.agent_lock_dir == WIRING["SERVERFS_AGENT_LOCK_DIR"]
+        assert settings.agent_bridge_socket == values["SERVERFS_AGENT_BRIDGE_SOCKET"]
+        assert settings.agent_lock_dir == values["SERVERFS_AGENT_LOCK_DIR"]
         assert client is not None, "an AgentBridgeClient must be created for the enabled surface"
 
     def test_log_level_is_preserved_from_the_toml(self, tmp_path: Path, workdir: Path, monkeypatch):
         template = AGENT_CONFIG.replace('log_level = "INFO"', 'log_level = "DEBUG"')
-        for name, value in WIRING.items():
-            monkeypatch.setenv(name, value)
+        _wiring(monkeypatch, tmp_path)
         config = _write(tmp_path, template, workdir)
         settings, _client = _native_agent_settings(_settings_for(config))
         assert settings.log_level == "DEBUG"
 
-    def test_missing_endpoint_fails_closed(self, tmp_path: Path, workdir: Path, monkeypatch):
-        """Registering tools against the Linux default socket would be a confusing failure."""
-        monkeypatch.delenv("SERVERFS_AGENT_BRIDGE_SOCKET", raising=False)
-        monkeypatch.setenv("SERVERFS_AGENT_LOCK_DIR", WIRING["SERVERFS_AGENT_LOCK_DIR"])
+    def test_a_mismatched_endpoint_fails_closed(self, tmp_path: Path, workdir: Path, monkeypatch):
+        """A disagreement is refused, not overridden: two pipe universes must not exist."""
+        _wiring(monkeypatch, tmp_path)
+        monkeypatch.setenv(
+            "SERVERFS_AGENT_BRIDGE_SOCKET",
+            r"\\.\pipe\serverfs-agent-bridge-v1-0000000000000000",
+        )
         config = _write(tmp_path, AGENT_CONFIG, workdir)
         with pytest.raises(SystemExit):
             _native_agent_settings(_settings_for(config))
 
-    def test_missing_lock_dir_fails_closed(self, tmp_path: Path, workdir: Path, monkeypatch):
-        monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_SOCKET", WIRING["SERVERFS_AGENT_BRIDGE_SOCKET"])
-        monkeypatch.delenv("SERVERFS_AGENT_LOCK_DIR", raising=False)
+    def test_a_mismatched_lock_dir_fails_closed(self, tmp_path: Path, workdir: Path, monkeypatch):
+        _wiring(monkeypatch, tmp_path)
+        monkeypatch.setenv("SERVERFS_AGENT_LOCK_DIR", str(tmp_path / "elsewhere"))
         config = _write(tmp_path, AGENT_CONFIG, workdir)
         with pytest.raises(SystemExit):
             _native_agent_settings(_settings_for(config))
@@ -182,8 +198,7 @@ class TestAgentEnabledSurface:
     def test_exactly_ten_agent_tools_are_registered(
         self, tmp_path: Path, workdir: Path, monkeypatch
     ):
-        for name, value in WIRING.items():
-            monkeypatch.setenv(name, value)
+        _wiring(monkeypatch, tmp_path)
         config = _write(tmp_path, AGENT_CONFIG, workdir)
         settings, _client = _native_agent_settings(_settings_for(config))
         names = _tool_names(settings, config)
@@ -196,11 +211,8 @@ class TestAgentEnabledSurface:
         self, tmp_path: Path, workdir: Path, monkeypatch
     ):
         """A direct serve starts no Bridge, so calls fail via the frozen unavailable path."""
-        # An endpoint nothing is listening on, so the tool is registered and the call fails.
-        monkeypatch.setenv(
-            "SERVERFS_AGENT_BRIDGE_SOCKET", r"\\.\pipe\serverfs-agent-bridge-v1-0000000000000000"
-        )
-        monkeypatch.setenv("SERVERFS_AGENT_LOCK_DIR", WIRING["SERVERFS_AGENT_LOCK_DIR"])
+        # The derived endpoint has no Bridge listening, so the tool registers and the call fails.
+        _wiring(monkeypatch, tmp_path)
         config = _write(tmp_path, AGENT_CONFIG, workdir)
         settings, client = _native_agent_settings(_settings_for(config))
         registry = WorkdirRegistry(load_native_config(config)[0])
@@ -218,8 +230,7 @@ class TestAgentEnabledSurface:
     def test_public_tool_set_and_protocol_version_are_unchanged(
         self, tmp_path: Path, workdir: Path, monkeypatch
     ):
-        for name, value in WIRING.items():
-            monkeypatch.setenv(name, value)
+        _wiring(monkeypatch, tmp_path)
         config = _write(tmp_path, AGENT_CONFIG, workdir)
         settings, _client = _native_agent_settings(_settings_for(config))
         enabled_names = _tool_names(settings, config)
