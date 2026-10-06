@@ -192,11 +192,16 @@ def _windows_create_ancestors(path: Path, *, sddl: str, messages: DirectoryMessa
     missing: list[Path] = []
     current = path.parent
     while True:
+        # Reparpose is asked before existence, for the same reason as everywhere else: a dangling
+        # reparse parent reports exists() == False and would otherwise be classified as merely
+        # missing. It would then be walked *past* as if it were an ordinary absent component, and
+        # the walk would stop one level higher — anchoring the Bridge's own tree inside somebody
+        # else's directory, which is precisely the §28 junction case this loop exists to catch.
+        _windows_refuse_reparse(current, messages.not_a_directory)
         if current.exists():
             # The walk stops at the first directory that already exists, and that directory is
             # exactly where a pre-planted junction can hide (§28): every component created below
             # it would land inside somebody else's tree, so the Bridge's own root is refused.
-            _windows_refuse_reparse(current, messages.not_a_directory)
             break
         missing.append(current)
         parent = current.parent
@@ -209,10 +214,19 @@ def _windows_create_ancestors(path: Path, *, sddl: str, messages: DirectoryMessa
 
 
 def _windows_refuse_reparse(path: Path, not_a_directory: str) -> None:
+    """Refuse a reparse point at ``path``, including one that dangles.
+
+    The order is the whole point: ``is_reparse_point`` is asked first and nothing is gated behind
+    ``exists()``. ``Path.exists()`` *follows* a link, so a dangling symlink — one whose target is
+    absent — reports False while ``lstat`` still carries the reparse tag. A conjunction or an
+    ``exists()`` pre-check therefore classifies exactly the cheapest object an attacker can plant,
+    and the one that leaves no visible trace, as "nothing there". ``is_reparse_point`` already
+    answers all three cases correctly: a genuinely absent path is False because ``lstat`` raises
+    ``FileNotFoundError``, an existing reparse point is True, and an inspection failure is refused
+    closed by raising.
+    """
     from . import windows_security
 
-    if not path.exists():
-        return
     if windows_security.is_reparse_point(path):
         raise BridgeError("PRIVATE_STATE_UNSAFE", f"{not_a_directory} (reparse point)")
 
@@ -280,10 +294,10 @@ def require_regular_file(path: Path, *, not_regular: str) -> None:
     if WINDOWS:
         from . import windows_security
 
-        if not path.exists():
-            return
         if windows_security.is_reparse_point(path):
             raise BridgeError("PRIVATE_STATE_UNSAFE", f"{not_regular} (reparse point)")
+        if not path.exists():
+            return
         if path.is_dir():
             raise ValueError(not_regular)
         return
@@ -304,6 +318,13 @@ def protect_existing_file(path: Path, *, mode: int, not_private: str) -> None:
     refused.
     """
     if WINDOWS:
+        # A reparse point is refused before existence is consulted, so a dangling one cannot be
+        # mistaken for a sidecar that is merely not there yet (§28, and the same ordering the
+        # directory and renderer paths use).
+        from . import windows_security
+
+        if windows_security.is_reparse_point(path):
+            raise BridgeError("PRIVATE_STATE_UNSAFE", "state database sidecar (reparse point)")
         if not path.exists():
             return
         verify_private_file(
