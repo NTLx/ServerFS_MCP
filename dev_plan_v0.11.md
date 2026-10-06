@@ -1791,6 +1791,50 @@ Exit:
 - Agent-disabled native upgrade behaves exactly like v0.10;
 - Fake runtime works through full Tunnel -> MCP -> Bridge path.
 
+Phase D status (2026-10-06): **CLOSED-PASS.** Evidence in
+`docs/windows-phase-d-native-lifecycle-2026-10-06.md`.
+
+D1–D9 landed as separate commits on `v0.11-phase-d-native-config-lifecycle`, base `6038d4b`:
+
+- **D1** `[agent]` TOML model. The upgrade gate drove the design: no `[agent]` section, or
+  `enabled = false`, parses to the identical filesystem-only v0.10 result. `NativeProxySettings`
+  structurally cannot hold the endpoint — there is no `url` field — which is what keeps a secret out
+  of `serverfs.toml`.
+- **D2** private Bridge config renderer, in the Bridge package as its own CLI entry point, because
+  §23/§70 forbid cross-package imports and the generated file is private state.
+- **D3** runtime egress environment policy. Per-runtime proxy defaults are the Phase 0F
+  measurements, not guesses.
+- **D4** private supervised bootstrap channel on stdin, one bounded frame, EOF as the shutdown
+  trigger. `PROTOCOL_VERSION` untouched.
+- **D5/D7** supervisor lifecycle: the frozen 12-step order, readiness measured by a real
+  authenticated `runtime.list` over the Named Pipe, never a sleep.
+- **D6** Job Object containment over the Bridge tree only.
+- **D8** doctor: read-only, disabled is informational, proxy diagnostics on a fixed vocabulary,
+  private-state safety delegated to a Bridge-side inspector rather than reimplemented.
+- **D9** acceptance: one real lifecycle through the published MCP surface — 21 tools, a
+  `workspace-write` task that reaches exactly `succeeded`, an adapter-written artifact in the
+  authorized workdir, lease exclusion and both release paths, proxy isolation observed from a real
+  spawned child, graceful shutdown, and abnormal containment.
+
+Three defects the acceptance run found, all fixed in the same commits:
+
+1. `private_state.py` gated its reparse decision behind `Path.exists()`, which *follows* a link, so a
+   dangling symlink — the cheapest object an attacker can plant — was classified as absent across the
+   whole Windows private-state seam. `_windows_create_ancestors` was the worst case: it walked past
+   such a parent and anchored the Bridge's own tree inside a directory somebody else controls.
+2. The D8 doctor reported Bridge availability as configuration ("not configured") rather than as the
+   supervisor's actual rule, which is `SERVERFS_BRIDGE_PYTHON` else `sys.executable` — a false positive
+   on the common single-interpreter deployment.
+3. `AgentLifecycleError` escaped `supervisor.main()` uncaught, so every Agent startup failure reached
+   the operator as a Python stack trace containing the paths those messages exist to withhold.
+
+**Known gap, recorded not fixed:** a malformed config or a non-existent workdir root is refused by
+`run_native_tunnel` before the supervisor exists, and that path emits an unredacted traceback.
+Launcher-level diagnostics are follow-up work.
+
+Phase D includes **no real Codex, Qoder or Claude integration.** The provider adapter at the end of
+the accepted lifecycle is a deterministic test double; the real transports are E, F and G.
+
 ### Phase E — Codex
 
 Implement the selected Windows Codex transport and run deterministic adapter tests.
