@@ -1,9 +1,10 @@
 # Windows Phase E — Codex runtime
 
 Status: **OPEN** (not CLOSED-PASS). The implementation and the deterministic Windows suite are
-landed; the real-provider acceptance that closes Phase E is blocked on this host's connectivity.
-That distinction is the whole content of this document, so it is stated first and not softened at
-the end.
+landed, and the real runtime probe and model discovery both pass against the installed CLI.
+Closure is blocked because **the Codex CLI cannot complete a provider round trip on this host at
+all** — demonstrated with every ServerFS component removed, so it is not a ServerFS defect. That
+distinction is the whole content of this document, so it is stated first and not softened at the end.
 
 - Branch: `v0.11-phase-e-windows-codex`
 - Base: `bc3500fce28453c77118c265c51aa0d84b5580d2` (post-Phase-D main)
@@ -141,39 +142,87 @@ Phase 0C recorded 8 models on 2026-10-04. The catalog has since changed, which i
 §29 forbids hardcoding model ids: `list_agent_models` reads the live catalog, and the only fixed
 value anywhere is the *shape* of the response.
 
-### Blocked: real inference cannot reach the provider from this host
+### Blocked: the Codex CLI cannot reach the provider from this host, with or without a proxy
 
-Every local call succeeds. The first call that needs the provider's own egress does not:
+The Agent Runtime proxy is now **explicitly configured** (operator action, §2 below), and the proxy
+path itself is proven good: TCP to the proxy connects, and an HTTPS request through it reaches the
+provider and returns an unauthenticated 401 — the expected answer, and proof that the whole path
+works **without any proxy credential reaching the provider child**. All local calls still succeed
+against the same child: `probe` and `model/list` are unchanged above.
 
-```
-[item/started]    userMessage "Reply with the single word: ready. Do not use any tools."
-[error] Reconnecting... 2/5  codexErrorInfo.responseStreamDisconnected  "request timed out"
-[error] Reconnecting... 3/5  ...
-[error] Reconnecting... 4/5  ...
-```
+The provider round trip does not. What made the cause unambiguous is removing every ServerFS
+component from the path: `codex app-server --stdio` speaks the same JSON-RPC over stdin/stdout, so
+there is no listener, no port, no capability token, no Bridge and no WebSocket. Two arms, same
+prompt, same CLI:
 
-The turn never completes and the workspace stays empty. Measured cause, on this host:
+| Arm | Proxy variables | Thread started | Turn |
+| --- | --- | --- | --- |
+| `with_proxy` | `HTTPS_PROXY` + `NO_PROXY` set | yes | **failed** — `Reconnecting... 1/5 … 3/5` |
+| `without_proxy` | none | yes | **failed** — `Reconnecting... 2/5 … 4/5` |
 
-- `TCP api.openai.com:443` — **timeout**, so there is no direct route to the provider;
-- `SERVERFS_AGENT_PROXY_URL` — **not set**, in the environment and in the project `.env`.
+Both arms stall identically with ServerFS entirely out of the path. So the CLI is not failing because
+of the transport, the token, the Bridge, the listener, or the proxy configuration — this host's Codex
+CLI cannot complete provider inference at all. That is an environment or account fact, not a v0.11
+proxy-security boundary: nothing anywhere required a proxy credential, and none was injected.
 
-§37 requires the real acceptance to run with a configured Agent proxy
-(`enabled = true`, `source = "env"`, `use_proxy = true`) so that provider egress and the loopback
-control channel are exercised together. That precondition does not hold here, so the inference
-steps cannot be run honestly:
+### Proxy isolation, measured on the real child
 
-- §40 workspace-write, §41 native id persistence, §42 continuation, §43 question, §44 approval,
-  §45 cancellation, §46 model override, §47 restart reconciliation, §49 lease/guard cleanup.
+Despite the inference stall, the four isolation properties the runtime must hold are demonstrated:
 
-**These were not run. They are not claimed, partially passed, or approximated with a double.**
-Running them against the fake provider would prove nothing about the runtime, which is the mistake
-Phase D's D9 harness already made once.
+| Property | Measurement |
+| --- | --- |
+| Child receives the dedicated Agent proxy | `HTTPS_PROXY` present, non-loopback host, explicit port |
+| Child receives nothing else | no `SERVERFS_AGENT_*`, no `SERVERFS_PROXY_*`/`TUNNEL*`, no `CONTROL_PLANE_*` in the child env |
+| Mandatory loopback bypass survives | child `NO_PROXY` = `127.0.0.1, localhost, ::1` (complete) |
+| Bridge's own process stays proxy-free | Bridge env has **no** `HTTPS_PROXY` at all |
+| Control channel stays local | endpoint shape `ws://loopback:<ephemeral>/`, dialled with `proxy=None` |
 
-This is §64's "provider child requires proxy credentials" neighbourhood: the acceptance cannot
-proceed without a maintainer-provided, credentialless HTTP proxy endpoint. The product path for it
-is already built and tested — `build_runtime_environment` injects only `HTTPS_PROXY` and a
-`NO_PROXY` carrying the mandatory loopback bypass — but it has not been exercised against a live
-provider.
+`SERVERFS_AGENT_NO_PROXY` was deliberately **not** set: the product merges the mandatory loopback
+bypass itself, so an operator value would only add a bypass this host does not need.
+
+### A real defect found, and honestly ruled out as the cause
+
+`build_runtime_environment` forwards `CODEBUDDY_SERVICE_PROXY_URL` — a **loopback** proxy under a
+third-party name — into the provider child, because `_is_proxy_variable()` only recognises the
+standard proxy names and the `FORWARD_FORBIDDEN_PREFIXES` cover the `SERVERFS_PROXY_*` family by
+prefix. A third-party `*_PROXY_URL` naming matches neither. The child therefore sees two proxy
+configurations.
+
+Before touching security-relevant code I isolated it: the same real turn was run twice, once with
+the policy environment exactly as produced and once with only the recognised proxy variables.
+**Both arms failed identically**, so the stray variable is not the cause and **no product change was
+made**. Recording this because "found a plausible defect" is not "found the defect"; widening
+`_is_proxy_variable` on this evidence would have been an unjustified change to a security boundary.
+It is reported as a residual for the maintainer instead.
+
+### Not run, not claimed
+
+Because no real turn completes, none of these were run and none is claimed: workspace-write (§40),
+native id persistence (§41), continuation (§42), question (§43), approval (§44), cancellation
+(§45), model override (§46), restart reconciliation (§47), lease/guard cleanup (§49), and real Job
+containment (§13 of the acceptance list). Running any of them against the fake provider would prove
+nothing about the runtime — the mistake Phase D's D9 harness already made once, and one this project
+has explicitly retracted before.
+
+## 5b. Operator proxy configuration (§2 of the ruling)
+
+The maintainer confirmed that `TUNNEL_HTTPS_PROXY` on this host is a **credentialless HTTP(S)
+absolute endpoint with an explicit port and no userinfo**, which satisfies the v0.11 Agent Runtime
+proxy contract, and that the same endpoint could be reused.
+
+- `SERVERFS_AGENT_PROXY_URL` was **explicitly configured** by hand in the operator's private env
+  file, after re-checking the contract (absolute http(s), explicit host and port, no userinfo).
+- `.env` is **not tracked by git**; the worktree stayed clean apart from the two allowed untracked
+  paths. No endpoint value was written to any tracked file, commit, test, evidence document, report
+  or log.
+- **No product logic was added** to map `TUNNEL_HTTPS_PROXY` or `SERVERFS_PROXY_*` into
+  `SERVERFS_AGENT_*`. The two remain independent configuration domains, and the copy was a human
+  configuration action.
+- `SERVERFS_PROXY_HOST` + `SERVERFS_PROXY_PORT` were correctly rejected as the Agent proxy source:
+  a bare `host:port` is not the absolute URL the contract requires.
+
+The raw endpoint value was never printed by any script, in any output, in any commit message or in
+this document.
 
 ## 6. Doctor
 
@@ -206,10 +255,17 @@ and `ws://127.0.0.1:<ephemeral>`, and nothing else sensitive.
 
 ## 8. Not verified
 
-- Everything in §5's blocked list.
+- Everything in §5's not-run list: workspace-write, native id persistence, continuation, question,
+  approval, cancellation, model override, restart reconciliation, lease/guard cleanup.
 - Job Object containment of the Bridge-owned child against an abnormal Bridge death. The design
   relies on the Phase D supervisor Job and standard child inheritance, and the deterministic suite
   covers teardown, but the abnormal-termination case was not driven end to end this phase.
+- **Residual for the maintainer:** `build_runtime_environment` forwards a third-party loopback proxy
+  variable (`CODEBUDDY_SERVICE_PROXY_URL` on this host) into the provider child, because the scrub
+  recognises standard proxy names and `SERVERFS_PROXY_*` prefixes but not arbitrary `*_PROXY_URL`
+  naming. Measured to be **not** the cause of the stall above. It is still a real narrowing of the
+  §7.1 property — the child's proxy configuration is decided partly by an unrelated ambient variable
+  — and it should be decided on its own merits rather than fixed under acceptance pressure.
 - Behaviour when the operator's managed daemon is mid-flight.
 - Linux CI is not run from this host; the Linux gate must confirm that the shared mock and the
   lazy `codex_windows` import produce no collection error and that the Linux Codex UDS cases still
