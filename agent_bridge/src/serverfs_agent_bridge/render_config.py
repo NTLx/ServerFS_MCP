@@ -54,7 +54,6 @@ from .private_state import (
     ensure_private_file,
     verify_private_file,
 )
-from .windows_security import current_user_sid
 
 #: The native lease key (§5.3). A native deployment has no legacy slot, so leases are keyed by the
 #: exact alias and both sides derive the artifact name independently.
@@ -280,6 +279,14 @@ def render_native_bridge_config(
     data_home = home if home is not None else bridge_data_home()
     state_dir = data_home / "state"
     lock_dir = data_home / "locks"
+    # Imported here rather than at module scope: ``windows_security`` calls ``ctypes.WinDLL``
+    # while being imported, which does not exist off Windows, so a top-level import made this
+    # module unimportable there. ``private_state`` already guards the same seam with ``WINDOWS``;
+    # this keeps the renderer consistent with it. The renderer is Windows-only in practice -- the
+    # SID and the pipe name it produces are the native deployment's -- but the *module* must
+    # still import so the Linux Bridge suite can collect it.
+    from .windows_security import current_user_sid
+
     peer_sid = current_user_sid()
     socket_path = Path(derive_pipe_name(peer_sid))
 
@@ -404,10 +411,12 @@ def _is_reparse(path: Path) -> bool:
 
 
 def _create_private(path: Path) -> bool:
-    from .windows_security import create_private_file, private_state_sddl
-
     if not sys.platform.startswith("win"):
         return False
+    # Imported here for the same reason as in ``render_native_bridge_config``: the module must stay
+    # importable off Windows, and this function is the Windows-only one that needs the Win32 layer.
+    from .windows_security import create_private_file, current_user_sid, private_state_sddl
+
     return create_private_file(path, private_state_sddl(current_user_sid()))
 
 

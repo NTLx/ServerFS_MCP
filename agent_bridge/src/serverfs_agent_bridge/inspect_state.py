@@ -44,8 +44,13 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import private_state, windows_security
+from . import private_state
 from .errors import BridgeError
+
+# ``windows_security`` loads kernel32/advapi32 while being imported, so it is pulled in lazily
+# rather than at module scope: this module must stay importable off Windows so the CLI can answer
+# "not defined here" instead of the whole process failing to start. ``private_state`` guards the
+# same seam with its own ``WINDOWS`` flag and is safe to import directly.
 
 #: The only four values any field of the report may take.
 ABSENT = "absent"
@@ -102,6 +107,8 @@ def _unknown(what: str, reason: str) -> StateReport:
 
 def _inspect_directory(path: Path, what: str) -> StateReport:
     """Classify one directory without touching it."""
+    from . import windows_security
+
     # Reparose first, always: Path.exists() follows a link, so a dangling reparse point reports
     # False and would otherwise be classified as a not-yet-created directory. The order is the
     # same one the whole Windows private-state seam now uses.
@@ -138,6 +145,8 @@ def _inspect_directory(path: Path, what: str) -> StateReport:
 
 def _inspect_file(path: Path, what: str) -> StateReport:
     """Classify one regular file without opening it."""
+    from . import windows_security
+
     try:
         if windows_security.is_reparse_point(path):
             return _unsafe(what, "is a reparse point")

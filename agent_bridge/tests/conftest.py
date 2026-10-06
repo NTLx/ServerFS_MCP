@@ -20,6 +20,16 @@ WINDOWS_ONLY_TEST_FILES = [
     "test_windows_pipe_e2e.py",
     "test_windows_private_state.py",
     "test_windows_lease.py",
+    # Phase D. The renderer tests drive the Windows private-state publication contract, and
+    # these two drive the inspector and the reparse hardening behind it. All of them import
+    # `windows_security` (directly or through `render_config`) at module scope for the same
+    # reason the five above do.
+    "test_render_config.py",
+    "test_render_config_publication.py",
+    "test_supervised_bridge.py",
+    "test_dangling_reparse.py",
+    "test_private_state_dangling_reparse.py",
+    "test_inspect_state.py",
 ]
 
 if not sys.platform.startswith("win"):
