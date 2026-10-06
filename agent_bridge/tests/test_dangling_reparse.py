@@ -2,21 +2,19 @@
 
 The defect: ``_is_reparse`` was written as ``path.exists() and is_reparse_point(path)``. On Windows
 ``Path.exists()`` *follows* the link, so a dangling symlink — one whose target does not exist —
-reports False while ``lstat`` still reports the reparse tag. The conjunction therefore classified the
-cheapest object an attacker can plant, and one that leaves no visible trace, as "nothing there", and
-publication proceeded to write through it.
+reports False while ``lstat`` still reports the reparse tag. The conjunction therefore classified
+the cheapest object an attacker can plant, and the one that leaves no visible trace, as "nothing
+there", and publication proceeded to write through it.
 
 A real symlink fixture is the honest test but is not always available: creating one needs Developer
-Mode or elevation, and this host does not have it. So the property is pinned two ways:
-
-- a **simulated** case that drives ``lstat`` directly, proving the renderer's classification does not
-  depend on ``Path.exists()`` returning True. This runs everywhere and is the coverage that does not
-  skip.
-- a **real** dangling symlink, which runs only where the host permits it.
+Mode or elevation, and this host does not have it. So the property is pinned two ways. A
+**simulated** case drives the classification directly, proving the renderer does not depend on
+``Path.exists()`` returning True; it runs everywhere and carries the coverage that would otherwise
+skip. A **real** dangling symlink runs only where the host permits it.
 
 The simulated case asserts the whole chain: classification says reparse, and publication refuses
-without ever reaching ``os.replace``. Asserting only the classification would leave the second half —
-the refusal actually happening — untested.
+without ever reaching ``os.replace``. Asserting only the classification would leave the refusal
+itself untested.
 """
 
 from __future__ import annotations
@@ -72,9 +70,7 @@ def _can_symlink() -> bool:
 class TestSimulatedDanglingReparse:
     """The deterministic regression: exists() False, is_reparse_point() True."""
 
-    def test_a_dangling_reparse_is_still_classified_as_reparse(
-        self, tmp_path: Path, monkeypatch
-    ):
+    def test_a_dangling_reparse_is_still_classified_as_reparse(self, tmp_path: Path, monkeypatch):
         """The exact shape the old conjunction missed."""
         import serverfs_agent_bridge.windows_security as ws
 
