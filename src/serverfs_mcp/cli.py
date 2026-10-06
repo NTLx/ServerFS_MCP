@@ -19,7 +19,6 @@ reserved for protocol use even in diagnostic runs.
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -113,40 +112,37 @@ def _native_agent_settings(native_settings) -> tuple | None:
 
     ``serverfs.toml`` is the only operator-facing source of Agent policy: this function is gated on
     ``native_settings.agent_enabled`` and never on an ambient environment variable, so a stray
-    ``SERVERFS_AGENT_BRIDGE_ENABLED`` in a shell cannot turn Agent delegation on. The supervisor's
-    injected variables supply only *placement* — which pipe and which lock directory — which is
-    wiring rather than policy and is not the operator's to type.
+    ``SERVERFS_AGENT_BRIDGE_ENABLED`` in a shell cannot turn Agent delegation on.
 
-    The Bridge process itself belongs to the supervisor (§15 D5), so this function never starts one.
-    A direct ``serverfs serve`` therefore registers the Agent surface and points it at the
-    deterministic native endpoint; if no Bridge is listening, the ten tools fail closed through the
-    frozen ``AgentBridgeUnavailable`` rather than disappearing from the surface. That is the
-    behaviour §15 D3 requires of a direct serve, and it is why the tools are registered even when
-    nothing is running.
+    The endpoint and lock directory are **derived**, not required from the environment. A direct
+    ``serverfs serve`` is not a supervisor launcher. The Bridge lifecycle belongs to the
+    supervisor, so serve starts none, but it must still address one and must reach the same
+    address a supervised serve would without being told. The supervisor may inject the same values
+    as defence in depth; injecting *different* ones is a startup refusal, because two derivation
+    paths producing two addresses would put a supervisor and a direct serve in different pipe and
+    lease universes.
+
+    With nothing listening, the ten Agent tools are still registered and calls fail closed through
+    the frozen ``AgentBridgeUnavailable``. That is §15 D3's requirement, and it is why registration
+    does not depend on a running Bridge.
     """
     from .config import Settings
 
     if not native_settings.agent_enabled:
         return None
 
-    endpoint = os.environ.get("SERVERFS_AGENT_BRIDGE_SOCKET", "").strip()
-    lock_dir = os.environ.get("SERVERFS_AGENT_LOCK_DIR", "").strip()
-    if not endpoint or not lock_dir:
-        # Delegation is on but the supervisor did not inject both placement values. Failing closed
-        # here beats registering tools against the Linux default socket path, which cannot exist on
-        # Windows and would surface as a confusing I/O error instead of a clear one.
-        missing = "endpoint" if not endpoint else "lock directory"
-        raise SystemExit(
-            _fail(
-                f"agent delegation is enabled but no Agent Bridge {missing} was provided; "
-                "start through 'serverfs tunnel' so the supervisor can supply it"
-            )
-        )
+    from .native_endpoint import NativeEndpointError, resolve_native_agent_wiring
+
+    try:
+        endpoint, lock_dir = resolve_native_agent_wiring()
+    except NativeEndpointError as exc:
+        raise SystemExit(_fail(f"agent endpoint unavailable: {exc}")) from exc
+
     settings = Settings(
         log_level=native_settings.log_level,
         agent_bridge_enabled=True,
         agent_bridge_socket=endpoint,
-        agent_lock_dir=lock_dir,
+        agent_lock_dir=str(lock_dir),
     )
     from .agent_client import AgentBridgeClient
 
