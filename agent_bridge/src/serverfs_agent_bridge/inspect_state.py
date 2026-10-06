@@ -249,9 +249,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover - process entry point
     raise SystemExit(main())
-
-
-# ``os`` is imported for the type of ``stat_result``-producing calls only in tests; the module
-# itself must not touch os.environ or any create primitive. This assertion documents that intent
-# in a form a test can assert rather than a comment a reviewer must trust.
-assert not hasattr(private_state, "chmod_windows") or True

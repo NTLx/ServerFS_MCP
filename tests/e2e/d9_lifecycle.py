@@ -2,9 +2,15 @@
 
 What is exercised, in order, with nothing stubbed between the steps:
 
-    fake tunnel-client -> native_tunnel -> supervisor -> private config renderer
+    python -m serverfs_mcp.cli tunnel -> cmd_tunnel -> native_tunnel
+    -> fake tunnel-client -> supervisor -> private config renderer
     -> Job Object -> real Bridge process -> real Named Pipe -> native ServerFS stdio
-    -> the published MCP Agent surface -> the test-only provider adapter
+    -> the published MCP Agent surface -> the deterministic provider adapter
+
+The chain starts at the product's own CLI entry point. An earlier version imported
+``run_native_tunnel`` and called it directly, which skipped argparse, ``cmd_tunnel`` and the CLI's
+error normalization -- one layer short of what an operator runs, and it made a redacted CLI failure
+look like a traceback.
 
 Only the provider adapter at the end is a test double, and it is a ``sitecustomize`` rather than a
 repository change, so the production surface has no test-only flag. The public runtime name stays
@@ -99,15 +105,20 @@ class Lifecycle:
         use_proxy: bool = False,
         read_only: bool = False,
         config_override: str | None = None,
+        api_key_outside_workdirs: bool = False,
     ) -> None:
         self.tmp_path = tmp_path
         self.agent_enabled = agent_enabled
         self.proxy_enabled = proxy_enabled
         self.use_proxy = use_proxy
         self.read_only = read_only
-        # An explicit configuration body, for the startup-failure cases that need a chain which is
-        # valid enough to be launched but fails at a chosen later step.
+        # An explicit configuration body, for the launcher-refusal cases that need a chain which is
+        # valid enough to be launched but is refused at a chosen earlier step.
         self.config_override = config_override
+        # The launcher refuses an API key inside a configured workdir (§7.4). The refusal cases are
+        # about a *different* refusal, so they place the key outside every workdir; otherwise they
+        # would pass on the key rule and prove nothing about the condition under test.
+        self.api_key_outside_workdirs = api_key_outside_workdirs
 
         self.workdir = tmp_path / "repo"
         self.workdir.mkdir(parents=True, exist_ok=True)
@@ -191,27 +202,48 @@ class Lifecycle:
     # -- launching -------------------------------------------------------------------
 
     def launch(self, *, extra_env: dict[str, str] | None = None) -> LifecycleResult:
-        """Start the chain through ``run_native_tunnel`` in a child process.
+        """Start the chain through the real ``serverfs tunnel`` CLI entry point.
 
-        The launcher runs out-of-process because ``run_native_tunnel`` ends in ``subprocess.run`` of
-            a
-        client that inherits stdio: in-process it would take over the test runner's own stdin and
-        stdout. Running it as a child is also closer to what an operator does.
+        The product entry is ``python -m serverfs_mcp.cli tunnel``, and this launches exactly that.
+        An earlier version of this harness imported ``run_native_tunnel`` and called it directly,
+        which skipped argparse, ``cmd_tunnel`` and the CLI's error normalization. That is one layer
+        short of what an operator runs, and it made a failure the CLI reports as a redacted message
+        arrive in the test as a traceback, which looked like a product defect and was only the
+        harness's own shortcut.
+
+        Out-of-process because the launcher ends in ``subprocess.run`` of a client that inherits
+        stdio: in-process it would take over the test runner's own stdin and stdout.
         """
         api_key = self.tmp_path / "api-key.txt"
+        if self.api_key_outside_workdirs:
+            # A sibling of the workdir rather than a file inside it, so the launcher's key-location
+            # rule does not fire before the condition under test.
+            outside = self.tmp_path / "key-material"
+            outside.mkdir(parents=True, exist_ok=True)
+            api_key = outside / "api-key.txt"
         api_key.write_text("d9-not-a-real-key\n", encoding="utf-8")
         env_file = self.tmp_path / ".env"
         env_file.write_text("", encoding="utf-8")
 
-        script = _LAUNCH_SCRIPT.format(
-            config=str(self.config_path()),
-            tunnel_client=str(ROOT_PYTHON),
-            tunnel_id="tunnel_" + "a" * 32,
-            api_key=str(api_key),
-            env_file=str(env_file),
-        )
         self.process = subprocess.Popen(
-            [str(ROOT_PYTHON), "-c", script],
+            [
+                str(ROOT_PYTHON),
+                "-m",
+                "serverfs_mcp.cli",
+                "tunnel",
+                "--config",
+                str(self.config_path()),
+                "--env-file",
+                str(env_file),
+                # The stand-in client is python.exe running the harness script named "run" from the
+                # binding directory, which is why that directory is this process's cwd.
+                "--tunnel-client",
+                str(ROOT_PYTHON),
+                "--tunnel-id",
+                "tunnel_" + "a" * 32,
+                "--api-key-file",
+                str(api_key),
+            ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -367,25 +399,6 @@ def wait_until(predicate, *, timeout: float = 30.0, interval: float = 0.05) -> b
 
 def fresh_name(prefix: str) -> str:
     return f"{prefix}-{secrets.token_hex(6)}"
-
-
-#: The launcher runs ``run_native_tunnel`` rather than ``supervisor`` directly: D9's subject is the
-#: chain from ``serverfs tunnel`` downwards, and skipping the launcher would skip argv encoding, the
-#: api-key-outside-workdirs rule and the Tunnel namespace scrub before the supervisor.
-_LAUNCH_SCRIPT = """
-import sys
-from pathlib import Path
-from serverfs_mcp.native_tunnel import run_native_tunnel
-sys.exit(
-    run_native_tunnel(
-        config_path=Path({config!r}),
-        env_file=Path({env_file!r}),
-        tunnel_client=Path({tunnel_client!r}),
-        tunnel_id={tunnel_id!r},
-        api_key_file=Path({api_key!r}),
-    )
-)
-"""
 
 
 def require_windows() -> None:

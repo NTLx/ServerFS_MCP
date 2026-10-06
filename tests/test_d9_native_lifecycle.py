@@ -2,9 +2,15 @@
 
 Every process in this chain is the production implementation:
 
-    fake tunnel-client -> serverfs tunnel -> native_tunnel -> supervisor
-    -> private config renderer -> Job Object -> real Bridge process -> real Named Pipe
+    python -m serverfs_mcp.cli tunnel -> cmd_tunnel -> native_tunnel
+    -> fake tunnel-client -> supervisor -> private config renderer
+    -> Job Object -> real Bridge process -> real Named Pipe
     -> native ServerFS stdio -> the published MCP Agent surface -> the provider adapter
+
+The chain starts at the product's own CLI entry point. An earlier revision imported
+``run_native_tunnel`` and called it directly, which skipped argparse, ``cmd_tunnel`` and the CLI's
+error normalization -- one layer short of what an operator runs, and it made a redacted CLI refusal
+look like a product traceback.
 
 Only the provider adapter at the end is a test double, injected as a ``sitecustomize`` so the
 repository gains no test-only operator surface, and the public runtime name stays ``codex`` so the
@@ -652,11 +658,8 @@ class TestStartupFailureLeavesNothingRunning:
         chain is launched for real, the supervisor resolves the interpreter and fails to start a
         child, and the failure therefore happens inside the lifecycle under test.
 
-        Earlier failure injections are deliberately *not* used. A malformed config or a non-existent
-        workdir root is refused by ``run_native_tunnel`` before the supervisor exists, and that path
-        currently emits an unredacted traceback. That is a real gap, recorded as a known Phase D
-        finding rather than papered over; fixing launcher-level diagnostics is follow-up work and D9
-        acceptance should not silently depend on it.
+        Launcher-level refusals are a separate class with their own cases below, because they happen
+        before the supervisor exists and are normalized by a different layer.
 
         What is asserted here is the supervisor's own contract: a non-zero exit, a redacted message
         carrying no traceback and no interpreter path, no Bridge left running, and no lease taken. A
@@ -676,6 +679,79 @@ class TestStartupFailureLeavesNothingRunning:
         assert not lifecycle.bridge_pids(), "a Bridge was left running after a failed startup"
         if lifecycle.lock_dir.exists():
             assert not list(lifecycle.lock_dir.rglob("*")), "a lease survived a failed startup"
+
+
+class TestLauncherRefusalsAreRedacted:
+    """Two configuration refusals, each through the real ``serverfs tunnel`` CLI.
+
+    An earlier D9 revision recorded these as a known gap: "a malformed config or a non-existent
+    workdir root is refused before the supervisor exists, and that path emits an unredacted
+    traceback". That claim was an artefact of the harness, not a product defect. The harness
+    imported ``run_native_tunnel`` and called it directly, skipping ``cmd_tunnel``; and
+    ``cmd_tunnel`` catches ``(OSError, ValueError)`` while ``NativeTunnelError`` is a
+    ``ValueError`` subclass. The traceback came from the layer the harness had removed, not
+    from the operator-facing path.
+
+    These cases settle the claim by observation rather than argument, and a future change that
+    removes the normalization fails here rather than re-introducing a false known gap.
+
+    Both assert the whole contract, not just the absence of a traceback: a non-zero exit, the
+    normalized ``serverfs:`` message, no supervisor, no Bridge, and no Agent state or lease.
+    """
+
+    def _refuse(self, tmp_path: Path, config_text: str) -> tuple[Lifecycle, str]:
+        """Launch the CLI against one configuration and return the lifecycle plus its stderr."""
+        lifecycle = Lifecycle(
+            tmp_path,
+            agent_enabled=False,
+            config_override=config_text,
+            api_key_outside_workdirs=True,
+        )
+        lifecycle.launch()
+        return lifecycle, lifecycle.stderr_text()
+
+    def test_a_malformed_config_is_a_normalized_refusal(self, tmp_path: Path) -> None:
+        lifecycle, stderr = self._refuse(tmp_path, '[server\nlog_level = "INFO"\n')
+        try:
+            assert lifecycle.process is not None
+            returncode = lifecycle.process.wait(timeout=60)
+            assert returncode != 0, stderr[-1200:]
+            assert "serverfs:" in stderr, stderr[-1200:]
+            assert "Traceback" not in stderr, stderr[-1500:]
+            # Nothing an operator should not have to read: no host path, no config file name.
+            assert str(tmp_path) not in stderr, stderr[-1500:]
+            assert not lifecycle.supervisor_pids()
+            assert not lifecycle.bridge_pids()
+        finally:
+            lifecycle.kill()
+
+    def test_a_workdir_root_that_does_not_exist_is_a_normalized_refusal(
+        self, tmp_path: Path
+    ) -> None:
+        """The second half of the claim: a configured root that is not there.
+
+        The API key is placed outside the workdirs so the launcher's own key-location rule does not
+        fire first. Otherwise this case would pass for the wrong reason and prove nothing about
+        the workdir root.
+        """
+        absent = tmp_path / "absent-root"
+        lifecycle, stderr = self._refuse(
+            tmp_path,
+            '[server]\nlog_level = "INFO"\n\n[[workdirs]]\nalias = "repo"\n'
+            f'path = "{_toml_path(absent)}"\nread_only = false\n',
+        )
+        try:
+            assert lifecycle.process is not None
+            returncode = lifecycle.process.wait(timeout=60)
+            assert returncode != 0, stderr[-1200:]
+            assert "serverfs:" in stderr, stderr[-1200:]
+            assert "Traceback" not in stderr, stderr[-1500:]
+            assert not lifecycle.supervisor_pids()
+            assert not lifecycle.bridge_pids()
+            # No Agent state may be created for a chain that never started.
+            assert not lifecycle.bridge_json.exists()
+        finally:
+            lifecycle.kill()
 
 
 class TestV010Compatibility:
@@ -706,6 +782,11 @@ class TestV010Compatibility:
 # -- small process helpers, kept local so this file needs no test utility module ----------------
 
 
+def _toml_path(path: Path) -> str:
+    """A Windows path as a TOML basic string, with the separators escaped."""
+    return str(path).replace("\\", "\\\\")
+
+
 def _run_json(
     argv: list[str], cwd: str | None = None, env_overrides: dict[str, str] | None = None
 ) -> dict | None:
@@ -730,7 +811,22 @@ def _spawn_sleeper(seconds: int) -> int:
 
 
 def _terminate(pid: int) -> None:
+    """Terminate one process and close the handle, because Phase D is strict about handle hygiene.
+
+    ``OpenProcess`` returns a handle the caller owns. Leaving it open leaks one per terminated
+    process: harmless in a short test run, but exactly the discipline D6 fixed in the product, so
+    an acceptance helper that contradicts it advertises the contract badly.
+    """
     import ctypes
+    from ctypes import wintypes
 
     kernel32 = ctypes.windll.kernel32
-    kernel32.TerminateProcess(kernel32.OpenProcess(0x1, False, pid), 1)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel32.OpenProcess(0x1, False, pid)
+    if not handle:
+        return
+    try:
+        kernel32.TerminateProcess(handle, 1)
+    finally:
+        kernel32.CloseHandle(handle)

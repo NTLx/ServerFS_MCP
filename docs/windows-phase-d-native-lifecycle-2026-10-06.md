@@ -25,9 +25,10 @@ and G.
 ## Accepted lifecycle (D9)
 
 ```
-fake tunnel-client → serverfs tunnel → native_tunnel → supervisor
-  → private config renderer → Job Object → real Bridge process → real Named Pipe
-  → native ServerFS stdio → published MCP Agent surface → provider adapter
+python -m serverfs_mcp.cli tunnel → cmd_tunnel → native_tunnel
+  → fake tunnel-client → supervisor → private config renderer
+  → Job Object → real Bridge process → real Named Pipe
+  → native ServerFS stdio → published MCP Agent surface → deterministic provider adapter
 ```
 
 Only the provider adapter is a test double, injected as a `sitecustomize` so the repository gains no
@@ -35,7 +36,7 @@ test-only operator surface. The public runtime name stays `codex`.
 
 | Property | Evidence |
 |---|---|
-| Launcher chain | The stand-in client receives `--mcp.command` and decodes it with the inverse of the production encoder; `argv[1:3] == ["-m", "serverfs_mcp.supervisor"]`. |
+| Launcher chain | The chain is launched as `python -m serverfs_mcp.cli tunnel …`, so argparse, `cmd_tunnel` and the CLI's error normalization are all in the path. The stand-in client receives `--mcp.command` and decodes it with the inverse of the production encoder; `argv[1:3] == ["-m", "serverfs_mcp.supervisor"]`. |
 | Launcher scrub | The client records what it actually received: `leaked_prefixes == []`, `leaked_proxy_names == []`. |
 | Rendered config | `lease_key: "alias"`, `codex: {enabled, codex_bin, use_proxy}`, live SID, and it loads through the real `BridgeConfig.load`. |
 | Secret scan | Every planted marker is absent from `bridge.json`, and the Bridge argv is scanned with the process asserted findable first. |
@@ -57,12 +58,24 @@ escaped `main()` uncaught. The operator saw a Python stack trace containing the 
 messages exist to withhold. `main()` now translates it into stderr plus exit 2, with a last-resort net
 in the `__main__` guard.
 
-## Recorded, not fixed
+## A known gap that turned out not to be one
 
-A malformed `serverfs.toml` or a non-existent workdir root is refused by `run_native_tunnel` *before*
-the supervisor exists, and that path emits an unredacted traceback. This is a real gap in
-launcher-level diagnostics and is follow-up work. The D9 failure case is deliberately injected after
-the supervisor starts, so acceptance does not silently depend on the fix.
+An earlier revision of this document recorded: "a malformed `serverfs.toml` or a non-existent workdir
+root is refused before the supervisor exists, and that path emits an unredacted traceback."
+
+**That claim was false, and it was the harness's fault rather than the product's.** D9 was launching the
+chain by importing `run_native_tunnel` and calling it directly, which skipped `cmd_tunnel`. And
+`cmd_tunnel` catches `(OSError, ValueError)` while `NativeTunnelError` is a `ValueError` subclass, so
+the exception the harness saw escaping was the one the CLI had been catching all along. The traceback
+came from the layer the harness had removed, not from the path an operator takes.
+
+Re-measured through the real `python -m serverfs_mcp.cli tunnel` entry point, both cases are normalized
+refusals: exit 2, a `serverfs: <message>` line, no traceback, no host path, no supervisor, no Bridge and
+no Agent state. `TestLauncherRefusalsAreRedacted` now asserts both, and fails if the CLI's
+normalization is removed.
+
+The lesson worth keeping is about the evidence rather than the code: a harness that bypasses the
+product's entry point cannot support a claim about what the product does at that entry point.
 
 ## Not tested here
 
