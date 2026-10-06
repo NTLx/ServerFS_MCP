@@ -61,6 +61,18 @@ MAX_INPUT_BYTES = 256 * 1024
 _INPUT_KEYS = frozenset({"workdirs", "enable_fake_runtime", "limits", "runtimes"})
 _WORKDIR_KEYS = frozenset({"alias", "host_path", "read_only", "agent_mode", "agent_runtimes"})
 
+#: Per-runtime policy keys the renderer accepts. These are all non-secret: an executable name and
+#: two booleans. The proxy *endpoint* is deliberately absent — it arrives over the bootstrap channel
+#: and must never be persisted here (§15 D2/D4).
+_RUNTIME_KEYS: dict[str, frozenset[str]] = {
+    "codex": frozenset({"enabled", "codex_bin", "use_proxy"}),
+    "claude": frozenset({"enabled", "claude_bin", "use_proxy"}),
+    "qoder": frozenset({"enabled", "qoder_bin", "use_proxy"}),
+}
+#: Each runtime's executable key, matching the Bridge's own settings field names so the document
+#: maps one to one with no translation table.
+_RUNTIME_BIN_KEY = {"codex": "codex_bin", "claude": "claude_bin", "qoder": "qoder_bin"}
+
 _STATE_MESSAGES = DirectoryMessages(
     not_a_directory="the Bridge state directory is not a directory",
     not_owned="the Bridge state directory is not owned by this user",
@@ -157,14 +169,51 @@ def _validate_workdirs(entries: Any) -> list[WorkdirAgentPolicy]:
     return policies
 
 
-def _runtime_block(names: list[str]) -> dict[str, dict[str, Any]]:
-    """The per-runtime enablement block, in the shape the Bridge config already uses."""
-    block: dict[str, dict[str, Any]] = {}
-    for name in names:
-        if name not in KNOWN_RUNTIME_NAMES:
+def _runtime_block(runtimes: object) -> dict[str, dict[str, Any]]:
+    """The per-runtime block, in the shape the Bridge config already uses.
+
+    ``runtimes`` is either the legacy list of enabled names — kept so an existing caller and the
+    Linux deployment keep working unchanged — or a mapping of name to its non-secret policy. The
+    mapping form is what carries ``*_bin`` and ``use_proxy`` through to ``CodexSettings`` /
+    ``ClaudeSettings`` / ``QoderSettings``; sending only names would silently drop both, and
+    ``use_proxy`` is what decides whether a provider child gets the Agent proxy at all.
+    """
+    if runtimes is None:
+        return {}
+    if isinstance(runtimes, list):
+        block: dict[str, dict[str, Any]] = {}
+        for name in runtimes:
+            if not isinstance(name, str) or name not in _RUNTIME_KEYS:
+                raise BridgeError("BRIDGE_CONFIG_INVALID", f"unknown agent runtime: {name}")
+            block[name] = {"enabled": True}
+        return block
+    if not isinstance(runtimes, dict):
+        raise BridgeError("BRIDGE_CONFIG_INVALID", "runtimes must be a list or an object")
+    block = {}
+    for name, policy in runtimes.items():
+        if name not in _RUNTIME_KEYS:
             raise BridgeError("BRIDGE_CONFIG_INVALID", f"unknown agent runtime: {name}")
-        block[name] = {"enabled": True}
+        if not isinstance(policy, dict):
+            raise BridgeError("BRIDGE_CONFIG_INVALID", f"runtime {name} policy must be an object")
+        _reject_unknown(policy, _RUNTIME_KEYS[name], f"runtime {name}")
+        entry: dict[str, Any] = {"enabled": _strict_bool_field(policy, name, "enabled")}
+        bin_key = _RUNTIME_BIN_KEY[name]
+        entry[bin_key] = _strict_str(policy.get(bin_key), f"runtime {name} {bin_key}")
+        if any(char in entry[bin_key] for char in ("\x00", "\n", "\r")):
+            raise BridgeError(
+                "BRIDGE_CONFIG_INVALID", f"runtime {name} {bin_key} contains an invalid character"
+            )
+        entry["use_proxy"] = _strict_bool_field(policy, name, "use_proxy")
+        block[name] = entry
     return block
+
+
+def _strict_bool_field(policy: dict[str, Any], name: str, key: str) -> bool:
+    """A required JSON boolean. Absent or non-boolean is a refusal, never a coerced default."""
+    value = policy.get(key)
+    if type(value) is not bool:
+        raise BridgeError("BRIDGE_CONFIG_INVALID", f"runtime {name} {key} must be a JSON boolean")
+    return value
 
 
 def build_config_document(
@@ -178,9 +227,9 @@ def build_config_document(
     """Assemble the Bridge JSON document. Contains policy and identity, never a credential."""
     _reject_unknown(request, _INPUT_KEYS, "render request")
     policies = _validate_workdirs(request.get("workdirs"))
+    # Shape validation belongs to _runtime_block, which accepts both the legacy name list and the
+    # policy mapping. Validating it as an array here would reject the mapping form.
     runtimes = request.get("runtimes", [])
-    if not isinstance(runtimes, list):
-        raise BridgeError("BRIDGE_CONFIG_INVALID", "runtimes must be an array")
     document: dict[str, Any] = {
         "lease_key": NATIVE_LEASE_KEY,
         "socket_path": str(socket_path),

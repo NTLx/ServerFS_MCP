@@ -114,7 +114,17 @@ def render_request_from_config(workdirs, settings) -> dict:
         )
     return {
         "workdirs": workdir_entries,
-        "runtimes": sorted(agent.enabled_runtimes),
+        # Per-runtime non-secret policy, not just names: the executable name and use_proxy both have
+        # to survive into bridge.json, because use_proxy is what decides whether a provider child
+        # receives the Agent proxy at all. Sending names alone silently dropped both.
+        "runtimes": {
+            name: {
+                "enabled": True,
+                _BIN_KEY[name]: agent.runtime_binary(name),
+                "use_proxy": agent.runtime_use_proxy(name),
+            }
+            for name in sorted(agent.enabled_runtimes)
+        },
         "limits": {
             "task_timeout_seconds": agent.task_timeout_seconds,
             "interaction_timeout_seconds": agent.interaction_timeout_seconds,
@@ -122,6 +132,10 @@ def render_request_from_config(workdirs, settings) -> dict:
             "retention_seconds": agent.retention_seconds,
         },
     }
+
+
+#: Each runtime's executable key in the rendered document, matching the Bridge's own field names.
+_BIN_KEY = {"codex": "codex_bin", "claude": "claude_bin", "qoder": "qoder_bin"}
 
 
 def bridge_child_environment(

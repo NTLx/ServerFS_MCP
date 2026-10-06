@@ -39,6 +39,7 @@ _CLAUDE_KEYS = frozenset(
     {
         "enabled",
         "claude_bin",
+        "use_proxy",
         "probe_timeout_seconds",
         "event_idle_timeout_seconds",
     }
@@ -49,6 +50,7 @@ _CODEX_KEYS = frozenset(
         "autostart",
         "codex_home",
         "codex_bin",
+        "use_proxy",
         "request_timeout_seconds",
         "event_idle_timeout_seconds",
         "max_message_bytes",
@@ -58,6 +60,7 @@ _QODER_KEYS = frozenset(
     {
         "enabled",
         "qoder_bin",
+        "use_proxy",
         "probe_timeout_seconds",
         "event_idle_timeout_seconds",
     }
@@ -105,6 +108,11 @@ class CodexSettings:
     autostart: bool = False
     codex_home: Path = field(default_factory=_default_codex_home)
     codex_bin: str = "codex"
+    #: Whether this runtime's network-owning child receives the Agent proxy (§7.2). Non-secret
+    #: routing policy only: the endpoint itself arrives over the private bootstrap channel and is
+    #: never part of this document. Defaults False so a Linux config that predates the field keeps
+    #: its current behaviour exactly.
+    use_proxy: bool = False
     request_timeout_seconds: float = 10.0
     event_idle_timeout_seconds: float | None = None
     max_message_bytes: int = 128 * 1024 * 1024
@@ -118,6 +126,8 @@ class CodexSettings:
 class ClaudeSettings:
     enabled: bool = False
     claude_bin: str = "claude"
+    #: See CodexSettings.use_proxy. False unless a deployment explicitly opts in.
+    use_proxy: bool = False
     probe_timeout_seconds: float = 5.0
     event_idle_timeout_seconds: float | None = None
 
@@ -126,6 +136,8 @@ class ClaudeSettings:
 class QoderSettings:
     enabled: bool = False
     qoder_bin: str = "qodercli"
+    #: See CodexSettings.use_proxy. False unless a deployment explicitly opts in.
+    use_proxy: bool = False
     probe_timeout_seconds: float = 5.0
     event_idle_timeout_seconds: float | None = None
 
@@ -349,6 +361,7 @@ def _load_claude_settings(value: Any) -> ClaudeSettings:
     return ClaudeSettings(
         enabled=enabled,
         claude_bin=claude_bin,
+        use_proxy=_strict_bool(value.get("use_proxy", False), "claude.use_proxy"),
         probe_timeout_seconds=probe_timeout,
         event_idle_timeout_seconds=event_idle_timeout,
     )
@@ -381,6 +394,7 @@ def _load_qoder_settings(value: Any) -> QoderSettings:
     return QoderSettings(
         enabled=enabled,
         qoder_bin=qoder_bin,
+        use_proxy=_strict_bool(value.get("use_proxy", False), "qoder.use_proxy"),
         probe_timeout_seconds=probe_timeout,
         event_idle_timeout_seconds=event_idle_timeout,
     )
@@ -438,6 +452,7 @@ def _load_codex_settings(value: Any) -> CodexSettings:
         autostart=autostart,
         codex_home=codex_home,
         codex_bin=codex_bin,
+        use_proxy=_strict_bool(value.get("use_proxy", False), "codex.use_proxy"),
         request_timeout_seconds=request_timeout,
         event_idle_timeout_seconds=event_idle_timeout,
         max_message_bytes=max_message_bytes,
