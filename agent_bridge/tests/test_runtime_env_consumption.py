@@ -78,6 +78,11 @@ def bridge_config(tmp_path: Path) -> BridgeConfig:
         json.dumps(
             {
                 "lease_key": "alias",
+                # An explicit endpoint, because omitting it falls back to the production
+                # default -- a Named Pipe on Windows but "/run/serverfs-agent-bridge" on
+                # Linux, where a test would then try to create a socket in a root-owned
+                # directory. The wiring under test is the bootstrap frame, not the listener.
+                "socket_path": str(tmp_path / "bridge.sock"),
                 "state_dir": str(tmp_path / "state"),
                 "lock_dir": str(tmp_path / "locks"),
                 "allowed_peer_sid": "S-1-5-21-1-2-3-1001",
@@ -243,12 +248,20 @@ class TestPolicyIsConsumedByARealChild:
             assert name not in captured, name
 
     def test_provider_native_environment_survives(self, tmp_path, polluted):
-        """An over-aggressive scrub would break provider auth as surely as a leak would leak."""
+        """An over-aggressive scrub would break provider auth as surely as a leak would leak.
+
+        The identity variables are platform-specific by nature -- a Windows provider needs
+        ``SystemRoot`` and a POSIX one needs ``HOME`` -- so the assertion names the ones that exist
+        here rather than assuming one platform's set.
+        """
         captured = self._capture(
             tmp_path, use_proxy=True, proxy=RuntimeProxy(FRAME_ONLY_URL, FRAME_ONLY_NO_PROXY)
         )
-        assert captured.get("PATH")
-        assert captured.get("SystemRoot") or captured.get("SYSTEMROOT")
+        assert captured.get("PATH"), "PATH is provider-native on every platform"
+        if sys.platform.startswith("win"):
+            assert captured.get("SystemRoot") or captured.get("SYSTEMROOT")
+        else:
+            assert captured.get("HOME"), "HOME is the POSIX provider-native identity"
 
     def test_use_proxy_true_without_an_endpoint_fails_closed(self, tmp_path, polluted):
         from serverfs_agent_bridge.runtime_proxy import RuntimeProxyError
