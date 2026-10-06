@@ -31,11 +31,17 @@ async def _serve(
     supervised: bool = False,
 ) -> None:
     adapters = {}
+    # The runtime-only egress material from the private bootstrap channel. It is handed to the
+    # adapters here and applied downward to each runtime's network-owning child; it is never placed
+    # in this process's environment, never persisted, and never logged (§15 D2/D4).
+    runtime_proxy = bootstrap.agent_proxy if bootstrap is not None else None
     if config.enable_fake_runtime:
-        fake = runtime_adapters.FakeAdapter()
+        # The fake runtime is given the same runtime-only material a real adapter would receive, so
+        # the D2 tests exercise the real wiring rather than a parallel path.
+        fake = runtime_adapters.FakeAdapter(runtime_proxy=runtime_proxy)
         adapters[fake.name] = fake
     if config.codex.enabled:
-        codex = runtime_adapters.CodexAdapter(config.codex)
+        codex = runtime_adapters.CodexAdapter(config.codex, runtime_proxy=runtime_proxy)
         adapters[codex.name] = codex
     if config.claude.enabled:
         claude = runtime_adapters.ClaudeAdapter(config.claude)

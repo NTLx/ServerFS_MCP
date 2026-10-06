@@ -12,9 +12,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..bootstrap import RuntimeProxy
 from ..config import CodexSettings
 from ..errors import BridgeError
 from ..models import AgentProfile, ReconciliationStatus, RuntimeInfo, TaskRecord, TaskStatus
+from ..runtime_proxy import build_runtime_environment
 from .base import AdapterResult, AgentAdapter, ReconcileResult, TaskContext
 from .codex_transport import CONTROL_SOCKET_UNAVAILABLE_MESSAGE, CodexConnection
 
@@ -51,9 +53,14 @@ class CodexAdapter(AgentAdapter):
         settings: CodexSettings,
         *,
         client_version: str = "0.9.0",
+        runtime_proxy: RuntimeProxy | None = None,
     ) -> None:
         self.settings = settings
         self.client_version = client_version
+        #: Runtime-only egress material from the private bootstrap channel. Held in memory for the
+        #: life of the adapter and applied downward to the spawned child; never persisted, never
+        #: placed in this process's own environment.
+        self._runtime_proxy = runtime_proxy
         self._active: dict[str, _ActiveTask] = {}
         self._active_lock = asyncio.Lock()
         self._cancel_requested: set[str] = set()
@@ -794,7 +801,16 @@ class CodexAdapter(AgentAdapter):
         )
 
     async def _start_official_daemon(self) -> None:
-        env = dict(os.environ)
+        # Phase 0F §7.2: the child environment is *decided*, not inherited. Passing dict(os.environ)
+        # through would hand the app-server whatever this process happened to be carrying, which is
+        # the exact wholesale-inheritance path the experiment measured. The provider-native names
+        # (CODEX_HOME and the rest) survive; the proxy trust domain does not.
+        env = build_runtime_environment(
+            os.environ,
+            runtime=self.name,
+            use_proxy=self.settings.use_proxy,
+            proxy=self._runtime_proxy,
+        )
         env["CODEX_HOME"] = str(self.settings.codex_home)
         try:
             process = await asyncio.create_subprocess_exec(
