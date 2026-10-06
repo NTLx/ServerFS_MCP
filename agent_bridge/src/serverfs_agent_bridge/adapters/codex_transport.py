@@ -1,18 +1,26 @@
-"""Remote Codex App Server transport over the managed daemon Unix socket.
+"""Remote Codex App Server transport.
 
-Codex's managed app-server control socket carries WebSocket frames over AF_UNIX.
-JSON-RPC messages are encoded as JSON text frames.  This module intentionally
-contains only transport/routing; provider semantics live in codex.py.
+Two endpoint shapes reach the same RPC engine. On Linux the managed app-server control socket
+carries WebSocket frames over AF_UNIX. On Windows a Bridge-owned ``codex app-server`` child listens
+on an authenticated loopback WebSocket endpoint. JSON-RPC messages are encoded as JSON text frames
+in both cases.  This module intentionally contains only transport/routing; provider semantics live
+in codex.py, and process/token lifecycle for the Windows child lives in codex_windows.py.
+
+The RPC engine -- request framing, the reader loop, pending futures, the event queue and server
+request routing -- is deliberately a single implementation. Only the socket handshake differs
+between platforms, so a second copy of the framing would be a second set of defects.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-from websockets.asyncio.client import ClientConnection, unix_connect
+from websockets.asyncio.client import ClientConnection, connect, unix_connect
 from websockets.exceptions import ConnectionClosed
 
 from ..errors import BridgeError
@@ -20,6 +28,70 @@ from ..errors import BridgeError
 _UDS_HANDSHAKE_URI = "ws://localhost/rpc"
 _DEFAULT_MAX_MESSAGE_BYTES = 128 * 1024 * 1024
 CONTROL_SOCKET_UNAVAILABLE_MESSAGE = "Codex App Server daemon control socket is unavailable"
+LISTENER_UNAVAILABLE_MESSAGE = "Codex App Server loopback listener is unavailable"
+
+#: The Windows listener is addressed by literal loopback. ``localhost`` resolves through hosts
+#: file and DNS machinery and is therefore not a security boundary; Phase 0C measured the CLI
+#: binding 127.0.0.1 only, so the strict spelling is what the Bridge is willing to dial.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1"})
+
+
+@dataclass(frozen=True)
+class UnixSocketEndpoint:
+    """The Linux managed-daemon control socket (AF_UNIX)."""
+
+    path: Path
+
+    kind: str = "unix"
+
+
+@dataclass(frozen=True)
+class LoopbackWebSocketEndpoint:
+    """A Bridge-owned Windows app-server listener, authenticated by a capability token.
+
+    The token is a credential. It is excluded from ``repr`` so it cannot reach a log line through
+    an incidental interpolation of an endpoint object, and it is never carried in the URL.
+    """
+
+    url: str
+    token: str = field(repr=False)
+
+    kind: str = "loopback-ws"
+
+    def __post_init__(self) -> None:
+        parts = urlsplit(self.url)
+        if parts.scheme != "ws":
+            raise BridgeError(
+                "AGENT_PROVIDER_ERROR",
+                "Codex loopback endpoint must be a ws:// URL",
+            )
+        if parts.hostname not in _LOOPBACK_HOSTS:
+            # A listener reachable off-host is a different security posture than the one Phase 0C
+            # measured and the one this runtime is specified against. Refuse rather than warn.
+            raise BridgeError(
+                "AGENT_PROVIDER_ERROR",
+                "Codex loopback endpoint must address literal 127.0.0.1",
+            )
+        if parts.port is None:
+            raise BridgeError(
+                "AGENT_PROVIDER_ERROR",
+                "Codex loopback endpoint must name an explicit port",
+            )
+
+    @property
+    def authorization(self) -> tuple[str, str]:
+        """The header tuple for this endpoint. Callers pass it straight to the WS client.
+
+        Returning it from one place keeps the header name and scheme in a single definition, so a
+        test can assert the client is given exactly this and nothing ambient.
+        """
+        return ("Authorization", f"Bearer {self.token}")
+
+    def __repr__(self) -> str:
+        return f"LoopbackWebSocketEndpoint(url={self.url!r}, token=<redacted>)"
+
+
+CodexEndpoint = UnixSocketEndpoint | LoopbackWebSocketEndpoint
 
 
 class CodexRpcError(BridgeError):
@@ -37,13 +109,13 @@ class CodexConnection:
     def __init__(
         self,
         *,
-        socket_path: Path,
+        endpoint: CodexEndpoint,
         client_name: str,
         client_version: str,
         request_timeout: float = 10.0,
         max_message_bytes: int = _DEFAULT_MAX_MESSAGE_BYTES,
     ) -> None:
-        self.socket_path = socket_path
+        self.endpoint = endpoint
         self.client_name = client_name
         self.client_version = client_version
         self.request_timeout = request_timeout
@@ -65,22 +137,13 @@ class CodexConnection:
         if self._ws is not None:
             return
         try:
-            self._ws = await unix_connect(
-                path=str(self.socket_path),
-                uri=_UDS_HANDSHAKE_URI,
-                open_timeout=self.request_timeout,
-                close_timeout=5,
-                max_size=self.max_message_bytes,
-                # The daemon closes the connection without an HTTP response when
-                # the client offers permessage-deflate, so compression must stay
-                # off.  Verified against a running managed daemon.
-                compression=None,
-                proxy=None,
-            )
+            self._ws = await self._open_socket()
         except Exception as exc:
+            # The message is fixed per platform and carries no endpoint detail: the Windows URL
+            # contains a port and the failure could echo a header, so neither reaches the operator.
             raise BridgeError(
                 "AGENT_RUNTIME_NOT_READY",
-                CONTROL_SOCKET_UNAVAILABLE_MESSAGE,
+                self._unavailable_message(),
             ) from exc
 
         self._reader = asyncio.create_task(self._reader_loop(), name="serverfs-codex-rpc-reader")
@@ -111,6 +174,71 @@ class CodexConnection:
         except Exception:
             await self.close()
             raise
+
+    async def _open_socket(self) -> ClientConnection:
+        """Perform the platform handshake. Everything after this is shared RPC machinery."""
+        self._reader = asyncio.create_task(self._reader_loop(), name="serverfs-codex-rpc-reader")
+        try:
+            initialized = await self.request(
+                "initialize",
+                {
+                    "clientInfo": {
+                        "name": self.client_name,
+                        "title": "ServerFS Agent Bridge",
+                        "version": self.client_version,
+                    },
+                    "capabilities": {"experimentalApi": True},
+                },
+                request_id="initialize",
+            )
+            if not isinstance(initialized, dict):
+                raise BridgeError(
+                    "AGENT_PROVIDER_ERROR", "Codex initialize returned an invalid result"
+                )
+            user_agent = initialized.get("userAgent")
+            if isinstance(user_agent, str):
+                self.server_version = _version_from_user_agent(user_agent)
+            codex_home = initialized.get("codexHome")
+            if isinstance(codex_home, str):
+                self.codex_home = codex_home
+            await self.notify("initialized", {})
+        except Exception:
+            await self.close()
+            raise
+
+    async def _open_socket(self) -> ClientConnection:
+        """Perform the platform handshake. Everything after this is shared RPC machinery."""
+        if isinstance(self.endpoint, LoopbackWebSocketEndpoint):
+            return await connect(
+                self.endpoint.url,
+                additional_headers=[self.endpoint.authorization],
+                open_timeout=self.request_timeout,
+                close_timeout=5,
+                max_size=self.max_message_bytes,
+                # Two independent reasons compression stays off, both measured: the daemon closes
+                # a UDS connection without an HTTP response when permessage-deflate is offered,
+                # and the Windows listener is the same server speaking over TCP.
+                compression=None,
+                # Hard requirement, not a default: the control channel is loopback and must never
+                # be reachable through an ambient system proxy. The child also gets a NO_PROXY
+                # bypass, and this is the second layer. Relying on NO_PROXY alone would make the
+                # control channel's reachability depend on whatever the host happens to export.
+                proxy=None,
+            )
+        return await unix_connect(
+            path=str(self.endpoint.path),
+            uri=_UDS_HANDSHAKE_URI,
+            open_timeout=self.request_timeout,
+            close_timeout=5,
+            max_size=self.max_message_bytes,
+            compression=None,
+            proxy=None,
+        )
+
+    def _unavailable_message(self) -> str:
+        if isinstance(self.endpoint, LoopbackWebSocketEndpoint):
+            return LISTENER_UNAVAILABLE_MESSAGE
+        return CONTROL_SOCKET_UNAVAILABLE_MESSAGE
 
     async def request(
         self,
