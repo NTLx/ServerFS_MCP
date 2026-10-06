@@ -1,10 +1,11 @@
 # Windows Phase E — Codex runtime
 
 Status: **OPEN** (not CLOSED-PASS). The implementation and the deterministic Windows suite are
-landed, and the real runtime probe and model discovery both pass against the installed CLI.
-Closure is blocked because **the Codex CLI cannot complete a provider round trip on this host at
-all** — demonstrated with every ServerFS component removed, so it is not a ServerFS defect. That
-distinction is the whole content of this document, so it is stated first and not softened at the end.
+landed, and the real runtime probe, model discovery and **a real inference over the stdio transport**
+all pass against the installed CLI. What is not yet passing is a real inference over the **WebSocket
+listener** this runtime actually uses, which fails inside the provider with
+`workspace routing discovery failed`. That is stated first because it is the whole remaining gap,
+and it is not the same failure this document previously described.
 
 - Branch: `v0.11-phase-e-windows-codex`
 - Base: `bc3500fce28453c77118c265c51aa0d84b5580d2` (post-Phase-D main)
@@ -142,67 +143,80 @@ Phase 0C recorded 8 models on 2026-10-04. The catalog has since changed, which i
 §29 forbids hardcoding model ids: `list_agent_models` reads the live catalog, and the only fixed
 value anywhere is the *shape* of the response.
 
-### Blocked: the Codex CLI cannot reach the provider from this host, with or without a proxy
+### Correcting this document's earlier conclusion
 
-The Agent Runtime proxy is now **explicitly configured** (operator action, §2 below), and the proxy
-path itself is proven good: TCP to the proxy connects, and an HTTPS request through it reaches the
-provider and returns an unauthenticated 401 — the expected answer, and proof that the whole path
-works **without any proxy credential reaching the provider child**. All local calls still succeed
-against the same child: `probe` and `model/list` are unchanged above.
+An earlier revision of this file concluded that "this host's Codex CLI cannot complete provider
+inference at all". **That was wrong**, and the error was mine rather than the CLI's: my acceptance
+harness pointed `CODEX_HOME` at a fresh empty directory, and a ChatGPT-authenticated CLI keeps its
+tokens in `<codex_home>/auth.json`. The empty home silently de-authenticated it, the CLI fell back to
+the API endpoint with no credentials, and every turn failed `401 Unauthorized`. The harness removed
+the credentials; neither the product, the proxy, nor the CLI was at fault.
 
-The provider round trip does not. What made the cause unambiguous is removing every ServerFS
-component from the path: `codex app-server --stdio` speaks the same JSON-RPC over stdin/stdout, so
-there is no listener, no port, no capability token, no Bridge and no WebSocket. Two arms, same
-prompt, same CLI:
+The vendor's own tooling would have found this immediately, and should have been reached for first:
 
-| Arm | Proxy variables | Thread started | Turn |
-| --- | --- | --- | --- |
-| `with_proxy` | `HTTPS_PROXY` + `NO_PROXY` set | yes | **failed** — `Reconnecting... 1/5 … 3/5` |
-| `without_proxy` | none | yes | **failed** — `Reconnecting... 2/5 … 4/5` |
-
-Both arms stall identically with ServerFS entirely out of the path. So the CLI is not failing because
-of the transport, the token, the Bridge, the listener, or the proxy configuration — this host's Codex
-CLI cannot complete provider inference at all. That is an environment or account fact, not a v0.11
-proxy-security boundary: nothing anywhere required a proxy credential, and none was injected.
-
-### Proxy isolation, measured on the real child
-
-Despite the inference stall, the four isolation properties the runtime must hold are demonstrated:
-
-| Property | Measurement |
+| Tool | What it reported |
 | --- | --- |
-| Child receives the dedicated Agent proxy | `HTTPS_PROXY` present, non-loopback host, explicit port |
-| Child receives nothing else | no `SERVERFS_AGENT_*`, no `SERVERFS_PROXY_*`/`TUNNEL*`, no `CONTROL_PLANE_*` in the child env |
-| Mandatory loopback bypass survives | child `NO_PROXY` = `127.0.0.1, localhost, ::1` (complete) |
-| Bridge's own process stays proxy-free | Bridge env has **no** `HTTPS_PROXY` at all |
-| Control channel stays local | endpoint shape `ws://loopback:<ephemeral>/`, dialled with `proxy=None` |
+| `codex doctor`, no proxy | `proxy env vars none`, `ChatGPT inference URL https://chatgpt.com/backend-api/<redacted> request timed out (required)`, `✗ reachability` |
+| `codex doctor`, product variables | `✓ reachability active provider endpoints are reachable over HTTP`, `reachable (HTTP 405)`, `✓ websocket connected (HTTP 101 Switching Protocols)` |
 
-`SERVERFS_AGENT_NO_PROXY` was deliberately **not** set: the product merges the mandatory loopback
-bypass itself, so an operator value would only add a bypass this host does not need.
+Two facts from `doctor` reframed the whole investigation:
 
-### A real defect found, and honestly ruled out as the cause
+1. a ChatGPT-auth CLI talks to **`chatgpt.com/backend-api`**, not to `api.openai.com`, which is the
+   host this phase had been probing. `~/.codex/config.toml` sets no `model_provider`/`base_url`, so
+   the ChatGPT backend is the default.
+2. `ALL_PROXY` is actively harmful — the `all_proxy_form` arm failed with
+   `TLS handshake or certificate validation failed`. The product never injects it, so §7.2's injection
+   set is exactly right rather than merely sufficient. Worth keeping as evidence.
 
-`build_runtime_environment` forwards `CODEBUDDY_SERVICE_PROXY_URL` — a **loopback** proxy under a
-third-party name — into the provider child, because `_is_proxy_variable()` only recognises the
-standard proxy names and the `FORWARD_FORBIDDEN_PREFIXES` cover the `SERVERFS_PROXY_*` family by
-prefix. A third-party `*_PROXY_URL` naming matches neither. The child therefore sees two proxy
-configurations.
+### Where it actually stands now
 
-Before touching security-relevant code I isolated it: the same real turn was run twice, once with
-the policy environment exactly as produced and once with only the recognised proxy variables.
-**Both arms failed identically**, so the stray variable is not the cause and **no product change was
-made**. Recording this because "found a plausible defect" is not "found the defect"; widening
-`_is_proxy_variable` on this evidence would have been an unjustified change to a security boundary.
-It is reported as a residual for the maintainer instead.
+**A real inference succeeds.** `codex debug app-server send-message-v2` — the vendor's supported way
+to run one turn — completes in a plain shell with the proxy set, and a scripted stdio run through the
+product's own protocol calls (`thread/start` then `turn/start`) returns `final_response: "ready"`
+with zero errors. The proxy path, the credentials, the product's child environment and the JSON-RPC
+method sequence are therefore all proven good.
+
+**The same call over the WebSocket listener still fails**, inside the provider, with:
+
+```
+workspace routing discovery failed        (willRetry: false)
+turn/completed ... "status": "failed"      error: workspace routing discovery failed
+```
+
+The earlier form of this failure was `workspace routing discovery timed out`, and it moved to
+`failed` once the turn was given long enough to exhaust its retries. `turn/completed` is now reached,
+which it was not before, so the turn lifecycle itself is being driven correctly.
+
+What has been ruled out by measurement, not by argument:
+
+| Candidate | Verdict |
+| --- | --- |
+| proxy reachability | **works** — CONNECT + TLS 1.3 to `api.openai.com`, `chatgpt.com`, `openai.com` |
+| provider auth | **works** — `auth.json` is present in the real Codex home and used |
+| product child environment | **correct** — `HTTPS_PROXY` + complete loopback `NO_PROXY`, no `ALL_PROXY`, no Tunnel/Agent/Control Plane namespaces, `CODEX_HOME` set to the real home |
+| protocol method sequence | **correct** — identical methods to the official command |
+| working directory | **not the cause** — succeeds from that exact directory over stdio, fails over WS |
+| `serviceName` parameter | **not the cause** — removing it changes nothing |
+| turn timeout budget | **not the cause** — 300 s and a 20 s event wait still fail; stdio needs ~45 s and succeeds |
+
+So the remaining gap is narrowed to the difference between the stdio transport and the WebSocket
+listener for the same CLI, same auth, same proxy, same directory and same protocol calls. This
+document does not claim to know which side causes it, because it has not been established, and the
+deterministic suite cannot reach it: the double answers instantly and never performs workspace
+routing.
 
 ### Not run, not claimed
 
-Because no real turn completes, none of these were run and none is claimed: workspace-write (§40),
-native id persistence (§41), continuation (§42), question (§43), approval (§44), cancellation
-(§45), model override (§46), restart reconciliation (§47), lease/guard cleanup (§49), and real Job
-containment (§13 of the acceptance list). Running any of them against the fake provider would prove
-nothing about the runtime — the mistake Phase D's D9 harness already made once, and one this project
-has explicitly retracted before.
+Because no real turn completes **over the WebSocket listener this runtime uses**, none of these were
+run and none is claimed: workspace-write (§40), native id persistence (§41), continuation (§42),
+question (§43), approval (§44), cancellation (§45), model override (§46), restart reconciliation
+(§47), lease/guard cleanup (§49), and real Job containment. Running any of them against the fake
+provider would prove nothing about the runtime — the mistake Phase D's D9 harness already made once,
+and one this project has explicitly retracted before.
+
+Note that the stdio success above is **not** a substitute for these gates. It exercises the provider
+and the protocol, not the WebSocket control channel, the capability token, the Bridge-owned child or
+the writer lease, which are precisely what Phase E exists to accept.
 
 ## 5b. Operator proxy configuration (§2 of the ruling)
 
@@ -223,6 +237,35 @@ proxy contract, and that the same endpoint could be reused.
 
 The raw endpoint value was never printed by any script, in any output, in any commit message or in
 this document.
+
+### Proxy isolation, measured on the real child
+
+| Property | Measurement |
+| --- | --- |
+| Child receives the dedicated Agent proxy | `HTTPS_PROXY` present, non-loopback host, explicit port |
+| Child receives nothing else | no `SERVERFS_AGENT_*`, no `SERVERFS_PROXY_*`/`TUNNEL*`, no `CONTROL_PLANE_*` in the child env |
+| Mandatory loopback bypass survives | child `NO_PROXY` = `127.0.0.1, localhost, ::1` (complete) |
+| Bridge's own process stays proxy-free | Bridge env has **no** `HTTPS_PROXY` at all |
+| Control channel stays local | endpoint shape `ws://loopback:<ephemeral>/`, dialled with `proxy=None` |
+| No harmful proxy variable | `ALL_PROXY` absent; `codex doctor` shows it breaks TLS when present |
+
+`SERVERFS_AGENT_NO_PROXY` was deliberately **not** set: the product merges the mandatory loopback
+bypass itself, so an operator value would only add a bypass this host does not need.
+
+### A real defect found, and honestly ruled out as the cause
+
+`build_runtime_environment` forwards `CODEBUDDY_SERVICE_PROXY_URL` — a **loopback** proxy under a
+third-party name — into the provider child, because `_is_proxy_variable()` only recognises the
+standard proxy names and the `FORWARD_FORBIDDEN_PREFIXES` cover the `SERVERFS_PROXY_*` family by
+prefix. A third-party `*_PROXY_URL` naming matches neither. The child therefore sees two proxy
+configurations.
+
+Before touching security-relevant code I isolated it: the same real turn was run twice, once with
+the policy environment exactly as produced and once with only the recognised proxy variables.
+**Both arms failed identically**, so the stray variable is not the cause and **no product change was
+made**. Recording this because "found a plausible defect" is not "found the defect"; widening
+`_is_proxy_variable` on this evidence would have been an unjustified change to a security boundary.
+It is reported as a residual for the maintainer instead.
 
 ## 6. Doctor
 
@@ -257,19 +300,33 @@ and `ws://127.0.0.1:<ephemeral>`, and nothing else sensitive.
 
 - Everything in §5's not-run list: workspace-write, native id persistence, continuation, question,
   approval, cancellation, model override, restart reconciliation, lease/guard cleanup.
+- **Why a real turn fails over the WebSocket listener but succeeds over stdio.** Same CLI, same
+  credentials, same proxy, same directory, same JSON-RPC methods. Not established, and not guessed
+  at in this document.
 - Job Object containment of the Bridge-owned child against an abnormal Bridge death. The design
   relies on the Phase D supervisor Job and standard child inheritance, and the deterministic suite
   covers teardown, but the abnormal-termination case was not driven end to end this phase.
 - **Residual for the maintainer:** `build_runtime_environment` forwards a third-party loopback proxy
   variable (`CODEBUDDY_SERVICE_PROXY_URL` on this host) into the provider child, because the scrub
   recognises standard proxy names and `SERVERFS_PROXY_*` prefixes but not arbitrary `*_PROXY_URL`
-  naming. Measured to be **not** the cause of the stall above. It is still a real narrowing of the
+  naming. Measured to be **not** a cause of the failure above. It is still a real narrowing of the
   §7.1 property — the child's proxy configuration is decided partly by an unrelated ambient variable
   — and it should be decided on its own merits rather than fixed under acceptance pressure.
 - Behaviour when the operator's managed daemon is mid-flight.
 - Linux CI is not run from this host; the Linux gate must confirm that the shared mock and the
   lazy `codex_windows` import produce no collection error and that the Linux Codex UDS cases still
   execute rather than skip.
+
+## 8b. Process notes worth keeping
+
+- `asyncio.start_reading` no longer exists on Python 3.13. Framing a child's stdout needs a
+  background pump into a queue.
+- `asyncio.StreamReader.readline()` takes no timeout; bound it with `wait_for`.
+- Pointing `CODEX_HOME` at a fresh directory silently de-authenticates a ChatGPT-signed-in CLI. Any
+  acceptance run must use the real Codex home or place `auth.json` deliberately.
+- `codex doctor` and `codex debug app-server send-message-v2` are the provider's own diagnostics and
+  answer most connectivity questions in seconds. They were available the whole time; reaching for
+  them first would have saved two rounds of harness archaeology.
 
 ## 9. Phase F readiness
 

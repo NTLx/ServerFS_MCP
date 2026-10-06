@@ -38,10 +38,10 @@ C  C1–C5 PASS (2026-10-06) — the writer lease has a Windows twin: a platform
 No Phase 0 gate or design decision is outstanding (§18). Phase D is **CLOSED-PASS** (merged at
 `bc3500f`). Phase E — the Windows Codex runtime — is the current phase and is **OPEN**: the
 transport, the Bridge-owned app-server lifecycle, the adapter wiring and the deterministic Windows
-suite are landed, the real runtime probe and model discovery both pass against the installed CLI, and
-the runtime proxy isolation is measured and correct. Closure is blocked because this host's Codex CLI
-cannot complete a provider round trip **with or without** a proxy, which was established by removing
-ServerFS from the path entirely (see `docs/windows-phase-e-codex-2026-10-06.md`).
+suite are landed; the real runtime probe, model discovery, proxy isolation and a **real inference over
+stdio** all pass against the installed CLI. Closure is blocked on one narrowed failure: the same
+inference over the **WebSocket listener** fails inside the provider with
+`workspace routing discovery failed` (see `docs/windows-phase-e-codex-2026-10-06.md`).
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -1884,30 +1884,41 @@ Against the installed `codex-cli 0.159.2` the real runtime probe (`available`, v
 0.23 s) and real model discovery (11 models, live catalog) both pass, and `serverfs doctor` reports
 the three new read-only Codex checks as OK.
 
-Closure is blocked on provider connectivity. The dedicated credentialless Agent Runtime HTTP proxy
-was **explicitly configured by the operator** on 2026-10-06 (as a human configuration action, with no
-product-side mapping from `TUNNEL_HTTPS_PROXY` or `SERVERFS_PROXY_*`; the two stay independent
-configuration domains). That proxy is proven good from this host: TCP to it connects and an HTTPS
-request through it reaches the provider. The Bridge's proxy isolation is measured and correct — the
-child receives `HTTPS_PROXY` plus a complete `127.0.0.1,localhost,::1` bypass and no Tunnel, Agent or
-Control Plane namespace, while the Bridge's own process stays proxy-free and the control channel
-stays `ws://127.0.0.1:<ephemeral>` with `proxy=None`.
+Closure is blocked on one specific, narrowed failure. The dedicated credentialless Agent Runtime HTTP
+proxy was **explicitly configured by the operator** on 2026-10-06 (a human configuration action, with
+no product-side mapping from `TUNNEL_HTTPS_PROXY` or `SERVERFS_PROXY_*`; the two stay independent
+configuration domains). The proxy is proven good from this host: `codex doctor` reports
+`✓ reachability` and `✓ websocket connected (HTTP 101)` with exactly the variables the product
+injects, and `ALL_PROXY` is measurably harmful when present, which confirms §7.2's injection set is
+exactly right. The Bridge's proxy isolation is measured and correct — the child receives
+`HTTPS_PROXY` plus a complete `127.0.0.1,localhost,::1` bypass and no Tunnel, Agent or Control Plane
+namespace, while the Bridge's own process stays proxy-free and the control channel stays
+`ws://127.0.0.1:<ephemeral>` with `proxy=None`.
 
-The stall is nevertheless **not** a ServerFS defect, and this was established by removing ServerFS
-from the path rather than by argument: `codex app-server --stdio` speaks the same protocol with no
-listener, port, token, Bridge or WebSocket involved, and a real turn fails identically **with and
-without** the proxy variables. This host's Codex CLI cannot complete provider inference at all.
-Accordingly workspace-write, native id persistence, continuation, question, approval, cancellation,
-per-task model override, restart reconciliation and lease/guard cleanup have **not** been run and
-are not claimed, and neither is real Job containment. None of it may be approximated with the fake
-provider, which would prove nothing about the runtime.
+A **real inference now succeeds** over the stdio transport, both through `codex debug app-server
+send-message-v2` and through the product's own `thread/start` + `turn/start` calls, returning
+`final_response: "ready"`. The same call over the **WebSocket listener this runtime uses** fails
+inside the provider with `workspace routing discovery failed`. Same CLI, same credentials, same proxy,
+same working directory, same protocol methods. Auth was the earlier cause of failure and is fixed —
+the acceptance harness had pointed `CODEX_HOME` at an empty directory, which silently de-authenticates
+a ChatGPT-signed-in CLI; the product's default of `~/.codex` is correct. Two facts worth keeping:
+a ChatGPT-auth CLI talks to `chatgpt.com/backend-api`, not `api.openai.com`, and `codex doctor` /
+`codex debug app-server` answer connectivity questions in seconds and should have been reached for
+first.
+
+Because no real turn completes over the listener, workspace-write, native id persistence,
+continuation, question, approval, cancellation, per-task model override, restart reconciliation and
+lease/guard cleanup have **not** been run and are not claimed, and neither is real Job containment.
+None of it may be approximated with the fake provider, which would prove nothing about the runtime,
+and the stdio success is not a substitute: it does not exercise the WebSocket control channel, the
+capability token, the Bridge-owned child or the writer lease, which are what Phase E exists to
+accept.
 
 One real defect was found and deliberately **not** fixed under acceptance pressure:
 `build_runtime_environment` forwards a third-party loopback proxy variable into the provider child,
 because the scrub recognises standard proxy names and `SERVERFS_PROXY_*` prefixes but not arbitrary
-`*_PROXY_URL` naming. It was isolated by measurement and ruled out as the cause — both arms failed
-identically with it present and absent — so it is recorded as a residual for a maintainer decision
-rather than changed on the strength of a plausible story.
+`*_PROXY_URL` naming. It was isolated by measurement and ruled out as a cause, so it is recorded as
+a residual for a maintainer decision rather than changed on the strength of a plausible story.
 
 The deterministic side changed the coverage shape rather than just adding to it: the Codex adapter
 suite previously skipped entirely on Windows, because the double served an AF_UNIX socket. It now
