@@ -38,10 +38,10 @@ C  C1–C5 PASS (2026-10-06) — the writer lease has a Windows twin: a platform
 No Phase 0 gate or design decision is outstanding (§18). Phase D is **CLOSED-PASS** (merged at
 `bc3500f`). Phase E — the Windows Codex runtime — is the current phase and is **OPEN**: the
 transport, the Bridge-owned app-server lifecycle, the adapter wiring and the deterministic Windows
-suite are landed; the real runtime probe, model discovery, proxy isolation and a **real inference over
-stdio** all pass against the installed CLI. Closure is blocked on one narrowed failure: the same
-inference over the **WebSocket listener** fails inside the provider with
-`workspace routing discovery failed` (see `docs/windows-phase-e-codex-2026-10-06.md`).
+suite are landed; the real runtime probe, model discovery, workspace-routing readiness and a **real
+inference over the WebSocket listener** all pass against the installed CLI, and the ambient
+`*_PROXY_URL` trust-boundary defect found along the way is fixed. The §40–§49 acceptance gates are
+unblocked but not yet run (see `docs/windows-phase-e-codex-2026-10-06.md`).
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -1895,30 +1895,42 @@ exactly right. The Bridge's proxy isolation is measured and correct — the chil
 namespace, while the Bridge's own process stays proxy-free and the control channel stays
 `ws://127.0.0.1:<ephemeral>` with `proxy=None`.
 
-A **real inference now succeeds** over the stdio transport, both through `codex debug app-server
-send-message-v2` and through the product's own `thread/start` + `turn/start` calls, returning
-`final_response: "ready"`. The same call over the **WebSocket listener this runtime uses** fails
-inside the provider with `workspace routing discovery failed`. Same CLI, same credentials, same proxy,
-same working directory, same protocol methods. Auth was the earlier cause of failure and is fixed —
-the acceptance harness had pointed `CODEX_HOME` at an empty directory, which silently de-authenticates
-a ChatGPT-signed-in CLI; the product's default of `~/.codex` is correct. Two facts worth keeping:
-a ChatGPT-auth CLI talks to `chatgpt.com/backend-api`, not `api.openai.com`, and `codex doctor` /
-`codex debug app-server` answer connectivity questions in seconds and should have been reached for
-first.
+**A real inference now succeeds over the WebSocket listener**, three independent runs, each a fresh
+Bridge-owned app-server: probe available with version `0.159.2`, an 11-model live catalog,
+`account/read(refreshToken=false)` succeeding in 1.0–1.3 s with `workspaceRouting` present, and a
+turn completing with the final response exactly `ready` and zero provider errors.
 
-Because no real turn completes over the listener, workspace-write, native id persistence,
-continuation, question, approval, cancellation, per-task model override, restart reconciliation and
-lease/guard cleanup have **not** been run and are not claimed, and neither is real Job containment.
-None of it may be approximated with the fake provider, which would prove nothing about the runtime,
-and the stdio success is not a substitute: it does not exercise the WebSocket control channel, the
-capability token, the Bridge-owned child or the writer lease, which are what Phase E exists to
-accept.
+Two facts worth keeping. A ChatGPT-auth CLI talks to `chatgpt.com/backend-api`, not
+`api.openai.com`, and the upstream routing read is bounded at 15 s — so a
+`workspace routing discovery timed out` must not be read as "network unreachable", exactly as the
+maintainer's upstream citation (openai/codex#49827) shows on stdio as well. And
+`codex app-server generate-json-schema` is the authoritative source for method names; guessing them
+from documentation is worse.
 
-One real defect was found and deliberately **not** fixed under acceptance pressure:
-`build_runtime_environment` forwards a third-party loopback proxy variable into the provider child,
-because the scrub recognises standard proxy names and `SERVERFS_PROXY_*` prefixes but not arbitrary
-`*_PROXY_URL` naming. It was isolated by measurement and ruled out as a cause, so it is recorded as
-a residual for a maintainer decision rather than changed on the strength of a plausible story.
+**Transport causality: NOT established, and the evidence points away from it.** An earlier paired
+stdio-vs-WebSocket matrix appeared to show stdio 9/10 against WebSocket 0/10 — a textbook
+transport result — but it was **confounded**: the WebSocket arm's `CodexSettings` never set
+`use_proxy`, which defaults to False, so that child received a proxy-free environment and routing
+discovery had no egress. A follow-up control with the proxy correctly injected shows all three
+connection shapes succeeding — single, reopen-after-close, and **two live connections at once** —
+which is the shape §10 requires of a shared app-server. `account/read` is a valid routing-readiness
+probe (it reproduces the 15 s bound exactly when the child has no egress), but a three-run matrix with
+the gate **skipped** also returns `ready` 3/3, so on this path `initialize` is sufficient readiness
+and the extra wait is optional hardening rather than a required fix. That decision is left to the
+maintainer and is not implemented.
+
+Because the §40–§49 gates are now unblocked but not yet run, workspace-write, native id persistence,
+continuation, question, approval, cancellation, per-task model override, restart reconciliation,
+lease/guard cleanup and real Job containment remain **not run and not claimed**. None of it may be
+approximated with the fake provider, which would prove nothing about the runtime.
+
+One real trust-boundary defect was found by measurement and fixed in its own commit (`a3c4f30`),
+before this PR and not as a routing fix: both proxy-policy implementations recognised only the four
+standard proxy variables, so a vendor `*_PROXY_URL` ambient endpoint was forwarded into the provider
+child, letting an unrelated ambient variable partly decide its egress. The rule added is a
+case-insensitive `_PROXY_URL` **suffix**, implemented independently in both packages as §23/§70
+require — deliberately not a substring match, which would also swallow `PROXY_PROTOCOL_VERSION` and
+`PROXY_MODE`.
 
 The deterministic side changed the coverage shape rather than just adding to it: the Codex adapter
 suite previously skipped entirely on Windows, because the double served an AF_UNIX socket. It now
