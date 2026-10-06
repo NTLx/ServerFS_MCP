@@ -157,9 +157,6 @@ def _validate_workdirs(entries: Any) -> list[WorkdirAgentPolicy]:
         read_only = (
             _strict_bool_field(item, "workdir", "read_only") if "read_only" in item else True
         )
-        read_only = (
-            _strict_bool_field(item, "workdir", "read_only") if "read_only" in item else True
-        )
         if mode is AgentMode.DISABLED and runtimes:
             raise BridgeError("BRIDGE_CONFIG_INVALID", "disabled agent mode cannot allow runtimes")
         if mode is AgentMode.WORKSPACE_WRITE and read_only:
@@ -340,8 +337,14 @@ def _publish_private_file(path: Path, text: str) -> None:
     # the descriptor but not the object type; without it a directory planted at bridge.json reached
     # ``os.replace``, which then failed with a raw PermissionError after the temp file was already
     # written. Refusing here is what makes the guarantee "the target is untouched".
-    if path.exists() or _is_reparse(path):
-        if path.is_dir() and not _is_reparse(path):
+    if _is_reparse(path):
+        # Refused before anything else: a dangling symlink reports exists() == False, so testing
+        # existence first would let the cheapest planted case through.
+        raise BridgeError(
+            "BRIDGE_CONFIG_INVALID", "the Bridge config path is a reparse point"
+        )
+    if path.exists():
+        if path.is_dir():
             raise BridgeError(
                 "BRIDGE_CONFIG_INVALID", "the Bridge config path is a directory, not a file"
             )
@@ -379,14 +382,27 @@ def _publish_private_file(path: Path, text: str) -> None:
 
 
 def _is_reparse(path: Path) -> bool:
-    """Whether the path exists as a reparse point, which ``Path.exists()`` alone would miss."""
+    """Whether the path is a reparse point, including one whose target does not exist.
+
+    The ``path.exists()`` guard that used to precede the Windows call was a real defect, not a
+    redundancy. ``Path.exists()`` follows the link, so a *dangling* symlink — one pointing at a target
+    that is not there — reports False while ``lstat`` still reports the reparse tag. Prefixing the
+    check with ``exists()`` therefore classified exactly the case an attacker can plant cheaply and
+    invisibly as "nothing there", and the publication proceeded to write through it.
+
+    ``windows_security.is_reparse_point`` already answers the three cases correctly: a genuinely
+    absent path is False (``lstat`` raises ``FileNotFoundError``), an existing reparse point is True
+    from the tag or ``FILE_ATTRIBUTE_REPARSE_POINT``, and an inspection failure is refused closed by
+    raising. Adding a pre-check can only lose information, so none is added.
+    """
     import sys
 
     if sys.platform != "win32":
+        # POSIX has no reparse points; a symlink is the equivalent, and lstat is the right question.
         return path.is_symlink()
     from . import windows_security
 
-    return path.exists() and windows_security.is_reparse_point(path)
+    return windows_security.is_reparse_point(path)
 
 
 def _create_private(path: Path) -> bool:
