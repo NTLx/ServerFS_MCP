@@ -3,6 +3,12 @@
 The adapter reuses the official managed Codex App Server daemon.  It owns no
 Codex worker lifecycle beyond an optional, administrator-enabled invocation of
 the official idempotent `codex app-server daemon start` command.
+
+Windows differs in exactly one respect: there is no AF_UNIX control socket there, so the Bridge owns
+a `codex app-server` child and dials its authenticated loopback WebSocket endpoint. That is a
+transport and process-lifecycle difference only. Model discovery, threads, turns, steering,
+interrupt, approvals, questions, events, results, reconciliation and the request-scoped model
+override all remain the single implementation below, shared by both platforms.
 """
 
 from __future__ import annotations
@@ -10,7 +16,8 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from ..bootstrap import RuntimeProxy
 from ..config import CodexSettings
@@ -18,7 +25,17 @@ from ..errors import BridgeError
 from ..models import AgentProfile, ReconciliationStatus, RuntimeInfo, TaskRecord, TaskStatus
 from ..runtime_proxy import build_runtime_environment
 from .base import AdapterResult, AgentAdapter, ReconcileResult, TaskContext
-from .codex_transport import CONTROL_SOCKET_UNAVAILABLE_MESSAGE, CodexConnection
+from .codex_transport import (
+    CONTROL_SOCKET_UNAVAILABLE_MESSAGE,
+    LISTENER_UNAVAILABLE_MESSAGE,
+    CodexConnection,
+    UnixSocketEndpoint,
+)
+
+if TYPE_CHECKING:
+    from .codex_windows import WindowsCodexAppServer
+
+_WINDOWS = os.name == "nt"
 
 _COMMAND_APPROVAL = "item/commandExecution/requestApproval"
 _FILE_APPROVAL = "item/fileChange/requestApproval"
@@ -54,6 +71,7 @@ class CodexAdapter(AgentAdapter):
         *,
         client_version: str = "0.9.0",
         runtime_proxy: RuntimeProxy | None = None,
+        state_dir: Path | None = None,
     ) -> None:
         self.settings = settings
         self.client_version = client_version
@@ -65,6 +83,27 @@ class CodexAdapter(AgentAdapter):
         self._active_lock = asyncio.Lock()
         self._cancel_requested: set[str] = set()
         self._closed = False
+        #: Windows only. The Bridge owns the app-server child on this platform, so the adapter needs
+        #: a handle on its lifecycle. Constructed lazily so a Linux process never imports the
+        #: Windows runtime module and never allocates the object.
+        self._windows_runtime: WindowsCodexAppServer | None = None
+        if _WINDOWS and settings.enabled:
+            # Imported here, not at module scope. codex_windows builds a Windows-only environment
+            # contract, and a module-scope import would make this file unimportable on Linux — the
+            # exact collection failure Phase D had to fix in the renderer and the inspector.
+            from .codex_windows import WindowsCodexAppServer as _WindowsRuntime
+
+            if state_dir is None:
+                raise BridgeError(
+                    "AGENT_RUNTIME_UNAVAILABLE",
+                    "Codex runtime requires a Bridge state directory on Windows",
+                )
+            self._windows_runtime = _WindowsRuntime(
+                settings,
+                state_dir=state_dir,
+                runtime_proxy=runtime_proxy,
+                client_version=client_version,
+            )
 
     @property
     def name(self) -> str:
@@ -73,7 +112,7 @@ class CodexAdapter(AgentAdapter):
     async def probe(self) -> RuntimeInfo:
         if not self.settings.enabled or self._closed:
             return self._runtime_info(available=False)
-        connection = self._new_connection()
+        connection = await self._acquire_connection()
         try:
             await connection.connect()
         except BridgeError:
@@ -87,7 +126,7 @@ class CodexAdapter(AgentAdapter):
             await connection.close()
 
     async def list_models(self) -> dict[str, Any]:
-        connection = self._new_connection()
+        connection = await self._acquire_connection()
         try:
             await connection.connect()
             models: list[dict[str, Any]] = []
@@ -183,13 +222,14 @@ class CodexAdapter(AgentAdapter):
             if (
                 task.status == TaskStatus.FAILED.value
                 and task.error_code == "AGENT_RUNTIME_NOT_READY"
-                and task.error_message == CONTROL_SOCKET_UNAVAILABLE_MESSAGE
+                and task.error_message
+                in (CONTROL_SOCKET_UNAVAILABLE_MESSAGE, LISTENER_UNAVAILABLE_MESSAGE)
                 and not task.native_turn_id
             ):
                 return ReconcileResult(
                     status=ReconciliationStatus.NOT_RECOVERABLE,
                     provider_active=False,
-                    detail="Codex control socket failed before a native thread or turn started",
+                    detail="Codex transport failed before a native thread or turn started",
                 )
             return ReconcileResult(
                 status=ReconciliationStatus.NOT_RECOVERABLE,
@@ -197,7 +237,7 @@ class CodexAdapter(AgentAdapter):
                 detail="task has no persisted Codex thread id",
             )
 
-        connection = self._new_connection()
+        connection = await self._acquire_connection()
         try:
             await connection.connect()
             result = await connection.request(
@@ -268,6 +308,12 @@ class CodexAdapter(AgentAdapter):
                 *(item.connection.close() for item in active),
                 return_exceptions=True,
             )
+        # Ordering matters: every connection that could still be using the child is closed first,
+        # and only then is the child terminated and the capability token destroyed. Closing the
+        # child first would turn an orderly shutdown into a provider disconnect on each open task.
+        runtime = self._windows_runtime
+        if runtime is not None:
+            await runtime.close()
 
     async def _run(self, context: TaskContext, *, resume: bool) -> AdapterResult:
         if self._closed:
@@ -285,7 +331,11 @@ class CodexAdapter(AgentAdapter):
         # ``turn_ready``.  Otherwise a caller that reads ``running`` and steers
         # immediately hits a spurious "not active" error that Phase A's adapter
         # never produced.
-        active = _ActiveTask(context=context, connection=self._new_connection())
+        #
+        # The connection here is an unconnected placeholder replaced immediately below. It cannot be
+        # acquired yet: doing so would start the Bridge-owned app-server before the task is
+        # registered, so a rejected task would leave a provider child behind for no task at all.
+        active = _ActiveTask(context=context, connection=self._new_unix_connection())
         async with self._active_lock:
             if context.task_id in self._active:
                 raise BridgeError("AGENT_PROVIDER_ERROR", "Codex task is already active")
@@ -778,22 +828,51 @@ class CodexAdapter(AgentAdapter):
             pass
 
     async def _connect_with_optional_start(self) -> CodexConnection:
-        connection = self._new_connection()
+        connection = await self._acquire_connection()
         try:
             await connection.connect()
             return connection
         except BridgeError:
             await connection.close()
+            if _WINDOWS:
+                # On Windows the failure is handled inside the Bridge-owned lifecycle: the child
+                # that could not be reached is torn down, and the next attempt starts a fresh one.
+                # Re-running the official Linux autostart command here would be meaningless.
+                raise
             if not self.settings.autostart:
                 raise
         await self._start_official_daemon()
-        connection = self._new_connection()
+        connection = await self._acquire_connection()
         await connection.connect()
         return connection
 
-    def _new_connection(self) -> CodexConnection:
+    async def _acquire_connection(self) -> CodexConnection:
+        """Build one connection against the runtime this platform actually uses.
+
+        On Linux this is the managed daemon's control socket and nothing is started: ``probe`` and
+        ``list_models`` must keep reporting an absent daemon as unavailable rather than silently
+        launching one.
+
+        On Windows the app-server is Bridge-owned and does not survive the Bridge, so every entry
+        point -- probe, model list, task, continuation and reconciliation alike -- has to obtain the
+        live endpoint first. Reconciliation is the case that decides whether this is right: after a
+        Bridge restart there is no child, and a reconciler dialling a stale endpoint would report
+        ``UNKNOWN`` for every recoverable task and hold its writer-lease recovery guard forever.
+        """
+        runtime = self._windows_runtime
+        if runtime is None:
+            return self._new_unix_connection()
         return CodexConnection(
-            socket_path=self.settings.control_socket,
+            endpoint=await runtime.ensure_started(),
+            client_name="serverfs-agent-bridge",
+            client_version=self.client_version,
+            request_timeout=self.settings.request_timeout_seconds,
+            max_message_bytes=self.settings.max_message_bytes,
+        )
+
+    def _new_unix_connection(self) -> CodexConnection:
+        return CodexConnection(
+            endpoint=UnixSocketEndpoint(self.settings.control_socket),
             client_name="serverfs-agent-bridge",
             client_version=self.client_version,
             request_timeout=self.settings.request_timeout_seconds,

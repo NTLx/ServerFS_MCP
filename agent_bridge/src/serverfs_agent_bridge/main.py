@@ -41,7 +41,14 @@ async def _serve(
         fake = runtime_adapters.FakeAdapter(runtime_proxy=runtime_proxy)
         adapters[fake.name] = fake
     if config.codex.enabled:
-        codex = runtime_adapters.CodexAdapter(config.codex, runtime_proxy=runtime_proxy)
+        # state_dir is the Bridge's private state root. On Windows the Bridge owns the Codex
+        # app-server child, so its capability token lives under that root rather than in a
+        # workdir; on Linux the adapter ignores it and keeps using the managed daemon's socket.
+        codex = runtime_adapters.CodexAdapter(
+            config.codex,
+            runtime_proxy=runtime_proxy,
+            state_dir=config.state_dir,
+        )
         adapters[codex.name] = codex
     if config.claude.enabled:
         claude = runtime_adapters.ClaudeAdapter(config.claude)
