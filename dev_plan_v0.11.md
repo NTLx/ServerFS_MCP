@@ -1919,10 +1919,26 @@ the gate **skipped** also returns `ready` 3/3, so on this path `initialize` is s
 and the extra wait is optional hardening rather than a required fix. That decision is left to the
 maintainer and is not implemented.
 
-Because the §40–§49 gates are now unblocked but not yet run, workspace-write, native id persistence,
-continuation, question, approval, cancellation, per-task model override, restart reconciliation,
-lease/guard cleanup and real Job containment remain **not run and not claimed**. None of it may be
-approximated with the fake provider, which would prove nothing about the runtime.
+The §40–§49 acceptance harness is landed (`3bb2603`): the D9 chain with the fake adapter removed,
+driving the published MCP surface against the real provider, with a preflight that asserts the
+conditions whose absence produced this phase's earlier false conclusions.
+
+From a real run, confirmed: the chain publishes the 10 Agent tools over real stdio, a **real** turn
+runs, **native thread and turn ids persist** (§41), and the provider **originates a genuine approval
+request** before writing — *"May I write the requested file in the current workspace?"*, with a
+5-minute expiry. On this provider the workspace-write gate and the approval gate are the same
+interaction, which is provider behaviour rather than a harness artefact.
+
+What is **not** proven: the harness does not answer the approval, so §40 never reaches a terminal
+state and the gate does not complete. The fault is in the harness and is not yet isolated. So §40, §42,
+§43, §44 as a completed gate, §45, §46, §47, §48, §49 and real Job containment remain **not run and
+not claimed**. The approval *request* is evidenced; the approval *round trip* is not, and the two are
+reported separately on purpose. Nothing is approximated with the fake provider.
+
+Four further harness faults were found by running it and fixed in the same commit: teardown killed
+only the launcher and so left a Bridge holding the writer lease (the next run failed `WORKDIR_BUSY`
+against a lease no operator can release); a failing approval answer was swallowed by a bare `except`;
+the MCP read loop was unbounded; and buffered output made a submitted task look unsubmitted.
 
 One real trust-boundary defect was found by measurement and fixed in its own commit (`a3c4f30`),
 before this PR and not as a routing fix: both proxy-policy implementations recognised only the four
