@@ -141,7 +141,7 @@ def run_with_agent(config_path: str, base_env: dict[str, str]) -> int:
         wait_for_bridge_readiness,
     )
     from .native_config import load_native_config
-    from .windows_job import WindowsJob
+    from .windows_job import JobObjectError, WindowsJob
 
     # 1. load native config
     workdirs, settings = load_native_config(Path(config_path))
@@ -185,19 +185,33 @@ def run_with_agent(config_path: str, base_env: dict[str, str]) -> int:
         # 11-12. start the stdio child with Agent wiring, then forward MCP frames
         stdio_child = _start_stdio_child(rendered, base_env, config_path)
         return forward_stdio_child(stdio_child)
-    except AgentLifecycleError as exc:
+    except (AgentLifecycleError, JobObjectError) as exc:
+        # Both are redacted by construction: a failure class, never a raw handle or a traceback.
+        # Containment cannot be established or verified, so an Agent-enabled startup must not
+        # continue with a Bridge running outside the job (§15 D6).
         sys.stderr.write(f"serverfs-supervisor: {exc}\n")
         return 2
     finally:
         # §15 D7: stop the stdio child, ask the Bridge to stop, wait bounded, then close the Job
-        # Object as the final containment. Closing the job is what guarantees no provider
-        # descendant survives, including after an abnormal exit.
+        # Object as the final containment.
+        #
+        # Every step is individually guarded so a failure in one cannot skip job.close(): closing
+        # the job is what guarantees no provider descendant survives, so it must not be
+        # reachable-around by an exception in the step before it.
         if stdio_child is not None:
             terminate_process(stdio_child)
         if bridge is not None:
-            request_graceful_shutdown(bridge)
-            if not await_graceful_exit(bridge):
-                bridge.kill()
+            try:
+                request_graceful_shutdown(bridge)
+                if not await_graceful_exit(bridge):
+                    # The bounded wait expired. JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE is the kill, so
+                    # no signal is sent here and nothing can block the close below.
+                    pass
+            except Exception as shutdown_error:  # noqa: BLE001 - containment must still run
+                sys.stderr.write(
+                    "serverfs-supervisor: bridge shutdown failed "
+                    f"({type(shutdown_error).__name__})\n"
+                )
         job.close()
 
 

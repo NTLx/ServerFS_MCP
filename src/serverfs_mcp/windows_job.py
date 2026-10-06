@@ -58,10 +58,23 @@ class WindowsJob:
     # -- construction ---------------------------------------------------
 
     def open(self) -> None:
-        """Create the job and arm kill-on-close. Idempotent."""
+        """Create the job and arm kill-on-close. Idempotent.
+
+        Any underlying failure is translated to ``JobObjectError`` so the caller has one error type
+        to handle. Letting a raw ``OSError`` escape here would reach the supervisor outside its
+        redacted handler, which is the difference between "exit 2 with a failure class" and a
+        traceback in operator-visible stderr.
+        """
         if self._handle is not None:
             return
-        self._handle = _create_kill_on_close_job()
+        try:
+            self._handle = _create_kill_on_close_job()
+        except JobObjectError:
+            raise
+        except OSError as exc:
+            raise JobObjectError(
+                f"the containment job could not be created ({type(exc).__name__})"
+            ) from exc
         self._closed = False
 
     def assign(self, process: subprocess.Popen[Any]) -> None:
@@ -74,7 +87,14 @@ class WindowsJob:
         """
         if self._handle is None:
             raise JobObjectError("the job object is not open")
-        _assign_process(self._handle, process)
+        try:
+            _assign_process(self._handle, process)
+        except JobObjectError:
+            raise
+        except OSError as exc:
+            raise JobObjectError(
+                f"the Bridge process could not be assigned ({type(exc).__name__})"
+            ) from exc
 
     def close(self) -> None:
         """Close the job handle. On Windows this is the kill: the tree dies with the handle."""
@@ -191,7 +211,11 @@ def _assign_process(handle: int, process: subprocess.Popen[Any]) -> None:
     # CPython's Windows Popen exposes the process handle as ``_handle``; there is no public
     # accessor. ``_winapi`` is consulted as the documented fallback so this keeps working if the
     # private name ever moves. A pid is required for that fallback, so its absence is not fatal.
+    #
+    # The fallback opens its OWN handle and must therefore close it on both paths: leaking one per
+    # assignment would slowly exhaust this process's handle budget across repeated startups.
     target = getattr(process, "_handle", None)
+    opened_here = False
     if target is None:
         pid = getattr(process, "pid", None)
         if isinstance(pid, int) and pid > 0:
@@ -199,14 +223,19 @@ def _assign_process(handle: int, process: subprocess.Popen[Any]) -> None:
                 import _winapi
 
                 target = _winapi.OpenProcess(_PROCESS_ALL_ACCESS, False, pid)
+                opened_here = target is not None
             except (ImportError, OSError):
                 target = None
-    if target is None or int(target) == 0:
-        raise JobObjectError("the child process has no usable handle to assign")
-    if not kernel32.AssignProcessToJobObject(handle, int(target)):
-        # A nested-job restriction or a privilege boundary lands here. Agent-enabled startup must
-        # fail closed rather than run the Bridge unconstrained (§15 D6).
-        raise JobObjectError("the Bridge process could not be assigned to the job object")
+    try:
+        if target is None or int(target) == 0:
+            raise JobObjectError("the child process has no usable handle to assign")
+        if not kernel32.AssignProcessToJobObject(handle, int(target)):
+            # A nested-job restriction or a privilege boundary lands here. Agent-enabled startup
+            # must fail closed rather than run the Bridge unconstrained (§15 D6).
+            raise JobObjectError("the Bridge process could not be assigned to the job object")
+    finally:
+        if opened_here and target is not None:
+            _close_handle(int(target))
 
 
 def _close_handle(handle: int) -> None:
