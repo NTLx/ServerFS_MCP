@@ -10,10 +10,14 @@ from .base import AdapterResult, AgentAdapter, ReconcileResult, TaskContext
 
 
 class FakeAdapter(AgentAdapter):
-    def __init__(self) -> None:
+    def __init__(self, *, runtime_proxy: object | None = None) -> None:
         self._cancelled: set[str] = set()
         self.messages: dict[str, list[str]] = {}
         self._message_events: dict[str, asyncio.Event] = {}
+        #: Accepted and ignored. The production fake runtime performs no network egress, so it
+        #: has no use for the Agent proxy material — but ``_serve`` passes it to every runtime
+        #: uniformly so the D2 tests exercise the real wiring instead of a parallel path.
+        self.runtime_proxy = runtime_proxy
 
     @property
     def name(self) -> str:
