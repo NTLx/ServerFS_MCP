@@ -314,6 +314,10 @@ class McpStdioClient:
                 if request_id not in approvals:
                     approvals.append(request_id)
                     if allow_approval:
+                        # No error handling here on purpose: the call either succeeds or
+                        # the failure is the finding. Swallowing it is what made "could not
+                        # answer" and "never saw the request" indistinguishable, both surfacing as a
+                        # timeout.
                         self.call(
                             "respond_agent_approval",
                             {
@@ -322,7 +326,6 @@ class McpStdioClient:
                                 "decision": "approve_once",
                             },
                         )
-                        self.approval_failures.pop(task_id, None)
             time.sleep(0.2)
         self.observed_approvals[task_id] = approvals
         raise TimeoutError(f"task {task_id} stayed {status!r} for {timeout}s")
