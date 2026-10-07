@@ -43,6 +43,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FAKE_TUNNEL_SOURCE = REPO_ROOT / "tests" / "e2e" / "fake_tunnel_client.py"
@@ -349,6 +350,9 @@ class Lifecycle:
         self.tunnel_bindir.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(FAKE_TUNNEL_SOURCE, self.tunnel_bindir / "run")
         self.process: subprocess.Popen[bytes] | None = None
+        #: Where the chain's stderr goes. A file rather than a pipe: see `launch`.
+        self.stderr_path: Path = tmp_path / "chain-stderr.log"
+        self._stderr_handle: Any | None = None
 
     @property
     def bridge_json(self) -> Path:
@@ -446,7 +450,13 @@ class Lifecycle:
             ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            # A file, not a pipe. The whole native tree inherits this handle, and the product
+            # logger writes each record with a synchronous `sys.stderr.write` + `flush` on the
+            # serving event loop. With an undrained `subprocess.PIPE` that is a finite buffer nobody
+            # reads, so a burst of audit records fills it and blocks the loop inside the handler --
+            # which reads from the outside as a ServerFS tool that stopped answering. A file sink
+            # keeps every diagnostic line and removes the backpressure, with no product change.
+            stderr=self._stderr_sink(),
             env=self.child_env(),
             cwd=str(self.tunnel_bindir),
         )
@@ -549,14 +559,41 @@ class Lifecycle:
                 check=False,
             )
         wait_until(lambda: not self.bridge_pids(), timeout=20)
+        self._close_stderr()
 
     def stderr_text(self) -> str:
+        """The chain's stderr, read from the sink rather than from a live pipe.
+
+        Reading a live `subprocess.PIPE` blocks until the child closes it, which is a second way
+        for a diagnostic helper to hang. The file sink can be read at any time, including while the
+        chain is still running.
+        """
+        if self._stderr_handle is not None:
+            try:
+                return self.stderr_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                return ""
         if self.process is None or self.process.stderr is None:
             return ""
         try:
             return self.process.stderr.read().decode("utf-8", errors="replace")
         except (OSError, ValueError):
             return ""
+
+    def _stderr_sink(self) -> Any:
+        """Open (once) the file the chain's stderr goes to, and return the handle for `Popen`."""
+        if self._stderr_handle is None:
+            self.stderr_path.parent.mkdir(parents=True, exist_ok=True)
+            self._stderr_handle = self.stderr_path.open("wb")
+        return self._stderr_handle
+
+    def _close_stderr(self) -> None:
+        if self._stderr_handle is not None:
+            try:
+                self._stderr_handle.close()
+            except OSError:
+                pass
+            self._stderr_handle = None
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[bytes]:

@@ -70,6 +70,18 @@ _KEEP_TREE = bool(os.environ.get("PHASE_E_KEEP_TREE"))
 #: Run the MCP control before the pipe control, to test whether one causes the other to stall.
 _B_FIRST = bool(os.environ.get("PHASE_E_B_FIRST"))
 
+#: How many sequential public `get_agent_task` calls Control B makes.
+_CALL_COUNT = int(os.environ.get("PHASE_E_CALLS") or SEQUENTIAL_CALLS)
+
+#: Server log level for the rendered config. Switchable because the suspected cause is INFO audit
+#: logging reaching a stderr PIPE nobody drains, and that hypothesis is only testable if the level
+#: can be lowered without touching the harness's plumbing.
+_LOG_LEVEL = os.environ.get("PHASE_E_LOG_LEVEL") or "INFO"
+
+#: Send the chain's stderr to a file instead of an undrained pipe. The suspected cause is a finite
+#: pipe buffer filling up, and a file sink removes that possibility without touching product code.
+_FILE_STDERR = bool(os.environ.get("PHASE_E_FILE_STDERR"))
+
 #: Set once a control shows a slow or unanswered call, so the tree is preserved automatically.
 _reproduced_stall = False
 
@@ -404,17 +416,23 @@ async def _control_a(socket_path: str, task_id: str, request_id: str) -> dict[st
 
 
 async def _control_b(session: McpSession, task_id: str) -> dict[str, Any]:
-    """Serial `get_agent_task` over real MCP stdio, then the approval through the public tool."""
+    """Serial `get_agent_task` over real MCP stdio, then the approval through the public tool.
+
+    Uses its own task. Sharing Control A's task would mean A had already answered the
+    approval, so B's public approval would measure a stale request instead of the round trip.
+    """
     session.initialize(timeout=30.0)
+    own_task_id = _submit_via_mcp(session)
+    waiting = _await_waiting(session, own_task_id, timeout=120.0)
     latencies: list[float] = []
     slow = 0
     error: dict[str, Any] | None = None
-    for _ in range(SEQUENTIAL_CALLS):
+    for _ in range(_CALL_COUNT):
         started = time.monotonic()
         try:
             result = session.call(
                 "tools/call",
-                {"name": "get_agent_task", "arguments": {"task_id": task_id}},
+                {"name": "get_agent_task", "arguments": {"task_id": own_task_id}},
                 timeout=CALL_BOUND_SECONDS * 6,
             )
         except TimeoutError as exc:
@@ -430,7 +448,7 @@ async def _control_b(session: McpSession, task_id: str) -> dict[str, Any]:
 
     answer: dict[str, Any] = {}
     if error is None:
-        current = session.get_task(task_id, timeout=CALL_BOUND_SECONDS * 6)
+        current = session.get_task(own_task_id, timeout=CALL_BOUND_SECONDS * 6)
         nested = current.get("pending_request") or {}
         started = time.monotonic()
         result = session.call(
@@ -438,7 +456,7 @@ async def _control_b(session: McpSession, task_id: str) -> dict[str, Any]:
             {
                 "name": "respond_agent_approval",
                 "arguments": {
-                    "task_id": task_id,
+                    "task_id": own_task_id,
                     "request_id": current.get("pending_request_id"),
                     "decision": "approve_once",
                 },
@@ -449,10 +467,12 @@ async def _control_b(session: McpSession, task_id: str) -> dict[str, Any]:
             "outcome": "error" if result.get("isError") else "success",
             "elapsed_s": round(time.monotonic() - started, 3),
             "nested_matches_top": nested.get("request_id") == current.get("pending_request_id"),
+            "status": waiting.get("status"),
         }
 
     return {
         "surface": "real serverfs serve stdio, public MCP tools",
+        "own_task": own_task_id,
         "calls_attempted": len(latencies),
         "calls_slow": slow,
         "latency": _latency(latencies),
@@ -534,7 +554,7 @@ def _approval_mode_config(workdir: Path, read_only: bool) -> str:
     return "\n".join(
         [
             "[server]",
-            'log_level = "INFO"',
+            f'log_level = "{_LOG_LEVEL}"',
             "",
             "[agent]",
             "enabled = true",
@@ -588,6 +608,10 @@ def main() -> int:
             # value set in `os.environ` afterwards is discarded and the adapter silently runs its
             # default write mode instead.
             bridge_mode="approval",
+            # The one variable under test. An undrained stderr PIPE is the harness behaviour under
+            # suspicion; a file sink is the proposed fix. Both are runnable so the difference is
+            # measured rather than argued about.
+            stderr_is_pipe=not _FILE_STDERR,
         )
         lifecycle.config_override = _approval_mode_config(lifecycle.workdir, lifecycle.read_only)
         lifecycle.launch()
@@ -667,6 +691,12 @@ def main() -> int:
         final = _final_state(session, lifecycle, task_id)
         emit("final", **final)
 
+        emit(
+            "config",
+            log_level=_LOG_LEVEL,
+            public_calls=_CALL_COUNT,
+            stderr_sink=("file" if _FILE_STDERR else "undrained PIPE"),
+        )
         emit("verdict", classification=_classify(control_a, control_b))
         return 0
     finally:

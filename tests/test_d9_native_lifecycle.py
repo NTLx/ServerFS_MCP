@@ -708,7 +708,9 @@ class TestLauncherRefusalsAreRedacted:
             api_key_outside_workdirs=True,
         )
         lifecycle.launch()
-        return lifecycle, lifecycle.stderr_text()
+        # The launcher writes its refusal and exits, so the sink is read after it does; otherwise
+        # the file can still be empty here and the assertion would read as "the CLI said nothing".
+        return lifecycle, lifecycle.stderr_text(wait=30.0)
 
     def test_a_malformed_config_is_a_normalized_refusal(self, tmp_path: Path) -> None:
         lifecycle, stderr = self._refuse(tmp_path, '[server\nlog_level = "INFO"\n')
