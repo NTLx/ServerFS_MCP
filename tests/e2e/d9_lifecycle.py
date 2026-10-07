@@ -106,12 +106,20 @@ class Lifecycle:
         read_only: bool = False,
         config_override: str | None = None,
         api_key_outside_workdirs: bool = False,
+        bridge_mode: str = "write",
     ) -> None:
         self.tmp_path = tmp_path
         self.agent_enabled = agent_enabled
         self.proxy_enabled = proxy_enabled
         self.use_proxy = use_proxy
         self.read_only = read_only
+        # Which deterministic behaviour the test-only provider adapter performs. A
+        # parameter rather than an environment variable read from outside, because `child_env`
+        # builds the Bridge child's environment from scratch: a value set in `os.environ`
+        # afterwards is overwritten there, and the adapter then runs its default mode while the
+        # caller believes it asked for another. That is not hypothetical -- it is how a run meant
+        # to produce an approval quietly produced a plain workspace write instead.
+        self.bridge_mode = bridge_mode
         # An explicit configuration body, for the launcher-refusal cases that need a chain which is
         # valid enough to be launched but is refused at a chosen earlier step.
         self.config_override = config_override
@@ -181,7 +189,7 @@ class Lifecycle:
         env["SERVERFS_DATA_HOME"] = str(self.data_home)
         env["SERVERFS_TEST_RECORD_DIR"] = str(self.record_dir)
         env["SERVERFS_TEST_TUNNEL_RECORD"] = str(self.tunnel_record_path)
-        env["SERVERFS_TEST_BRIDGE_MODE"] = "write"
+        env["SERVERFS_TEST_BRIDGE_MODE"] = self.bridge_mode
         env["BRIDGE_PYTHON"] = str(BRIDGE_PYTHON)
         # The Bridge is a separate distribution in a separate virtualenv, exactly as a deployment
         # would be, so the supervisor needs the interpreter override the doctor also resolves.

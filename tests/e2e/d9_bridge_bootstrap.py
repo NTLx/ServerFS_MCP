@@ -56,6 +56,8 @@ from typing import Any
 WORKSPACE_WRITE_FILE = "phase-d-native-lifecycle.txt"
 WORKSPACE_WRITE_BYTES = b"written by the D9 fake provider adapter\n"
 WAIT_FILE = "phase-d-native-lifecycle-wait.txt"
+#: Written only in the `approval` mode, after the real `request_approval` round trip resolves.
+APPROVAL_ARTIFACT = "reproducer-artifact.txt"
 ENV_CAPTURE_FILE = "phase-d-native-lifecycle-env.json"
 
 
@@ -110,6 +112,33 @@ def _install() -> None:
                 while context.task_id not in self._cancelled:
                     await asyncio.sleep(0.02)
                 raise asyncio.CancelledError
+
+            if mode == "approval":
+                # A genuine approval through the production path: `request_approval` is the real
+                # context callback, so the Bridge creates the pending request, publishes it through
+                # `get_agent_task`, and resumes this coroutine only when the answer arrives. That
+                # makes the whole waiting state deterministic -- no provider, no network, no timing.
+                await context.emit_event("item.started", {"runtime": self.name, "kind": "command"})
+                resolution = await context.request_approval(
+                    {
+                        "category": "command",
+                        "title": "Deterministic approval for the stall reproducer",
+                        "command_display": "write reproducer-artifact.txt",
+                        "available_decisions": [
+                            "approve_once",
+                            "approve_session",
+                            "deny",
+                            "cancel_task",
+                        ],
+                    }
+                )
+                decision = str(resolution.get("decision"))
+                await context.emit_event("approval.observed", {"decision": decision})
+                if decision == "cancel_task":
+                    raise asyncio.CancelledError
+                (Path(context.cwd) / APPROVAL_ARTIFACT).write_bytes(b"approval-roundtrip-ok\n")
+                await context.emit_event("turn.completed", {"runtime": self.name})
+                return AdapterResult(final_response=f"approval={decision}")
 
             if mode == "env":
                 detail = await _capture_child_environment_async(
