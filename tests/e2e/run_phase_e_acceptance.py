@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from phase_e_acceptance import (  # noqa: E402
+from phase_e_acceptance import (
     AFTER_CANCEL_PROMPT,
     APPROVAL_PROMPT,
     APPROVAL_VARIANT,
@@ -36,12 +36,14 @@ from phase_e_acceptance import (  # noqa: E402
     Acceptance,
     McpStdioClient,
     ToolError,
+    compare_native_ids,  # noqa: E402
     native_ids,
 )
 from phase_e_lifecycle import (  # noqa: E402
     HarnessPreflightError,
     Lifecycle,
     process_command_lines,
+    require_file_stderr,
     require_preflight,
     wait_until,
 )
@@ -62,6 +64,8 @@ CONTINUATION_BYTES = b"serverfs-phase-e-continuation"
 QUESTION_ARTIFACT = "question-result.txt"
 APPROVAL_ARTIFACT = "approval-result.txt"
 CANCEL_ARTIFACT = "cancel-should-not-complete.txt"
+#: Probe file names for the writer-lease check. Removed at the end of the run.
+LEASE_PROBE_ARTIFACT = "lease-probe"
 
 
 def _alive(pid: int) -> bool:
@@ -109,6 +113,11 @@ def main() -> int:
     print(f"preflight: {json.dumps(pre.summary())}", flush=True)
 
     lifecycle = Lifecycle(tmp_root, env_file=env_file, codex_home=codex_home)
+    # Formal acceptance must not run on an undrained stderr pipe: the product logger
+    # writes each record synchronously on the serving event loop, so a pipe nobody drains
+    # eventually blocks a handler before it can return -- which reads as a ServerFS tool
+    # that stopped answering. Refused here rather than diagnosed later.
+    require_file_stderr(lifecycle)
     findings["workdir_is_repo_source"] = REPO_ROOT in lifecycle.workdir.parents
     baseline_codex = _codex_baseline()
     print(f"codex baseline pids: {len(baseline_codex)}", flush=True)
@@ -122,22 +131,32 @@ def main() -> int:
         print(f"agent tools published: {findings['agent_tool_count']}", flush=True)
 
         acc = Acceptance(client, lifecycle)
-        findings.update(_run_gates(client, lifecycle, acc, gates))
-        findings["findings"] = acc.findings
+        try:
+            findings.update(_run_gates(client, lifecycle, acc, gates))
+        finally:
+            # Every gate that already ran must be reported, even when a later one raises.
+            # Letting the exception skip this lost the evidence of every completed gate -- twice
+            # now, the second time hiding an already-passing section 42 and 46 behind a later
+            # failure.
+            findings["findings"] = acc.findings
+            findings["report"] = acc.report()
     finally:
         try:
             lifecycle.stop()
         except Exception:  # noqa: BLE001 - teardown must not mask the result
             lifecycle.kill()
 
-    # ---- §17 process cleanup --------------------------------------------------
-    wait_until(lambda: not lifecycle.codex_app_server_pids(), timeout=30)
-    findings["bridge_owned_app_server_gone"] = not lifecycle.codex_app_server_pids()
-    findings["codex_back_to_baseline"] = len(_codex_baseline()) == len(baseline_codex)
+        # ---- §17 process cleanup ----------------------------------------------
+        wait_until(lambda: not lifecycle.codex_app_server_pids(), timeout=30)
+        findings["bridge_owned_app_server_gone"] = not lifecycle.codex_app_server_pids()
+        findings["codex_back_to_baseline"] = len(_codex_baseline()) == len(baseline_codex)
 
-    print(json.dumps(findings, indent=2, ensure_ascii=False), flush=True)
-    if not args.keep:
-        shutil.rmtree(tmp_root, ignore_errors=True)
+        # The report is printed from the teardown path so a raised gate still produces evidence.
+        # Reporting only on the success path is what made a partially successful run look like a
+        # total loss, and cost real evidence twice in this phase.
+        print(json.dumps(findings, indent=2, ensure_ascii=False), flush=True)
+        if not args.keep:
+            shutil.rmtree(tmp_root, ignore_errors=True)
     return 0
 
 
@@ -191,7 +210,20 @@ def _run_gates(
                 if (disk / CONTINUATION_ARTIFACT).exists()
                 else False,
             )
+            # Read back through the public file surface, not only from disk: the gate is
+            # about what an operator can see through ServerFS, so reading the filesystem directly
+            # would answer a different question.
+            acc.record(
+                "continuation_public_read",
+                client.read_file(CONTINUATION_ARTIFACT),
+            )
             acc.record("continuation_native_ids", native_ids(client, lifecycle, task_id))
+            # Success alone does not prove continuation: a fresh thread with a similar prompt would
+            # also succeed. The evidence is identity -- same native session, new native turn.
+            acc.record(
+                "continuation_identity",
+                compare_native_ids(lifecycle, str(first), task_id),
+            )
             acc.record("continuation_events", client.event_types(task_id))
             results["continuation_task_id"] = task_id
             print(f"§5 continuation: {status}", flush=True)
@@ -221,7 +253,9 @@ def _model_override(client: McpStdioClient, lifecycle: Lifecycle, acc: Acceptanc
     The second task is the point: it proves the override was request-scoped rather than becoming a
     ServerFS default or touching the provider's own default model.
     """
-    catalog = client.call("list_agent_models", {})
+    # The runtime is a required argument: calling this without it fails validation, and the failure
+    # arrives as a tool error rather than a schema error at the client.
+    catalog = client.call("list_agent_models", {"runtime": "codex"})
     models = catalog.get("models", [])
     # A live selection, never a hardcoded id: the catalog is a dated snapshot, not a contract.
     chosen = next(
@@ -241,12 +275,40 @@ def _model_override(client: McpStdioClient, lifecycle: Lifecycle, acc: Acceptanc
     acc.record("model_task_response", (task_with.get("final_response") or "").strip())
     acc.record("model_task_recorded_request", task_with.get("requested_model"))
 
-    without_model = client.submit("Reply exactly:\n\nmodel-ok\nDo not use tools.")
+    # A distinct expected reply, so a response that merely echoes the first task's instruction
+    # cannot be mistaken for this one having run.
+    without_model = client.submit("Reply exactly:\n\ndefault-ok\nDo not use tools.")
     status_without = client.wait_status(without_model, timeout=900)
     task_without = client.task(without_model)
     acc.record("model_omitted_status", status_without)
+    acc.record("model_omitted_response", (task_without.get("final_response") or "").strip())
     acc.record("model_omitted_inherited", task_without.get("requested_model"))
+    acc.record("model_persistent_default_unchanged", _codex_default_unchanged(str(model_id)))
     return {"model_task_id": with_model, "model_omitted_task_id": without_model}
+
+
+def _codex_default_unchanged(requested_model: str) -> bool:
+    """Whether the operator's Codex config still does not name the overridden model.
+
+    Read-only, and the contents are never printed. Asserting the property directly -- the
+    config does not carry the model this run requested -- is what proves the override was
+    request-scoped rather than persisted into the provider's own default.
+    """
+    config = Path.home() / ".codex" / "config.toml"
+    if not config.exists():
+        return True
+    try:
+        text = config.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return True
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        if key.strip() == "model":
+            return value.strip().strip('"').strip("'") != requested_model
+    return True
 
 
 def _question(client: McpStdioClient, lifecycle: Lifecycle, acc: Acceptance) -> dict:
@@ -356,18 +418,33 @@ def _cancel(client: McpStdioClient, lifecycle: Lifecycle, acc: Acceptance) -> di
     live turn rather than on a submit that has not been picked up yet.
     """
     task_id = client.submit(CANCEL_PROMPT)
-    # Wait for provider-side activity before cancelling.
-    deadline = time.monotonic() + 300
+    # Wait for real provider-side activity before cancelling, preferring an executing item
+    # over a bare turn start: an interrupt landing on a turn that has not begun executing proves
+    # less than one that interrupts work in flight.
+    deadline = time.monotonic() + 420
     saw_activity = False
+    saw_executing_item = False
     while time.monotonic() < deadline:
-        types = client.event_types(task_id)
-        if any("item.started" in t or "turn.started" in t for t in types):
+        events = client.events(task_id)
+        types = {str(e.get("event_type")) for e in events}
+        if "item.started" in types or "turn.started" in types:
             saw_activity = True
+        for event in events:
+            if str(event.get("event_type")) != "item.started":
+                continue
+            item = event.get("payload") or {}
+            if not isinstance(item, dict):
+                continue
+            kind = str(item.get("type") or item.get("kind") or item.get("item_type") or "")
+            if "command" in kind.lower() or "exec" in kind.lower():
+                saw_executing_item = True
+        if saw_executing_item:
             break
         if client.task(task_id)["status"] in TERMINAL:
             break
         time.sleep(0.5)
     acc.record("cancel_saw_provider_activity", saw_activity)
+    acc.record("cancel_saw_executing_item", saw_executing_item)
     if not saw_activity:
         return {"cancelled": False, "reason": "no provider-side activity observed"}
 
@@ -382,11 +459,40 @@ def _cancel(client: McpStdioClient, lifecycle: Lifecycle, acc: Acceptance) -> di
     acc.record("cancel_final_status", final)
     acc.record("cancel_artifact_absent", not (lifecycle.workdir / CANCEL_ARTIFACT).exists())
 
+    # Bounded polling for the writer lease, not a fixed sleep: Phase C already showed a short race
+    # between a terminal status and the service's finally-block releasing the lease, so a fixed wait
+    # would report either a false failure or a false success depending on timing.
+    lease_released = False
+    lease_deadline = time.monotonic() + 120
+    attempt = 0
+    while time.monotonic() < lease_deadline:
+        attempt += 1
+        if client.try_call("create_text_file", _lease_probe_args(attempt)) is not None:
+            lease_released = True
+            acc.record("cancel_lease_probe_path", f"{LEASE_PROBE_ARTIFACT}-{attempt}")
+            break
+        time.sleep(0.5)
+    acc.record("cancel_lease_released", lease_released)
+
     after = client.submit(AFTER_CANCEL_PROMPT)
     after_status = client.wait_status(after, timeout=900)
     acc.record("after_cancel_status", after_status)
     acc.record("after_cancel_response", (client.task(after).get("final_response") or "").strip())
     return {"cancelled": final in {"cancelled", "interrupted"}, "task_id": task_id}
+
+
+def _lease_probe_args(attempt: int) -> dict:
+    """A fresh path per attempt.
+
+    `create_text_file` never overwrites -- a second call on the same path fails with
+    PATH_ALREADY_EXISTS, which would read as "the lease is still held" rather than "the probe
+    already succeeded". Naming each attempt uniquely keeps the signal about the lease.
+    """
+    return {
+        "workdir": "acceptance",
+        "path": f"{LEASE_PROBE_ARTIFACT}-{attempt}",
+        "content": "lease-probe",
+    }
 
 
 if __name__ == "__main__":
