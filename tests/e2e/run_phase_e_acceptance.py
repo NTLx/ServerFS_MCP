@@ -166,10 +166,6 @@ def _run_gates(
         # A real approval the provider asked for, answered through the public tool. Recorded so the
         # §8 evidence is a count of genuine provider requests rather than an assumption.
         acc.record("write_approvals_observed", len(client.observed_approvals.get(task_id, [])))
-        if client.approval_failures.get(task_id):
-            acc.record("write_approval_failures", client.approval_failures[task_id])
-        if client.missing_pending_id.get(task_id):
-            acc.record("write_missing_pending_id", client.missing_pending_id[task_id])
         acc.record("write_artifact_on_disk", (disk / WRITE_ARTIFACT).exists())
         acc.record(
             "write_artifact_exact",
@@ -270,7 +266,7 @@ def _question(client: McpStdioClient, lifecycle: Lifecycle, acc: Acceptance) -> 
         if task["status"] != "waiting_for_question":
             acc.record(f"question_{label}_status", task["status"])
             continue
-        request_id = client.pending_request_id(task_id)
+        request_id, nested = client.pending_request(task_id)
         # Provenance: the event stream must show the provider asking, not a harness-injected event.
         events = client.events(task_id)
         acc.record(
@@ -278,6 +274,7 @@ def _question(client: McpStdioClient, lifecycle: Lifecycle, acc: Acceptance) -> 
             sorted({str(e.get("event_type")) for e in events}),
         )
         acc.record(f"question_{label}_pending_request_id_present", bool(request_id))
+        acc.record(f"question_{label}_decisions", sorted(client.offered_decisions(nested)))
         try:
             client.call(
                 "answer_agent_question",
@@ -321,7 +318,8 @@ def _approval(client: McpStdioClient, lifecycle: Lifecycle, acc: Acceptance) -> 
         if task["status"] != "waiting_for_approval":
             acc.record(f"approval_{label}_status", task["status"])
             continue
-        request_id = client.pending_request_id(task_id)
+        request_id, nested = client.pending_request(task_id)
+        acc.record(f"approval_{label}_decisions", sorted(client.offered_decisions(nested)))
         acc.record(
             f"approval_{label}_events",
             sorted({str(e.get("event_type")) for e in client.events(task_id)}),

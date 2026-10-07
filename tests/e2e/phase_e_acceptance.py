@@ -21,7 +21,9 @@ Two rules the maintainer set that this driver enforces rather than assumes:
 from __future__ import annotations
 
 import json
+import queue
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -91,16 +93,16 @@ class McpStdioClient:
     def __init__(self, lifecycle: Lifecycle) -> None:
         self.lifecycle = lifecycle
         self._next_id = 0
+        self._inbox: queue.Queue[dict | BaseException] | None = None
         #: Every approval request answered per task, recorded so the evidence distinguishes an
         #: approval the provider actually asked for from one the harness manufactured.
         self.observed_approvals: dict[str, list[str]] = {}
-        #: Why an answer failed, when it did. Recorded rather than swallowed, because a silent
-        #: failure made "could not answer" look identical to "never saw the request".
-        self.approval_failures: dict[str, list[str]] = {}
-        #: The task keys seen on a waiting_for_approval poll that carried no id. Diagnostic only.
-        self.missing_pending_id: dict[str, list[str]] = {}
         #: Server-initiated notifications seen while waiting for a response, by method name.
         self.server_notifications: list[str] = []
+        #: Ids of replies to requests that already timed out. Non-empty means the chain answered
+        #: something after the harness had given up, which is how a slow response and a stuck layer
+        #: become distinguishable instead of both reading as "a timeout".
+        self.abandoned_responses: list[Any] = []
 
     def _send(self, payload: dict) -> None:
         assert self.lifecycle.process is not None
@@ -115,23 +117,63 @@ class McpStdioClient:
         assert line, f"the chain closed stdout: {self.lifecycle.stderr_text()[-2000:]}"
         return json.loads(line.decode("utf-8"))
 
+    def _ensure_reader(self) -> queue.Queue[dict | BaseException]:
+        """Start the single stdout reader, once, and return the queue it feeds.
+
+        Exactly one reader for the life of the client. Several would each call ``readline`` on the
+        same pipe, so a response could be delivered to whichever thread happened to win, and the
+        thread that lost it would block until its own timeout -- turning a healthy chain into an
+        apparent hang. The thread outlives individual requests on purpose: after a request gives up,
+        the reader keeps draining stdout so the next one starts from a clean stream.
+        """
+        if self._inbox is None:
+            inbox: queue.Queue[dict | BaseException] = queue.Queue()
+            self._inbox = inbox
+
+            def pump() -> None:
+                try:
+                    while True:
+                        inbox.put(self._read())
+                except BaseException as exc:  # noqa: BLE001 - relayed to callers verbatim
+                    inbox.put(exc)
+                    return
+
+            threading.Thread(target=pump, daemon=True, name="mcp-reader").start()
+        return self._inbox
+
     def request(self, method: str, params: dict | None = None) -> dict:
+        """One JSON-RPC call, with a read that genuinely times out.
+
+        The bound has to wrap a blocking read, not sit between messages. An earlier version checked
+        the deadline only at the top of a loop whose body was a blocking ``readline()``, so a chain
+        that stopped answering parked the harness forever and the run was eventually reported as a
+        timeout -- twice making a stuck MCP layer look like provider latency.
+        """
+        inbox = self._ensure_reader()
         self._next_id += 1
         request_id = self._next_id
         self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}})
-        # Bounded, so a chain that answers nothing reports which call was outstanding instead of
-        # hanging until the outer timeout. An unbounded read here is what turned a missing approval
-        # answer into a run that looked like a slow provider.
         deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            message = self._read()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"no response to {method} (request {request_id}) within 120s")
+            try:
+                message = inbox.get(timeout=remaining)
+            except queue.Empty as exc:
+                raise TimeoutError(
+                    f"no response to {method} (request {request_id}) within 120s"
+                ) from exc
+            if isinstance(message, BaseException):
+                raise message
             if message.get("id") == request_id:
                 return message
-            # Anything else on this stream is a server-initiated notification, which the acceptance
-            # has no use for. Recorded so an unexpected one is visible rather than invisible.
+            # Anything else on this stream is a server-initiated notification or a reply to an
+            # abandoned request. Recorded so an unexpected one is visible rather than invisible.
             if "method" in message and "id" not in message:
                 self.server_notifications.append(str(message.get("method")))
-        raise TimeoutError(f"no response to {method} (request {request_id}) within 120s")
+            else:
+                self.abandoned_responses.append(message.get("id"))
 
     def notify(self, method: str, params: dict | None = None) -> None:
         self._send({"jsonrpc": "2.0", "method": method, "params": params or {}})
@@ -190,24 +232,48 @@ class McpStdioClient:
     def task(self, task_id: str) -> dict:
         return self.call("get_agent_task", {"task_id": task_id})
 
-    def pending_request_id(self, task_id: str) -> str | None:
-        """The pending interaction id, from the public task representation.
+    def pending_request(self, task_id: str) -> tuple[str, dict[str, Any]]:
+        """The pending interaction, asserting the frozen contract rather than tolerating variants.
 
-        ``BridgeService.get_task`` replaces the internal ``pending_request_id`` column with a
-        ``pending_request`` object, so the flat column name is *not* what the public surface
-        returns. An earlier version of this harness read the flat name, found nothing, and silently
-        answered nothing -- so the task sat until its interaction expired and the run reported a
-        timeout instead of what actually happened. Both names are accepted here so a future change
-        to either side fails loudly rather than quietly.
+        There is exactly one legal shape: a non-empty top-level ``pending_request_id`` *and* a
+        nested ``pending_request`` object whose ``request_id`` equals it and whose ``task_id``
+        points back at this task. Anything else is a contract failure and raises.
+
+        An earlier version accepted "nested if present, otherwise top-level". That fallback is
+        what made a missing id indistinguishable from a present one, so a run that answered
+        nothing looked like a run that was answering. Disagreement now fails loudly instead.
         """
         task = self.task(task_id)
+        top = task.get("pending_request_id")
         nested = task.get("pending_request")
-        if isinstance(nested, dict):
-            value = nested.get("request_id")
-            if isinstance(value, str) and value:
-                return value
-        value = task.get("pending_request_id")
-        return value if isinstance(value, str) and value else None
+        problems: list[str] = []
+        if not isinstance(top, str) or not top:
+            problems.append("top-level pending_request_id missing or empty")
+        if not isinstance(nested, dict):
+            problems.append("nested pending_request missing or not an object")
+        else:
+            if nested.get("request_id") != top:
+                problems.append("nested request_id does not match pending_request_id")
+            if nested.get("task_id") != task_id:
+                problems.append("nested task_id does not match the requested task")
+        if problems:
+            raise ToolError(
+                "get_agent_task",
+                "pending-request contract failed: " + "; ".join(problems),
+            )
+        return top, nested
+
+    def offered_decisions(self, nested: dict[str, Any]) -> list[str]:
+        """The decisions the provider itself offered, from the one payload key carrying them.
+
+        Read rather than assumed: an approval answered with a decision the provider never
+        offered would prove nothing about the round trip.
+        """
+        payload = nested.get("payload")
+        if not isinstance(payload, dict):
+            return []
+        raw = payload.get("available_decisions")
+        return [str(d) for d in raw] if isinstance(raw, list) else []
 
     def wait_status(self, task_id: str, timeout: float, *, allow_approval: bool = True) -> str:
         """Wait for a terminal status, answering a real approval request if one arrives.
@@ -217,9 +283,13 @@ class McpStdioClient:
         only watched for terminal states would sit there until the interaction expired and then
         report a timeout rather than what actually happened.
 
-        Answering here is not a workaround: it is the same public tool §8 exercises deliberately,
-        and every answered request id is recorded, so the evidence still shows a genuine provider
-        request rather than one the harness manufactured.
+        Answering here is not a workaround: it is the same public tool the approval gate exercises
+        deliberately, and every answered request id is recorded, so the evidence stays a count of
+        provider-originated requests rather than ones the harness manufactured.
+
+        A failed answer raises. It used to be recorded and swallowed, which made "could not answer"
+        indistinguishable from "never saw the request" -- and the run then reported a timeout, which
+        is how a harness fault got reported as provider latency.
 
         ``allow_approval=False`` for the approval gate itself, where the request is the thing under
         test and must be observed rather than silently answered.
@@ -234,30 +304,25 @@ class McpStdioClient:
                 self.observed_approvals[task_id] = approvals
                 return status
             if status == "waiting_for_approval":
-                request_id = self.pending_request_id(task_id)
-                if request_id is None and task.get("status") == "waiting_for_approval":
-                    # The task says it is waiting and no id was found. That combination should be
-                    # impossible, so it is recorded rather than treated as "nothing to answer" --
-                    # an earlier version did exactly that and the run reported a timeout instead.
-                    self.missing_pending_id.setdefault(task_id, sorted(task))
-                if request_id and request_id not in approvals:
+                request_id, nested = self.pending_request(task_id)
+                decisions = self.offered_decisions(nested)
+                if "approve_once" not in decisions:
+                    raise ToolError(
+                        "respond_agent_approval",
+                        f"provider did not offer approve_once; offered {sorted(decisions)}",
+                    )
+                if request_id not in approvals:
                     approvals.append(request_id)
                     if allow_approval:
-                        try:
-                            self.call(
-                                "respond_agent_approval",
-                                {
-                                    "task_id": task_id,
-                                    "request_id": request_id,
-                                    "decision": "approve_once",
-                                },
-                            )
-                            self.approval_failures.pop(task_id, None)
-                        except ToolError as exc:
-                            # Recorded, not swallowed. An earlier version passed here silently, so
-                            # a request that could not be answered looked identical to one that was
-                            # never seen -- and the run reported a timeout rather than the cause.
-                            self.approval_failures.setdefault(task_id, []).append(str(exc)[:200])
+                        self.call(
+                            "respond_agent_approval",
+                            {
+                                "task_id": task_id,
+                                "request_id": request_id,
+                                "decision": "approve_once",
+                            },
+                        )
+                        self.approval_failures.pop(task_id, None)
             time.sleep(0.2)
         self.observed_approvals[task_id] = approvals
         raise TimeoutError(f"task {task_id} stayed {status!r} for {timeout}s")
