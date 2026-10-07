@@ -9,7 +9,10 @@ import pytest
 from websockets.asyncio.server import unix_serve
 
 from platform_contract import linux_only
-from serverfs_agent_bridge.adapters.codex_transport import CodexConnection
+from serverfs_agent_bridge.adapters.codex_transport import (
+    CodexConnection,
+    UnixSocketEndpoint,
+)
 
 pytestmark = linux_only("the Codex App Server control socket is a Unix-domain socket")
 
@@ -74,7 +77,10 @@ async def test_codex_transport_initializes_and_routes_rpc(tmp_path: Path) -> Non
 
     server = await unix_serve(handler, path=str(socket_path))
     connection = CodexConnection(
-        socket_path=socket_path,
+        # An endpoint, not a bare path: the transport is shared between the Linux
+        # managed daemon's AF_UNIX socket and the Bridge-owned loopback WebSocket listener this
+        # phase added on Windows, and the caller states which one it is.
+        endpoint=UnixSocketEndpoint(path=socket_path),
         client_name="test-client",
         client_version="test",
         request_timeout=2,
