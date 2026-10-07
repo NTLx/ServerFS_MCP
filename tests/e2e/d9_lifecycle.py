@@ -107,6 +107,7 @@ class Lifecycle:
         config_override: str | None = None,
         api_key_outside_workdirs: bool = False,
         bridge_mode: str = "write",
+        stderr_is_pipe: bool = False,
     ) -> None:
         self.tmp_path = tmp_path
         self.agent_enabled = agent_enabled
@@ -120,6 +121,10 @@ class Lifecycle:
         # caller believes it asked for another. That is not hypothetical -- it is how a run meant
         # to produce an approval quietly produced a plain workspace write instead.
         self.bridge_mode = bridge_mode
+        #: Keep the undrained-pipe behaviour when a test is specifically measuring it.
+        self.stderr_is_pipe = stderr_is_pipe
+        self.stderr_path: Path = tmp_path / "chain-stderr.log"
+        self._stderr_handle = None
         # An explicit configuration body, for the launcher-refusal cases that need a chain which is
         # valid enough to be launched but is refused at a chosen earlier step.
         self.config_override = config_override
@@ -176,6 +181,38 @@ class Lifecycle:
         return "\n".join(lines)
 
     # -- environment -----------------------------------------------------------------
+
+    def _stderr_sink(self):
+        """Open (once) the file the chain's stderr goes to, and return the handle for `Popen`."""
+        if self._stderr_handle is None:
+            self.stderr_path.parent.mkdir(parents=True, exist_ok=True)
+            self._stderr_handle = self.stderr_path.open("wb")
+        return self._stderr_handle
+
+    def stderr_text(self, *, wait: float = 0.0) -> str:
+        """The chain's stderr, from the sink when there is one.
+
+        A caller that wants the output of a process which has just been launched for its refusal
+        message passes `wait`: the launcher writes and exits, and reading the file before the write
+        lands would return an empty string and look like a silent process. Nothing waits by default,
+        so a live chain can still be inspected without blocking.
+        """
+        if wait > 0 and self.process is not None and self.process.poll() is None:
+            try:
+                self.process.wait(timeout=wait)
+            except subprocess.TimeoutExpired:
+                pass
+        if self._stderr_handle is not None:
+            try:
+                return self.stderr_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                return ""
+        if self.process is None or self.process.stderr is None:
+            return ""
+        try:
+            return self.process.stderr.read().decode("utf-8", errors="replace")
+        except (OSError, ValueError):
+            return ""
 
     def child_env(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         """The environment the launcher starts with, with every namespace deliberately polluted."""
@@ -254,7 +291,13 @@ class Lifecycle:
             ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            # A file, not a pipe, unless a test asks for the old behaviour. The whole native tree
+            # inherits this handle and the product logger writes each record with a synchronous
+            # `sys.stderr.write` + `flush` on the serving event loop, so an undrained pipe is a
+            # finite buffer that eventually blocks the loop inside a handler. That presents as a
+            # ServerFS tool that stopped answering, which is the wrong conclusion to draw. The pipe
+            # behaviour stays available so the difference can be measured, not argued about.
+            stderr=(subprocess.PIPE if self.stderr_is_pipe else self._stderr_sink()),
             env=self.child_env(extra_env),
             cwd=str(self.tunnel_bindir),
         )
@@ -303,14 +346,6 @@ class Lifecycle:
             self.process.wait(timeout=15)
         except subprocess.TimeoutExpired:
             pass
-
-    def stderr_text(self) -> str:
-        if self.process is None or self.process.stderr is None:
-            return ""
-        try:
-            return self.process.stderr.read().decode("utf-8", errors="replace")
-        except (OSError, ValueError):
-            return ""
 
     def bridge_pids(self) -> list[int]:
         """Every live process whose command line mentions this data home's Bridge config.
