@@ -226,19 +226,65 @@ So the workspace-write gate and the approval gate are **the same interaction** o
 real Codex will not write a file without asking. That is genuine provider-originated behaviour, not
 a harness artefact, and it is recorded as such.
 
-**What is not proven.** The harness does not answer the approval, so the task never reaches a terminal
-state and §40 does not complete. The fault is in the harness, not the product: the pending request
-is in the store, `BridgeService.get_task` publishes it as a nested `pending_request` object, and the
-harness reads that. The blocking point has not been isolated, so nothing here is claimed.
+### The approval round trip passes, and so does §40 with it
+
+A one-shot probe drove the real chain against the real provider and answered the request once
+through the public tool. Result:
+
+| Step | Outcome |
+| --- | --- |
+| `task.get` while waiting | `waiting_for_approval`; top-level id **and** nested object both present and **equal**; nested `task_id` points back; `kind=approval`; `status=pending`; offered `[approve_once, cancel_task]` |
+| `respond_agent_approval` (`approve_once`) | success, **0.03 s**, `resolved: true`, ids matched |
+| task after the answer | `waiting_for_approval` → **`running`** |
+| request row | **`resolved`** |
+| events | `approval.requested` **and** `approval.resolved` both present |
+| terminal state | **`succeeded`** |
+| artifact | `phase-e-approval-probe.txt` written by the real Codex, contents exactly `approval-roundtrip-ok` |
+
+So the frozen pending-request contract holds, the public tool reaches Bridge, Bridge commits the
+resolution, the provider continues, and the file lands. On this provider §40 and §44 are the same
+real turn, and both are now evidenced: **workspace-write and approval both PASS.**
+
+### What the probe exposed instead: the public MCP surface stalls while an approval is pending
+
+Reproducible, and the reason every earlier run looked like a slow provider. While a task sits in
+`waiting_for_approval`, `get_agent_task` over the public MCP surface does not answer for roughly
+15 seconds — measured directly against `serverfs_mcp.cli serve`: the first two calls returned
+nothing inside 15 s and the third arrived, i.e. replies are delayed in a queue rather than lost.
+
+The delay is not the Bridge. Straight onto the same Named Pipe, `task.get` for the same waiting
+task returns in **0.02 s**, repeatedly, with both pending ids present and correct. And 15 s is
+exactly `AgentBridgeClient`'s default `timeout_seconds`. So the stall is in the MCP layer above the
+Bridge, correlated with a pending interaction — most plausibly the pipe exchange saturating on the
+same deadline while the task's interaction waiter is live. Not yet isolated to a line of product
+code, and not claimed as fixed.
+
+This also explains the earlier "the harness never answers" symptom without needing a harness bug to
+carry it: the harness polls through the same affected path, so it frequently could not observe the
+approval inside the interaction's five-minute life.
+
+### Harness faults, all now fixed (`56f547c`)
+
+Each of these turned a stuck MCP layer into "the provider is slow":
+
+- **the bounded read was not bounded.** `request()` checked its deadline only between messages while
+  its body was a blocking `readline()`, so an unanswered chain parked the harness indefinitely;
+- **fixing that exposed a second fault I introduced:** one reader thread per request, all calling
+  `readline()` on the same pipe, so replies went to whichever thread won. There is now one reader
+  for the client's life, feeding a queue, and replies to abandoned requests are recorded so a slow
+  response is distinguishable from a stuck layer;
+- **the pending read tolerated two shapes**, so a missing id was indistinguishable from a present
+  one. One legal shape now, asserted; disagreement raises instead of falling back;
+- **`respond_agent_approval` failures were swallowed**, making "could not answer" identical to
+  "never saw the request".
 
 Recorded as **unrun and unproven**, with no approximation by the fake provider:
 
-- §40 workspace-write, §42 continuation, §46 model override, §43 question, §44 approval as a
-  completed gate, §45 cancellation, §47 restart reconciliation, §48 post-restart continuation,
-  §49 lease/guard matrix, and real Job containment.
+- §42 continuation, §46 model override, §43 question, §45 cancellation, §47 restart reconciliation,
+  §48 post-restart continuation, §49 lease/guard matrix, and real Job containment.
 
-The approval *request* is evidenced above; the approval *round trip* is not, and the two are
-reported separately on purpose — "the provider asked" is not "the gate passed".
+§40 and §44 moved to PASS on the evidence above. Everything else is untouched, and the MCP-surface
+stall above must be understood before those gates can be trusted, because they all poll through it.
 
 ### Harness faults found by running it
 

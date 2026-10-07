@@ -1929,16 +1929,34 @@ request** before writing — *"May I write the requested file in the current wor
 5-minute expiry. On this provider the workspace-write gate and the approval gate are the same
 interaction, which is provider behaviour rather than a harness artefact.
 
-What is **not** proven: the harness does not answer the approval, so §40 never reaches a terminal
-state and the gate does not complete. The fault is in the harness and is not yet isolated. So §40, §42,
-§43, §44 as a completed gate, §45, §46, §47, §48, §49 and real Job containment remain **not run and
-not claimed**. The approval *request* is evidenced; the approval *round trip* is not, and the two are
-reported separately on purpose. Nothing is approximated with the fake provider.
+**§40 and §44 now PASS**, from one real turn: the provider asked to write the file, the public
+`respond_agent_approval` answered `approve_once` in 0.03 s with `resolved: true`, the request row
+became `resolved`, both `approval.requested` and `approval.resolved` events exist, the task reached
+`succeeded`, and the real Codex wrote the requested file with exactly the requested contents. The
+frozen pending-request contract is verified rather than assumed: the top-level `pending_request_id`
+and the nested `pending_request.request_id` are both present and equal, the nested `task_id` points
+back, and the decision came from `available_decisions`.
 
-Four further harness faults were found by running it and fixed in the same commit: teardown killed
-only the launcher and so left a Bridge holding the writer lease (the next run failed `WORKDIR_BUSY`
-against a lease no operator can release); a failing approval answer was swallowed by a bare `except`;
-the MCP read loop was unbounded; and buffered output made a submitted task look unsubmitted.
+What that probe exposed instead is a **stall on the public MCP surface while an approval is pending**:
+`get_agent_task` does not answer for roughly 15 seconds when a task sits in `waiting_for_approval`,
+measured directly against `serve`. It is not the Bridge — the same `task.get` straight onto the Named
+Pipe returns in 0.02 s — and 15 s is exactly `AgentBridgeClient`'s default timeout, so the stall sits
+in the MCP layer above the Bridge, correlated with a live interaction waiter. Not yet isolated to a
+line of product code. It is also the honest explanation of the earlier "the harness never answers"
+symptom: the harness polls through the same affected path, so it could often not observe an approval
+inside its five-minute life.
+
+So §42, §43, §45, §46, §47, §48, §49 and real Job containment remain **not run and not claimed**,
+and none of them can be trusted until the stall above is understood, because every one of them polls
+through it. Nothing is approximated with the fake provider.
+
+Four harness faults were found by running it and fixed in `56f547c`, all of which had turned a stuck
+MCP layer into "the provider is slow": the read was never actually bounded (the deadline was checked
+between messages while the body blocked in `readline`); fixing that exposed a second fault I introduced
+(one reader thread per request, all racing on the same pipe); the pending read tolerated two id shapes
+so a missing id looked like a present one; and a failing approval answer was swallowed by a bare
+`except`. Two harness faults fixed earlier remain relevant: teardown killed only the launcher and left
+a Bridge holding the writer lease, and buffered output made a submitted task look unsubmitted.
 
 One real trust-boundary defect was found by measurement and fixed in its own commit (`a3c4f30`),
 before this PR and not as a routing fix: both proxy-policy implementations recognised only the four
