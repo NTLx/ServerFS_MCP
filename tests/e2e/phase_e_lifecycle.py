@@ -613,6 +613,10 @@ class Lifecycle:
             self._stderr_handle = self.stderr_path.open("wb")
         return self._stderr_handle
 
+    def close_stderr(self) -> None:
+        """Release the sink handle, if one is open. Safe to call more than once."""
+        self._close_stderr()
+
     def _close_stderr(self) -> None:
         if self._stderr_handle is not None:
             try:
