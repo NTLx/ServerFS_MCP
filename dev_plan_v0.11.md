@@ -1966,11 +1966,18 @@ following task records none, with the operator's Codex config shown not to name 
 `cancelled`, the interrupted task's artifact absent, the writer lease released by bounded polling, and the
 shared app-server still healthy afterwards.
 
-**§43 real question is a STOP condition.** Two bounded prompt variants against the real provider
-produced no `requestUserInput`; both tasks simply completed the work. Codex persistent config, provider
-authority and sandbox policy were not touched to force it. Phase E cannot close on §43 as frozen, and
-§47–§49 plus real Job containment are deliberately not started while it is unresolved — restart
-reconciliation needs an unbroken lifecycle to mean anything.
+**§43 real question is NOT APPLICABLE**, by maintainer ruling on Codex 0.159.2 upstream source:
+`request_user_input` is exposed in Plan mode by default, while a Default-mode turn requires
+`features.default_mode_request_user_input`, which is `Stage::UnderDevelopment` with
+`default_enabled: false`. The production adapter sends neither that flag nor a collaboration-mode
+override, so it preserves provider-native authority and the capability is simply absent. Two bounded real
+attempts produced zero `requestUserInput` and both tasks completed normally. **The adapter code remains
+a real product capability**; what is unavailable is the acceptance opportunity. Injecting the flag or
+forcing `collaborationMode=Plan` would test a path ServerFS does not ship and would break the two rules
+this phase has held throughout, so it was not done. If a later Codex enables the feature by default,
+this gate can be reactivated.
+
+§43 therefore no longer blocks CLOSED-PASS, and §47–§49 with real Job containment are unblocked.
 
 Four harness faults were found by running it and fixed in `56f547c`, all of which had turned a stuck
 MCP layer into "the provider is slow": the read was never actually bounded (the deadline was checked

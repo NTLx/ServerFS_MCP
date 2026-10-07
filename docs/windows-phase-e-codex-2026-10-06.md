@@ -356,17 +356,38 @@ Each of these turned a stuck MCP layer into "the provider is slow":
 §42 is accepted on identity, not outcome: "the task succeeded" would also be satisfied by a fresh thread
 with a similar prompt. The values themselves stay in the store and are never printed or written.
 
-### §43 real question: STOP — the provider does not expose `requestUserInput`
+### §43 real provider question: NOT APPLICABLE — the capability is not exposed
 
-Two bounded prompt variants, both run against the real provider through the public surface. Neither
-produced a provider question; both tasks simply completed the work. The gate reports
-`genuine: false, "provider emitted no requestUserInput"`.
+Not a failure, and not a pass. The gate had a precondition that turned out to be false: the provider
+must expose a question capability under the native authority ServerFS preserves.
 
-This is a STOP condition for Phase E closure rather than something to work around. Codex persistent
-config, provider authority and sandbox policy were **not** touched to force it, and no adapter was
-bypassed: the honest result is that real Codex under its current authority did not ask.
+On Codex **0.159.2** (the build measured on this host, per its upstream source rather than `main`),
+`request_user_input` is available by default in **Plan mode only**. A **Default-mode** turn requires
+`features.default_mode_request_user_input`, and that feature is `Stage::UnderDevelopment` with
+`default_enabled: false`. OpenAI's own 0.159.2 app-server tests reflect exactly this: the Plan-mode case
+needs no flag, while the Default-mode case injects the flag on `thread/start` and names the
+collaboration mode on `turn/start`.
 
-§40, §41, §42, §44 and §46 therefore stand as measured, and Phase E cannot close on §43 as frozen.
+The production adapter does neither. It sends `cwd`, `serviceName` and an optional `model` on
+`thread/start`, and `threadId`, `input` and `cwd` on `turn/start`. So the tool is simply never exposed
+to a Default-mode turn, and a prompt asking the provider to use it gets a provider that does the work
+instead.
+
+| | |
+| --- | --- |
+| real-provider attempts | **2 bounded prompts, 0 `requestUserInput` server requests** |
+| task outcomes | both completed normally |
+| ServerFS behaviour | does not override collaboration mode, does not enable the under-development feature, preserves provider-native authority and configuration |
+| deterministic adapter handling | remains covered separately |
+
+**The adapter code is a real product capability** and is not in question here. What is unavailable is
+the *acceptance opportunity*: Codex 0.159.2's production configuration cannot provide a genuine
+provider-originated question. If a later Codex stabilises and enables `DefaultModeRequestUserInput` by
+default, this gate can be reactivated.
+
+Making it green by injecting the flag or forcing `collaborationMode=Plan` would test a path ServerFS
+does not ship, and would break the two rules this phase has held throughout: no changes to Codex
+persistent or provider authority, and no request-scoped provider policy override added for a test.
 
 ### §45 cancellation passes
 
