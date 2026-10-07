@@ -1940,25 +1940,19 @@ What is **not** measured: that round trip never went through `respond_agent_appr
 straight onto the Named Pipe, because the public MCP surface was stalling at the time. So the Bridge
 side of §44 and the workspace mutation are evidenced; the public-surface gates are not.
 
-**The public MCP stall is a ServerFS defect, now reproduced deterministically** (`71014b6`). With the
-provider removed entirely — real launcher, real supervisor, real Bridge, real Named Pipe, real `serve`
-stdio, real public MCP tools, and the D9 test adapter in a new `approval` mode that raises a genuine
-approval through the real `context.request_approval` path — it still happens.
+**The public MCP stall was the harness's own stderr backpressure** (`f912192`). The chain was launched
+with an undrained `stderr=subprocess.PIPE` while the product logger writes each record with a
+synchronous `sys.stderr.write` + `flush` from the serving event loop, so a finite buffer nobody reads
+eventually filled and blocked the next handler *inside the logger*. Three controls, one variable each:
+INFO + undrained pipe stalls on public call 16; ERROR + undrained pipe passes 50/50; INFO + **file
+sink** passes 50/50 with max 7 ms. A non-Agent tool (`read_text_file`) stalls on call 12 with a pipe
+and passes 60/60 with a file, so nothing about approvals, task state or the provider was involved.
+Control A had been fast throughout because it bypasses `_audit_agent` entirely, which now explains it
+instead of contradicting it. **No ServerFS product defect was established and none was fixed.**
 
-- Control A, the production `AgentBridgeClient` with one pipe connection per RPC: **20/20 fast**
-  (min 5 ms, median 5 ms, max 9 ms), approval response in 30 ms. Client and Named Pipe are cleared.
-- Control B, the same reads over real MCP stdio: fast to within 7 ms, then the **16th** call never
-  gets a reply.
-
-The effective client timeout is **30.0 s** — production `serve` passes 30.0 — so the earlier "15 s
-equals the default timeout" explanation is withdrawn; it matched a number that production does not
-use. Running Control B first changes nothing, which rules out pipe-pool exhaustion by measurement.
-The cause inside the MCP stdio layer is **not established** and is not guessed at. No timeout was
-raised, no pool enlarged, no product code touched.
-
-So §40, §42, §43, §44, §45, §46, §47, §48, §49 and real Job containment all remain **not run and
-not claimed** as public-surface gates, and none can be trusted until the stall is understood, because
-every one of them polls through it. Nothing is approximated with the real provider's absence.
+So the public MCP surface is clear on the deterministic path, including `respond_agent_approval`
+(34 ms, `resolved: true`). §40 and §44 stay **open** only because that round trip has not been re-run
+with real Codex since the harness was fixed; §42–§49 and real Job containment remain not run.
 
 Four harness faults were found by running it and fixed in `56f547c`, all of which had turned a stuck
 MCP layer into "the provider is slow": the read was never actually bounded (the deadline was checked
