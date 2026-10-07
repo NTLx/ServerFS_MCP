@@ -1977,7 +1977,22 @@ forcing `collaborationMode=Plan` would test a path ServerFS does not ship and wo
 this phase has held throughout, so it was not done. If a later Codex enables the feature by default,
 this gate can be reactivated.
 
-§43 therefore no longer blocks CLOSED-PASS, and §47–§49 with real Job containment are unblocked.
+§43 therefore no longer blocks CLOSED-PASS.
+
+**§47 reconciliation, §48 post-restart continuation, §49 lease/guard matrix and real Job containment
+all measured and passing.** The crash was a hard kill of the launcher and supervisor, not `stop()`, so
+what reaped the tree was `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` on the supervisor's own Job Object: the
+Bridge and the Bridge-owned app-server died with 0 survivors, while an unrelated bystander process and
+the operator's managed Codex daemon were untouched. Nothing was cleaned by hand before the restart. The
+production recovery path classified the task **SESSION_RESUMABLE** — native session and turn id both
+preserved, `task.reconciled` recorded, guard released by the frozen cleanup policy — so §48 ran and
+completed with the same native session, a new native turn and an exact artifact, while the interrupted
+task's artifact was never written.
+
+**Phase E is CLOSED-PASS.** §40, §41, §42, §44, §45, §46, §47, §48 pass; §43 is NOT APPLICABLE by
+maintainer ruling on upstream capability; §49 and real Job containment are measured. No product code was
+changed for any of it: every defect found this phase was in the acceptance harness, and the trust-boundary
+corrective in `a3c4f30` was the only product change.
 
 Four harness faults were found by running it and fixed in `56f547c`, all of which had turned a stuck
 MCP layer into "the provider is slow": the read was never actually bounded (the deadline was checked

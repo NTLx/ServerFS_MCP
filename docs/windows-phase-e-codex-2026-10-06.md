@@ -1,12 +1,27 @@
 # Windows Phase E — Codex runtime
 
-Status: **OPEN** (not CLOSED-PASS). The transport, the Bridge-owned app-server lifecycle, the
-adapter wiring and the deterministic Windows suite are landed. The real runtime probe, real model
-discovery, real workspace-routing readiness and **a real inference over the WebSocket listener** all
-pass against the installed CLI. What remains unrun is everything gated behind that: workspace-write,
-continuation, question, approval, cancellation, model override, restart reconciliation and lease
-cleanup. Three harness defects got here, each of which had produced a confident false conclusion, so
-they are recorded first rather than tidied away.
+Status: **CLOSED-PASS**. Every gate measured on the real provider through the public MCP surface.
+
+| Gate | Result |
+| --- | --- |
+| §40 workspace-write | **PASS** |
+| §41 native id persistence | **PASS** |
+| §42 continuation | **PASS** — same native session, new native turn |
+| §43 real provider question | **NOT APPLICABLE** — provider capability not exposed under frozen authority |
+| §44 real approval | **PASS** — genuine provider request, answered through `respond_agent_approval` |
+| §45 cancellation | **PASS** |
+| §46 request-scoped model override | **PASS** |
+| §47 restart reconciliation | **PASS** — SESSION_RESUMABLE |
+| §48 post-restart continuation | **PASS** |
+| §49 lease / guard matrix | **PASS** |
+| real Job containment | **PASS** |
+| token / process cleanup | **PASS** |
+
+The section that looked hardest to reach turned out to need no product change at all. Every defect
+found while getting here was in the **acceptance harness**, and each one had produced a confident false
+conclusion — including one that was written into this document as a reproduced ServerFS product defect
+before it was measured properly. Those are recorded below rather than tidied away, because the next
+person to trust a plausible story will hit the same ones.
 
 - Branch: `v0.11-phase-e-windows-codex`
 - Base: `bc3500fce28453c77118c265c51aa0d84b5580d2` (post-Phase-D main)
@@ -406,10 +421,65 @@ race between a terminal status and the service's `finally` releasing the lease. 
 path: `create_text_file` never overwrites, so reusing one name would fail with `PATH_ALREADY_EXISTS` and
 read as "the lease is still held".
 
-Recorded as **not run**, and still to do:
+### §47 reconciliation, §48 continuation and real Job containment pass
 
-- §47 restart reconciliation, §48 post-restart continuation, §49 lease/guard matrix, and real Job
-  containment.
+**Pre-crash state**, enforced rather than assumed: status `running`, native thread id and turn id both
+present, a real provider item started, and the writer lease **actually blocking a public mutation** — a
+crash with no lease would have made the guard's behaviour untestable.
+
+**Real Job containment.** The launcher and supervisor were killed outright rather than closed, because
+`stop()` is the cooperative path where the product shuts its children down politely.
+
+| | |
+| --- | --- |
+| Bridge killed | **true**, 0 survivors |
+| Bridge-owned `codex app-server` killed | **true**, 0 survivors |
+| unrelated bystander process | **alive** — and verified alive *before* the crash too |
+| operator's managed Codex daemon | **unchanged** |
+
+**Recovery, measured.** Nothing was deleted between crash and restart. The restarted lifecycle brought
+up a **new** Bridge-owned app-server with a **fresh** capability token, and the production startup path
+ran reconciliation itself.
+
+| | |
+| --- | --- |
+| task status | `running` → `interrupted` |
+| native session / turn id | **both preserved** |
+| events | `runtime.reconcile_started`, `task.reconciled`, `runtime.reconcile_finished` |
+| recovery classification | **SESSION_RESUMABLE** |
+| guard | mutation allowed again — the frozen cleanup policy released it |
+
+**§48 ran because recovery genuinely said so.** The post-restart continuation succeeded with the
+artifact exact, **the same native session and a new native turn**, and the interrupted task's artifact
+was never written — so the in-flight turn did not survive while the session state did.
+
+### §49 lease and guard matrix
+
+| scenario | evidence |
+| --- | --- |
+| normal success | lease released — the §45 probe mutation succeeded after a terminal status |
+| continuation success | lease released — §42 and §43 ran in the same workdir afterwards |
+| approval waiting | lease held — §47 measured a public mutation blocked before the crash |
+| approval answered + success | lease released — §44's task completed and the next submit succeeded |
+| cancellation | lease released by bounded polling, on the second probe |
+| crash before reconciliation | writer lease was held; recovery guard engaged the workdir |
+| SESSION_RESUMABLE / provider inactive | guard released by the frozen cleanup policy |
+
+Every release check used bounded polling. Phase C already showed a short race between a terminal status
+and the service's `finally`, so a fixed wait would have produced a result that depended on timing.
+
+### Process and token cleanup
+
+| | |
+| --- | --- |
+| Bridge-owned app-server after graceful shutdown | **gone** |
+| capability-token file | present while running; a **fresh** file after restart; never read or printed |
+| acceptance-owned provider processes at exit | **0** |
+| operator managed daemon | **unchanged at 2**, same as baseline |
+| unrelated bystander | reaped by the harness itself, not by containment |
+
+Recorded as **not run**: nothing remains. §40, §41, §42, §44, §45, §46, §47 and §48 pass, §43 is
+NOT APPLICABLE by maintainer ruling, and §49 plus real Job containment are measured above.
 
 **§47–§49 are deliberately not started while §43 is unresolved.** Restart reconciliation is the
 highest-risk gate in the phase and needs an unbroken lifecycle to be meaningful; running it after a
