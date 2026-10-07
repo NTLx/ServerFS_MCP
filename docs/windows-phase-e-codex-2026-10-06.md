@@ -242,11 +242,27 @@ public MCP surface, which was stalling at the time. The honest split:
 | real workspace mutation, contents exact | **PASS** |
 | public MCP `get_agent_task` while a request is pending | **50/50 pass** — the earlier stall was the harness's own undrained stderr pipe |
 | public MCP `respond_agent_approval` (deterministic provider) | **PASS** — 34 ms, `resolved: true` |
-| public MCP `respond_agent_approval` (real Codex) | **NOT YET RUN** |
+| public MCP `respond_agent_approval` (**real Codex**) | **PASS** — see below |
 
-So the provider, the Bridge interaction state machine and the public MCP surface are all cleared on
-the deterministic path. §40 and §44 stay open only because the real-Codex round trip through
-`respond_agent_approval` has not been re-run since the harness was fixed.
+And with real Codex, through the public MCP surface only:
+
+| Measurement | Result |
+| --- | --- |
+| `submit_agent_task` (workspace-write) → status | **succeeded** |
+| provider's final response | *"Created `phase-e-codex.txt` with the exact requested contents."* |
+| artifact on disk, contents exact | **true** / **true** |
+| read back through the public file surface | `serverfs-phase-e-codex` — exact |
+| real provider approval requests observed and answered | **1**, via `respond_agent_approval` |
+| approval gate task → status | **succeeded** |
+| approval artifact | `approved` — exact |
+| native thread id / turn id persisted | **both present** |
+| Bridge-owned app-server terminated | **true** |
+| `codex.exe` back to baseline | **true** |
+
+So **§40 workspace-write, §41 native id persistence and §44 approval now PASS on the real provider**,
+every one of them through `submit_agent_task` / `respond_agent_approval` / `get_agent_task` /
+`read_text_file`. The approval the earlier runs could not observe was real, provider-originated, and is
+now answered through the public tool with the provider resuming and the artifact landing.
 
 ### The public MCP stall was this harness's own stderr backpressure
 
@@ -326,12 +342,12 @@ Each of these turned a stuck MCP layer into "the provider is slow":
 - **`respond_agent_approval` failures were swallowed**, making "could not answer" identical to
   "never saw the request".
 
-Recorded as **unrun**, with the deterministic provider standing in only where stated:
+Recorded as **not run**, and still to do:
 
-- §40 workspace-write and §44 approval — measured end to end through the public MCP surface with the
-  deterministic provider, **not yet re-measured with real Codex**;
 - §42 continuation, §46 model override, §43 question, §45 cancellation, §47 restart reconciliation,
-  §48 post-restart continuation, §49 lease/guard matrix, and real Job containment — none run.
+  §48 post-restart continuation, §49 lease/guard matrix, and real Job containment.
+
+These all poll through the path that is now fixed, so they are unblocked; none of them is claimed.
 
 ### Harness faults found by running it
 

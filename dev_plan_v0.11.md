@@ -1950,9 +1950,15 @@ and passes 60/60 with a file, so nothing about approvals, task state or the prov
 Control A had been fast throughout because it bypasses `_audit_agent` entirely, which now explains it
 instead of contradicting it. **No ServerFS product defect was established and none was fixed.**
 
-So the public MCP surface is clear on the deterministic path, including `respond_agent_approval`
-(34 ms, `resolved: true`). §40 and §44 stay **open** only because that round trip has not been re-run
-with real Codex since the harness was fixed; §42–§49 and real Job containment remain not run.
+**§40, §41 and §44 now PASS on the real provider, through the public MCP surface only.** Real Codex,
+`submit_agent_task` (workspace-write) → **succeeded**, provider reporting it created the requested file;
+the artifact exists with exact contents and reads back exactly through the public file surface; one
+genuine provider approval request was observed and answered through `respond_agent_approval`; the
+approval task reached **succeeded** with its artifact exact; native thread id and turn id both
+persisted; the Bridge-owned app-server terminated and `codex.exe` returned to baseline.
+
+§42, §43, §45, §46, §47, §48, §49 and real Job containment remain **not run**. They all poll through
+the path that is now fixed, so they are unblocked, and none of them is claimed.
 
 Four harness faults were found by running it and fixed in `56f547c`, all of which had turned a stuck
 MCP layer into "the provider is slow": the read was never actually bounded (the deadline was checked
