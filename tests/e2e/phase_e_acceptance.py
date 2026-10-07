@@ -382,6 +382,52 @@ class Acceptance:
         return json.dumps(self.findings, indent=2, ensure_ascii=False)
 
 
+def compare_native_ids(
+    lifecycle: Lifecycle, source_task_id: str, continuation_task_id: str
+) -> dict[str, Any]:
+    """Whether a continuation reused the native session and started a new native turn.
+
+    Booleans only. The values stay in the store and are never returned, printed or written: a real
+    thread identifier is not evidence anyone needs to read to accept the gate, and publishing one
+    would put an account-scoped identifier into a tracked file.
+
+    "The task succeeded" is deliberately not accepted as proof of continuation. A fresh
+    thread with a similar prompt would satisfy that, so the check is on identity: same session,
+    different turn.
+    """
+
+    def read(task_id: str) -> tuple[str | None, str | None]:
+        import sqlite3
+
+        database = lifecycle.data_home / "agent-bridge" / "state" / "state.sqlite3"
+        if not database.exists():
+            candidates = list((lifecycle.data_home / "agent-bridge").rglob("*.sqlite3"))
+            if not candidates:
+                return None, None
+            database = candidates[0]
+        connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+        try:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                "SELECT native_session_id, native_turn_id FROM tasks WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+        finally:
+            connection.close()
+        if row is None:
+            return None, None
+        return row["native_session_id"], row["native_turn_id"]
+
+    source_session, source_turn = read(source_task_id)
+    new_session, new_turn = read(continuation_task_id)
+    return {
+        "source_has_ids": bool(source_session) and bool(source_turn),
+        "continuation_has_ids": bool(new_session) and bool(new_turn),
+        "same_native_session": bool(source_session) and source_session == new_session,
+        "new_native_turn": bool(source_turn) and bool(new_turn) and source_turn != new_turn,
+    }
+
+
 def native_ids(client: McpStdioClient, lifecycle: Lifecycle, task_id: str) -> dict[str, Any]:
     """Read the native thread and turn ids from the TaskStore.
 

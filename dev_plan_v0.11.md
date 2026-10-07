@@ -1957,8 +1957,20 @@ genuine provider approval request was observed and answered through `respond_age
 approval task reached **succeeded** with its artifact exact; native thread id and turn id both
 persisted; the Bridge-owned app-server terminated and `codex.exe` returned to baseline.
 
-§42, §43, §45, §46, §47, §48, §49 and real Job containment remain **not run**. They all poll through
-the path that is now fixed, so they are unblocked, and none of them is claimed.
+**§42 continuation and §46 request-scoped model override PASS.** §42 is accepted on identity — same
+native session, new native turn — not on outcome, because a fresh thread with a similar prompt would
+also succeed. §46 selects from the live catalog, records `requested_model` on the override task, and the
+following task records none, with the operator's Codex config shown not to name the requested model.
+
+**§45 cancellation PASS.** Real provider activity including an executing item, terminal state
+`cancelled`, the interrupted task's artifact absent, the writer lease released by bounded polling, and the
+shared app-server still healthy afterwards.
+
+**§43 real question is a STOP condition.** Two bounded prompt variants against the real provider
+produced no `requestUserInput`; both tasks simply completed the work. Codex persistent config, provider
+authority and sandbox policy were not touched to force it. Phase E cannot close on §43 as frozen, and
+§47–§49 plus real Job containment are deliberately not started while it is unresolved — restart
+reconciliation needs an unbroken lifecycle to mean anything.
 
 Four harness faults were found by running it and fixed in `56f547c`, all of which had turned a stuck
 MCP layer into "the provider is slow": the read was never actually bounded (the deadline was checked

@@ -208,6 +208,27 @@ def _minimal_env() -> dict[str, str]:
     return env
 
 
+class HarnessStderrError(RuntimeError):
+    """Formal acceptance was asked to run on an undrained stderr pipe."""
+
+
+def require_file_stderr(lifecycle: Lifecycle) -> None:
+    """Refuse to run formal acceptance on an undrained stderr pipe.
+
+    The stall that cost this phase most of its diagnosis was this harness's own: the chain was
+    launched with an undrained `stderr=subprocess.PIPE`, the product logger writes each record with
+    a synchronous `sys.stderr.write` + `flush` on the serving event loop, and the buffer eventually
+    filled and blocked a handler before it could return. From outside that looked exactly like a
+    ServerFS tool that had stopped answering. Formal acceptance must not run in that configuration,
+    and the pipe behaviour stays available only for the regression that proves the difference.
+    """
+    if lifecycle.stderr_is_pipe:
+        raise HarnessStderrError(
+            "formal acceptance requires the file stderr sink; "
+            "an undrained pipe blocks the serving handler inside the logger"
+        )
+
+
 def require_preflight(env_file: Path, codex_home: Path) -> Preflight:
     result = preflight(env_file, codex_home)
     problems = result.failures()
@@ -320,12 +341,17 @@ class Lifecycle:
         codex_home: Path,
         use_proxy: bool = True,
         read_only: bool = False,
+        stderr_is_pipe: bool = False,
     ) -> None:
         self.tmp_path = tmp_path
         self.env_file = env_file
         self.codex_home = codex_home
         self.use_proxy = use_proxy
         self.read_only = read_only
+        # The undrained-pipe behaviour stays reachable only for the backpressure regression that
+        # established it as this harness's own fault. Formal acceptance must use the file sink, and
+        # `require_file_stderr` refuses to run without it.
+        self.stderr_is_pipe = stderr_is_pipe
 
         # §2: an independent acceptance workspace, never the ServerFS source tree. A minimal git
         # repository, because Codex behaves differently in a repository and the acceptance must
@@ -456,7 +482,7 @@ class Lifecycle:
             # reads, so a burst of audit records fills it and blocks the loop inside the handler --
             # which reads from the outside as a ServerFS tool that stopped answering. A file sink
             # keeps every diagnostic line and removes the backpressure, with no product change.
-            stderr=self._stderr_sink(),
+            stderr=subprocess.PIPE if self.stderr_is_pipe else self._stderr_sink(),
             env=self.child_env(),
             cwd=str(self.tunnel_bindir),
         )

@@ -342,12 +342,58 @@ Each of these turned a stuck MCP layer into "the provider is slow":
 - **`respond_agent_approval` failures were swallowed**, making "could not answer" identical to
   "never saw the request".
 
+### §42 continuation and §46 model override pass
+
+| Gate | Measurement |
+| --- | --- |
+| §42 status | **succeeded**, artifact exact on disk and through the public file surface |
+| §42 identity | **same native session, new native turn** — the check that matters |
+| §46 catalog | live `list_agent_models`, `runtime="codex"`, model chosen dynamically |
+| §46 override task | **succeeded**, `requested_model` recorded on the task |
+| §46 following task | **succeeded** with `requested_model` absent — nothing inherited |
+| §46 persistence | the operator's Codex config does not name the requested model |
+
+§42 is accepted on identity, not outcome: "the task succeeded" would also be satisfied by a fresh thread
+with a similar prompt. The values themselves stay in the store and are never printed or written.
+
+### §43 real question: STOP — the provider does not expose `requestUserInput`
+
+Two bounded prompt variants, both run against the real provider through the public surface. Neither
+produced a provider question; both tasks simply completed the work. The gate reports
+`genuine: false, "provider emitted no requestUserInput"`.
+
+This is a STOP condition for Phase E closure rather than something to work around. Codex persistent
+config, provider authority and sandbox policy were **not** touched to force it, and no adapter was
+bypassed: the honest result is that real Codex under its current authority did not ask.
+
+§40, §41, §42, §44 and §46 therefore stand as measured, and Phase E cannot close on §43 as frozen.
+
+### §45 cancellation passes
+
+| Measurement | Result |
+| --- | --- |
+| provider-side activity observed | **true**, including an **executing item** — not merely a turn start |
+| status before the interrupt | `waiting_for_approval` (the provider had asked first; the approval was answered through the public tool) |
+| terminal state | **`cancelled`** |
+| artifact the task should have written | **absent** — the interrupt landed in flight |
+| writer lease released | **true**, by bounded polling (succeeded on the second probe) |
+| shared app-server after the interrupt | **healthy** — a following task returned `after-cancel` |
+| Bridge-owned app-server terminated / `codex.exe` baseline | **true** / **true** |
+
+The lease check uses bounded polling rather than a fixed wait, because Phase C already showed a short
+race between a terminal status and the service's `finally` releasing the lease. Each probe uses a fresh
+path: `create_text_file` never overwrites, so reusing one name would fail with `PATH_ALREADY_EXISTS` and
+read as "the lease is still held".
+
 Recorded as **not run**, and still to do:
 
-- §42 continuation, §46 model override, §43 question, §45 cancellation, §47 restart reconciliation,
-  §48 post-restart continuation, §49 lease/guard matrix, and real Job containment.
+- §47 restart reconciliation, §48 post-restart continuation, §49 lease/guard matrix, and real Job
+  containment.
 
-These all poll through the path that is now fixed, so they are unblocked; none of them is claimed.
+**§47–§49 are deliberately not started while §43 is unresolved.** Restart reconciliation is the
+highest-risk gate in the phase and needs an unbroken lifecycle to be meaningful; running it after a
+gate whose outcome is already a STOP would risk producing a second inconclusive result on top of the
+first. The maintainer's call on §43 is what unblocks them.
 
 ### Harness faults found by running it
 
