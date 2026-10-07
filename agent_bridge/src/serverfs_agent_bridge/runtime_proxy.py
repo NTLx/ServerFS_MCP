@@ -177,11 +177,43 @@ def process_environment_is_clean(env: Mapping[str, str] | None = None) -> bool:
     ]
 
 
+def build_runtime_environment_overlay(
+    base_env: Mapping[str, str],
+    *,
+    runtime: str,
+) -> dict[str, str | None]:
+    """The same scrub, expressed for an SDK that inherits its parent's environment.
+
+    The Qoder SDK builds its child's environment as ``{**os.environ}`` plus an overlay in which a
+    value of ``None`` **deletes** the variable. That is the opposite shape from
+    ``build_runtime_environment``, which returns a complete environment for ``Popen(env=...)``.
+    Handing it the full environment would not work twice over: the SDK would ignore the intent, and
+    the scrub rule would be restated in a second place where the Phase E ``*_PROXY_URL`` fix would
+    immediately start drifting.
+
+    So this is a **diff** against that function's own result, sent as deletions only. The policy has
+    exactly one implementation; the SDK simply learns the difference. When the rule changes, a Qoder
+    child inherits the change rather than needing a second edit.
+
+    The diff also keeps the provider's own configuration intact. Only names the scrub would remove
+    appear, so ``PATH``, ``USERPROFILE`` and provider-native settings are left to the SDK's normal
+    inheritance, and nothing is denied that the policy never intended to touch.
+    """
+    target = build_runtime_environment(base_env, runtime=runtime, use_proxy=False)
+    keys = base_env.keys() | target.keys()
+    return {
+        key: (target[key] if key in target else None)
+        for key in keys
+        if base_env.get(key) != target.get(key)
+    }
+
+
 __all__ = [
     "FORWARD_FORBIDDEN_PREFIXES",
     "PRESERVED_SAMPLE",
     "PROXY_VARIABLE_NAMES",
     "RuntimeProxyError",
     "build_runtime_environment",
+    "build_runtime_environment_overlay",
     "process_environment_is_clean",
 ]

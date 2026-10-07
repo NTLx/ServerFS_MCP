@@ -54,7 +54,10 @@ async def _serve(
         claude = runtime_adapters.ClaudeAdapter(config.claude)
         adapters[claude.name] = claude
     if config.qoder.enabled:
-        qoder = runtime_adapters.QoderAdapter(config.qoder)
+        # The Qoder SDK inherits the Bridge environment wholesale and applies an overlay on top, so
+        # the endpoint cannot be handed to it the way Codex is: it arrives through `set_proxy()`
+        # after connect, and the environment gets a deletion-only scrub instead.
+        qoder = runtime_adapters.QoderAdapter(config.qoder, runtime_proxy=runtime_proxy)
         adapters[qoder.name] = qoder
 
     preflight = (

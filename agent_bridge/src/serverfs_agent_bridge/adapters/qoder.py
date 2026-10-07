@@ -30,9 +30,11 @@ from qoder_agent_sdk import (
     qodercli_auth,
 )
 
+from ..bootstrap import RuntimeProxy
 from ..config import QoderSettings
 from ..errors import BridgeError
 from ..models import AgentProfile, ReconciliationStatus, RuntimeInfo, TaskRecord
+from ..runtime_proxy import build_runtime_environment_overlay
 from .base import AdapterResult, AgentAdapter, ReconcileResult, TaskContext
 
 _ClientFactory = Callable[[QoderAgentOptions], QoderSDKClient]
@@ -54,9 +56,14 @@ class QoderAdapter(AgentAdapter):
         settings: QoderSettings,
         *,
         client_factory: _ClientFactory = QoderSDKClient,
+        runtime_proxy: RuntimeProxy | None = None,
     ) -> None:
         self.settings = settings
         self._client_factory = client_factory
+        # The Agent proxy endpoint arrives through the private bootstrap and is held here only. It
+        # reaches the child through `client.set_proxy()`, a local control request: never the
+        # environment, never argv, never a file. That is why `options.proxy` stays None below.
+        self._runtime_proxy = runtime_proxy
         self._active: dict[str, _ActiveQoderTask] = {}
         self._active_lock = asyncio.Lock()
         self._cancel_requested: set[str] = set()
@@ -66,6 +73,87 @@ class QoderAdapter(AgentAdapter):
     @property
     def name(self) -> str:
         return "qoder"
+
+    def _client_options(
+        self,
+        *,
+        cwd: Path,
+        cli_path: str,
+        setting_sources: list[str],
+        can_use_tool: Any | None = None,
+        resume: str | None = None,
+        model: str | None = None,
+    ) -> QoderAgentOptions:
+        """The one place Qoder client options are built.
+
+        Two call sites used to construct this independently, which is how a probe and a real turn
+        end up with different environment or proxy policy while still looking identical in review.
+        Both the deletion overlay and the deliberate `proxy=None` now have a single home.
+
+        `proxy=None` is not an omission. Setting it would put the endpoint into the qodercli argv,
+        which the frozen trust-boundary contract forbids; the endpoint is applied after connect,
+        through the local `set_proxy` control request instead.
+        """
+        return QoderAgentOptions(
+            auth=qodercli_auth(),
+            cwd=cwd,
+            cli_path=cli_path,
+            setting_sources=setting_sources,
+            # A deletion-only overlay: the SDK inherits this process's environment and drops the
+            # names the scrub would remove. Applied whether or not a proxy is configured, because
+            # `use_proxy=false` means "this runtime is outside the Agent proxy trust domain", not
+            # "inherit whatever the host happens to export".
+            env=build_runtime_environment_overlay(os.environ, runtime=self.name),
+            can_use_tool=can_use_tool,
+            resume=resume,
+            model=model,
+            proxy=None,
+        )
+
+    def _require_runtime_proxy(self) -> RuntimeProxy:
+        """Fail closed before any provider traffic when policy demands a proxy and none exists.
+
+        Checked here rather than at connect time so a misconfigured deployment never starts a
+        qodercli at all: sending provider traffic direct because a setting was forgotten is exactly
+        the outcome the Agent proxy exists to prevent.
+        """
+        if self._runtime_proxy is None:
+            raise BridgeError(
+                "AGENT_RUNTIME_NOT_READY",
+                "Qoder is configured to use the Agent proxy but no endpoint is available",
+            )
+        return self._runtime_proxy
+
+    async def _connect(self, client: QoderSDKClient) -> None:
+        """Connect the local session, then apply the runtime proxy if policy asks for one.
+
+        The order is the design and it is not interchangeable. `connect()` is a local SDK/CLI
+        handshake and completes with **no** proxy configured -- measured on the real provider, not
+        assumed -- so the endpoint never has to be readable by the child: not in argv, not in the
+        environment, not in a file.
+
+        The prompt is deliberately *not* passed here. `connect(prompt)` would begin the turn, and a
+        turn that started before `set_proxy` would already have provider traffic outside the trust
+        boundary. `_run` therefore connects, applies the proxy, and only then queries.
+        """
+        if self.settings.use_proxy:
+            # Resolved before connecting, so a missing endpoint costs nothing and starts nothing.
+            self._require_runtime_proxy()
+        await client.connect()
+        if not self.settings.use_proxy:
+            return
+        proxy = self._require_runtime_proxy()
+        try:
+            await client.set_proxy(proxy.url)
+        except BridgeError:
+            raise
+        except Exception as exc:
+            # The message is fixed and carries no endpoint detail, matching the transport's own
+            # refusal: the operator learns the runtime is not ready, not where the proxy lives.
+            raise BridgeError(
+                "AGENT_RUNTIME_NOT_READY",
+                "Qoder could not apply the Agent proxy",
+            ) from exc
 
     async def probe(self) -> RuntimeInfo:
         if not self.settings.enabled or self._closed:
@@ -116,8 +204,7 @@ class QoderAdapter(AgentAdapter):
         cli_path = _resolve_cli(self.settings.qoder_bin)
         if cli_path is None:
             raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", "configured Qoder CLI is unavailable")
-        options = QoderAgentOptions(
-            auth=qodercli_auth(),
+        options = self._client_options(
             cwd=Path.home(),
             cli_path=cli_path,
             setting_sources=["user"],
@@ -125,7 +212,7 @@ class QoderAdapter(AgentAdapter):
         client = self._client_factory(options)
         try:
             async with asyncio.timeout(max(10.0, self.settings.probe_timeout_seconds * 2)):
-                await client.connect()
+                await self._connect(client)
                 values = await client.get_available_models()
         finally:
             try:
@@ -258,8 +345,7 @@ class QoderAdapter(AgentAdapter):
                 permission_context,
             )
 
-        options = QoderAgentOptions(
-            auth=qodercli_auth(),
+        options = self._client_options(
             cwd=context.cwd,
             cli_path=cli_path,
             setting_sources=["user", "project", "local"],
@@ -281,7 +367,8 @@ class QoderAdapter(AgentAdapter):
                 active.session_id = context.continue_native_session_id
                 await context.record_native_ids(context.continue_native_session_id, None)
 
-            await client.connect(context.prompt)
+            await self._connect(client)
+            await client.query(context.prompt)
             active.client_ready.set()
             if context.task_id in self._cancel_requested:
                 await client.interrupt()

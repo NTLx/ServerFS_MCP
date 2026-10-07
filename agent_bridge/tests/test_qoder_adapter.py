@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 
 import serverfs_agent_bridge.adapters.qoder as qoder_module
-from platform_contract import linux_only
 from serverfs_agent_bridge.adapters.qoder import QoderAdapter
+from serverfs_agent_bridge.bootstrap import RuntimeProxy
 from serverfs_agent_bridge.config import QoderSettings
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.leases import LeaseManager
@@ -18,9 +18,11 @@ from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
 from serverfs_agent_bridge.service import BridgeService
 from serverfs_agent_bridge.store import TaskStore
 
-pytestmark = linux_only(
-    "the Qoder test service stores tasks in UID/mode private state under a flock lease"
-)
+# The module-level `linux_only` this file carried was justified as "tasks are stored in UID/mode
+# private state under a flock lease". Phase D replaced that: `LeaseManager.acquire_exclusive` now
+# dispatches to `windows_lease` on Windows, so the seam the skip was protecting is already
+# cross-platform. The whole suite therefore runs on both, rather than a Windows-only copy of the
+# business tests existing alongside it.
 
 
 @dataclass
@@ -73,10 +75,24 @@ class FakeQoderClient:
         self.prompt: str | None = None
         self.connected = False
         self.interrupted = False
+        # Order matters as much as the calls: the adapter must connect, apply the proxy, and only
+        # then start the turn, because a turn that began first would already have provider traffic
+        # outside the trust boundary. Recorded rather than asserted here so a test can check it.
+        self.calls: list[str] = []
+        self.proxy_set: str | None = None
 
     async def connect(self, prompt: str | None = None) -> None:
+        self.calls.append("connect")
         self.prompt = prompt
         self.connected = True
+
+    async def query(self, prompt: str) -> None:
+        self.calls.append("query")
+        self.prompt = prompt
+
+    async def set_proxy(self, proxy: str | None) -> None:
+        self.calls.append("set_proxy")
+        self.proxy_set = proxy
 
     async def interrupt(self) -> None:
         self.interrupted = True
@@ -235,6 +251,8 @@ def make_service(
     monkeypatch: pytest.MonkeyPatch,
     *,
     event_idle_timeout_seconds: float | None = None,
+    use_proxy: bool = False,
+    runtime_proxy: Any | None = None,
 ) -> tuple[BridgeService, FakeClientFactory]:
     monkeypatch.setattr(qoder_module, "AssistantMessage", FakeAssistantMessage)
     monkeypatch.setattr(qoder_module, "TextBlock", FakeTextBlock)
@@ -252,31 +270,39 @@ def make_service(
         QoderSettings(
             enabled=True,
             qoder_bin="qodercli",
+            use_proxy=use_proxy,
             event_idle_timeout_seconds=event_idle_timeout_seconds,
         ),
         client_factory=factory,
+        runtime_proxy=runtime_proxy,
     )
 
     async def available_probe():
         return adapter._runtime_info(available=True, version="test")
 
     monkeypatch.setattr(adapter, "probe", available_probe)
+    # One policy object, used for both the registry and the lease ids, exactly as `main.py` does.
+    # On Windows `LeaseManager` pre-creates an artifact per *declared* lease id and skips the legacy
+    # slot layout, so a `LeaseManager` built without `lease_ids` leaves the lock directory empty and
+    # every workspace-write task then fails with `LOCK_PATH_UNSAFE`. The product never hits this
+    # because it always passes `policies.lease_ids()`; a hand-built manager has to as well.
+    policies = PolicyRegistry(
+        [
+            WorkdirAgentPolicy(
+                slot=1,
+                alias="repo",
+                host_path=repo,
+                mode=AgentMode.WORKSPACE_WRITE,
+                runtimes=frozenset({"qoder"}),
+                read_only=False,
+            )
+        ]
+    )
     service = BridgeService(
         store=TaskStore(tmp_path / "state"),
-        policies=PolicyRegistry(
-            [
-                WorkdirAgentPolicy(
-                    slot=1,
-                    alias="repo",
-                    host_path=repo,
-                    mode=AgentMode.WORKSPACE_WRITE,
-                    runtimes=frozenset({"qoder"}),
-                    read_only=False,
-                )
-            ]
-        ),
+        policies=policies,
         adapters={"qoder": adapter},
-        lease_manager=LeaseManager(tmp_path / "locks"),
+        lease_manager=LeaseManager(tmp_path / "locks", lease_ids=policies.lease_ids()),
     )
     return service, factory
 
@@ -544,3 +570,142 @@ async def test_qoder_runtime_capabilities_are_conservative_before_live_steer_smo
     with pytest.raises(BridgeError) as exc:
         await adapter.send_message("missing", "hello")
     assert exc.value.code == "AGENT_TASK_NOT_ACTIVE"
+
+
+class TestRuntimeProxyIsAppliedOnlyAsALocalControlRequest:
+    """The endpoint's route to the child, and the two ways that can go wrong.
+
+    `set_proxy` is a control request over the local JSONL channel, so the endpoint never reaches the
+    child through argv, the environment or a file. The order is the other half: the proxy has to be
+    applied *before* the turn starts, because a turn that began first would already have provider
+    traffic outside the trust boundary.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_turn_starts_only_after_the_proxy_is_applied(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        service, factory = make_service(
+            tmp_path,
+            monkeypatch,
+            use_proxy=True,
+            runtime_proxy=RuntimeProxy(url="http://proxy.invalid:8080", no_proxy=""),
+        )
+        await service.start()
+        try:
+            submitted = await service.submit_task(
+                runtime="qoder",
+                workdir="repo",
+                path="",
+                prompt="hello",
+                profile="workspace-write",
+            )
+            await wait_for_status(service, submitted["task_id"], "succeeded")
+            client = factory.clients[-1]
+            assert client.calls == ["connect", "set_proxy", "query"], client.calls
+            assert client.proxy_set == "http://proxy.invalid:8080"
+        finally:
+            await service.close()
+
+    @pytest.mark.asyncio
+    async def test_the_endpoint_never_reaches_the_client_options(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`options.proxy` is None even when a proxy is configured.
+
+        Setting it would emit `--proxy <url>` on the qodercli command line, which the frozen
+        trust-boundary rule forbids. The fake records the options so a regression would be visible
+        here rather than only on a real host.
+        """
+        service, factory = make_service(
+            tmp_path,
+            monkeypatch,
+            use_proxy=True,
+            runtime_proxy=RuntimeProxy(url="http://proxy.invalid:8080", no_proxy=""),
+        )
+        await service.start()
+        try:
+            submitted = await service.submit_task(
+                runtime="qoder",
+                workdir="repo",
+                path="",
+                prompt="hello",
+                profile="workspace-write",
+            )
+            await wait_for_status(service, submitted["task_id"], "succeeded")
+            options = factory.clients[-1].options
+            assert options.proxy is None
+            # The endpoint is absent from the environment too; only deletions are sent.
+            assert all(value is None for value in options.env.values())
+            assert not any("proxy.invalid" in str(v) for v in options.env.values())
+        finally:
+            await service.close()
+
+    @pytest.mark.asyncio
+    async def test_use_proxy_without_an_endpoint_fails_closed(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Policy says route through the Agent proxy, so a missing endpoint must not go direct.
+
+        Connecting anyway would start a qodercli and then send provider traffic outside the
+        boundary, which is the outcome the proxy exists to prevent. The refusal happens before the
+        client is asked to do anything, so a qodercli is never started on the way to the failure.
+
+        A task submission is asynchronous by design -- it returns before the turn runs -- so the
+        refusal surfaces on the task's terminal state rather than at the call. What matters is the
+        shape: the task fails as not-ready, and neither `set_proxy` nor the turn itself ever ran.
+        """
+        service, factory = make_service(tmp_path, monkeypatch, use_proxy=True, runtime_proxy=None)
+        await service.start()
+        try:
+            submitted = await service.submit_task(
+                runtime="qoder",
+                workdir="repo",
+                path="",
+                prompt="hello",
+                profile="workspace-write",
+            )
+            failed = await wait_for_status(service, submitted["task_id"], "failed")
+            assert failed["error_code"] == "AGENT_RUNTIME_NOT_READY"
+            for client in factory.clients:
+                assert "set_proxy" not in client.calls, client.calls
+                assert "query" not in client.calls, client.calls
+        finally:
+            await service.close()
+
+    @pytest.mark.asyncio
+    async def test_use_proxy_false_still_scrubs_but_never_sets_a_proxy(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`use_proxy=false` means "outside the trust domain", not "inherit the host's proxy".
+
+        The ambient names are still removed, and `set_proxy` is still never called.
+        """
+        for name in ("HTTPS_PROXY", "ALL_PROXY", "CODEBUDDY_SERVICE_PROXY_URL"):
+            monkeypatch.setenv(name, "http://127.0.0.1:9")
+        service, factory = make_service(tmp_path, monkeypatch, use_proxy=False)
+        await service.start()
+        try:
+            submitted = await service.submit_task(
+                runtime="qoder",
+                workdir="repo",
+                path="",
+                prompt="hello",
+                profile="workspace-write",
+            )
+            await wait_for_status(service, submitted["task_id"], "succeeded")
+            client = factory.clients[-1]
+            assert "set_proxy" not in client.calls, client.calls
+            options = client.options
+            for name in ("HTTPS_PROXY", "ALL_PROXY", "CODEBUDDY_SERVICE_PROXY_URL"):
+                assert options.env.get(name, "absent") is None, name
+        finally:
+            await service.close()
