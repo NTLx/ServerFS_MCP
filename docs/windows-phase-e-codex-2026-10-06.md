@@ -17,11 +17,16 @@ Status: **CLOSED-PASS**. Every gate measured on the real provider through the pu
 | real Job containment | **PASS** |
 | token / process cleanup | **PASS** |
 
-The section that looked hardest to reach turned out to need no product change at all. Every defect
-found while getting here was in the **acceptance harness**, and each one had produced a confident false
-conclusion — including one that was written into this document as a reproduced ServerFS product defect
-before it was measured properly. Those are recorded below rather than tidied away, because the next
-person to trust a plausible story will hit the same ones.
+The section that looked hardest to reach turned out to need no product change at all. Almost every
+defect found while getting here was in the **acceptance harness**, and each one had produced a confident
+false conclusion — including one that was written into this document as a reproduced ServerFS product
+defect before it was measured properly. Those are recorded below rather than tidied away, because the
+next person to trust a plausible story will hit the same ones.
+
+The exception is the `*_PROXY_URL` trust-boundary defect in §5b: that one was a **real product
+finding**, measured on a live child, and it carries the phase's only additional product-code
+corrective (`a3c4f30`). The distinction matters — the harness faults were never product bugs, and
+this one genuinely was.
 
 - Branch: `v0.11-phase-e-windows-codex`
 - Base: `bc3500fce28453c77118c265c51aa0d84b5580d2` (post-Phase-D main)
@@ -219,7 +224,17 @@ Concurrent success matters on its own terms: the frozen §10 design requires one
 serving the probe, the model list, every task and reconciliation at once, and that shape is measured
 to work.
 
-## 5a. Real-provider acceptance (§40–§49): started, provider behaviour confirmed, gates unproven
+## 5a. Acceptance chronology and discarded intermediate conclusions
+
+**This section is a chronology, not the current state.** It is kept because the conclusions below were
+each measured and each wrong, and a reader who finds one of them quoted elsewhere needs to see what
+replaced it. The authoritative status is at the top of this document; the final gate results are in
+§5a's closing tables.
+
+At the intermediate checkpoint when this section was first written, real-provider acceptance had
+started and provider behaviour was confirmed, but the §40–§49 gates were not yet proven. The
+headings and tenses below preserve that sequence: each subsection that reads as a blocker was true when
+written and was later superseded, and the superseded subsection says so.
 
 The acceptance harness is landed (`3bb2603`): the D9 chain with the fake adapter removed, so the
 pass evidence comes from the public MCP surface only -- `serverfs tunnel` CLI -> native supervisor ->
@@ -241,9 +256,16 @@ So the workspace-write gate and the approval gate are **the same interaction** o
 real Codex will not write a file without asking. That is genuine provider-originated behaviour, not
 a harness artefact, and it is recorded as such.
 
-### Corrected accounting: what is proven, and what is not
+### Corrected accounting at the time: what was proven, and what was not
 
-The previous revision of this section read as though the approval gate had closed. It has not. The
+**Historical.** The table below was the corrected accounting at an intermediate checkpoint. It is kept
+because the distinction it drew — that an effect occurring is not the same as the required path being
+exercised — is the reason §44 was initially recorded too generously. **Both rows have since been
+resolved**: the stall was this harness's own stderr backpressure, and §44 was then re-run properly
+through `respond_agent_approval` on the real provider. See the closing tables below for the final
+results.
+
+The previous revision of this section read as though the approval gate had closed. It had not. The
 answer that resumed the provider went through a **direct Named Pipe diagnostic path**, not through the
 public MCP surface, which was stalling at the time. The honest split:
 
@@ -315,6 +337,11 @@ Fixed in `f912192`: the chain's stderr goes to a file, with `stderr_is_pipe=True
 behaviour so the difference stays measurable. No product code was changed.
 
 ### The approval round trip passes on the Bridge side, and so does the workspace mutation
+
+**Superseded in scope.** What this section measured is real and still stands, but it was the
+*Bridge-side* half: the answer went straight onto the Named Pipe because the public surface was
+stalling. The public-surface round trip was measured later, on the real provider, through
+`respond_agent_approval` — see §44 in the closing tables below.
 
 A one-shot probe drove the real chain against the real provider and answered the request once
 through the public tool. Result:
@@ -478,13 +505,14 @@ and the service's `finally`, so a fixed wait would have produced a result that d
 | operator managed daemon | **unchanged at 2**, same as baseline |
 | unrelated bystander | reaped by the harness itself, not by containment |
 
-Recorded as **not run**: nothing remains. §40, §41, §42, §44, §45, §46, §47 and §48 pass, §43 is
-NOT APPLICABLE by maintainer ruling, and §49 plus real Job containment are measured above.
+**Final accounting for this phase: nothing remains unrun.** §40, §41, §42, §44, §45, §46, §47 and
+§48 pass; §43 is NOT APPLICABLE by maintainer ruling; §49 and real Job containment are measured above.
 
-**§47–§49 are deliberately not started while §43 is unresolved.** Restart reconciliation is the
-highest-risk gate in the phase and needs an unbroken lifecycle to be meaningful; running it after a
-gate whose outcome is already a STOP would risk producing a second inconclusive result on top of the
-first. The maintainer's call on §43 is what unblocks them.
+At this intermediate checkpoint, §47–§49 were deliberately not started while §43 was unresolved:
+restart reconciliation is the highest-risk gate in the phase and needs an unbroken lifecycle to be
+meaningful, so running it after a gate whose outcome was already a STOP risked a second inconclusive
+result stacked on the first. **This was later superseded** — the maintainer ruled §43 NOT APPLICABLE
+and §47, §48, §49 and real Job containment were then measured, as recorded above.
 
 ### Harness faults found by running it
 
@@ -589,20 +617,30 @@ The token is generated per child, passed by file, excluded from `repr`, and abse
 fixed per-platform refusal message. The app-server argv carries `--ws-token-file <private path>`
 and `ws://127.0.0.1:<ephemeral>`, and nothing else sensitive.
 
-## 8. Not verified
+## 8. Formerly outstanding; now resolved
 
-- Everything in §5's not-run list: workspace-write, native id persistence, continuation, question,
-  approval, cancellation, model override, restart reconciliation, lease/guard cleanup.
-- **Whether `account/read` should be added to product readiness.** Measured to be optional on this
-  path (turns succeed 3/3 without it), so it is a maintainer decision rather than an outstanding
-  defect. Not implemented.
-- Job Object containment of the Bridge-owned child against an abnormal Bridge death. The design
-  relies on the Phase D supervisor Job and standard child inheritance, and the deterministic suite
-  covers teardown, but the abnormal-termination case was not driven end to end this phase.
-- Behaviour when the operator's managed daemon is mid-flight.
-- Linux CI is not run from this host; the Linux gate must confirm that the shared mock and the
-  lazy `codex_windows` import produce no collection error and that the Linux Codex UDS cases still
-  execute rather than skip.
+Each item below was genuinely unverified at an earlier checkpoint. They are listed with what resolved
+them rather than deleted, because a reader who remembers "Job containment was never driven end to
+end" should find out exactly when that stopped being true.
+
+| Formerly outstanding | Resolution |
+| --- | --- |
+| §40 workspace-write, §41 native id persistence, §42 continuation | **PASS** — see §5a |
+| §43 real provider question | **NOT APPLICABLE** — upstream capability not exposed under frozen authority; see §5a |
+| §44 approval | **PASS** through the public `respond_agent_approval` round trip |
+| §45 cancellation, §46 model override | **PASS** — see §5a |
+| §47 reconciliation, §48 post-restart continuation, §49 lease/guard matrix | **PASS** — §47 classified SESSION_RESUMABLE |
+| Job Object containment against an abnormal Bridge death | **PASS** — driven end to end by hard-killing the launcher and supervisor; Bridge and its app-server died with zero survivors while an unrelated bystander and the operator's managed daemon were untouched |
+| token and process cleanup | **PASS** — see §5a |
+| Linux CI | **PASS** — `Container check`, `Agent Bridge test` and `Test` green on PR #37. It did catch a real regression this host could not: a Linux-only UDS test still constructed the transport with the removed `socket_path=` argument |
+
+Still genuinely open, and deliberately so:
+
+- **Whether `account/read` should be added to product readiness.** Measured to be optional on this path
+  (turns succeed 3/3 without it), so it is a maintainer decision rather than an outstanding defect. Not
+  implemented, by ruling.
+- **Behaviour when the operator's managed daemon is mid-flight.** Out of scope for this phase and not
+  measured.
 
 ## 8b. Process notes worth keeping
 

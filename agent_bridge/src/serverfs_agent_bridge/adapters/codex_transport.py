@@ -177,37 +177,6 @@ class CodexConnection:
 
     async def _open_socket(self) -> ClientConnection:
         """Perform the platform handshake. Everything after this is shared RPC machinery."""
-        self._reader = asyncio.create_task(self._reader_loop(), name="serverfs-codex-rpc-reader")
-        try:
-            initialized = await self.request(
-                "initialize",
-                {
-                    "clientInfo": {
-                        "name": self.client_name,
-                        "title": "ServerFS Agent Bridge",
-                        "version": self.client_version,
-                    },
-                    "capabilities": {"experimentalApi": True},
-                },
-                request_id="initialize",
-            )
-            if not isinstance(initialized, dict):
-                raise BridgeError(
-                    "AGENT_PROVIDER_ERROR", "Codex initialize returned an invalid result"
-                )
-            user_agent = initialized.get("userAgent")
-            if isinstance(user_agent, str):
-                self.server_version = _version_from_user_agent(user_agent)
-            codex_home = initialized.get("codexHome")
-            if isinstance(codex_home, str):
-                self.codex_home = codex_home
-            await self.notify("initialized", {})
-        except Exception:
-            await self.close()
-            raise
-
-    async def _open_socket(self) -> ClientConnection:
-        """Perform the platform handshake. Everything after this is shared RPC machinery."""
         if isinstance(self.endpoint, LoopbackWebSocketEndpoint):
             return await connect(
                 self.endpoint.url,
