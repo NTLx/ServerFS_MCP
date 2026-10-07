@@ -27,6 +27,7 @@ the filesystem only for process identity -- never written, never deleted, never 
 
 from __future__ import annotations
 
+import ctypes
 import json
 import shutil
 import sqlite3
@@ -34,6 +35,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from ctypes import wintypes
 from pathlib import Path
 from typing import Any
 
@@ -77,8 +79,12 @@ ACTIVE_WAIT_SECONDS = 420
 #: How long to wait for the crash to be observed to have taken the tree down.
 CONTAINMENT_WAIT_SECONDS = 60
 
-#: How long the restarted lifecycle may take to bring the Agent surface up.
-RESTART_READY_SECONDS = 180
+
+#: Win32 declarations for the liveness check. Kept minimal and read-only.
+_KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)  # noqa: N816 - the Win32 name
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+#: GetExitCodeProcess reports this while a process is still running.
+STILL_ACTIVE = 259
 
 
 def emit(stage: str, **fields: Any) -> None:
@@ -94,27 +100,38 @@ def _owned_app_server(lifecycle: Lifecycle) -> list[int]:
 
 
 def _alive(pids: list[int]) -> list[int]:
-    """Which of these pids still exist, read-only."""
+    """Which of these pids are still running, read-only.
+
+    Implemented with the Win32 API rather than a PowerShell pipeline. The pipeline form
+    (``... | Where-Object { Get-Process -Id $_ } ...``) silently returned empty output for
+    processes that were demonstrably alive, so a liveness check built on it reported everything as
+    dead -- which is how a bystander came to read as "killed by containment" when it had never been
+    tested correctly.
+
+    ``OpenProcess`` alone is not enough, and this is the subtle part: on Windows a terminated
+    process keeps its kernel object alive until every handle is closed, so ``OpenProcess`` succeeds
+    for a pid that is already gone and only fails (87) for one that never existed.
+    ``STILL_ACTIVE`` from ``GetExitCodeProcess`` is therefore the actual test.
+
+    A process that exists but cannot be queried counts as alive: this gate asks whether containment
+    over-reached, and "I cannot tell" is not evidence that it did.
+    """
     if not pids:
         return []
-    script = (
-        "@(" + ",".join(str(p) for p in pids) + ") | "
-        "Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue } | "
-        "ForEach-Object { $_.Id }"
-    )
-    completed = subprocess.run(  # noqa: S603 - a fixed argv built from integers
-        ["powershell", "-NoProfile", "-Command", script],
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
     survivors: list[int] = []
-    for token in (completed.stdout or "").split():
-        try:
-            survivors.append(int(token.strip().lstrip("|")))
-        except ValueError:
+    for pid in pids:
+        handle = _KERNEL32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            # 87 is ERROR_INVALID_PARAMETER: no such process ever existed.
             continue
+        try:
+            code = wintypes.DWORD()
+            if _KERNEL32.GetExitCodeProcess(handle, ctypes.byref(code)) and (
+                code.value == STILL_ACTIVE
+            ):
+                survivors.append(pid)
+        finally:
+            _KERNEL32.CloseHandle(handle)
     return survivors
 
 
@@ -334,6 +351,10 @@ def main() -> int:
             token_file_present=token_path.exists(),
         )
 
+        # Read the bystander's liveness immediately before the crash, so a later absence can be
+        # attributed to the crash rather than to it having already died.
+        emit("bystander_pre_crash", alive=_alive([bystander.pid]) == [bystander.pid])
+
         killed = _terminate_abruptly(lifecycle)
         emit("crash", killed_pids=len(killed), graceful=False)
 
@@ -369,7 +390,9 @@ def main() -> int:
         require_file_stderr(restart)
         restart.launch()
         client_after = McpStdioClient(restart)
-        client_after.initialize(timeout=RESTART_READY_SECONDS)
+        # initialize() takes no timeout: the request path is already bounded, and inventing a
+        # parameter here would have been another assumption about an API that does not take one.
+        client_after.initialize()
 
         new_app_servers = _owned_app_server(restart)
         restart_token = restart.data_home / "agent-bridge" / "state" / "codex" / "app-server-token"
