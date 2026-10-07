@@ -240,38 +240,48 @@ public MCP surface, which was stalling at the time. The honest split:
 | Bridge waiter → Codex provider response | **PASS** |
 | provider resumed | **PASS** |
 | real workspace mutation, contents exact | **PASS** |
-| public MCP `get_agent_task` while a request is pending | **DEFECT — see below** |
-| public MCP `respond_agent_approval` | **NOT YET PROVEN** |
+| public MCP `get_agent_task` while a request is pending | **50/50 pass** — the earlier stall was the harness's own undrained stderr pipe |
+| public MCP `respond_agent_approval` (deterministic provider) | **PASS** — 34 ms, `resolved: true` |
+| public MCP `respond_agent_approval` (real Codex) | **NOT YET RUN** |
 
-So the provider and the Bridge interaction state machine are essentially cleared, and what remains is
-one narrow chain: `MCP stdio → tools/call → ServerFS public tool → AgentBridgeClient`.
+So the provider, the Bridge interaction state machine and the public MCP surface are all cleared on
+the deterministic path. §40 and §44 stay open only because the real-Codex round trip through
+`respond_agent_approval` has not been re-run since the harness was fixed.
 
-### The public MCP stall is a ServerFS defect, reproduced deterministically
+### The public MCP stall was this harness's own stderr backpressure
 
-The earlier claim that the stall was a live-only artefact is withdrawn. With the provider removed
-entirely — real `serverfs tunnel` CLI, real supervisor, real Bridge, real Named Pipe, real `serve`
-stdio, real public MCP tools, and the D9 test adapter in a new `approval` mode that raises a genuine
-approval through the real `context.request_approval` path, with no network and no Codex — the stall
-reproduces.
+**The previous revision of this document called this a ServerFS product defect. That was wrong and is
+withdrawn.** The deterministic harness reproduced a real public-MCP stall, but the stall was caused by
+the harness retaining an undrained `stderr=subprocess.PIPE` for the entire native subprocess tree.
+**No ServerFS product defect was established.**
 
-| Control | Result |
-| --- | --- |
-| **A** — production `AgentBridgeClient`, one pipe connection per RPC | **20/20 fast**: min 5 ms, median 5 ms, max 9 ms; `task.approval.respond` succeeded in 30 ms with `resolved: true` |
-| **B** — the same reads through real MCP stdio | fast to within 7 ms, then the **16th** call never receives a reply, and nothing after it does either |
+The mechanism, verified in the source rather than inferred: the product logger writes every record
+with a synchronous `sys.stderr.write` + `flush` (`logging.py:41-42`), reached from `_audit_agent` on
+the serving event loop, and the whole chain (`serverfs tunnel` → tunnel-client → supervisor → `serve`)
+inherits that one handle. A finite buffer nobody drains eventually fills, and the next handler blocks
+*inside the logger*, before it can return. From the outside that is indistinguishable from a tool that
+stopped answering — which is exactly why it read as a ServerFS stall.
 
-The effective `AgentBridgeClient` timeout is **30.0 s**, recorded from the constructed client:
-production `serve` passes `timeout_seconds=30.0` in `cli.py` and
-`settings.agent_bridge_timeout_seconds` (default 30.0) in `main.py`. The previously cited 15 s was
-the constructor default, which production does not use — a number that merely resembled an
-explanation.
+Three controls, each isolating one variable:
 
-Control A therefore clears `AgentBridgeClient` and the Named Pipe, and Control B localises the fault
-to the MCP stdio layer. Running Control B **first** changes nothing — it still stalls on call 16, and
-Control A still completes 20/20 immediately afterwards — so a burst of pipe traffic exhausting the
-Bridge's bounded listener pool is ruled out by measurement rather than assumed.
+| Control | Sink | Log level | Public calls | Result |
+| --- | --- | --- | --- | --- |
+| B0 | undrained PIPE | INFO | 20 | **stalls on call 16** — the reported symptom |
+| B1 | undrained PIPE | ERROR | 50 | **50/50 return**, max 65 ms, task `succeeded`, artifact exact |
+| B2 | **file** | INFO | 50 | **50/50 return**, max 7 ms; no timeout, no unmatched, no late; **public `respond_agent_approval` succeeds** (34 ms) |
 
-**The cause inside the MCP stdio layer is not established, and this document does not guess.** No
-timeout was raised, no pool was enlarged, and no product code was touched.
+B1 changes only the log level and the stall disappears, which places it on INFO audit traffic rather
+than on the Agent path. B2 changes only the sink and everything passes.
+
+A non-Agent control settles it beyond doubt: `read_text_file`, which never touches the Agent code
+path, **stalls on call 12** with an undrained pipe and completes **60/60** with a file sink. The cause
+has nothing to do with approvals, task state or the provider.
+
+Control A also stays valid and is now explained rather than contradicted: it calls
+`AgentBridgeClient` directly and never enters `_audit_agent`, which is why it was 20/20 fast all along.
+
+Fixed in `f912192`: the chain's stderr goes to a file, with `stderr_is_pipe=True` preserving the old
+behaviour so the difference stays measurable. No product code was changed.
 
 ### The approval round trip passes on the Bridge side, and so does the workspace mutation
 
@@ -316,14 +326,12 @@ Each of these turned a stuck MCP layer into "the provider is slow":
 - **`respond_agent_approval` failures were swallowed**, making "could not answer" identical to
   "never saw the request".
 
-Recorded as **unrun and unproven**, with no approximation by the fake provider:
+Recorded as **unrun**, with the deterministic provider standing in only where stated:
 
-- §40 workspace-write and §44 approval, **as public-surface gates**: the mutation and the Bridge-side
-  round trip are measured, but not through `respond_agent_approval`;
+- §40 workspace-write and §44 approval — measured end to end through the public MCP surface with the
+  deterministic provider, **not yet re-measured with real Codex**;
 - §42 continuation, §46 model override, §43 question, §45 cancellation, §47 restart reconciliation,
-  §48 post-restart continuation, §49 lease/guard matrix, and real Job containment.
-
-Every one of them polls through the stalling path, so none can be trusted until it is understood.
+  §48 post-restart continuation, §49 lease/guard matrix, and real Job containment — none run.
 
 ### Harness faults found by running it
 
