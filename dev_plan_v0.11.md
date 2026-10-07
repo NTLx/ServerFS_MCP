@@ -36,12 +36,19 @@ C  C1–C5 PASS (2026-10-06) — the writer lease has a Windows twin: a platform
 ```
 
 No Phase 0 gate or design decision is outstanding (§18). Phase D is **CLOSED-PASS** (merged at
-`bc3500f`). Phase E — the Windows Codex runtime — is the current phase and is **OPEN**: the
-transport, the Bridge-owned app-server lifecycle, the adapter wiring and the deterministic Windows
-suite are landed; the real runtime probe, model discovery, workspace-routing readiness and a **real
-inference over the WebSocket listener** all pass against the installed CLI, and the ambient
-`*_PROXY_URL` trust-boundary defect found along the way is fixed. The §40–§49 acceptance gates are
-unblocked but not yet run (see `docs/windows-phase-e-codex-2026-10-06.md`).
+`bc3500f`). **Phase E — the Windows Codex runtime — is CLOSED-PASS.** PR #37
+(`feat(v0.11): add Windows Codex runtime`, branch `v0.11-phase-e-windows-codex`) is open against
+`main` and **not merged**. **Phase F is next and not started.**
+
+Phase E's §40–§49 gates were all measured on the real provider through the public MCP surface: §40,
+§41, §42, §44, §45, §46, §47, §48 pass; §43 is NOT APPLICABLE because Codex 0.159.2 does not expose
+`request_user_input` to a Default-mode turn; §49, real Job containment and token/process cleanup are
+measured. The full evidence, including the intermediate conclusions that were later discarded, is in
+`docs/windows-phase-e-codex-2026-10-06.md`.
+
+Where this document describes Phase E work in the past tense below, that is chronology. The two
+statements above are the authoritative current status; the Phase E narrative further down records what
+was measured in which order, including conclusions that were later superseded.
 Baseline: v0.10.0 / current main
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
@@ -1929,7 +1936,9 @@ request** before writing — *"May I write the requested file in the current wor
 5-minute expiry. On this provider the workspace-write gate and the approval gate are the same
 interaction, which is provider behaviour rather than a harness artefact.
 
-**§40 and §44 are not closed.** What is measured: the real provider asked to write the file, the
+**At this intermediate checkpoint §40 and §44 were not closed** — later superseded, both by the
+harness fix below and by a re-run through the public surface on the real provider. What was measured
+then: the real provider asked to write the file, the
 frozen pending-request contract holds (top-level id and nested `request_id` both present and equal,
 nested `task_id` pointing back, decision read from `available_decisions`), Bridge
 `task.approval.respond` succeeds with `resolved: true`, the request row becomes `resolved`, both
@@ -1990,9 +1999,11 @@ completed with the same native session, a new native turn and an exact artifact,
 task's artifact was never written.
 
 **Phase E is CLOSED-PASS.** §40, §41, §42, §44, §45, §46, §47, §48 pass; §43 is NOT APPLICABLE by
-maintainer ruling on upstream capability; §49 and real Job containment are measured. No product code was
-changed for any of it: every defect found this phase was in the acceptance harness, and the trust-boundary
-corrective in `a3c4f30` was the only product change.
+maintainer ruling on upstream capability; §49 and real Job containment are measured. None of the
+acceptance gates required a product change: every defect found while running them was in the acceptance
+harness. The one real product finding of the phase was the ambient `*_PROXY_URL` trust-boundary defect,
+and `a3c4f30` is the only **additional** product-code corrective discovered during acceptance — the
+phase's other product work is the Windows transport and lifecycle itself.
 
 Four harness faults were found by running it and fixed in `56f547c`, all of which had turned a stuck
 MCP layer into "the provider is slow": the read was never actually bounded (the deadline was checked
