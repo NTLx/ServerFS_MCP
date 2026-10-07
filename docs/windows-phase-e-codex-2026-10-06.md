@@ -226,7 +226,54 @@ So the workspace-write gate and the approval gate are **the same interaction** o
 real Codex will not write a file without asking. That is genuine provider-originated behaviour, not
 a harness artefact, and it is recorded as such.
 
-### The approval round trip passes, and so does §40 with it
+### Corrected accounting: what is proven, and what is not
+
+The previous revision of this section read as though the approval gate had closed. It has not. The
+answer that resumed the provider went through a **direct Named Pipe diagnostic path**, not through the
+public MCP surface, which was stalling at the time. The honest split:
+
+| Claim | Status |
+| --- | --- |
+| real Codex approval request | **PASS** |
+| pending request frozen shape (top-level id and nested `request_id` equal, `task_id` points back) | **PASS** |
+| Bridge `task.approval.respond` | **PASS** |
+| Bridge waiter → Codex provider response | **PASS** |
+| provider resumed | **PASS** |
+| real workspace mutation, contents exact | **PASS** |
+| public MCP `get_agent_task` while a request is pending | **DEFECT — see below** |
+| public MCP `respond_agent_approval` | **NOT YET PROVEN** |
+
+So the provider and the Bridge interaction state machine are essentially cleared, and what remains is
+one narrow chain: `MCP stdio → tools/call → ServerFS public tool → AgentBridgeClient`.
+
+### The public MCP stall is a ServerFS defect, reproduced deterministically
+
+The earlier claim that the stall was a live-only artefact is withdrawn. With the provider removed
+entirely — real `serverfs tunnel` CLI, real supervisor, real Bridge, real Named Pipe, real `serve`
+stdio, real public MCP tools, and the D9 test adapter in a new `approval` mode that raises a genuine
+approval through the real `context.request_approval` path, with no network and no Codex — the stall
+reproduces.
+
+| Control | Result |
+| --- | --- |
+| **A** — production `AgentBridgeClient`, one pipe connection per RPC | **20/20 fast**: min 5 ms, median 5 ms, max 9 ms; `task.approval.respond` succeeded in 30 ms with `resolved: true` |
+| **B** — the same reads through real MCP stdio | fast to within 7 ms, then the **16th** call never receives a reply, and nothing after it does either |
+
+The effective `AgentBridgeClient` timeout is **30.0 s**, recorded from the constructed client:
+production `serve` passes `timeout_seconds=30.0` in `cli.py` and
+`settings.agent_bridge_timeout_seconds` (default 30.0) in `main.py`. The previously cited 15 s was
+the constructor default, which production does not use — a number that merely resembled an
+explanation.
+
+Control A therefore clears `AgentBridgeClient` and the Named Pipe, and Control B localises the fault
+to the MCP stdio layer. Running Control B **first** changes nothing — it still stalls on call 16, and
+Control A still completes 20/20 immediately afterwards — so a burst of pipe traffic exhausting the
+Bridge's bounded listener pool is ruled out by measurement rather than assumed.
+
+**The cause inside the MCP stdio layer is not established, and this document does not guess.** No
+timeout was raised, no pool was enlarged, and no product code was touched.
+
+### The approval round trip passes on the Bridge side, and so does the workspace mutation
 
 A one-shot probe drove the real chain against the real provider and answered the request once
 through the public tool. Result:
@@ -241,27 +288,18 @@ through the public tool. Result:
 | terminal state | **`succeeded`** |
 | artifact | `phase-e-approval-probe.txt` written by the real Codex, contents exactly `approval-roundtrip-ok` |
 
-So the frozen pending-request contract holds, the public tool reaches Bridge, Bridge commits the
-resolution, the provider continues, and the file lands. On this provider §40 and §44 are the same
-real turn, and both are now evidenced: **workspace-write and approval both PASS.**
+So the frozen pending-request contract holds, Bridge commits the resolution, the provider continues,
+and the file lands. On this provider §40 and §44 are the same real turn, and the *Bridge-side* half of
+§44 is evidenced. The public-MCP half is not: the answer in this run went straight onto the Named
+Pipe, precisely because the public surface was stalling. §40 and §44 stay **open** until the same round
+trip completes through `respond_agent_approval`.
 
-### What the probe exposed instead: the public MCP surface stalls while an approval is pending
+### Why earlier runs looked like a slow provider
 
-Reproducible, and the reason every earlier run looked like a slow provider. While a task sits in
-`waiting_for_approval`, `get_agent_task` over the public MCP surface does not answer for roughly
-15 seconds — measured directly against `serverfs_mcp.cli serve`: the first two calls returned
-nothing inside 15 s and the third arrived, i.e. replies are delayed in a queue rather than lost.
-
-The delay is not the Bridge. Straight onto the same Named Pipe, `task.get` for the same waiting
-task returns in **0.02 s**, repeatedly, with both pending ids present and correct. And 15 s is
-exactly `AgentBridgeClient`'s default `timeout_seconds`. So the stall is in the MCP layer above the
-Bridge, correlated with a pending interaction — most plausibly the pipe exchange saturating on the
-same deadline while the task's interaction waiter is live. Not yet isolated to a line of product
-code, and not claimed as fixed.
-
-This also explains the earlier "the harness never answers" symptom without needing a harness bug to
-carry it: the harness polls through the same affected path, so it frequently could not observe the
-approval inside the interaction's five-minute life.
+The stall reproduces with no provider at all, so it is the reason earlier runs reported timeouts. The
+harness polls through the same affected path, so it frequently could not observe an approval inside
+the interaction's five-minute life — and a stalled read was reported as a provider that had not
+answered yet.
 
 ### Harness faults, all now fixed (`56f547c`)
 
@@ -280,11 +318,12 @@ Each of these turned a stuck MCP layer into "the provider is slow":
 
 Recorded as **unrun and unproven**, with no approximation by the fake provider:
 
+- §40 workspace-write and §44 approval, **as public-surface gates**: the mutation and the Bridge-side
+  round trip are measured, but not through `respond_agent_approval`;
 - §42 continuation, §46 model override, §43 question, §45 cancellation, §47 restart reconciliation,
   §48 post-restart continuation, §49 lease/guard matrix, and real Job containment.
 
-§40 and §44 moved to PASS on the evidence above. Everything else is untouched, and the MCP-surface
-stall above must be understood before those gates can be trusted, because they all poll through it.
+Every one of them polls through the stalling path, so none can be trusted until it is understood.
 
 ### Harness faults found by running it
 

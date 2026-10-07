@@ -1929,26 +1929,36 @@ request** before writing — *"May I write the requested file in the current wor
 5-minute expiry. On this provider the workspace-write gate and the approval gate are the same
 interaction, which is provider behaviour rather than a harness artefact.
 
-**§40 and §44 now PASS**, from one real turn: the provider asked to write the file, the public
-`respond_agent_approval` answered `approve_once` in 0.03 s with `resolved: true`, the request row
-became `resolved`, both `approval.requested` and `approval.resolved` events exist, the task reached
-`succeeded`, and the real Codex wrote the requested file with exactly the requested contents. The
-frozen pending-request contract is verified rather than assumed: the top-level `pending_request_id`
-and the nested `pending_request.request_id` are both present and equal, the nested `task_id` points
-back, and the decision came from `available_decisions`.
+**§40 and §44 are not closed.** What is measured: the real provider asked to write the file, the
+frozen pending-request contract holds (top-level id and nested `request_id` both present and equal,
+nested `task_id` pointing back, decision read from `available_decisions`), Bridge
+`task.approval.respond` succeeds with `resolved: true`, the request row becomes `resolved`, both
+`approval.requested` and `approval.resolved` events exist, the provider resumes, and the real Codex
+writes the requested file with exactly the requested contents.
 
-What that probe exposed instead is a **stall on the public MCP surface while an approval is pending**:
-`get_agent_task` does not answer for roughly 15 seconds when a task sits in `waiting_for_approval`,
-measured directly against `serve`. It is not the Bridge — the same `task.get` straight onto the Named
-Pipe returns in 0.02 s — and 15 s is exactly `AgentBridgeClient`'s default timeout, so the stall sits
-in the MCP layer above the Bridge, correlated with a live interaction waiter. Not yet isolated to a
-line of product code. It is also the honest explanation of the earlier "the harness never answers"
-symptom: the harness polls through the same affected path, so it could often not observe an approval
-inside its five-minute life.
+What is **not** measured: that round trip never went through `respond_agent_approval`. It went
+straight onto the Named Pipe, because the public MCP surface was stalling at the time. So the Bridge
+side of §44 and the workspace mutation are evidenced; the public-surface gates are not.
 
-So §42, §43, §45, §46, §47, §48, §49 and real Job containment remain **not run and not claimed**,
-and none of them can be trusted until the stall above is understood, because every one of them polls
-through it. Nothing is approximated with the fake provider.
+**The public MCP stall is a ServerFS defect, now reproduced deterministically** (`71014b6`). With the
+provider removed entirely — real launcher, real supervisor, real Bridge, real Named Pipe, real `serve`
+stdio, real public MCP tools, and the D9 test adapter in a new `approval` mode that raises a genuine
+approval through the real `context.request_approval` path — it still happens.
+
+- Control A, the production `AgentBridgeClient` with one pipe connection per RPC: **20/20 fast**
+  (min 5 ms, median 5 ms, max 9 ms), approval response in 30 ms. Client and Named Pipe are cleared.
+- Control B, the same reads over real MCP stdio: fast to within 7 ms, then the **16th** call never
+  gets a reply.
+
+The effective client timeout is **30.0 s** — production `serve` passes 30.0 — so the earlier "15 s
+equals the default timeout" explanation is withdrawn; it matched a number that production does not
+use. Running Control B first changes nothing, which rules out pipe-pool exhaustion by measurement.
+The cause inside the MCP stdio layer is **not established** and is not guessed at. No timeout was
+raised, no pool enlarged, no product code touched.
+
+So §40, §42, §43, §44, §45, §46, §47, §48, §49 and real Job containment all remain **not run and
+not claimed** as public-surface gates, and none can be trusted until the stall is understood, because
+every one of them polls through it. Nothing is approximated with the real provider's absence.
 
 Four harness faults were found by running it and fixed in `56f547c`, all of which had turned a stuck
 MCP layer into "the provider is slow": the read was never actually bounded (the deadline was checked
