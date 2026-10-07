@@ -358,9 +358,10 @@ through the public tool. Result:
 
 So the frozen pending-request contract holds, Bridge commits the resolution, the provider continues,
 and the file lands. On this provider §40 and §44 are the same real turn, and the *Bridge-side* half of
-§44 is evidenced. The public-MCP half is not: the answer in this run went straight onto the Named
-Pipe, precisely because the public surface was stalling. §40 and §44 stay **open** until the same round
-trip completes through `respond_agent_approval`.
+§44 is evidenced. The public-MCP half was not: the answer in this run went straight onto the Named
+Pipe, precisely because the public surface was stalling. At this checkpoint §40 and §44 therefore
+remained **open**, pending the same round trip through `respond_agent_approval` — which is what the
+harness fix below made possible, and which both later completed.
 
 ### Why earlier runs looked like a slow provider
 
