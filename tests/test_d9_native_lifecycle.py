@@ -71,6 +71,7 @@ _bootstrap = _load("d9_bridge_bootstrap")
 _lifecycle_module = _load("d9_lifecycle")
 
 ENV_CAPTURE_FILE = _bootstrap.ENV_CAPTURE_FILE
+PROVIDER_CHILD_FILE = _bootstrap.PROVIDER_CHILD_FILE
 WAIT_FILE = _bootstrap.WAIT_FILE
 WORKSPACE_WRITE_BYTES = _bootstrap.WORKSPACE_WRITE_BYTES
 WORKSPACE_WRITE_FILE = _bootstrap.WORKSPACE_WRITE_FILE
@@ -649,6 +650,67 @@ class TestAbnormalTerminationIsContained:
             _terminate(bystander)
             lifecycle.kill()
 
+    def test_killing_only_the_bridge_collapses_the_chain_and_frees_the_lifecycle(
+        self, tmp_path: Path
+    ) -> None:
+        """The other half of containment, and the one nothing monitored before Phase F.
+
+        The case above kills the supervisor and proves the Job Object reaps the tree. It says
+        nothing about a Bridge that dies while its supervisor lives: the supervisor then holds the
+        Job and the per-user lifecycle lease with nothing behind them -- a chain that serves nothing
+        and blocks every later start. That was a measured defect: the first version of the bridge
+        watcher was defined and never called, and only a real Bridge-only kill exposed it. This is
+        the case that would have caught it.
+
+        The provider child is the load-bearing part. ``_terminate`` on the Bridge proves the Bridge
+        died, which is true by construction; what needs proving is that its *descendants* are
+        reclaimed, and asserting that about a chain with no descendants would be asserting nothing.
+        So the fake runtime spawns a real, long-lived child and records its pid -- a Job member by
+        inheritance, killed when the supervisor's teardown closes the Job.
+        """
+        lifecycle = Lifecycle(tmp_path, agent_enabled=True, bridge_mode="child")
+        lifecycle.launch()
+        bystander = _spawn_sleeper(120)
+        provider_child = 0
+        try:
+            client = Client(lifecycle)
+            client.initialize()
+            assert client.wait_for_status(_submit(client, "phase-d-bridge-only")) == "succeeded"
+
+            provider_child = _recorded_provider_child(lifecycle)
+            assert _alive(provider_child), (
+                "the Bridge-owned descendant never started, so the containment step would be "
+                "vacuous"
+            )
+            bridge_pids = lifecycle.bridge_pids()
+            assert lifecycle.supervisor_pids() and bridge_pids, "the chain did not start"
+
+            # Only the Bridge is terminated. Nothing closes the supervisor's stdin or asks it to
+            # stop, so whatever happens next it must have decided on its own.
+            for pid in bridge_pids:
+                _terminate(pid)
+
+            assert wait_until(lambda: not any(_alive(pid) for pid in bridge_pids), timeout=45), (
+                "the Bridge survived its own termination"
+            )
+            assert wait_until(lambda: not lifecycle.supervisor_pids(), timeout=45), (
+                "the supervisor outlived its Bridge"
+            )
+            assert wait_until(lambda: not _alive(provider_child), timeout=45), (
+                "the Bridge-owned descendant outlived the chain: closing the Job reclaims it"
+            )
+            assert _alive(bystander), "containment reached an unrelated process"
+        finally:
+            _terminate(bystander)
+            if provider_child:
+                _terminate(provider_child)
+            lifecycle.kill()
+
+        assert _lifecycle_lease_is_free(timeout=30), (
+            "the per-user lifecycle ownership was not released, so every later start would be "
+            "refused by a chain that no longer serves anything"
+        )
+
 
 class TestStartupFailureLeavesNothingRunning:
     def test_a_bridge_that_cannot_start_leaves_no_orphan_and_no_stdio_child(self, tmp_path) -> None:
@@ -679,6 +741,43 @@ class TestStartupFailureLeavesNothingRunning:
         assert not lifecycle.bridge_pids(), "a Bridge was left running after a failed startup"
         if lifecycle.lock_dir.exists():
             assert not list(lifecycle.lock_dir.rglob("*")), "a lease survived a failed startup"
+
+    def test_a_taken_containment_job_name_refuses_the_whole_startup(self, tmp_path: Path) -> None:
+        """The barrier, through the real chain: an existing name must not become a join.
+
+        ``CreateJobObjectW`` answers ``ERROR_ALREADY_EXISTS`` with a *usable* handle to the old
+        object, so the tempting failure is to carry on inside a job the previous generation still
+        owns -- and then send a containment statement downstream that is false. Refusing is the only
+        safe reading, and this is the case that fails if the supervisor ever stops using the
+        lifecycle identity: an anonymous job would start happily here, and the "fresh name shows the
+        previous generation stopped" proof would silently become a claim about nothing.
+        """
+        from serverfs_mcp.native_lifecycle import LifecycleLease, job_name
+        from serverfs_mcp.windows_job import WindowsJob
+
+        holder = WindowsJob(job_name())
+        holder.open()
+        lifecycle = Lifecycle(tmp_path, agent_enabled=True)
+        try:
+            lifecycle.launch()
+            returncode = lifecycle.stop(timeout=90)
+            stderr = lifecycle.stderr_text()
+
+            assert returncode not in (0, None), (
+                f"startup claimed success while another owner held the containment job: "
+                f"{stderr[-1200:]}"
+            )
+            assert "Traceback" not in stderr, stderr[-1500:]
+            # The refusal is a failure class, not a dump: nothing about the holder.
+            assert "already exists" in stderr, stderr[-1200:]
+            assert not lifecycle.bridge_pids(), "a Bridge was started into a foreign job"
+            # And the failed start owns nothing on the way out: it released the lifecycle lease, so
+            # the next start is blocked by the holder's job, not by a leaked lock. (The holder is a
+            # Job handle, deliberately not the lease -- the two are different objects.)
+            LifecycleLease().acquire().close()
+        finally:
+            lifecycle.kill()
+            holder.close()
 
 
 class TestLauncherRefusalsAreRedacted:
@@ -810,6 +909,34 @@ def _spawn_sleeper(seconds: int) -> int:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     ).pid
+
+
+def _recorded_provider_child(lifecycle: Lifecycle) -> int:
+    """The pid the fake runtime recorded for the real child it spawned."""
+    record = lifecycle.record_dir / PROVIDER_CHILD_FILE
+    assert record.is_file(), "the test runtime never reported a provider child"
+    return int(json.loads(record.read_text(encoding="utf-8"))["pid"])
+
+
+def _lifecycle_lease_is_free(*, timeout: float) -> bool:
+    """Whether this user's lifecycle ownership can be taken again, bounded.
+
+    Taken and released immediately: the question is only whether the previous owner let go, and
+    holding it would make the next chain fail for a reason this test created. Bounded because the
+    kernel closes a dying process's handles during teardown rather than at the instant its parent
+    reaps it -- "released after N seconds" and "never released" are different findings.
+    """
+    from serverfs_mcp.native_lifecycle import LifecycleLease, LifecycleOwnershipError
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            LifecycleLease().acquire().close()
+            return True
+        except LifecycleOwnershipError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.25)
 
 
 def _terminate(pid: int) -> None:

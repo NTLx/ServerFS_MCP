@@ -41,6 +41,7 @@ import os
 import shutil
 import subprocess
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -71,6 +72,31 @@ POLLUTION_MARKERS: dict[str, str] = {
     # proves the rule regressed rather than the harness being stricter than the product.
     "VENDOR_PROXY_URL": "http://127.0.0.1:19998",
 }
+
+#: Each runtime's *executable name* as the product defaults it, which is not always the
+#: runtime's own name. Read from `QoderSettings` / `CodexSettings` / `ClaudeSettings`
+#: rather than guessed.
+#:
+#: Phase F rendered `qoder_bin = "qoder"` from the runtime name alone, which on this host
+#: resolves to `qoder.CMD` -- a cmd -> powershell.exe -> qodercli.exe dispatcher -- while
+#: the product default is `qodercli`, the binary itself. So the acceptance was measuring a
+#: launch path no default deployment uses. The mapping is explicit rather than derived so a
+#: future runtime cannot silently inherit another runtime's name, and so a divergence from
+#: the product default is visible in review.
+DEFAULT_RUNTIME_BIN: dict[str, str] = {
+    "codex": "codex",
+    "qoder": "qodercli",
+    "claude": "claude",
+}
+
+
+def default_runtime_bin(runtime: str) -> str:
+    """The product default executable name for a runtime.
+
+    Falls back to the runtime name only for a runtime this harness has no mapping for, so an unknown
+    runtime fails as a wrong-looking config line rather than as a KeyError at format time.
+    """
+    return DEFAULT_RUNTIME_BIN.get(runtime, runtime)
 
 
 class HarnessPreflightError(RuntimeError):
@@ -212,6 +238,10 @@ class HarnessStderrError(RuntimeError):
     """Formal acceptance was asked to run on an undrained stderr pipe."""
 
 
+class BridgeOwnershipError(HarnessPreflightError):
+    """This lifecycle is answering through a Bridge that belongs to another chain."""
+
+
 def require_file_stderr(lifecycle: Lifecycle) -> None:
     """Refuse to run formal acceptance on an undrained stderr pipe.
 
@@ -227,6 +257,47 @@ def require_file_stderr(lifecycle: Lifecycle) -> None:
             "formal acceptance requires the file stderr sink; "
             "an undrained pipe blocks the serving handler inside the logger"
         )
+
+
+def require_own_bridge(lifecycle: Lifecycle, *, timeout: float = 60.0) -> dict[str, Any]:
+    """Assert this lifecycle owns its own Bridge, before anything talks to the endpoint.
+
+    Measured defect, and the reason this is a precondition rather than a diagnostic: the Agent
+    Bridge endpoint is derived from the **user SID alone** (`derive_pipe_name`), so a second
+    Agent-enabled chain in the same user session does not get a Bridge of its own. Its `initialize`
+    still succeeds and its tools still answer -- because the *other* Bridge answers them. A harness
+    that only checked "the endpoint works" therefore measures the wrong chain without any call
+    failing, which is exactly what happened in F3's two-chain E1 pair: the sentinel chain's task,
+    artifact and store row all landed in the main chain.
+
+    So the requirement is "at least one Bridge process belongs to this chain", and zero means this
+    chain never produced one and whatever answers the pipe belongs to somebody else -- including a
+    Bridge from a previous run that this one should not be able to see.
+
+    The count is deliberately not asserted as exactly 1. Measured on this host: every layer of a
+    chain appears as a parent/child pair with an identical command line, and for one launched chain
+    exactly one of the two matched Bridge PIDs had its parent among them
+    (`{"21020": false, "22048": true}`) -- i.e. one logical Bridge, reported as two PIDs. Demanding
+    a literal 1 would fail every run, so the guard is on the absence of a Bridge, which is the
+    measured defect, and the count is returned as evidence rather than hidden.
+    """
+    wait_until(lambda: len(lifecycle.bridge_pids()) >= 1, timeout=timeout)
+    bridges = lifecycle.bridge_pids()
+    supervisors = lifecycle.supervisor_pids()
+    launcher_alive = lifecycle.process is not None and lifecycle.process.poll() is None
+    if not bridges or not supervisors or not launcher_alive:
+        raise BridgeOwnershipError(
+            "FAIL HARNESS: this lifecycle does not own its Agent Bridge "
+            f"(own_bridge_pid_count={len(bridges)}, "
+            f"own_supervisor_present={bool(supervisors)}, launcher_alive={launcher_alive}). "
+            "The endpoint is derived from the user SID alone, so another chain's Bridge can "
+            "answer this one's pipe; any tool result would belong to a different chain."
+        )
+    return {
+        "own_bridge_pid_count": len(bridges),
+        "own_supervisor_present": bool(supervisors),
+        "launcher_alive": launcher_alive,
+    }
 
 
 def require_preflight(env_file: Path, codex_home: Path) -> Preflight:
@@ -343,6 +414,8 @@ class Lifecycle:
         read_only: bool = False,
         stderr_is_pipe: bool = False,
         runtime: str = "codex",
+        runtime_bin: str | None = None,
+        extra_child_env: Mapping[str, str] | None = None,
     ) -> None:
         self.tmp_path = tmp_path
         self.env_file = env_file
@@ -353,6 +426,18 @@ class Lifecycle:
         # through the same launcher, supervisor, Bridge and Named Pipe, differing only in this
         # block.
         self.runtime = runtime
+        # The executable the rendered config names. `None` means "whatever the product defaults to",
+        # which is the only value formal acceptance may use; an override exists so a diagnostic can
+        # deliberately measure a *non-default* launch path and label it as such. Phase F originally
+        # interpolated the runtime name here, which for Qoder produced `qoder` -- a PowerShell
+        # dispatcher -- rather than the product default `qodercli`, so the acceptance was not
+        # measuring the configuration a default deployment runs.
+        self.runtime_bin = runtime_bin if runtime_bin is not None else default_runtime_bin(runtime)
+        # Added to the launcher environment before the tree is created, never after. E1's sentinels
+        # have to exist at spawn time to mean anything: a child inherits the parent's environment as
+        # it was when `Popen` ran, so a name added afterwards is invisible to it. Measured, not
+        # assumed -- see the E1 arm's own docstring.
+        self.extra_child_env = dict(extra_child_env or {})
         self.read_only = read_only
         # The undrained-pipe behaviour stays reachable only for the backpressure regression that
         # established it as this harness's own fault. Formal acceptance must use the file sink, and
@@ -410,7 +495,7 @@ class Lifecycle:
                 f"[agent.{self.runtime}]",
                 "enabled = true",
                 f"use_proxy = {str(self.use_proxy).lower()}",
-                f'{self.runtime}_bin = "{self.runtime}"',
+                f'{self.runtime}_bin = "{self.runtime_bin}"',
                 "",
                 "[[workdirs]]",
                 'alias = "acceptance"',
@@ -450,6 +535,9 @@ class Lifecycle:
             bypass = agent_values.get("SERVERFS_AGENT_NO_PROXY")
             if bypass:
                 env["SERVERFS_AGENT_NO_PROXY"] = bypass
+        # Applied last so a sentinel cannot be shadowed by anything above, and present before
+        # `launch` builds the process tree rather than after.
+        env.update(self.extra_child_env)
         return env
 
     def launch(self) -> None:

@@ -162,3 +162,35 @@ class TestNoPublicProtocolChange:
         assert encoded.count(b"\n") == 1
         assert encoded.endswith(b"\n")
         assert json.loads(encoded.decode("utf-8"))["version"] == BOOTSTRAP_VERSION
+
+
+class TestTheContainmentFactOnThePrivateChannel:
+    """Phase F: startup reconciliation needs to know the previous generation's containment is over.
+
+    No provider adapter can know it -- Qoder's SDK does not report whether the old process is alive
+    -- so the supervisor states it, because the supervisor is the process that establishes it: it
+    holds the per-user lifecycle lease and it created the SID-scoped named Job Object rather than
+    finding one. It rides this private parent-to-child channel, not the public RPC, and it is
+    optional with a false default so that an unsupervised launch or an older supervisor keeps the
+    conservative behaviour instead of being read as containment.
+    """
+
+    def test_an_absent_key_means_not_proven(self) -> None:
+        frame = parse_bootstrap_frame(encode_bootstrap_frame(PROXY))
+        assert frame.prior_bridge_execution_stopped is False
+
+    def test_the_fact_round_trips(self) -> None:
+        encoded = encode_bootstrap_frame(PROXY, prior_bridge_execution_stopped=True)
+        assert parse_bootstrap_frame(encoded).prior_bridge_execution_stopped is True
+
+    def test_a_non_boolean_is_refused(self) -> None:
+        raw = json.dumps(
+            {"version": BOOTSTRAP_VERSION, "prior_bridge_execution_stopped": "yes"}
+        ).encode()
+        with pytest.raises(BootstrapError):
+            parse_bootstrap_frame(raw)
+
+    def test_the_protocol_version_is_not_touched(self) -> None:
+        """A private lifecycle statement must never look like a protocol change."""
+        encoded = encode_bootstrap_frame(PROXY, prior_bridge_execution_stopped=True)
+        assert json.loads(encoded.decode("utf-8"))["version"] == BOOTSTRAP_VERSION

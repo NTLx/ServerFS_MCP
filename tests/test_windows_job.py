@@ -11,6 +11,7 @@ because a job kills a tree that has already lost its parent and there is no othe
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -120,6 +121,56 @@ class TestJobLifecycle:
         job.close()
         job.close()
         assert not job.is_open
+
+    def test_a_named_job_that_already_exists_is_refused(self) -> None:
+        """The containment barrier: an existing name means the old object is still there.
+
+        ``CreateJobObjectW`` answers ``ERROR_ALREADY_EXISTS`` *with* a usable handle to the existing
+        object, so the natural mistake is to carry on and use it -- which would put the new Bridge
+        inside a job the previous generation still owns and make every downstream containment claim
+        false. Refusing is the only safe reading.
+        """
+        name = f"Global\\serverfs-agent-bridge-job-v1-pin-{os.getpid()}"
+        holder = WindowsJob(name)
+        holder.open()
+        try:
+            with pytest.raises(JobObjectError, match="already exists"):
+                WindowsJob(name).open()
+        finally:
+            holder.close()
+
+    def test_the_name_is_free_again_once_the_last_handle_closes(self) -> None:
+        """The other half: the barrier must not outlive its owner, or nothing could ever restart."""
+        name = f"Global\\serverfs-agent-bridge-job-v1-reuse-{os.getpid()}"
+        first = WindowsJob(name)
+        first.open()
+        first.close()
+        second = WindowsJob(name)
+        second.open()
+        try:
+            assert second.is_open
+        finally:
+            second.close()
+
+    def test_the_refusal_does_not_keep_the_old_object_alive(self) -> None:
+        """A refused open must not hold a handle: that would keep the name taken after the owner
+        exits.
+
+        Observed through the name itself: with the holder already closed, the refused attempt must
+        leave the name free for the next caller.
+        """
+        name = f"Global\\serverfs-agent-bridge-job-v1-nohold-{os.getpid()}"
+        holder = WindowsJob(name)
+        holder.open()
+        with pytest.raises(JobObjectError):
+            WindowsJob(name).open()
+        holder.close()
+        reuser = WindowsJob(name)
+        reuser.open()
+        try:
+            assert reuser.is_open
+        finally:
+            reuser.close()
 
     def test_context_manager_closes_on_exception(self) -> None:
         job = WindowsJob()
@@ -318,3 +369,129 @@ class TestPlatformNeutrality:
         with pytest.raises(OSError):
             job.open()  # no kernel32 to load
         assert not job.is_open
+
+
+_MEMBER_SCRIPT = "\n".join(
+    [
+        "import os, sys, time",
+        "path = sys.argv[1]",
+        "scratch = path + '.tmp'",
+        "n = 0",
+        "while True:",
+        "    with open(scratch, 'w', encoding='utf-8') as handle:",
+        "        handle.write(str(n))",
+        "    os.replace(scratch, path)",
+        "    n += 1",
+        "    time.sleep(0.05)",
+    ]
+)
+
+#: The owner of the job and, through it, of the member. It is a separate process so that it can be
+#: hard-killed -- the supervisor-crash shape, where no handle outlives the owner.
+_OWNER_SCRIPT = "\n".join(
+    [
+        "import subprocess, sys, time",
+        "from serverfs_mcp.windows_job import WindowsJob",
+        "",
+        "job = WindowsJob(sys.argv[1])",
+        "job.open()",
+        "child = subprocess.Popen([sys.executable, '-c', sys.argv[3], sys.argv[2]])",
+        "job.assign(child)",
+        "print('ready', child.pid, flush=True)",
+        "time.sleep(600)",
+    ]
+)
+
+
+def _name_is_free(name: str) -> bool:
+    """Whether a fresh job of this name can be created. The handle is never kept."""
+    job = WindowsJob(name)
+    try:
+        job.open()
+    except JobObjectError:
+        return False
+    job.close()
+    return True
+
+
+def _still_running(pid: int) -> bool:
+    """Whether the process object has not signalled yet -- the diagnostic, not the assertion."""
+    import ctypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+    kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+    if not handle:
+        return False
+    try:
+        return kernel32.WaitForSingleObject(handle, 0) != 0  # 0 == WAIT_OBJECT_0
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+class TestTheNamedJobBarrierStopsExecution:
+    """What the recovery decision actually rests on, observed at the safety boundary.
+
+    The supervisor reads "the previous generation's execution has stopped" out of a fresh named
+    Job. So the property to pin is not a timestamp ordering between two kernel events but the
+    question the recovery guard is really asking: once the name is free again, can a former
+    member still execute user-mode code?
+
+    The member keeps rewriting a counter, which is the cheapest observable user-mode side effect. It
+    must visibly advance *before* the kill -- otherwise "unchanged after" would pass because
+    nothing ever wrote -- and then be frozen across a window far longer than the measured
+    object-teardown gap. Whether the member's process object had already signalled at the barrier
+    instant is recorded in the failure message as a diagnostic, because it is interesting and it
+    is explicitly *not* the
+    claim: termination is asynchronous on Windows, and the guard exists to stop a second writer
+    meeting a first one that is still executing, not to wait for a corpse.
+    """
+
+    def test_a_former_member_stops_writing_once_the_name_is_free_again(
+        self, tmp_path: Path
+    ) -> None:
+        counter = tmp_path / "counter.txt"
+        counter.write_text("-1", encoding="utf-8")
+        name = rf"Global\serverfs-agent-bridge-job-v1-counter-{os.getpid()}"
+
+        owner = subprocess.Popen(
+            [sys.executable, "-c", _OWNER_SCRIPT, name, str(counter), _MEMBER_SCRIPT],
+            stdout=subprocess.PIPE,
+        )
+        try:
+            assert owner.stdout is not None
+            ready = owner.stdout.readline().split()
+            assert ready[0] == b"ready", f"the owner never came up: {ready}"
+            member_pid = int(ready[1])
+
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline and int(counter.read_text(encoding="utf-8")) < 3:
+                time.sleep(0.05)
+            assert int(counter.read_text(encoding="utf-8")) >= 3, (
+                "the member never wrote, so the second half of this test would be vacuous"
+            )
+
+            owner.kill()
+            owner.wait(timeout=30)
+
+            # The barrier instant: the first moment a fresh job of this name can exist. Create and
+            # release, never hold -- this is an observation, not an ownership claim.
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline and not _name_is_free(name):
+                time.sleep(0.001)
+            assert _name_is_free(name), "the name was never free again after the owner died"
+            value_at_barrier = int(counter.read_text(encoding="utf-8"))
+            member_object_pending = _still_running(member_pid)
+
+            time.sleep(2.0)
+            assert int(counter.read_text(encoding="utf-8")) == value_at_barrier, (
+                "a former job member was still executing after the name freed "
+                f"(process object still pending at the barrier: {member_object_pending})"
+            )
+        finally:
+            if owner.poll() is None:
+                owner.kill()
+                owner.wait(timeout=10)

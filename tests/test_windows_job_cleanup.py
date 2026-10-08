@@ -51,7 +51,7 @@ class TestFailureIsRedacted:
         """The failure class is what the supervisor turns into exit 2."""
         import serverfs_mcp.windows_job as module
 
-        def _boom() -> int:
+        def _boom(name: str | None) -> int:
             raise OSError("kernel32 refused")
 
         monkeypatch.setattr(module, "_create_kill_on_close_job", _boom)
@@ -100,7 +100,7 @@ class TestCloseIsUnskippable:
 
         job = WindowsJob()
 
-        def _boom() -> int:
+        def _boom(name: str | None) -> int:
             raise OSError("nope")
 
         monkeypatch.setattr(module, "_create_kill_on_close_job", _boom)

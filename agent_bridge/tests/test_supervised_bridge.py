@@ -182,8 +182,19 @@ class TestSupervisedLifecycle:
         _code, stderr = _finish(process)
         assert "19999" not in stderr, stderr[-1500:]
 
-    def test_unsupervised_launch_still_works(self, workdir: Path) -> None:
-        """The v0.10-compatible launch path is untouched by the supervised one."""
+    def test_an_unsupervised_launch_is_refused_on_windows(self, workdir: Path) -> None:
+        """Supervised-only on Windows, observed as a refusal rather than argued from the flag.
+
+        This case used to assert the opposite -- "the v0.10-compatible launch path is untouched" --
+        on the premise that an unsupervised Bridge is a supported v0.10 shape. It is not: v0.10
+        never starts this process at all, because its launcher runs ``serverfs_mcp.cli serve``
+        through the supervisor's non-Agent branch. So the only thing being kept working was a launch
+        nobody performs, while the shape it allowed is the one that can leave provider state behind
+        that a later supervised start would wrongly claim to have reaped.
+
+        ``_finish`` bounds the exit, so "refused" is distinguished from "hung": a process that
+        stayed up would report ``code is None`` here rather than passing.
+        """
         rendered = _fake_runtime_config(workdir)
         process = subprocess.Popen(
             [
@@ -198,14 +209,9 @@ class TestSupervisedLifecycle:
             stderr=subprocess.PIPE,
             cwd=str(REPO_ROOT),
         )
-        deadline = time.monotonic() + STARTUP_GRACE_SECONDS
-        while time.monotonic() < deadline and process.poll() is not None:
-            time.sleep(0.05)
-        try:
-            assert process.poll() is None, "the unsupervised Bridge exited immediately"
-        finally:
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
+        code, stderr = _finish(process)
+        assert code == 2, f"exit={code} stderr={stderr[-1500:]}"
+        assert "unsupervised" in stderr.lower(), stderr[-1500:]
+        assert "Traceback" not in stderr, stderr[-1500:]
+        # The refusal is a message, not a dump: no host path, no config path.
+        assert str(rendered.config_path) not in stderr, stderr[-1500:]

@@ -160,9 +160,27 @@ def bridge_child_environment(
     return env
 
 
-def bootstrap_frame_bytes(proxy: AgentProxyConfig | None) -> bytes:
-    """Encode the single runtime-only frame the Bridge reads from stdin."""
+def bootstrap_frame_bytes(
+    proxy: AgentProxyConfig | None, *, prior_bridge_execution_stopped: bool = False
+) -> bytes:
+    """Encode the single runtime-only frame the Bridge reads from stdin.
+
+    ``prior_bridge_execution_stopped`` is the containment fact the recovery path needs and no
+    adapter can
+    know. It is stated by the supervisor because the supervisor is what can establish it: it holds
+    the per-user lifecycle lease (so no earlier owner is alive) and it *created* the SID-scoped
+    named Job Object rather than finding one (so the object that held the previous tree is gone
+    and Windows has ordered that tree to stop). Either half alone would be an inference; together
+    they are a reading of the two objects involved. A name that was already taken is a refusal, so a
+    supervisor that cannot establish the fact never sends this frame at all. It travels here
+    rather than in the public RPC because it is a private lifecycle statement, not protocol.
+
+    Written only when true, so a path that cannot prove containment produces the same frame an older
+    supervisor would and is read as "not proven".
+    """
     document: dict[str, object] = {"version": 1}
+    if prior_bridge_execution_stopped:
+        document["prior_bridge_execution_stopped"] = True
     if proxy is not None:
         document["agent_proxy"] = {
             "enabled": True,

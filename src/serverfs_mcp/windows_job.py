@@ -21,8 +21,18 @@ Two boundaries are deliberate and are what keep this from becoming a process hij
   Continuing would mean running the Bridge with the containment the operator was promised, and
   losing it silently at exactly the moment it matters.
 
+A job may also be **named**, and for the Agent supervisor it must be: the name is the containment
+*barrier*. A job object is destroyed once its last handle closes, and closing it is what delivers
+kill-on-close to every member, so finding the name free is evidence that the previous generation's
+containment object — the thing that actually held the provider tree — no longer exists and its
+members have been ordered to stop. That is the difference between inferring
+containment from a *different* kernel object and reading it off the one that did the containing.
+A name that is already taken means the previous object is still there, and the caller must fail
+closed rather than join it.
+
 Nothing here is Windows-Secret or requires elevation: ``CreateJobObjectW`` and process assignment
-are available to an ordinary user process for its own children.
+are available to an ordinary user process for its own children. Measured: creating a ``Global\\``
+named job succeeds from a medium-integrity token that does *not* hold ``SeCreateGlobalPrivilege``.
 """
 
 from __future__ import annotations
@@ -49,9 +59,14 @@ class WindowsJob:
     Used as a context manager so the handle cannot leak on an exception path: leaving the process
     is the normal case and must still close the job, because closing it is what guarantees the tree
     is gone.
+
+    ``name`` is optional because most uses want an anonymous job. The Agent supervisor always names
+    it, with the identity the Named Pipe is derived from, because a *fresh* named job is the
+    containment barrier described in the module docstring.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, name: str | None = None) -> None:
+        self._name = name
         self._handle: int | None = None
         self._closed = False
 
@@ -68,7 +83,7 @@ class WindowsJob:
         if self._handle is not None:
             return
         try:
-            self._handle = _create_kill_on_close_job()
+            self._handle = _create_kill_on_close_job(self._name)
         except JobObjectError:
             raise
         except OSError as exc:
@@ -123,6 +138,8 @@ _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 #: PROCESS_SET_QUOTA | PROCESS_TERMINATE, plus the standard right set, needed to assign a process.
 _PROCESS_ALL_ACCESS = 0x1F0FFF
+#: Returned by ``CreateJobObjectW`` — alongside a usable handle — when the name is already taken.
+_ERROR_ALREADY_EXISTS = 183
 
 # BOOLEAN(1) + padding + two LARGE_INTEGERs + four DWORDs; see JOBOBJECT_EXTENDED_LIMIT_INFORMATION.
 _EXTENDED_LIMIT_SIZE = 144 + 8
@@ -149,19 +166,31 @@ def _kernel32() -> Any:
     return kernel32
 
 
-def _create_kill_on_close_job() -> int:
+def _create_kill_on_close_job(name: str | None = None) -> int:
     """Create a job object armed with ``JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE``.
 
     Every other limit field is left zero, which means "no further limit applies" — in particular no
     active-process or memory cap, so containment constrains the process *tree* without constraining
     what the Bridge is allowed to use.
+
+    A named job that already exists is a refusal, not a join. ``ERROR_ALREADY_EXISTS`` is reported
+    alongside a *usable* handle to the existing object, so the check has to happen before anything
+    is done with it and the handle has to be closed on that path -- an open handle would keep the
+    old object alive, which is the very thing the caller is trying to rule out.
     """
     import ctypes
 
     kernel32 = _kernel32()
-    handle = kernel32.CreateJobObjectW(None, None)
+    ctypes.set_last_error(0)
+    handle = kernel32.CreateJobObjectW(None, name)
     if not handle:
         raise JobObjectError("the job object could not be created")
+    if name is not None and ctypes.get_last_error() == _ERROR_ALREADY_EXISTS:
+        _close_handle(int(handle))
+        raise JobObjectError(
+            "a job object of this name already exists, so it cannot be shown that the previous "
+            "generation's execution has stopped"
+        )
 
     class _BasicLimit(ctypes.Structure):
         _fields_ = [

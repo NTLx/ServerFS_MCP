@@ -43,7 +43,7 @@ MAX_BOOTSTRAP_BYTES = 64 * 1024
 #: protocol semantics and must not be mistaken for one.
 BOOTSTRAP_VERSION = 1
 
-_FRAME_KEYS = frozenset({"version", "agent_proxy"})
+_FRAME_KEYS = frozenset({"version", "agent_proxy", "prior_bridge_execution_stopped"})
 _PROXY_KEYS = frozenset({"enabled", "url", "no_proxy"})
 
 
@@ -78,6 +78,16 @@ class BootstrapFrame:
 
     version: int
     agent_proxy: RuntimeProxy | None
+    #: Whether the previous generation's *execution* has been stopped: the supervisor holds the
+    #: per-user lifecycle lease and *created* the SID-scoped named Job Object rather than finding
+    #: one, so the object that held the old provider tree is gone and Windows has delivered
+    #: termination to every member. The old provider cannot keep running Agent or tool code.
+    #: This is deliberately weaker than "every process object has been destroyed": termination is
+    #: asynchronous on Windows, and teardown of objects and pending I/O can trail by a fraction of
+    #: a millisecond (measured). Not a secret, but a private parent-to-child lifecycle statement:
+    #: not part of the public RPC, does not touch PROTOCOL_VERSION, and defaults to False so an
+    #: unsupervised launch (or an older supervisor) stays fail-closed.
+    prior_bridge_execution_stopped: bool = False
 
     @property
     def has_proxy(self) -> bool:
@@ -125,9 +135,17 @@ def parse_bootstrap_frame(raw: bytes) -> BootstrapFrame:
     if version != BOOTSTRAP_VERSION:
         raise BootstrapError("bootstrap frame version is not supported")
 
+    # Optional and default-False: an absent key means "not proven", so an unsupervised launch or an
+    # older supervisor keeps the fail-closed behaviour rather than being read as containment.
+    stopped = data.get("prior_bridge_execution_stopped", False)
+    if type(stopped) is not bool:
+        raise BootstrapError("bootstrap prior_bridge_execution_stopped must be a boolean")
+
     proxy_block = data.get("agent_proxy")
     if proxy_block is None:
-        return BootstrapFrame(version=BOOTSTRAP_VERSION, agent_proxy=None)
+        return BootstrapFrame(
+            version=BOOTSTRAP_VERSION, agent_proxy=None, prior_bridge_execution_stopped=stopped
+        )
     if not isinstance(proxy_block, dict):
         raise BootstrapError("bootstrap agent_proxy must be an object")
     _reject_unknown(proxy_block, _PROXY_KEYS, "agent_proxy")
@@ -137,19 +155,28 @@ def parse_bootstrap_frame(raw: bytes) -> BootstrapFrame:
     if not enabled:
         # An explicitly disabled proxy is still a configuration statement, so it is accepted and
         # recorded as "no proxy" rather than treated as malformed.
-        return BootstrapFrame(version=BOOTSTRAP_VERSION, agent_proxy=None)
+        return BootstrapFrame(
+            version=BOOTSTRAP_VERSION, agent_proxy=None, prior_bridge_execution_stopped=stopped
+        )
     return BootstrapFrame(
         version=BOOTSTRAP_VERSION,
         agent_proxy=RuntimeProxy(
             url=_strict_str(proxy_block, "url"),
             no_proxy=_strict_str(proxy_block, "no_proxy"),
         ),
+        prior_bridge_execution_stopped=stopped,
     )
 
 
-def encode_bootstrap_frame(proxy: RuntimeProxy | None) -> bytes:
+def encode_bootstrap_frame(
+    proxy: RuntimeProxy | None, *, prior_bridge_execution_stopped: bool = False
+) -> bytes:
     """Build the frame the supervisor writes. Kept beside the parser so the two cannot drift."""
     document: dict[str, Any] = {"version": BOOTSTRAP_VERSION}
+    if prior_bridge_execution_stopped:
+        # Written only when true, so a frame from a path that cannot prove containment looks exactly
+        # like an older supervisor's and is read as "not proven".
+        document["prior_bridge_execution_stopped"] = True
     if proxy is not None:
         document["agent_proxy"] = {
             "enabled": True,

@@ -8,11 +8,11 @@ import pytest
 import serverfs_agent_bridge.service as service_module
 from platform_contract import WINDOWS
 from serverfs_agent_bridge.adapters import FakeAdapter
-from serverfs_agent_bridge.adapters.base import AdapterResult
+from serverfs_agent_bridge.adapters.base import AdapterResult, ReconcileResult
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.lease_identity import alias_lease_id, slot_lease_id
 from serverfs_agent_bridge.leases import LeaseManager
-from serverfs_agent_bridge.models import AgentMode
+from serverfs_agent_bridge.models import AgentMode, ReconciliationStatus
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
 from serverfs_agent_bridge.service import (
     BridgeLimits,
@@ -1267,3 +1267,192 @@ def test_embedded_workdir_redaction_token_boundaries(tmp_path: Path) -> None:
 
     # Text without a workdir reference is returned unchanged.
     assert redact("nothing to redact here") == "nothing to redact here"
+
+
+def test_effective_provider_active_only_tightens_an_unknown() -> None:
+    """Phase F: the adapter owns provider semantics, the supervisor owns OS liveness.
+
+    Qoder answers `None` because its SDK cannot say whether the old process is alive, and it must
+    not be made to guess -- fabricating OS state in a provider adapter would put containment
+    knowledge in the wrong layer and would have to be repeated for every runtime. The supervisor
+    knows, because it holds the per-user lifecycle lease *and* created the SID-scoped named Job
+    Object rather than finding one, which is what shows the previous containment object is gone.
+    Only startup reconciliation combines the two, and only in one direction.
+    """
+    from serverfs_agent_bridge.adapters.base import ReconcileResult
+    from serverfs_agent_bridge.models import ReconciliationStatus
+
+    unknown = ReconcileResult(
+        status=ReconciliationStatus.SESSION_RESUMABLE, provider_active=None, detail=""
+    )
+    # Proven containment turns an unknown into inactive; without the proof it stays unknown.
+    assert (
+        service_module.effective_provider_active(unknown, prior_bridge_execution_stopped=True)
+        is False
+    )
+    assert (
+        service_module.effective_provider_active(unknown, prior_bridge_execution_stopped=False)
+        is None
+    )
+
+    # An adapter that says the provider is active is never overridden, in either direction.
+    active = ReconcileResult(
+        status=ReconciliationStatus.REATTACHED, provider_active=True, detail=""
+    )
+    assert (
+        service_module.effective_provider_active(active, prior_bridge_execution_stopped=True)
+        is True
+    )
+    inactive = ReconcileResult(
+        status=ReconciliationStatus.NOT_RECOVERABLE, provider_active=False, detail=""
+    )
+    assert (
+        service_module.effective_provider_active(inactive, prior_bridge_execution_stopped=False)
+        is False
+    )
+
+
+class _UnknownLivenessFake(FakeAdapter):
+    """A runtime that cannot report whether its previous process is still alive.
+
+    Qoder's shape, and the honest one for any SDK that does not expose OS liveness: the answer is
+    ``SESSION_RESUMABLE`` with ``provider_active=None``. That is exactly the state a guard decision
+    cannot be made from on its own, which is why the supervisor's containment proof exists.
+    """
+
+    provider_active: bool | None = None
+
+    async def reconcile_task(self, task) -> ReconcileResult:
+        return ReconcileResult(
+            status=ReconciliationStatus.SESSION_RESUMABLE,
+            provider_active=self.provider_active,
+            detail="the test runtime cannot report whether its previous process is alive",
+        )
+
+
+async def _terminal_task_with_a_stale_guard(
+    tmp_path: Path, *, provider_active: bool | None
+) -> tuple[BridgeService, str]:
+    """Model the crash window that the non-terminal scan cannot see.
+
+    Reachable in production: the task is transitioned to a terminal status *before* the service's
+    own ``finally`` unlinks the guard, so a crash between the two leaves a completed task with a
+    guard still standing. The first scan walks non-terminal tasks only, so this state falls through
+    to the guard scan -- which is the path under test.
+    """
+    service = make_service(tmp_path)
+    fake = _UnknownLivenessFake()
+    fake.provider_active = provider_active
+    service.adapters["fake"] = fake
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="complete:hello",
+    )
+    await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert service.guard_manager.read(REPO_LEASE_ID) is None, (
+        "the normal completion path should already have cleared the guard"
+    )
+    service.guard_manager.create(
+        lease_id=REPO_LEASE_ID,
+        task_id=submitted["task_id"],
+        runtime="fake",
+        workdir_alias="repo",
+        correlation_id=None,
+    )
+    return service, submitted["task_id"]
+
+
+@pytest.mark.asyncio
+async def test_a_stale_guard_on_a_terminal_task_is_cleared_with_containment_proof(
+    tmp_path: Path,
+) -> None:
+    """Without this, a crash in that window wedges the workdir permanently.
+
+    The task never appears in the non-terminal scan again, so the guard scan is its only chance --
+    and a provider that answers "unknown" would keep the guard forever without the proof.
+    """
+    service, _task_id = await _terminal_task_with_a_stale_guard(tmp_path, provider_active=None)
+    try:
+        service._prior_bridge_execution_stopped = True
+        await service._reconcile_startup()
+        assert service.guard_manager.read(REPO_LEASE_ID) is None
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_the_same_stale_guard_survives_without_the_containment_proof(
+    tmp_path: Path,
+) -> None:
+    """The other half of the rule: an unknown provider keeps the workdir closed.
+
+    Asserted through the public consequence rather than the guard file alone, because "the guard is
+    still there" and "the workdir is still refused" are different claims and only the second is the
+    contract.
+    """
+    service, _task_id = await _terminal_task_with_a_stale_guard(tmp_path, provider_active=None)
+    try:
+        service._prior_bridge_execution_stopped = False
+        await service._reconcile_startup()
+        assert service.guard_manager.read(REPO_LEASE_ID) is not None
+        with pytest.raises(BridgeError) as blocked:
+            await service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="workspace-write",
+                prompt="complete:hello",
+            )
+        assert blocked.value.code == "WORKDIR_RECOVERY_REQUIRED"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_the_proof_never_overrides_an_adapter_that_reports_the_provider_active(
+    tmp_path: Path,
+) -> None:
+    """Containment is only allowed to turn an *unknown* into inactive.
+
+    A runtime that says a provider is still alive outranks the supervisor's inference: the
+    supervisor knows the old Job is gone, not that this particular provider was in it.
+    """
+    service, _task_id = await _terminal_task_with_a_stale_guard(tmp_path, provider_active=True)
+    try:
+        service._prior_bridge_execution_stopped = True
+        await service._reconcile_startup()
+        assert service.guard_manager.read(REPO_LEASE_ID) is not None
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_a_live_submission_is_conservative_even_with_the_startup_proof(
+    tmp_path: Path,
+) -> None:
+    """The proof is a startup fact, and it must not leak into the live path.
+
+    ``_prior_bridge_execution_stopped`` stays true for the whole life of the process, so a live
+    submit that consulted it would clear a guard for a provider that nothing has shown to have
+    stopped -- the
+    exact over-reach the proof was designed to avoid. This fails if the call site ever passes it.
+    """
+    service, _task_id = await _terminal_task_with_a_stale_guard(tmp_path, provider_active=None)
+    try:
+        service._prior_bridge_execution_stopped = True
+        with pytest.raises(BridgeError) as blocked:
+            await service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="workspace-write",
+                prompt="complete:hello",
+            )
+        assert blocked.value.code == "WORKDIR_RECOVERY_REQUIRED"
+        assert service.guard_manager.read(REPO_LEASE_ID) is not None
+    finally:
+        await service.close()
