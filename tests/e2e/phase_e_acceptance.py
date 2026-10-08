@@ -215,9 +215,13 @@ class McpStdioClient:
         *,
         model: str | None = None,
         continue_from: str | None = None,
+        runtime: str = "codex",
     ) -> str:
+        # The runtime is a parameter because Phase F drives the same public surface for Qoder. It
+        # defaults to Codex so every Phase E call site is unchanged, and so a forgotten argument can
+        # never silently retarget an existing gate at a different provider.
         arguments: dict[str, Any] = {
-            "runtime": "codex",
+            "runtime": runtime,
             "workdir": "acceptance",
             "path": "",
             "profile": "workspace-write",

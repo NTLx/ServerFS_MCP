@@ -120,7 +120,7 @@ class Preflight:
         }
 
 
-def _load_env_file(path: Path) -> dict[str, str]:
+def load_env_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     if not path.exists():
         return values
@@ -179,7 +179,7 @@ def preflight(env_file: Path, codex_home: Path) -> Preflight:
         result.chatgpt_signed_in = False
 
     # 4. The dedicated Agent proxy must be configured and credentialless. Only the verdict is kept.
-    values = _load_env_file(env_file)
+    values = load_env_file(env_file)
     raw = values.get("SERVERFS_AGENT_PROXY_URL", "") or os.environ.get(
         "SERVERFS_AGENT_PROXY_URL", ""
     )
@@ -342,11 +342,17 @@ class Lifecycle:
         use_proxy: bool = True,
         read_only: bool = False,
         stderr_is_pipe: bool = False,
+        runtime: str = "codex",
     ) -> None:
         self.tmp_path = tmp_path
         self.env_file = env_file
         self.codex_home = codex_home
         self.use_proxy = use_proxy
+        # Which runtime the rendered config enables. Phase E drove Codex and its own configuration
+        # block, so the default keeps that path byte-for-byte unchanged; Phase F drives Qoder
+        # through the same launcher, supervisor, Bridge and Named Pipe, differing only in this
+        # block.
+        self.runtime = runtime
         self.read_only = read_only
         # The undrained-pipe behaviour stays reachable only for the backpressure regression that
         # established it as this harness's own fault. Formal acceptance must use the file sink, and
@@ -401,17 +407,17 @@ class Lifecycle:
                 "enabled = true",
                 'source = "env"',
                 "",
-                "[agent.codex]",
+                f"[agent.{self.runtime}]",
                 "enabled = true",
                 f"use_proxy = {str(self.use_proxy).lower()}",
-                'codex_bin = "codex"',
+                f'{self.runtime}_bin = "{self.runtime}"',
                 "",
                 "[[workdirs]]",
                 'alias = "acceptance"',
                 f'path = "{escaped}"',
                 f"read_only = {str(self.read_only).lower()}",
                 'agent_mode = "workspace-write"',
-                'agent_runtimes = ["codex"]',
+                f'agent_runtimes = ["{self.runtime}"]',
                 "",
             ]
         )
@@ -437,7 +443,7 @@ class Lifecycle:
         env["BRIDGE_PYTHON"] = str(BRIDGE_PYTHON)
         # The Agent namespace the product reads, and nothing else: no product logic may map the
         # pollution markers onto it.
-        agent_values = _load_env_file(self.env_file)
+        agent_values = load_env_file(self.env_file)
         endpoint = agent_values.get("SERVERFS_AGENT_PROXY_URL", "")
         if endpoint:
             env["SERVERFS_AGENT_PROXY_URL"] = endpoint
