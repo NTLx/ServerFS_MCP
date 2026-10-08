@@ -371,18 +371,26 @@ class TestPlatformNeutrality:
         assert not job.is_open
 
 
+#: The member rewrites the counter through one long-lived handle instead of
+#: write-temp/rename. That is a fixture decision rather than a style one: on Windows
+#: ``os.replace`` fails with ``ERROR_ACCESS_DENIED`` while the destination is open in another
+#: process -- unlike POSIX -- so a renaming writer and a polling reader crash each other. The
+#: first version of this fixture did rename, and the counter froze at a rate of nine failures
+#: in twenty-four runs with the "never wrote" pre-kill guard firing; the writer had died on
+#: its own replace. In-place updates cannot collide.
 _MEMBER_SCRIPT = "\n".join(
     [
-        "import os, sys, time",
+        "import sys, time",
         "path = sys.argv[1]",
-        "scratch = path + '.tmp'",
         "n = 0",
-        "while True:",
-        "    with open(scratch, 'w', encoding='utf-8') as handle:",
+        "with open(path, 'w', encoding='utf-8') as handle:",
+        "    while True:",
+        "        handle.seek(0)",
         "        handle.write(str(n))",
-        "    os.replace(scratch, path)",
-        "    n += 1",
-        "    time.sleep(0.05)",
+        "        handle.truncate()",
+        "        handle.flush()",
+        "        n += 1",
+        "        time.sleep(0.05)",
     ]
 )
 
@@ -401,6 +409,20 @@ _OWNER_SCRIPT = "\n".join(
         "time.sleep(600)",
     ]
 )
+
+
+def _read_counter(path: Path) -> int | None:
+    """One counter sample, or None when the file is momentarily unreadable.
+
+    On Windows the writer's ``os.replace`` can leave the destination absent to a concurrent reader
+    for a measurable moment, so a caller that reads once and trusts the exception would turn a
+    filesystem artefact into a containment finding. Callers here treat ``None`` as "no information"
+    and sample again.
+    """
+    try:
+        return int(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def _name_is_free(name: str) -> bool:
@@ -448,6 +470,14 @@ class TestTheNamedJobBarrierStopsExecution:
     is explicitly *not* the
     claim: termination is asynchronous on Windows, and the guard exists to stop a second writer
     meeting a first one that is still executing, not to wait for a corpse.
+
+    Every read of the counter is a *sample*, and an unreadable one is no information. This is not
+    defensive polish: on Windows the writer's ``os.replace`` can leave the destination briefly
+    absent to a concurrent reader -- measured at ~0.5 s in isolation -- and the first version of
+    this test read the file directly at three points, so it carried a known, already-reproduced
+    flaky failure shape into a tracked regression. Absence never advances a counter and never
+    proves one frozen, which is why the post-barrier window demands at least one readable sample:
+    "the file was missing the whole time" must not read as "the member stopped".
     """
 
     def test_a_former_member_stops_writing_once_the_name_is_free_again(
@@ -467,28 +497,61 @@ class TestTheNamedJobBarrierStopsExecution:
             assert ready[0] == b"ready", f"the owner never came up: {ready}"
             member_pid = int(ready[1])
 
+            # Pre-kill: the member must be seen writing, or the second half of this test would be
+            # vacuous. Unreadable samples are skipped rather than fatal, for the reason above.
             deadline = time.monotonic() + 30
-            while time.monotonic() < deadline and int(counter.read_text(encoding="utf-8")) < 3:
+            while time.monotonic() < deadline:
+                value = _read_counter(counter)
+                if value is not None and value >= 3:
+                    break
                 time.sleep(0.05)
-            assert int(counter.read_text(encoding="utf-8")) >= 3, (
-                "the member never wrote, so the second half of this test would be vacuous"
-            )
+            else:
+                raise AssertionError(
+                    "the member never wrote, so the second half of this test would be vacuous"
+                )
 
             owner.kill()
             owner.wait(timeout=30)
 
             # The barrier instant: the first moment a fresh job of this name can exist. Create and
-            # release, never hold -- this is an observation, not an ownership claim.
+            # release, never hold -- this is an observation, not an ownership claim. Bounded wait
+            # for the first readable sample, because the writer's replace can hide the file for a
+            # moment and that says nothing about whether the member is still executing.
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline and not _name_is_free(name):
                 time.sleep(0.001)
             assert _name_is_free(name), "the name was never free again after the owner died"
-            value_at_barrier = int(counter.read_text(encoding="utf-8"))
             member_object_pending = _still_running(member_pid)
 
-            time.sleep(2.0)
-            assert int(counter.read_text(encoding="utf-8")) == value_at_barrier, (
-                "a former job member was still executing after the name freed "
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if _read_counter(counter) is not None:
+                    break
+                time.sleep(0.01)
+            else:
+                raise AssertionError(
+                    "the counter was never readable after the barrier, so the frozen claim could "
+                    f"not be tested (process object still pending: {member_object_pending})"
+                )
+
+            # The claim itself: across a window far longer than the teardown gap, every readable
+            # sample agrees with the first, and there is at least one. A member that were still
+            # executing would push later samples past the first.
+            window_end = time.monotonic() + 3.0
+            samples: list[int] = []
+            while time.monotonic() < window_end:
+                value = _read_counter(counter)
+                if value is not None:
+                    samples.append(value)
+                time.sleep(0.01)
+            assert samples, (
+                "no readable counter sample in the post-barrier window, so 'frozen' would be "
+                f"vacuous (process object still pending: {member_object_pending})"
+            )
+            advanced = [value for value in samples if value > samples[0]]
+            assert not advanced, (
+                "a former job member was still executing after the name freed: samples advanced "
+                f"past {samples[0]}: {advanced[:5]} "
                 f"(process object still pending at the barrier: {member_object_pending})"
             )
         finally:
