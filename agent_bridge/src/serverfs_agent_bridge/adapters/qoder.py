@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -204,21 +205,33 @@ class QoderAdapter(AgentAdapter):
         cli_path = _resolve_cli(self.settings.qoder_bin)
         if cli_path is None:
             raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", "configured Qoder CLI is unavailable")
-        options = self._client_options(
-            cwd=Path.home(),
-            cli_path=cli_path,
-            setting_sources=["user"],
-        )
-        client = self._client_factory(options)
-        try:
-            async with asyncio.timeout(max(10.0, self.settings.probe_timeout_seconds * 2)):
-                await self._connect(client)
-                values = await client.get_available_models()
-        finally:
+        # An empty throwaway directory, not the operator's home. Model discovery is an account-level
+        # query -- `setting_sources=["user"]` already supplies the user configuration it needs -- so
+        # the working directory contributes nothing but cost: measured on the Windows host,
+        # connecting from `Path.home()` took ~32 s against ~2.5 s from an empty directory, and the
+        # discovery budget is 10 s. So the home directory made discovery fail deterministically
+        # rather than slowly. A control run confirmed the two produce identical catalogs field for
+        # field, so the directory is pure overhead and the timeout stays as it is.
+        #
+        # The directory is removed only after `disconnect()` on every path, including the failure
+        # ones: on Windows a running child holds the directory open, and deleting it first would
+        # fail or leave the child writing into a vanished path.
+        with tempfile.TemporaryDirectory(prefix="serverfs-qoder-models-") as scratch:
+            options = self._client_options(
+                cwd=Path(scratch),
+                cli_path=cli_path,
+                setting_sources=["user"],
+            )
+            client = self._client_factory(options)
             try:
-                await client.disconnect()
-            except Exception:
-                pass
+                async with asyncio.timeout(max(10.0, self.settings.probe_timeout_seconds * 2)):
+                    await self._connect(client)
+                    values = await client.get_available_models()
+            finally:
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
         if not isinstance(values, list) or not values:
             raise BridgeError("AGENT_PROVIDER_ERROR", "Qoder returned no available models")
         models: list[dict[str, Any]] = []

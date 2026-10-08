@@ -235,13 +235,22 @@ class FakeQoderClient:
 
 
 class FakeClientFactory:
-    def __init__(self) -> None:
+    """Records the options it is asked for, and the clients it hands out.
+
+    `client_type` exists so a test can substitute a client class. Assigning `__call__` on an
+    instance does **not** work for this: `factory(options)` resolves the dunder on the type, so a
+    patched instance attribute is ignored and the original client is returned. Wrapping the class
+    is the mechanism that actually intercepts the call.
+    """
+
+    def __init__(self, client_type: type[FakeQoderClient] = FakeQoderClient) -> None:
         self.options: list[Any] = []
         self.clients: list[FakeQoderClient] = []
+        self.client_type = client_type
 
     def __call__(self, options: Any) -> FakeQoderClient:
         self.options.append(options)
-        client = FakeQoderClient(options)
+        client = self.client_type(options)
         self.clients.append(client)
         return client
 
@@ -253,6 +262,7 @@ def make_service(
     event_idle_timeout_seconds: float | None = None,
     use_proxy: bool = False,
     runtime_proxy: Any | None = None,
+    client_type: type[FakeQoderClient] = FakeQoderClient,
 ) -> tuple[BridgeService, FakeClientFactory]:
     monkeypatch.setattr(qoder_module, "AssistantMessage", FakeAssistantMessage)
     monkeypatch.setattr(qoder_module, "TextBlock", FakeTextBlock)
@@ -265,7 +275,7 @@ def make_service(
 
     repo = tmp_path / "repo"
     repo.mkdir()
-    factory = FakeClientFactory()
+    factory = FakeClientFactory(client_type=client_type)
     adapter = QoderAdapter(
         QoderSettings(
             enabled=True,
@@ -726,3 +736,109 @@ class TestRuntimeProxyIsAppliedOnlyAsALocalControlRequest:
                 assert options.env.get(name, "absent") is None, name
         finally:
             await service.close()
+
+
+class TestDiscoveryRunsFromAThrowawayDirectory:
+    """Model discovery is an account-level query, so it has no business in the operator's home.
+
+    Measured on the Windows host: connecting with `cwd=Path.home()` took ~32 s against ~2.5 s from
+    an empty directory, and `list_models` bounds the whole sequence at 10 s. The home directory
+    therefore made discovery fail *deterministically* rather than slowly, which is a worse failure
+    than a slow one because it looks like an unavailable provider. A control run confirmed both
+    directories return an identical catalog field for field, so the working directory is pure cost.
+
+    These pin the fix's four properties, including the failure path: on Windows a live child holds
+    the directory open, so cleanup has to happen after `disconnect()` or the removal fights the
+    process.
+    """
+
+    @pytest.mark.asyncio
+    async def test_discovery_does_not_run_in_the_home_directory(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        service, factory = make_service(tmp_path, monkeypatch)
+        # The adapter, and only the options list length before and after, so the assertion cannot be
+        # satisfied by some other client's options. `service.start()` creates clients of its own.
+        adapter = service.adapters["qoder"]
+        before = len(factory.options)
+        await adapter.list_models()
+        discovery = factory.options[before:]
+        assert len(discovery) == 1, discovery
+        options = discovery[0]
+        assert options.setting_sources == ["user"]
+        assert Path(options.cwd) != Path.home()
+
+    @pytest.mark.asyncio
+    async def test_the_discovery_directory_exists_while_the_client_is_connected(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The directory must exist for the whole connect/disconnect window, not just at the end.
+
+        A cwd deleted before `disconnect()` would fail on Windows, and one deleted after the client
+        is gone would still pass this test — so the assertion is made from inside the client's own
+        lifetime, which is the only window where it matters.
+        """
+        observed: dict[str, bool] = {}
+
+        class SamplingClient(FakeQoderClient):
+            async def disconnect(self) -> None:
+                # Sampled from inside the client's own lifetime, which is the only window in which
+                # the directory's existence is actually required: a cwd removed after this point
+                # would still satisfy a test that only checked the filesystem afterwards.
+                observed["exists_at_disconnect"] = Path(self.options.cwd).exists()
+                await super().disconnect()
+
+        service, _ = make_service(tmp_path, monkeypatch, client_type=SamplingClient)
+        await service.adapters["qoder"].list_models()
+        assert observed.get("exists_at_disconnect") is True, observed
+
+    @pytest.mark.asyncio
+    async def test_the_discovery_directory_is_removed_afterwards(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        service, factory = make_service(tmp_path, monkeypatch)
+        adapter = service.adapters["qoder"]
+        before = len(factory.options)
+        await adapter.list_models()
+        discovery = factory.options[before:]
+        assert len(discovery) == 1, discovery
+        assert not Path(discovery[0].cwd).exists()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_discovery_still_cleans_up(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The failure path is the one that leaks.
+
+        A raise between creating the directory and disconnecting would leave a qodercli running
+        *and* a directory on disk, and the next discovery would compound it. Both must be cleaned.
+        """
+        used: list[str] = []
+
+        class FailingClient(FakeQoderClient):
+            async def get_available_models(self) -> list[dict[str, Any]]:
+                used.append(str(self.options.cwd))
+                raise RuntimeError("discovery failed")
+
+        service, _ = make_service(tmp_path, monkeypatch, client_type=FailingClient)
+        # The adapter, not `service.list_models`: the service layer deliberately turns a provider
+        # failure into `status: unavailable` rather than raising, so asserting on it would prove
+        # nothing about cleanup. The adapter is where the directory's lifetime actually lives.
+        #
+        # The exception type is the SDK's own, not a BridgeError: `list_models` lets a provider
+        # failure propagate unchanged and reserves BridgeError for "the provider answered with
+        # nothing". `pytest.raises(Exception)` would also swallow a `Failed` from the assertion
+        # machinery, so the class is named rather than left open.
+        with pytest.raises(RuntimeError):
+            await service.adapters["qoder"].list_models()
+
+        assert used, "the client was never asked for models"
+        assert not Path(used[0]).exists(), used
