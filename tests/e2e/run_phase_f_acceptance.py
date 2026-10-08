@@ -94,6 +94,18 @@ async def live_model_gate(client: McpStdioClient) -> dict[str, Any]:
     """Re-assert the free-model gate against the live catalog, before any task is submitted."""
     catalog = client.call("list_agent_models", {"runtime": RUNTIME})
     entries = catalog.get("models") or []
+    # An empty catalog has two very different causes, and conflating them produces a fictional
+    # diagnosis: the runtime may be unavailable (no CLI, not signed in), or discovery may have
+    # failed while the runtime itself is fine. `status` and `detail` are the Bridge's own statement
+    # of which, so an empty list is never reported as "the model is gone" without them.
+    if not entries:
+        return {
+            "gate": "STOP",
+            "clause": "CATALOG_EMPTY",
+            "runtime_status": catalog.get("status"),
+            "detail": str(catalog.get("detail") or "")[:120],
+            "catalog_count": 0,
+        }
     match = next((m for m in entries if (m.get("id") or m.get("modelId")) == FLASH_MODEL_ID), None)
     if match is None:
         return {"gate": "STOP", "clause": "ABSENT", "catalog_count": len(entries)}
@@ -155,6 +167,10 @@ async def main() -> int:
         results["model_gate"] = gate
         emit("model_gate", **gate)
         if gate["gate"] != "GO":
+            # The Bridge answers an empty catalog with a fixed `detail` and drops the exception, so
+            # the chain's own log is the only place the cause exists. Reported as a tail: enough to
+            # diagnose, not enough to become a transcript of the run.
+            emit("bridge_stderr_tail", tail=lifecycle.stderr_text()[-1200:])
             emit(
                 "verdict",
                 answer="STOP_REAL_PROVIDER_ACCEPTANCE",
