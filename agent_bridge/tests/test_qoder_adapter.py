@@ -604,8 +604,25 @@ class TestRuntimeProxyIsAppliedOnlyAsALocalControlRequest:
             )
             await wait_for_status(service, submitted["task_id"], "succeeded")
             client = factory.clients[-1]
-            assert client.calls == ["connect", "set_proxy", "query"], client.calls
+            # Named rather than left implicit in a list comparison, because these three are the
+            # whole design: a future change that put the endpoint back into `--proxy <url>`, or that
+            # started the turn before applying the proxy, would break one of them.
             assert client.proxy_set == "http://proxy.invalid:8080"
+            assert "set_proxy" in client.calls, client.calls
+            after_connect = (
+                client.calls.index("set_proxy") > client.calls.index("connect")
+                if "connect" in client.calls
+                else False
+            )
+            before_query = (
+                client.calls.index("set_proxy") < client.calls.index("query")
+                if "query" in client.calls
+                else False
+            )
+            assert after_connect, client.calls
+            assert before_query, client.calls
+            assert client.calls == ["connect", "set_proxy", "query"], client.calls
+            assert factory.clients[-1].options.proxy is None, "the endpoint reached argv"
         finally:
             await service.close()
 
