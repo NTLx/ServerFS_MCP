@@ -109,9 +109,14 @@ async def live_model_gate(client: McpStdioClient) -> dict[str, Any]:
     match = next((m for m in entries if (m.get("id") or m.get("modelId")) == FLASH_MODEL_ID), None)
     if match is None:
         return {"gate": "STOP", "clause": "ABSENT", "catalog_count": len(entries)}
-    enabled = match.get("isEnabled", match.get("enabled"))
-    free = match.get("isFree", match.get("free"))
-    price = match.get("priceFactor")
+    # The Bridge normalises the catalog, so the public shape is snake_case: `enabled`, `is_free`,
+    # `price_factor`. It also omits `is_free` / `price_factor` entirely unless the provider supplied
+    # a bool / a number, so a missing key means "the provider did not say" rather than "false",
+    # and a gate reading the raw camelCase names saw three absent fields and stopped a
+    # healthy model.
+    enabled = match.get("enabled", match.get("isEnabled"))
+    free = match.get("is_free", match.get("isFree"))
+    price = match.get("price_factor", match.get("priceFactor"))
     clause = (
         "FREE_AND_ENABLED"
         if enabled is True and free is True and not (isinstance(price, (int, float)) and price > 0)
@@ -183,9 +188,9 @@ async def main() -> int:
             )
             return 3
 
-        results["probe"] = await _gate(
-            client, "probe", "agent_runtime_status", {"runtime": RUNTIME}
-        )
+        # The real tool name is `list_agent_runtimes`; `agent_runtime_status` was invented, and the
+        # failure surfaced as a ToolError rather than as a silently skipped gate.
+        results["probe"] = await _gate(client, "probe", "list_agent_runtimes", {})
         results["model_discovery"] = {
             "catalog_count": gate["catalog_count"],
             "model_present": True,
@@ -284,12 +289,38 @@ async def _e1_non_vacuity(
 
     probe = read_probe(lifecycle.workdir)
     visible = sorted(n for n, present in (probe or {}).items() if present)
+    # A task can succeed without its tool ever running, so the provider's own account of the turn is
+    # recorded alongside the file check. "succeeded" plus no artifact is the shape of a prompt the
+    # model answered from its own reasoning instead of obeying.
+    final = client.task(task_id).get("final_response")
+    # `approval.requested` is the discriminator. Present means the Bridge's `can_use_tool` took the
+    # request and the harness simply failed to answer it; absent means the request never reached the
+    # Bridge at all, which is a different defect in a different place.
+    event_types = client.event_types(task_id)
     emit(
         "e1",
         status=status,
         probe_present=probe is not None,
         visible_to_tool=visible,
         non_vacuous=bool(visible),
+        approval_requested=any("approval.requested" in name for name in event_types),
+        # The full event list, because "no approval.requested" is ambiguous on its own: the
+        # callback may never have been invoked, or it may have run and failed before creating a
+        # request. The event names distinguish those, and the chain log says whether the adapter
+        # started at all.
+        event_types=event_types,
+        # `permission.failed` is the adapter's own record of an internal failure it had to convert
+        # into a denial. Its payload carries the failure class and the Bridge's message, never the
+        # tool input.
+        permission_failures=client.events(task_id)
+        and [
+            e.get("payload")
+            for e in client.events(task_id)
+            if "permission.failed" in str(e.get("event_type"))
+        ],
+        chain_stderr_tail=lifecycle.stderr_text()[-900:],
+        workspace_files=sorted(p.name for p in lifecycle.workdir.iterdir())[:12],
+        final_response=(final or "")[:200],
     )
     return {"status": status, "probe_present": probe is not None, "non_vacuous": bool(visible)}
 

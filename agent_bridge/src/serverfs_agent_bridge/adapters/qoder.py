@@ -587,12 +587,47 @@ class QoderAdapter(AgentAdapter):
             await context.abandon_interaction()
             raise
         except BridgeError as exc:
+            await self._record_permission_failure(
+                context, tool_name, type(exc).__name__, exc.message
+            )
             return PermissionResultDeny(message=exc.message, interrupt=False)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - the deny answers, the event diagnoses
+            await self._record_permission_failure(context, tool_name, type(exc).__name__, None)
             return PermissionResultDeny(
                 message="ServerFS could not process the permission request",
                 interrupt=False,
             )
+
+    async def _record_permission_failure(
+        self,
+        context: TaskContext,
+        tool_name: str,
+        error_class: str,
+        message: str | None,
+    ) -> None:
+        """Record why a permission request could not be raised, before denying it.
+
+        Denying is the right answer for the provider -- an unanswered request must not execute the
+        tool. But denying *silently* turns every internal failure into "the remote user said no",
+        which is indistinguishable from a real refusal and leaves nothing to diagnose. Measured on
+        the Windows host: a genuine internal failure surfaced as a provider-reported denial with no
+        `approval.requested` event anywhere, so the cause existed only inside this function.
+
+        The event carries the failure class and the Bridge's own message. The provider's message is
+        already redacted by construction, and nothing from the tool input is recorded, so this
+        cannot become a path for command text or arguments to escape.
+        """
+        try:
+            await context.emit_event(
+                "permission.failed",
+                {
+                    "tool": tool_name,
+                    "error_class": error_class,
+                    "message": message,
+                },
+            )
+        except Exception:  # noqa: BLE001, S110 - a diagnostic must not replace the denial
+            pass
 
     async def _ask_user_question(
         self,
@@ -659,8 +694,14 @@ class QoderAdapter(AgentAdapter):
             await context.abandon_interaction()
             raise
         except BridgeError as exc:
+            await self._record_permission_failure(
+                context, "AskUserQuestion", type(exc).__name__, exc.message
+            )
             return PermissionResultDeny(message=exc.message)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - the deny answers, the event diagnoses
+            await self._record_permission_failure(
+                context, "AskUserQuestion", type(exc).__name__, None
+            )
             return PermissionResultDeny(message="ServerFS could not process the question")
         finally:
             if active is not None:
