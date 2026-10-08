@@ -54,7 +54,10 @@ async def _serve(
         claude = runtime_adapters.ClaudeAdapter(config.claude)
         adapters[claude.name] = claude
     if config.qoder.enabled:
-        qoder = runtime_adapters.QoderAdapter(config.qoder)
+        # The Qoder SDK inherits the Bridge environment wholesale and applies an overlay on top, so
+        # the endpoint cannot be handed to it the way Codex is: it arrives through `set_proxy()`
+        # after connect, and the environment gets a deletion-only scrub instead.
+        qoder = runtime_adapters.QoderAdapter(config.qoder, runtime_proxy=runtime_proxy)
         adapters[qoder.name] = qoder
 
     preflight = (
@@ -80,6 +83,12 @@ async def _serve(
             retention_seconds=config.limits.retention_seconds,
         ),
         preflight=preflight,
+        # The supervisor's containment proof, over the private bootstrap channel only. Defaults to
+        # False for an unsupervised launch, so recovery stays fail-closed unless containment was
+        # actually demonstrated.
+        prior_bridge_execution_stopped=(
+            bootstrap.prior_bridge_execution_stopped if bootstrap is not None else False
+        ),
     )
     await service.start()
 
@@ -129,6 +138,34 @@ async def _serve(
         await service.close()
 
 
+def unsupervised_refusal(*, supervised: bool, platform: str) -> str | None:
+    """Why an unsupervised launch is refused on Windows, or ``None`` when it is allowed.
+
+    The supervision is not merely a launch style on Windows: the supervisor is what holds the
+    per-user lifecycle ownership and creates the named Job Object, and those two facts are what
+    let a later start know that the previous generation's execution has stopped. An unsupervised
+    Bridge has
+    neither -- it holds no lease and sits outside any job -- yet it can run providers and create
+    recovery guards just the same. If it died leaving an orphan, the next supervisor would acquire
+    the lease, conclude containment, and clear a guard for a provider that is still running.
+
+    So on Windows the only supported shape is the supervised one, and an unsupervised launch is a
+    refusal rather than a degraded mode. Linux is untouched: the containment argument is Windows's,
+    and its deployment shape is unchanged.
+
+    Pure in its inputs so the decision can be pinned off-Windows; ``main`` passes the parsed flag
+    and ``sys.platform``.
+    """
+    if platform != "win32" or supervised:
+        return None
+    return (
+        "an unsupervised Bridge is not supported on Windows: without a supervisor there is no "
+        "named Job Object and no per-user lifecycle ownership, so it cannot be shown that a "
+        "provider tree it leaves behind has stopped running, and a later start would clear "
+        "recovery state it cannot vouch for"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="ServerFS Agent Bridge")
     parser.add_argument(
@@ -146,6 +183,14 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+
+    # Refused before the configuration is read: the condition does not depend on it, and the answer
+    # is the same whether the document is valid or not.
+    refusal = unsupervised_refusal(supervised=args.supervised, platform=sys.platform)
+    if refusal is not None:
+        print(f"bridge refused: {refusal}", file=sys.stderr)
+        raise SystemExit(2)
+
     try:
         config = BridgeConfig.load(args.config)
     except (OSError, ValueError) as exc:

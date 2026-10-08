@@ -75,6 +75,39 @@ class BridgeLimits:
             raise ValueError("result_preview_bytes must fit the inline response limit")
 
 
+def effective_provider_active(
+    result: ReconcileResult, *, prior_bridge_execution_stopped: bool
+) -> bool | None:
+    """Combine the adapter's provider semantics with the supervisor's OS-liveness proof.
+
+    The two are deliberately different kinds of knowledge. Qoder answers ``None`` because its SDK
+    does not report whether the old process is still alive, and it must not be made to guess: a
+    provider adapter that fabricates OS state would put containment knowledge in the wrong layer and
+    would have to be repeated for every runtime. The supervisor knows, because it holds the per-user
+    lifecycle lease and it created the SID-scoped named Job Object rather than finding one -- and a
+    job object is destroyed once its last handle is closed, which is what delivers kill-on-close to
+    every member.
+
+    What ``False`` means here is stated precisely, because the two things are easy to run together:
+    an inactive provider is one that **cannot continue running Agent or tool logic**. It is not a
+    claim that every related process object has been destroyed. Windows termination is
+    asynchronous -- ``TerminateProcess`` stops the threads and cancels pending I/O, and the process
+    object signals only afterwards, measured at a fraction of a millisecond later on this host --
+    so object and I/O teardown can still be finishing. The recovery guard exists to stop a second
+    writer meeting a first one that is still *executing*; it does not need the first one's corpse
+    to be buried first.
+
+    Only the *startup* path calls this, and only in one direction: an unknown becomes inactive when
+    containment is proven. An adapter that reports the provider as **active** is never overridden,
+    and the live reconciliation path keeps its conservative behaviour untouched. Both startup
+    callers obey it -- the non-terminal task loop and the stale-guard scan, which sees the
+    terminal-task case the first loop cannot reach.
+    """
+    if result.provider_active is None and prior_bridge_execution_stopped:
+        return False
+    return result.provider_active
+
+
 class BridgeService:
     def __init__(
         self,
@@ -85,6 +118,7 @@ class BridgeService:
         lease_manager: LeaseManager,
         limits: BridgeLimits | None = None,
         preflight: TaskPreflight | None = None,
+        prior_bridge_execution_stopped: bool = False,
     ):
         self.store = store
         self.policies = policies
@@ -92,6 +126,12 @@ class BridgeService:
         self.lease_manager = lease_manager
         self.limits = limits or BridgeLimits()
         self.preflight = preflight
+        #: The supervisor's proof that the previous generation's *execution* has stopped: true only
+        #: when a supervisor holds the per-user lifecycle lease and created the named Job Object,
+        #: which together mean the object that held the old provider tree is gone and Windows has
+        #: delivered termination to its members. Not a claim about process objects being destroyed.
+        #: False for an unsupervised launch, deliberately.
+        self._prior_bridge_execution_stopped = prior_bridge_execution_stopped
         self.result_spool = ResultSpool(store.state_dir)
         self.guard_manager = ActiveGuardManager(
             lease_manager.lock_dir,
@@ -605,7 +645,17 @@ class BridgeService:
         )
         return result
 
-    async def _reconcile_guard(self, lease_id: str) -> ReconcileResult | None:
+    async def _reconcile_guard(
+        self, lease_id: str, *, prior_bridge_execution_stopped: bool = False
+    ) -> ReconcileResult | None:
+        """Decide whether one workdir's recovery guard may be cleared.
+
+        ``prior_bridge_execution_stopped`` is the supervisor's containment proof, and only the
+        startup scan supplies it. A live submission has no such proof -- nothing has demonstrated
+        that any earlier provider tree has stopped -- so its call keeps the conservative default
+        and an unknown stays unknown. That asymmetry is the point: the proof closes a crash
+        window, it does not relax the rule.
+        """
         guard = self.guard_manager.read(lease_id)
         if guard is None:
             return None
@@ -624,15 +674,18 @@ class BridgeService:
                 f"{label} has orphaned recovery state",
             ) from exc
         result = await self._probe_reconciliation(task_id)
+        active = effective_provider_active(
+            result, prior_bridge_execution_stopped=prior_bridge_execution_stopped
+        )
         self._try_append_event(
             task_id,
             "task.reconciled",
             {
                 "status": result.status.value,
-                "provider_active": result.provider_active,
+                "provider_active": active,
             },
         )
-        if result.provider_active is False:
+        if active is False:
             current = self.store.get_task(task_id)
             if TaskStatus(current.status) not in TERMINAL_STATUSES:
                 error_code = "AGENT_PROVIDER_INACTIVE"
@@ -675,6 +728,12 @@ class BridgeService:
                 if timed_out
                 else "bridge restarted while task was active"
             )
+            # The adapter's answer alone leaves Qoder's provider state unknown; the supervisor's
+            # containment proof is what turns that unknown into "gone". This is the only path that
+            # may combine them, and it never overrides an adapter that said the provider is active.
+            active = effective_provider_active(
+                result, prior_bridge_execution_stopped=self._prior_bridge_execution_stopped
+            )
             self.store.transition_task(
                 task.task_id,
                 TaskStatus.INTERRUPTED,
@@ -686,26 +745,31 @@ class BridgeService:
                 "task.reconciled",
                 {
                     "status": result.status.value,
-                    "provider_active": result.provider_active,
+                    "provider_active": active,
                     "error_code": error_code,
                 },
             )
-            if (
-                task.profile == AgentProfile.WORKSPACE_WRITE.value
-                and result.provider_active is False
-            ):
+            if task.profile == AgentProfile.WORKSPACE_WRITE.value and active is False:
                 try:
                     self.guard_manager.remove(lease_id=task.lease_id, task_id=task.task_id)
                 except BridgeError:
                     pass
             reconciled += 1
 
+        # A guard whose task is already terminal is invisible to the loop above, which only walks
+        # non-terminal tasks. That state is reachable: the task transitions to a terminal status
+        # before the service's own `finally` unlinks the guard, so a crash in that window leaves a
+        # completed task with a guard still standing. The containment proof applies here for exactly
+        # the same reason it applies above, and only here.
         for guard in self.guard_manager.list():
             task_id = guard.payload.get("task_id")
             if not isinstance(task_id, str) or task_id in handled:
                 continue
             try:
-                await self._reconcile_guard(guard.lease_id)
+                await self._reconcile_guard(
+                    guard.lease_id,
+                    prior_bridge_execution_stopped=self._prior_bridge_execution_stopped,
+                )
             except BridgeError:
                 pass
         return reconciled

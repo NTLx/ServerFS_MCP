@@ -47,6 +47,17 @@ from env_capture_runtime import (  # noqa: E402
 #: Dummy markers. A value that appears *only* in the bootstrap frame is what proves the frame was
 #: consumed rather than the test having configured it by another route.
 FRAME_ONLY_URL = "http://127.0.0.1:18443"
+
+
+def _bootstrap_stub(url):
+    """A frame-shaped double carrying the fields the supervised path reads.
+
+    The real ``BootstrapFrame`` gained ``prior_bridge_execution_stopped`` in Phase F; this double
+    models it rather than relying on the production code to tolerate a missing attribute.
+    """
+    return type("F", (), {"agent_proxy": _frame(url), "prior_bridge_execution_stopped": False})()
+
+
 FRAME_ONLY_NO_PROXY = "frame-only.example"
 
 PARENT_POLLUTION = {
@@ -132,7 +143,7 @@ class TestBootstrapReachesTheRuntime:
             await _serve(
                 bridge_config,
                 shutdown_event=asyncio.Event(),
-                bootstrap=type("F", (), {"agent_proxy": _frame(FRAME_ONLY_URL)})(),
+                bootstrap=_bootstrap_stub(FRAME_ONLY_URL),
                 supervised=True,
             )
 
@@ -142,7 +153,7 @@ class TestBootstrapReachesTheRuntime:
                 _serve(
                     bridge_config,
                     shutdown_event=asyncio.Event(),
-                    bootstrap=type("F", (), {"agent_proxy": _frame(FRAME_ONLY_URL)})(),
+                    bootstrap=_bootstrap_stub(FRAME_ONLY_URL),
                     supervised=True,
                 )
             )

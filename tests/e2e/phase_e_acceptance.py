@@ -215,9 +215,13 @@ class McpStdioClient:
         *,
         model: str | None = None,
         continue_from: str | None = None,
+        runtime: str = "codex",
     ) -> str:
+        # The runtime is a parameter because Phase F drives the same public surface for Qoder. It
+        # defaults to Codex so every Phase E call site is unchanged, and so a forgotten argument can
+        # never silently retarget an existing gate at a different provider.
         arguments: dict[str, Any] = {
-            "runtime": "codex",
+            "runtime": runtime,
             "workdir": "acceptance",
             "path": "",
             "profile": "workspace-write",
@@ -461,6 +465,30 @@ def native_ids(client: McpStdioClient, lifecycle: Lifecycle, task_id: str) -> di
         "turn_id_present": bool(row["native_turn_id"]),
         "store_found": True,
     }
+
+
+def task_in_store(lifecycle: Lifecycle, task_id: str) -> bool | None:
+    """Whether this lifecycle's **own** TaskStore holds the task. None when no store was found.
+
+    Ownership, not identity. Measured: the Agent endpoint is derived from the user SID alone, so a
+    second Agent-enabled chain in the same user session attaches to the first chain's Bridge, and a
+    task submitted through the second chain's client is recorded in the *first* chain's store while
+    every tool call still succeeds. Nothing but this check reveals which chain actually served it.
+    """
+    import sqlite3
+
+    db = lifecycle.data_home / "agent-bridge" / "state" / "state.sqlite3"
+    if not db.exists():
+        found = list((lifecycle.data_home / "agent-bridge").rglob("*.sqlite3"))
+        if not found:
+            return None
+        db = found[0]
+    connection = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        row = connection.execute("SELECT 1 FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+    finally:
+        connection.close()
+    return row is not None
 
 
 def _session_of(client: McpStdioClient, task_id: str) -> str | None:

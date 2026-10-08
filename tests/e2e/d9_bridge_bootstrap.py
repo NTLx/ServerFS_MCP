@@ -59,6 +59,10 @@ WAIT_FILE = "phase-d-native-lifecycle-wait.txt"
 #: Written only in the `approval` mode, after the real `request_approval` round trip resolves.
 APPROVAL_ARTIFACT = "reproducer-artifact.txt"
 ENV_CAPTURE_FILE = "phase-d-native-lifecycle-env.json"
+#: Written only in the `child` mode: the pid of a real, long-lived descendant of the Bridge. The
+#: fake runtime otherwise runs in-process, so without it the chain has no provider-shaped process
+#: and a containment assertion about one would be about nothing.
+PROVIDER_CHILD_FILE = "phase-d-provider-child.json"
 
 
 def _install() -> None:
@@ -146,6 +150,25 @@ def _install() -> None:
                 )
                 await context.emit_event("turn.completed", {"runtime": self.name})
                 return AdapterResult(final_response=f"captured: {detail}")
+
+            if mode == "child":
+                # A Bridge-owned descendant that outlives the turn, so the chain has something a Job
+                # Object is actually supposed to contain. The descriptor handles are DEVNULL for the
+                # reason the env capture uses them: this child must not inherit the Bridge's stdout,
+                # which is a pipe into the supervisor's forwarding loop.
+                child = subprocess.Popen(
+                    [sys.executable, "-c", "import time;time.sleep(600)"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                record = _record_dir()
+                if record is not None:
+                    (record / PROVIDER_CHILD_FILE).write_text(
+                        json.dumps({"pid": child.pid}), encoding="utf-8"
+                    )
+                await context.emit_event("turn.completed", {"runtime": self.name})
+                return AdapterResult(final_response="provider-child-spawned")
 
             if context.profile != "workspace-write":
                 # A fake that wrote regardless of profile would prove nothing about the profile, and
