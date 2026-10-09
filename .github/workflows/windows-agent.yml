@@ -1,0 +1,247 @@
+name: Windows Agent
+
+# dev_plan_v0.11.md §15 Phase H (H2): the v0.11 Agent-side Windows gate.
+#
+# Why this workflow exists: the `Windows native` workflow is the v0.10
+# filesystem/kernel compatibility gate, and its `pull_request` paths filter
+# covers native/ and src/serverfs_mcp/** only. Phase G measured the resulting
+# hole first-hand: the Windows Bridge product changed and no Windows job ran.
+# This workflow owns the v0.11 Agent layer instead:
+#
+#   Windows native -> v0.10 filesystem/kernel compatibility (native/** paths)
+#   Windows Agent  -> v0.11 Agent Bridge/runtime/packaging compatibility
+#
+# so an Agent-only change never re-runs the Rust kernel test suite, and a
+# Bridge change can never again land without a Windows job. The job builds
+# all three release wheels and runs the same wheel-only clean-install
+# acceptance the tag workflow uses (provenance checked from outside the
+# checkout), plus the full Bridge suite on Windows and the agent-related root
+# tests. The Linux jobs in `Container` remain unchanged and independent.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "agent_bridge/**"
+      - "native/windows/**"
+      - "src/serverfs_mcp/agent_client.py"
+      - "src/serverfs_mcp/agent_doctor.py"
+      - "src/serverfs_mcp/agent_leases.py"
+      - "src/serverfs_mcp/agent_lifecycle.py"
+      - "src/serverfs_mcp/agent_proxy.py"
+      - "src/serverfs_mcp/agent_tools.py"
+      - "src/serverfs_mcp/config.py"
+      - "src/serverfs_mcp/doctor.py"
+      - "src/serverfs_mcp/main.py"
+      - "src/serverfs_mcp/native_config.py"
+      - "src/serverfs_mcp/native_tunnel.py"
+      - "src/serverfs_mcp/supervisor.py"
+      - "src/serverfs_mcp/tunnel_bootstrap.py"
+      - "src/serverfs_mcp/cli.py"
+      - "tests/test_agent_client.py"
+      - "tests/test_agent_deployment.py"
+      - "tests/test_agent_leases.py"
+      - "tests/test_agent_proxy.py"
+      - "tests/test_agent_proxy_ambient_url.py"
+      - "tests/test_agent_tools.py"
+      - "tests/test_d9_native_lifecycle.py"
+      - "tests/test_doctor.py"
+      - "tests/test_doctor_agent.py"
+      - "tests/test_doctor_agent_followup.py"
+      - "tests/test_import_safety.py"
+      - "tests/test_native_tunnel.py"
+      - "tests/test_tunnel_bootstrap.py"
+      - "tests/test_wheel_release.py"
+      - "deployment/native/wheel_release.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/windows-agent.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "agent_bridge/**"
+      - "native/windows/**"
+      - "src/serverfs_mcp/agent_client.py"
+      - "src/serverfs_mcp/agent_doctor.py"
+      - "src/serverfs_mcp/agent_leases.py"
+      - "src/serverfs_mcp/agent_lifecycle.py"
+      - "src/serverfs_mcp/agent_proxy.py"
+      - "src/serverfs_mcp/agent_tools.py"
+      - "src/serverfs_mcp/config.py"
+      - "src/serverfs_mcp/doctor.py"
+      - "src/serverfs_mcp/main.py"
+      - "src/serverfs_mcp/native_config.py"
+      - "src/serverfs_mcp/native_tunnel.py"
+      - "src/serverfs_mcp/supervisor.py"
+      - "src/serverfs_mcp/tunnel_bootstrap.py"
+      - "src/serverfs_mcp/cli.py"
+      - "tests/test_agent_client.py"
+      - "tests/test_agent_deployment.py"
+      - "tests/test_agent_leases.py"
+      - "tests/test_agent_proxy.py"
+      - "tests/test_agent_proxy_ambient_url.py"
+      - "tests/test_agent_tools.py"
+      - "tests/test_d9_native_lifecycle.py"
+      - "tests/test_doctor.py"
+      - "tests/test_doctor_agent.py"
+      - "tests/test_doctor_agent_followup.py"
+      - "tests/test_import_safety.py"
+      - "tests/test_native_tunnel.py"
+      - "tests/test_tunnel_bootstrap.py"
+      - "tests/test_wheel_release.py"
+      - "deployment/native/wheel_release.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/windows-agent.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-agent-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-agent:
+    name: Windows Agent
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Rust toolchain (runner-provided, versions reported for evidence)
+        run: |
+          cargo --version
+          rustc --version
+        shell: pwsh
+
+      - name: build the three release wheels (maturin native + hatchling product + hatchling Agent Bridge)
+        run: |
+          uv tool run --from maturin==1.8.2 maturin build --release --features pyo3 --locked -m native/windows/Cargo.toml
+          uv build --wheel -o dist
+          uv build --wheel -o ../dist --directory agent_bridge
+        shell: pwsh
+
+      - name: three-wheel version gate (METADATA is authoritative)
+        run: |
+          $native = (Get-ChildItem native/windows/target/wheels/*.whl).FullName
+          $product = (Get-ChildItem dist/serverfs_mcp-*.whl).FullName
+          $bridge = (Get-ChildItem dist/serverfs_agent_bridge-*.whl).FullName
+          uv run --no-project --python 3.12 python deployment/native/wheel_release.py version-gate `
+            --tag "v$(uv run --no-project --python 3.12 python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")" `
+            --wheel $native --wheel $product --wheel $bridge
+        shell: pwsh
+
+      # The same split-environment acceptance the tag workflow runs: two
+      # isolated clean venvs matching the frozen ServerFS/Agent-Bridge process
+      # boundary, no editable checkout, no PYTHONPATH, provenance checked from
+      # outside the checkout, and the cross-environment supervisor chain via
+      # SERVERFS_BRIDGE_PYTHON.
+      - name: three-wheel split-environment clean-install acceptance (packaging gate + doctor smoke)
+        run: |
+          $native = (Get-ChildItem native/windows/target/wheels/*.whl).FullName
+          $product = (Get-ChildItem dist/serverfs_mcp-*.whl).FullName
+          $bridge = (Get-ChildItem dist/serverfs_agent_bridge-*.whl).FullName
+          uv venv --python 3.12 .venv-serverfs
+          $serverfsPy = ".venv-serverfs/Scripts/python.exe"
+          uv pip install --python $serverfsPy $native $product pytest
+          uv venv --python 3.12 .venv-bridge
+          $bridgePy = ".venv-bridge/Scripts/python.exe"
+          uv pip install --python $bridgePy $bridge
+          if (Test-Path Env:PYTHONPATH) { Remove-Item Env:PYTHONPATH }
+          $probe = Join-Path $env:RUNNER_TEMP "wheel-acceptance-probe.py"
+          Set-Content -Encoding utf8NoBOM $probe @'
+          import importlib.metadata as md
+          from importlib.util import find_spec
+          import sys
+
+          side = sys.argv[1]
+          if side == "serverfs":
+              import serverfs_mcp, serverfs_windows_native as native
+              assert find_spec("serverfs_agent_bridge") is None, "product env must not contain the Bridge package"
+              locs = [serverfs_mcp.__file__, native.__file__]
+              assert all(".venv-serverfs" in x.replace(chr(92), "/").lower() for x in locs), locs
+              versions = {n: md.version(n) for n in ("serverfs-mcp", "serverfs-windows-native")}
+          elif side == "bridge":
+              import serverfs_agent_bridge
+              assert find_spec("serverfs_mcp") is None, "bridge env must not contain the product package"
+              assert find_spec("serverfs_windows_native") is None, "bridge env must not contain the native package"
+              locs = [serverfs_agent_bridge.__file__]
+              assert all(".venv-bridge" in x.replace(chr(92), "/").lower() for x in locs), locs
+              versions = {"serverfs-agent-bridge": md.version("serverfs-agent-bridge"),
+                          "qoder-agent-sdk": md.version("qoder-agent-sdk"),
+                          "claude-agent-sdk": md.version("claude-agent-sdk")}
+          else:
+              raise SystemExit(f"unknown side {side!r}")
+          print(f"{side} env provenance ok:", *locs, sep=" ")
+          print(f"{side} env versions:", versions, sep=" ")
+          '@
+          & $serverfsPy $probe serverfs
+          & $bridgePy $probe bridge
+          .venv-serverfs/Scripts/serverfs.exe --version
+          # Agent-disabled doctor smoke on the wheel-only install: a minimal
+          # filesystem-only config (no [agent] section at all) must pass with
+          # the native backend, a real NTFS workdir, and no mutation -- doctor
+          # is read-only.
+          $workdir = Join-Path $env:RUNNER_TEMP "doctor-smoke-workdir"
+          New-Item -ItemType Directory -Force -Path $workdir | Out-Null
+          $escaped = $workdir.Replace('\', '\\')
+          "log_level = \"INFO\"\n\n[[workdirs]]\nalias = \"smoke\"\npath = \"$escaped\"\nread_only = true\n" |
+            Set-Content -Encoding utf8NoBOM doctor-smoke.toml
+          .venv-serverfs/Scripts/serverfs.exe doctor --config doctor-smoke.toml
+          # Agent-enabled static doctor across the real boundary: the doctor
+          # runs in the ServerFS env while SERVERFS_BRIDGE_PYTHON points at the
+          # Bridge clean venv -- no Bridge started, no provider started, no
+          # endpoint or credential printed.
+          $env:SERVERFS_BRIDGE_PYTHON = (Resolve-Path $bridgePy).Path
+          .venv-serverfs/Scripts/serverfs.exe doctor --config doctor-smoke.toml
+          $env:SERVERFS_BRIDGE_PYTHON = $null
+        shell: pwsh
+
+      - name: Agent Bridge suite on Windows (the full Windows-executed Bridge suite)
+        working-directory: agent_bridge
+        run: |
+          uv sync --frozen
+          uv run pytest
+        shell: pwsh
+
+      - name: agent-related root tests on Windows (wheel-built native, repo tests)
+        run: |
+          uv sync --frozen
+          uv pip install --python .venv/Scripts/python.exe (Get-ChildItem native/windows/target/wheels/*.whl).FullName
+          $env:SERVERFS_BRIDGE_PYTHON = "$PWD/agent_bridge/.venv/Scripts/python.exe"
+          uv run --no-project --python .venv/Scripts/python.exe -m pytest `
+            tests/test_agent_tools.py `
+            tests/test_agent_client.py `
+            tests/test_agent_leases.py `
+            tests/test_agent_proxy.py `
+            tests/test_agent_proxy_ambient_url.py `
+            tests/test_agent_deployment.py `
+            tests/test_doctor_agent.py `
+            tests/test_doctor_agent_followup.py `
+            tests/test_d9_native_lifecycle.py `
+            tests/test_import_safety.py `
+            tests/test_native_tunnel.py `
+            tests/test_tunnel_bootstrap.py `
+            tests/test_wheel_release.py -q
+        shell: pwsh
+
+      - name: upload the three wheels as PR artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: v011-agent-wheels
+          path: |
+            native/windows/target/wheels/*.whl
+            dist/serverfs_mcp-*.whl
+            dist/serverfs_agent_bridge-*.whl
+          if-no-files-found: error

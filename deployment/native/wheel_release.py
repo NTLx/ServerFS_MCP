@@ -116,6 +116,9 @@ def render_block(
     product_name: str,
     product_url: str,
     product_sha: str,
+    bridge_name: str,
+    bridge_url: str,
+    bridge_sha: str,
     native_name: str,
     native_url: str,
     native_sha: str,
@@ -123,17 +126,36 @@ def render_block(
     return (
         f"{MARKER_START}\n"
         "\n"
-        "## Windows native installation assets (Python >= 3.12; no Rust/MSVC/Docker required)\n"
+        "## Windows installation assets (Python >= 3.12; no Rust/MSVC/Docker required)\n"
         "\n"
-        "| file | sha256 |\n"
-        "| --- | --- |\n"
-        f"| [{product_name}]({product_url}) | `{product_sha}` |\n"
-        f"| [{native_name}]({native_url}) | `{native_sha}` |\n"
+        "The three release wheels install into **two isolated environments**, matching the\n"
+        "frozen ServerFS/Agent-Bridge process boundary (the supervisor selects the Bridge\n"
+        "interpreter through `SERVERFS_BRIDGE_PYTHON`; the packages never share one dependency\n"
+        "graph):\n"
         "\n"
-        "Clean install:\n"
+        "| file | installs into | sha256 |\n"
+        "| --- | --- | --- |\n"
+        f"| [{product_name}]({product_url}) | ServerFS env | `{product_sha}` |\n"
+        f"| [{native_name}]({native_url}) | ServerFS env | `{native_sha}` |\n"
+        f"| [{bridge_name}]({bridge_url}) | Agent Bridge env | `{bridge_sha}` |\n"
+        "\n"
+        "ServerFS environment (product + native kernel):\n"
         "```\n"
-        "uv venv --python 3.12\n"
-        f"uv pip install {product_url} {native_url}\n"
+        "uv venv --python 3.12 .venv-serverfs\n"
+        f"uv pip install --python .venv-serverfs/Scripts/python.exe {product_url} {native_url}\n"
+        "```\n"
+        "\n"
+        "Agent Bridge environment (Bridge + provider SDKs; it must NOT contain the product):\n"
+        "```\n"
+        "uv venv --python 3.12 .venv-bridge\n"
+        f"uv pip install --python .venv-bridge/Scripts/python.exe {bridge_url}\n"
+        "```\n"
+        "\n"
+        "Point the ServerFS supervisor at the Bridge interpreter (set this in the environment\n"
+        "that starts `serverfs supervisor`; it is not a provider setting and does not belong in\n"
+        "`[agent]` config):\n"
+        "```\n"
+        '$env:SERVERFS_BRIDGE_PYTHON = "<path>\\.venv-bridge\\Scripts\\python.exe"\n'
         "```\n"
         "\n"
         "Verified native-wheel storage alternative:\n"
@@ -150,6 +172,9 @@ def cmd_notes_update(args: argparse.Namespace) -> int:
         product_name=args.product_name,
         product_url=args.product_url,
         product_sha=args.product_sha,
+        bridge_name=args.bridge_name,
+        bridge_url=args.bridge_url,
+        bridge_sha=args.bridge_sha,
         native_name=args.native_name,
         native_url=args.native_url,
         native_sha=args.native_sha,
@@ -176,6 +201,9 @@ def build_parser() -> argparse.ArgumentParser:
     notes.add_argument("--product-name", required=True)
     notes.add_argument("--product-url", required=True)
     notes.add_argument("--product-sha", required=True)
+    notes.add_argument("--bridge-name", required=True)
+    notes.add_argument("--bridge-url", required=True)
+    notes.add_argument("--bridge-sha", required=True)
     notes.add_argument("--native-name", required=True)
     notes.add_argument("--native-url", required=True)
     notes.add_argument("--native-sha", required=True)

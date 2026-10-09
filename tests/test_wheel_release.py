@@ -37,8 +37,11 @@ BLOCK_ARGS = {
     "product_name": "serverfs_mcp-0.10.0-py3-none-any.whl",
     "product_url": "https://github.com/o/r/releases/download/v0.10.0/serverfs_mcp-0.10.0-py3-none-any.whl",
     "product_sha": "a" * 64,
-    "native_name": "serverfs_windows_native-0.10.0-cp312-abi3-win_amd64.whl",
-    "native_url": "https://github.com/o/r/releases/download/v0.10.0/serverfs_windows_native-0.10.0-cp312-abi3-win_amd64.whl",
+    "bridge_name": "serverfs_agent_bridge-0.11.0-py3-none-any.whl",
+    "bridge_url": "https://github.com/o/r/releases/download/v0.11.0/serverfs_agent_bridge-0.11.0-py3-none-any.whl",
+    "bridge_sha": "c" * 64,
+    "native_name": "serverfs_windows_native-0.11.0-cp312-abi3-win_amd64.whl",
+    "native_url": "https://github.com/o/r/releases/download/v0.11.0/serverfs_windows_native-0.11.0-cp312-abi3-win_amd64.whl",
     "native_sha": "b" * 64,
 }
 
@@ -71,6 +74,9 @@ def notes_main(body: str, **overrides: str) -> tuple[int, str]:
             "product_name": "--product-name",
             "product_url": "--product-url",
             "product_sha": "--product-sha",
+            "bridge_name": "--bridge-name",
+            "bridge_url": "--bridge-url",
+            "bridge_sha": "--bridge-sha",
             "native_name": "--native-name",
             "native_url": "--native-url",
             "native_sha": "--native-sha",
@@ -122,6 +128,47 @@ class TestVersionGate:
         with zipfile.ZipFile(hollow, "w") as bundle:
             bundle.writestr("README.txt", "nothing")
         assert gate_main("v0.10.0", hollow) == wheel_release.EXIT_VERSION_MISMATCH
+
+    def test_three_wheel_release_gate(self, tmp_path: Path) -> None:
+        """The v0.11 release contract: all three distribution wheels must match the tag."""
+        product = make_wheel(
+            tmp_path, "serverfs_mcp-0.11.0-py3-none-any.whl", name="serverfs-mcp", version="0.11.0"
+        )
+        bridge = make_wheel(
+            tmp_path,
+            "serverfs_agent_bridge-0.11.0-py3-none-any.whl",
+            name="serverfs-agent-bridge",
+            version="0.11.0",
+        )
+        native = make_wheel(
+            tmp_path,
+            "serverfs_windows_native-0.11.0-cp312-abi3-win_amd64.whl",
+            name="serverfs-windows-native",
+            version="0.11.0",
+        )
+        assert gate_main("v0.11.0", product, bridge, native) == 0
+
+    def test_one_stale_wheel_fails_the_three_wheel_gate(self, tmp_path: Path) -> None:
+        """Non-vacuity for the three-wheel contract: a single stale wheel fails the gate."""
+        product = make_wheel(
+            tmp_path, "serverfs_mcp-0.11.0-py3-none-any.whl", name="serverfs-mcp", version="0.11.0"
+        )
+        stale_bridge = make_wheel(
+            tmp_path,
+            "serverfs_agent_bridge-0.9.0-py3-none-any.whl",
+            name="serverfs-agent-bridge",
+            version="0.9.0",
+        )
+        native = make_wheel(
+            tmp_path,
+            "serverfs_windows_native-0.11.0-cp312-abi3-win_amd64.whl",
+            name="serverfs-windows-native",
+            version="0.11.0",
+        )
+        assert (
+            gate_main("v0.11.0", product, stale_bridge, native)
+            == wheel_release.EXIT_VERSION_MISMATCH
+        )
 
 
 class TestNotesMatrix:
@@ -185,6 +232,12 @@ class TestNotesMatrix:
                 BLOCK_ARGS["product_url"],
                 "--product-sha",
                 BLOCK_ARGS["product_sha"],
+                "--bridge-name",
+                BLOCK_ARGS["bridge_name"],
+                "--bridge-url",
+                BLOCK_ARGS["bridge_url"],
+                "--bridge-sha",
+                BLOCK_ARGS["bridge_sha"],
                 "--native-name",
                 BLOCK_ARGS["native_name"],
                 "--native-url",
@@ -197,11 +250,50 @@ class TestNotesMatrix:
             assert code == wheel_release.EXIT_MARKER_CONFLICT
             assert not out_file.exists()
 
-    def test_block_content_names_both_assets(self) -> None:
+    def test_block_content_names_all_three_assets(self) -> None:
         _code, result = notes_main("")
         assert BLOCK_ARGS["product_url"] in result
+        assert BLOCK_ARGS["bridge_url"] in result
         assert BLOCK_ARGS["native_url"] in result
+        # The frozen boundary: two isolated environments, never one shared graph.
+        assert "two isolated environments" in result
+        assert ".venv-serverfs" in result and ".venv-bridge" in result
+        assert "SERVERFS_BRIDGE_PYTHON" in result
         assert "serverfs bootstrap native-wheel" in result
+
+    def test_missing_bridge_arguments_fail_closed(self, tmp_path: Path) -> None:
+        """The v0.11 release-notes contract requires all three assets.
+
+        Omitting the Agent Bridge wheel's identity is a caller error, refused by the argument
+        contract before anything is read or written.
+        """
+        body_file = tmp_path / "body.md"
+        out_file = tmp_path / "out.md"
+        body_file.write_text("prose\n", encoding="utf-8")
+        argv = [
+            "notes-update",
+            "--body-file",
+            str(body_file),
+            "--out-file",
+            str(out_file),
+            "--product-name",
+            "serverfs_mcp-0.11.0-py3-none-any.whl",
+            "--product-url",
+            "https://example.invalid/p.whl",
+            "--product-sha",
+            "0" * 64,
+            "--native-name",
+            "serverfs_windows_native-0.11.0-cp312-abi3-win_amd64.whl",
+            "--native-url",
+            "https://example.invalid/n.whl",
+            "--native-sha",
+            "1" * 64,
+        ]
+        with redirect_stderr(io.StringIO()):
+            with pytest.raises(SystemExit) as excinfo:
+                wheel_release.main(argv)
+        assert excinfo.value.code == 2
+        assert not out_file.exists()
 
 
 def test_normalize_release_version_table() -> None:

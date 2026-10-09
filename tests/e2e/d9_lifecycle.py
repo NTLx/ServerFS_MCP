@@ -52,8 +52,25 @@ FAKE_TUNNEL_SOURCE = REPO_ROOT / "tests" / "e2e" / "fake_tunnel_client.py"
 BRIDGE_BOOTSTRAP = Path(__file__).resolve().parent / "d9_bridge_bootstrap.py"
 BRIDGE_SRC = REPO_ROOT / "agent_bridge" / "src"
 
-ROOT_PYTHON = REPO_ROOT / ".venv" / "Scripts" / "python.exe"
-BRIDGE_PYTHON = REPO_ROOT / "agent_bridge" / ".venv" / "Scripts" / "python.exe"
+#: The interpreter that runs the product CLI (`serverfs_mcp.cli`). Same override
+#: discipline as BRIDGE_PYTHON: wheel-only acceptance points this at the ServerFS
+#: clean venv instead of a development `.venv` (SERVERFS_TEST_ROOT_PYTHON).
+ROOT_PYTHON = Path(
+    os.environ.get(
+        "SERVERFS_TEST_ROOT_PYTHON",
+        str(REPO_ROOT / ".venv" / "Scripts" / "python.exe"),
+    )
+)
+#: The Bridge interpreter the harness launches. Defaults to the development
+#: venv layout; ``SERVERFS_BRIDGE_PYTHON`` overrides it -- deliberately the same
+#: name the product supervisor honours, because split-environment acceptance
+#: (Phase H) points it at the Agent Bridge wheel's own clean venv.
+BRIDGE_PYTHON = Path(
+    os.environ.get(
+        "SERVERFS_BRIDGE_PYTHON",
+        str(REPO_ROOT / "agent_bridge" / ".venv" / "Scripts" / "python.exe"),
+    )
+)
 
 #: Markers planted in the parent so every scrub assertion has something real to catch. If any of
 #: these is absent from the environment the chain inherits, a "not leaked" assertion is vacuous.
