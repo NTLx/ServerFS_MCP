@@ -10,8 +10,8 @@ in-development.
 
 | Layer | What it proves | Where |
 | --- | --- | --- |
-| GitHub CI, final head `62186d9` | Linux root/Bridge suites, container, Windows native kernel, **Windows Agent** (three-wheel build + split-env packaging gate + both doctor gates + Bridge suite + root agent tests), site build | PR #40 checks, run 37910185659/686/720/749 |
-| WorkPC local deterministic | root **1392 passed / 130 skipped**, Bridge **501 / 21**, D9 included, native Rust fmt + clippy + **48 tests**, ruff ×2 packages | H8 final matrix (see "Verification window" below) |
+| GitHub CI, final PR head `898cb7a` | Linux root/Bridge suites, container, Windows native kernel, **Windows Agent** (three-wheel build + split-env packaging gate + both doctor gates + Bridge suite + root agent tests), site build | PR #40 current-head checks: Container, Windows native, Windows Agent and Pages all green |
+| WorkPC local deterministic at `62186d9` | root **1392 passed / 130 skipped**, Bridge **501 / 21**, D9 included, native Rust fmt + clippy + **48 tests**, ruff ×2 packages | H8 final matrix (see "Verification window" below); `898cb7a` adds only H9 plan/evidence documentation |
 | Wheel-only acceptance | three 0.11.0 wheels, METADATA version gate, two isolated clean venvs, neither can import the other's package, `serverfs --version` = 0.11.0 | H3 + H8 final packaging gate |
 | Real-provider package smoke | same implementation, as shipped, one real turn per runtime | H5 (`tests/e2e/run_phase_h_package_smoke.py`) |
 | Live ChatGPT Tunnel E2E | ChatGPT → Secure MCP Tunnel → native ServerFS → Named Pipe → Bridge → provider | H6 (`docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`), CLOSED-PASS |
@@ -86,7 +86,7 @@ the production chain was verified back before anything else proceeded.
 | Item | State |
 | --- | --- |
 | Three packages = 0.11.0 | ✅ |
-| Three wheels build | ✅ (`dist/h6-final`, built from the final head) |
+| Three wheels build | ✅ (`dist/h6-final`, built locally at H8/H7 head `62186d9`; current PR head CI rebuilt all three successfully) |
 | Three wheels version-gated | ✅ (`wheel_release.py version-gate --tag v0.11.0`) |
 | Three wheels clean-install | ✅ (two environments, provenance both ways) |
 | Windows native CI green | ✅ |
@@ -97,7 +97,7 @@ the production chain was verified back before anything else proceeded.
 | Live ChatGPT Tunnel E2E | ✅ (H6, CLOSED-PASS) |
 | Docs/site truthful and aligned | ✅ (H7; v0.11 marked in-development everywhere) |
 | Secrets clean | ✅ (pattern scan over the full PR diff) |
-| Phase H PR green and mergeable | ✅ (#40, MERGEABLE, head `62186d9`) |
+| Phase H PR green and mergeable | ✅ (#40, OPEN / non-draft / MERGEABLE, current head `898cb7a`) |
 | **Stable tag `v0.11.0`** | ⬜ outstanding by design |
 | **Stable release** | ⬜ outstanding by design |
 
@@ -109,5 +109,10 @@ the production chain was verified back before anything else proceeded.
 26106f638f416b203b11ecfd1fb337361756ea56954e0f179692967be39c7ca6  serverfs_windows_native-0.11.0-cp312-abi3-win_amd64.whl
 ```
 
-These are the acceptance artifacts. The release workflow rebuilds from the
-tag; if the tag points at this head the digests are expected to match.
+These are the locally recorded H8 acceptance artifacts built at `62186d9`.
+The current PR head `898cb7a` changes only `dev_plan_v0.11.md` and this H9
+evidence document relative to that head, and the current-head Windows Agent
+workflow rebuilt, version-gated and clean-installed all three wheels
+successfully. These local hashes are evidence, not promised release hashes;
+the release workflow rebuilds from the stable tag and its produced artifacts
+are authoritative.
