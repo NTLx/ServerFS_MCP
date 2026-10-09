@@ -5,7 +5,7 @@ description: Secure, scoped filesystem access on Linux and Windows for ChatGPT a
 
 ServerFS MCP exposes explicitly configured directories — Linux containers today, native Windows since v0.10.0 — as **controlled workdirs** through the Model Context Protocol.
 
-Current stable release: **v0.10.0**.
+Current stable release: **v0.11.0**.
 
 It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations, bounded whole-file binary transfer, and an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge remains optional; Codex, Claude and Qoder keep provider-neutral model discovery and request-scoped overrides, with advisory-only TypeSafe Jev support. v0.10.0 adds the native Windows deployment: an MCP stdio service over a prebuilt Rust/NTFS kernel wheel, with no Docker, WSL or MSVC.
 

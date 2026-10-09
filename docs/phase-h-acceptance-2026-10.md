@@ -1,10 +1,15 @@
 # Phase H — CI, packaging and release closure: acceptance evidence
 
-Phase H closes v0.11 to the state "safe to merge; merge leaves only the stable
+Phase H closed v0.11 to the state "safe to merge; merge leaves only the stable
 tag/release outstanding". Baseline: `81bdc8e` (the Phase G merge). Branch:
-`phase-h-release-closure`. PR: #40. Nothing in this phase merges, tags or
-releases; the release-state wording everywhere describes v0.11 as
-in-development.
+`phase-h-release-closure`. PR: #40. Nothing in this phase merged, tagged or
+released; the release-state wording in the body describes v0.11 as it stood at
+each acceptance point.
+
+**Post-release (2026-10-09): `v0.11.0` was tagged at `78f4547` and the stable
+release published with the three wheel assets and the two-environment install
+notes. The two contract rows below that were "outstanding by design" are now
+complete — v0.11.0 is the current stable release.**
 
 ## Layered evidence map
 
@@ -98,8 +103,8 @@ the production chain was verified back before anything else proceeded.
 | Docs/site truthful and aligned | ✅ (H7; v0.11 marked in-development everywhere) |
 | Secrets clean | ✅ (pattern scan over the full PR diff) |
 | Phase H PR green and mergeable | ✅ (#40 was OPEN / non-draft / MERGEABLE at maintainer review; exact current-head checks are verified dynamically before merge) |
-| **Stable tag `v0.11.0`** | ⬜ outstanding by design |
-| **Stable release** | ⬜ outstanding by design |
+| **Stable tag `v0.11.0`** | ✅ tagged at `78f4547` and pushed (2026-10-09) |
+| **Stable release** | ✅ published — three wheel assets + two-environment install notes with per-wheel digests |
 
 ## Candidate wheel digests (built from the H8 acceptance head)
 
@@ -116,4 +121,6 @@ rebuilt, version-gated and clean-installed all three wheels successfully at
 that closure head. Later maintainer-review corrections to this evidence are
 documentation-only and do not redefine these hashes. These local hashes are
 evidence, not promised release hashes; the release workflow rebuilds from the
-stable tag and its produced artifacts are authoritative.
+stable tag and its produced artifacts are authoritative — as measured: the
+published product wheel matches `20047f5e…` byte-for-byte, and the release
+notes record the released digests for all three wheels.

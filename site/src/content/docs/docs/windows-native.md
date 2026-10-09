@@ -5,7 +5,7 @@ description: The native Windows deployment — MCP stdio over a prebuilt Rust/NT
 
 Since v0.10.0 ServerFS runs natively on **Windows 11 x64 over local NTFS** as an MCP **stdio** service. Nothing listens on a port: the official OpenAI `tunnel-client` connects out to the control plane and speaks MCP through the child process's stdin/stdout, so the default native profile has no localhost listener. Linux Docker deployments are unchanged and remain the supported Linux shape.
 
-v0.11 (in development) adds **Agent delegation** to this deployment for Codex, Claude Code and Qoder through the same ten Agent tools over a Named-Pipe Bridge, accepted through the live ChatGPT tunnel E2E.
+v0.11 adds **Agent delegation** to this deployment for Codex, Claude Code and Qoder through the same ten Agent tools over a Named-Pipe Bridge, accepted through the live ChatGPT tunnel E2E.
 
 The runtime chain:
 

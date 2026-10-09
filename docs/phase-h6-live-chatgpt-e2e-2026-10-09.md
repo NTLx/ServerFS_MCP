@@ -59,4 +59,4 @@ Two temporary read-only recovery-inspection Agent tasks were cancelled after the
 
 H6 is **CLOSED-PASS**. A live ChatGPT session successfully traversed the Secure MCP Tunnel to the native Windows ServerFS/Named-Pipe Agent Bridge and reached all three release-claimed provider runtimes. Completion responses, runtime/model discovery, normalized task/event polling, an approval round trip, and cancellation were all observed through the public MCP surface.
 
-This closes release acceptance item 26 (`Live ChatGPT E2E succeeds before the stable tag`). H7–H9 remain outstanding.
+This closed release acceptance item 26 (`Live ChatGPT E2E succeeds before the stable tag`). H7–H9 have since closed and **v0.11.0 was tagged and published 2026-10-09** — the final post-refresh live manifest re-verification (three runtimes, `bridge_version: 0.11.0`) restored this phase to CLOSED-PASS after the `bridge_version` drift fix (`46794b0`).
