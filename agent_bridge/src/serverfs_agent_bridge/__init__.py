@@ -1,3 +1,5 @@
 """ServerFS Agent Bridge package."""
 
-__version__ = "0.9.0"
+from importlib.metadata import version
+
+__version__ = version("serverfs-agent-bridge")
