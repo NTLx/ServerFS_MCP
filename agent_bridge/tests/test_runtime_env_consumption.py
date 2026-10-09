@@ -27,14 +27,13 @@ from pathlib import Path
 
 import pytest
 
-from serverfs_agent_bridge.errors import BridgeError
-
 from serverfs_agent_bridge.bootstrap import (
     RuntimeProxy,
     encode_bootstrap_frame,
     parse_bootstrap_frame,
 )
 from serverfs_agent_bridge.config import BridgeConfig
+from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.main import _serve
 from serverfs_agent_bridge.runtime_proxy import (
     build_runtime_environment,
