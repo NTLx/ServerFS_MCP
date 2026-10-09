@@ -1,4 +1,4 @@
-# ServerFS native configuration (v0.10)
+# ServerFS native configuration
 #
 # Copy this file to serverfs.toml next to your deployment, edit the
 # [[workdirs]] entries, then run:
