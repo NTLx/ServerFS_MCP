@@ -205,32 +205,79 @@ jobs:
             'read_only = true'
           )
           $lines | Set-Content -Encoding utf8NoBOM doctor-smoke.toml
-          .venv-serverfs/Scripts/serverfs.exe doctor --config doctor-smoke.toml
-          # Agent-enabled static doctor across the real boundary: the doctor
+          $disabledOut = .venv-serverfs/Scripts/serverfs.exe doctor --config doctor-smoke.toml
+          # stdout is reserved for MCP frames; doctor reports on stderr only.
+          if ($disabledOut) {
+            Write-Output "agent-disabled doctor wrote to stdout:"
+            $disabledOut
+            exit 1
+          }
+          # Agent-enabled static doctor across the real boundary (H4): a config
+          # that actually enables the agent -- proxy disabled (source env), all
+          # three runtimes disabled, same read-only NTFS workdir. The doctor
           # runs in the ServerFS env while SERVERFS_BRIDGE_PYTHON points at the
-          # Bridge clean venv -- no Bridge started, no provider started, no
-          # endpoint or credential printed.
+          # Bridge clean venv: it must report the Bridge package importable by
+          # that interpreter, proxy and runtimes disabled, and private state
+          # safe-where-present -- without starting a Bridge or a provider,
+          # without printing an endpoint or credential, and without creating
+          # state (asserted by the clean-surface step that follows).
+          $enabledLines = @(
+            'log_level = "INFO"'
+            ''
+            '[agent]'
+            'enabled = true'
+            ''
+            '[agent.proxy]'
+            'enabled = false'
+            'source = "env"'
+            ''
+            '[agent.codex]'
+            'enabled = false'
+            ''
+            '[agent.claude]'
+            'enabled = false'
+            ''
+            '[agent.qoder]'
+            'enabled = false'
+            ''
+            '[[workdirs]]'
+            'alias = "smoke"'
+            "path = `"$escaped`""
+            'read_only = true'
+          )
+          $enabledLines | Set-Content -Encoding utf8NoBOM doctor-enabled.toml
           $env:SERVERFS_BRIDGE_PYTHON = (Resolve-Path $bridgePy).Path
-          .venv-serverfs/Scripts/serverfs.exe doctor --config doctor-smoke.toml
+          $enabledOut = .venv-serverfs/Scripts/serverfs.exe doctor --config doctor-enabled.toml
           $env:SERVERFS_BRIDGE_PYTHON = $null
+          if ($enabledOut) {
+            Write-Output "agent-enabled doctor wrote to stdout:"
+            $enabledOut
+            exit 1
+          }
         shell: pwsh
 
-      # A previous run's default data home predates the TokenOwner fix: its objects carry a
-      # user-SID DACL, and this run's verification-only checks would refuse them. The runner is
-      # a disposable machine -- nothing under the default ServerFS data home is real user data
-      # -- so the stale agent-bridge state is cleared instead of poisoning the gate.
-      - name: clear stale agent-bridge state and processes from earlier runs
+      # Deterministic suites must start from a known-clean surface. GitHub-hosted
+      # runners are fresh VMs per job, and the doctor/acceptance steps above are
+      # read-only (verified locally: neither creates agent-bridge state nor
+      # leaves a process), so anything found here is a lifecycle leak from an
+      # earlier step in *this* job. The gate fails with the leak listed instead
+      # of silently deleting it -- a cleanup here would only mask the leak.
+      - name: assert the agent-bridge state surface is clean before the suites
         run: |
           $state = Join-Path $env:LOCALAPPDATA "ServerFS/agent-bridge"
           if (Test-Path $state) {
-            Remove-Item -Recurse -Force $state
+            Write-Output "lifecycle leak: agent-bridge state exists before any suite ran:"
+            Get-ChildItem -Recurse $state |
+              Select-Object -First 20 -ExpandProperty FullName |
+              ForEach-Object { Write-Output "  $_" }
+            exit 1
           }
-          # A previously failed run can leave serve/Bridge processes alive, and
-          # the deterministic pipe name stays owned until they exit.
-          $stale = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
+          $leaked = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
             Where-Object { $_.CommandLine -match 'serverfs_mcp|serverfs_agent_bridge' }
-          foreach ($proc in $stale) {
-            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+          if ($leaked) {
+            Write-Output "lifecycle leak: serverfs processes alive before any suite ran:"
+            $leaked | ForEach-Object { Write-Output "  pid $($_.ProcessId)" }
+            exit 1
           }
         shell: pwsh
 

@@ -134,6 +134,7 @@ def _inspect_directory(path: Path, what: str) -> StateReport:
         private_state._assert_windows_private(  # noqa: SLF001 - deliberately one implementation
             windows_security.read_object_security(path),
             windows_security.current_token_owner_sid(),
+            windows_security.current_user_sid(),
             protected=False,
         )
     except BridgeError as exc:
@@ -166,6 +167,7 @@ def _inspect_file(path: Path, what: str) -> StateReport:
         private_state._assert_windows_private(  # noqa: SLF001 - one implementation, not two
             windows_security.read_object_security(path),
             windows_security.current_token_owner_sid(),
+            windows_security.current_user_sid(),
             protected=False,
         )
     except BridgeError as exc:

@@ -404,3 +404,82 @@ def test_unprepared_lease_artifact_fails_closed(tmp_path: Path) -> None:
 
 def test_private_state_module_reports_windows() -> None:
     assert private_state.WINDOWS is (sys.platform == "win32")
+
+
+class TestElevatedTokenIdentitySeparation:
+    r"""§6.1 "Bridge user alone" survives an elevated token: owner and trustee are two fields.
+
+    Windows defines two independent identity fields in the access token: ``TokenUser`` is the
+    account the DACL must name, while ``TokenOwner`` is what Windows assigns newly created
+    objects to. On a normal user token the two are identical; on an elevated process
+    ``TokenUser`` is the account (…-500) and ``TokenOwner`` is ``BUILTIN\Administrators``
+    (S-1-5-32-544). Conflating them widened the frozen descriptor from one user to a whole
+    group — the defect this class pins, measured on the Phase H Windows Agent runner.
+    """
+
+    OWNER = "S-1-5-32-544"  # TokenOwner on an elevated process
+    USER = "S-1-5-21-3-4-5-500"  # TokenUser on that same process
+
+    @staticmethod
+    def _security(owner: str, granted: list[str], *, protected: bool = True):
+        return windows_security.ObjectSecurity(
+            owner_sid=owner,
+            dacl_present=True,
+            dacl_protected=protected,
+            aces=[{"type": windows_security.ACE_ACCESS_ALLOWED, "sid": sid} for sid in granted],
+        )
+
+    def test_elevated_shape_owner_is_token_owner_dacl_names_the_bridge_user(self) -> None:
+        # The measured CI shape: Windows owned the object with the Administrators group while
+        # the DACL names only the Bridge user. This is a correct elevated deployment: PASS.
+        security = self._security(self.OWNER, [self.USER])
+        private_state._assert_windows_private(  # noqa: SLF001 - the contract under test
+            security, self.OWNER, self.USER, protected=True
+        )
+
+    def test_object_owned_by_the_token_user_is_refused(self) -> None:
+        # An object owned by the account instead of the token owner is not what Windows
+        # produces for this process; refuse rather than guess which token it came from.
+        security = self._security(self.USER, [self.USER])
+        with pytest.raises(BridgeError, match="another owner"):
+            private_state._assert_windows_private(  # noqa: SLF001
+                security, self.OWNER, self.USER, protected=True
+            )
+
+    def test_dacl_granting_only_the_token_owner_is_refused(self) -> None:
+        # The regression this class exists for: a DACL widened to the Administrators group —
+        # exactly what conflating owner and trustee produced — is not "Bridge user alone",
+        # even though the group is a tolerable trustee on an inherited object.
+        security = self._security(self.OWNER, [self.OWNER])
+        with pytest.raises(BridgeError, match="does not grant the Bridge user"):
+            private_state._assert_windows_private(  # noqa: SLF001
+                security, self.OWNER, self.USER, protected=True
+            )
+
+    def test_a_foreign_account_ace_is_refused(self) -> None:
+        foreign = "S-1-5-21-99-99-99-1001"
+        security = self._security(self.OWNER, [self.USER, foreign])
+        with pytest.raises(BridgeError, match="another trustee"):
+            private_state._assert_windows_private(  # noqa: SLF001
+                security, self.OWNER, self.USER, protected=True
+            )
+
+    def test_created_descriptor_names_the_bridge_user_not_the_token_owner(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # ``render_config._create_private`` is the one state-file DACL built outside
+        # private_state; on an elevated token it must still name the Bridge user.
+        import serverfs_agent_bridge.render_config as render_config
+
+        monkeypatch.setattr(windows_security, "current_user_sid", lambda: self.USER)
+        monkeypatch.setattr(windows_security, "current_token_owner_sid", lambda: self.OWNER)
+        captured: dict[str, str] = {}
+
+        def fake_create(path, sddl):
+            captured["sddl"] = sddl
+            return True
+
+        monkeypatch.setattr(windows_security, "create_private_file", fake_create)
+        render_config._create_private(tmp_path / "config.tmp")
+        assert self.USER in captured["sddl"]
+        assert self.OWNER not in captured["sddl"]

@@ -417,16 +417,17 @@ def _create_private(path: Path) -> bool:
     # importable off Windows, and this function is the Windows-only one that needs the Win32 layer.
     from .windows_security import (
         create_private_file,
-        current_token_owner_sid,
+        current_user_sid,
         private_state_sddl,
     )
 
-    # The trustee must be the same SID the private-state assertions expect: the token's
-    # default owner (Windows object-ownership semantics). On a normal user token that is
-    # the user SID; on an elevated process it is the Administrators group. Using
-    # current_user_sid() here made creation and verification disagree the moment the two
-    # SIDs differ (measured on the Windows Agent CI runner).
-    return create_private_file(path, private_state_sddl(current_token_owner_sid()))
+    # The DACL names the Bridge user alone (§6.1): the frozen "Bridge user alone" trustee is
+    # the TokenUser, not the token owner. On a normal user token the two are identical; on an
+    # elevated process the token owner is the Administrators group, and using it here would
+    # widen the descriptor from one user to a whole group. Ownership of the created object is
+    # left to the Windows default and verified against the token owner separately (measured
+    # Phase H: the elevated CI runner's TokenUser and TokenOwner differ).
+    return create_private_file(path, private_state_sddl(current_user_sid()))
 
 
 def main(argv: list[str] | None = None) -> int:
