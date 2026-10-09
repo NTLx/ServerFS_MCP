@@ -715,10 +715,12 @@ def _standalone_python() -> Path:
     ``sys.executable`` inside the test venv is a launcher that locates ``pyvenv.cfg`` relative to
     itself, so a copy of it refuses to run from elsewhere (measured: exit code 106). The base
     interpreter has no such dependency, which is what makes it usable both directly and as the
-    binary the PATH-lookup test copies around.
+    binary the PATH-lookup test copies around. Layout differs by platform: a Windows install
+    keeps ``python.exe`` at the prefix root, a POSIX install keeps ``python3`` under ``bin/``.
     """
-    name = "python.exe" if sys.platform == "win32" else "python3"
-    return Path(sys.base_prefix) / name
+    if sys.platform == "win32":
+        return Path(sys.base_prefix) / "python.exe"
+    return Path(sys.base_prefix) / "bin" / "python3"
 
 
 @pytest.mark.asyncio
