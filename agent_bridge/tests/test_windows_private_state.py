@@ -90,33 +90,35 @@ def test_data_home_never_falls_back_to_cwd_or_temp(monkeypatch, tmp_path: Path) 
 def test_new_directory_is_created_protected_and_grants_only_the_bridge_user(
     tmp_path: Path,
 ) -> None:
-    # Windows assigns new objects to the token owner (the user on a normal
-    # token, the Administrators group on an elevated one) -- the same field
-    # the private-state assertions compare against.
-    expected = windows_security.current_token_owner_sid()
+    # Two identity fields, verified separately: Windows assigns the created object's
+    # ownership to the token owner, while the explicit DACL must name the Bridge user
+    # alone (§6.1) -- the account, not the token owner group.
+    owner_expected = windows_security.current_token_owner_sid()
+    trustee_expected = windows_security.current_user_sid()
     target = tmp_path / "state"
     private_state.ensure_private_directory(target, mode=0o700, messages=messages(), parents=True)
     descriptor = security(target)
-    assert descriptor.owner_sid == expected
+    assert descriptor.owner_sid == owner_expected
     assert descriptor.dacl_present
     assert descriptor.dacl_protected
     assert descriptor.broad_trustee() is None
-    assert [ace["sid"] for ace in descriptor.aces] == [expected]
-    assert descriptor.grants(expected)
+    assert [ace["sid"] for ace in descriptor.aces] == [trustee_expected]
+    assert descriptor.grants(trustee_expected)
 
 
 def test_new_file_is_created_protected_and_grants_only_the_bridge_user(
     tmp_path: Path,
 ) -> None:
-    expected = windows_security.current_token_owner_sid()
+    owner_expected = windows_security.current_token_owner_sid()
+    trustee_expected = windows_security.current_user_sid()
     target = tmp_path / "guard.json"
     private_state.ensure_private_file(
         target, mode=0o600, not_regular="state file must be a regular file"
     )
     descriptor = security(target)
-    assert descriptor.owner_sid == expected
+    assert descriptor.owner_sid == owner_expected
     assert descriptor.dacl_protected
-    assert [ace["sid"] for ace in descriptor.aces] == [expected]
+    assert [ace["sid"] for ace in descriptor.aces] == [trustee_expected]
 
 
 def test_ancestors_created_by_the_bridge_are_protected_too(tmp_path: Path) -> None:
@@ -251,7 +253,8 @@ def test_state_parent_under_a_junction_is_refused(tmp_path: Path) -> None:
 
 
 def test_task_store_creates_a_protected_state_tree(tmp_path: Path) -> None:
-    expected = windows_security.current_token_owner_sid()
+    owner_expected = windows_security.current_token_owner_sid()
+    trustee_expected = windows_security.current_user_sid()
     store = TaskStore(tmp_path / "state")
     TaskStore(tmp_path / "state").create_task(
         task_id="agt_win",
@@ -263,14 +266,15 @@ def test_task_store_creates_a_protected_state_tree(tmp_path: Path) -> None:
         continue_from_task_id=None,
     )
     descriptor = security(store.state_dir)
-    assert descriptor.owner_sid == expected
+    assert descriptor.owner_sid == owner_expected
     assert descriptor.broad_trustee() is None
-    assert security(store.db_path).grants(expected)
+    assert security(store.db_path).grants(trustee_expected)
 
 
 def test_sqlite_wal_and_shm_companions_stay_confined(tmp_path: Path) -> None:
     store = TaskStore(tmp_path / "state")
-    expected = windows_security.current_token_owner_sid()
+    owner_expected = windows_security.current_token_owner_sid()
+    trustee_expected = windows_security.current_user_sid()
     with store._connect() as connection:
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -281,9 +285,9 @@ def test_sqlite_wal_and_shm_companions_stay_confined(tmp_path: Path) -> None:
         if not companion.exists():
             continue
         descriptor = security(companion)
-        assert descriptor.owner_sid == expected, name
+        assert descriptor.owner_sid == owner_expected, name
         assert descriptor.broad_trustee() is None, name
-        assert [ace["sid"] for ace in descriptor.aces] == [expected], name
+        assert [ace["sid"] for ace in descriptor.aces] == [trustee_expected], name
 
 
 def test_planted_sidecar_is_refused_rather_than_repaired(tmp_path: Path) -> None:
@@ -303,7 +307,8 @@ def test_store_refuses_a_state_dir_pre_planted_insecurely(tmp_path: Path) -> Non
 
 
 def test_result_spool_directory_and_files_are_protected(tmp_path: Path) -> None:
-    expected = windows_security.current_token_owner_sid()
+    owner_expected = windows_security.current_token_owner_sid()
+    trustee_expected = windows_security.current_user_sid()
     state = tmp_path / "state"
     private_state.ensure_private_directory(state, mode=0o700, messages=messages())
     spool = ResultSpool(state)
@@ -313,8 +318,8 @@ def test_result_spool_directory_and_files_are_protected(tmp_path: Path) -> None:
     assert security(results_dir).dacl_protected
     written = results_dir / "agt_win.txt"
     descriptor = security(written)
-    assert descriptor.owner_sid == expected
-    assert [ace["sid"] for ace in descriptor.aces] == [expected]
+    assert descriptor.owner_sid == owner_expected
+    assert [ace["sid"] for ace in descriptor.aces] == [trustee_expected]
 
 
 def test_spooled_result_reads_back_through_the_seam(tmp_path: Path) -> None:
