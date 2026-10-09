@@ -26,6 +26,24 @@ foreach ($line in Get-Content $envFile) {
 }
 if (-not $tunnelId) { throw "CONTROL_PLANE_TUNNEL_ID not found in $envFile" }
 
+# Agent-era environment (v0.11): `serverfs tunnel` auto-discovers the sibling .env only for
+# the Control-Plane proxy values, so the Agent-side values the supervisor and the Bridge
+# need must be injected into the launcher's environment explicitly. Reading them from the
+# same .env keeps one operator-facing source; a variable that is absent or empty in the
+# file is simply not injected, and the product's own fail-closed validation reports what
+# is missing. SERVERFS_AGENT_PROXY_URL/NO_PROXY are consumed by the supervisor's Agent
+# proxy wiring; SERVERFS_BRIDGE_PYTHON selects the Agent Bridge venv (the frozen
+# two-environment boundary -- the root env never contains the Bridge package).
+foreach ($line in Get-Content $envFile) {
+    if ($line -match '^\s*(SERVERFS_AGENT_PROXY_URL|SERVERFS_AGENT_NO_PROXY|SERVERFS_BRIDGE_PYTHON)\s*=\s*(.+?)\s*$') {
+        $name = $Matches[1]
+        $value = $Matches[2].Trim('"').Trim("'")
+        if ($value) {
+            Set-Item -Path "env:$name" -Value $value
+        }
+    }
+}
+
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 # No --env-file: `serverfs tunnel` auto-discovers the sibling .env next to the
