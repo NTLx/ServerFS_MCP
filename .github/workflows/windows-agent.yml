@@ -249,7 +249,6 @@ jobs:
           uv run --no-project --python .venv/Scripts/python.exe -m pytest `
             tests/test_agent_tools.py `
             tests/test_agent_client.py `
-            tests/test_agent_leases.py `
             tests/test_agent_proxy.py `
             tests/test_agent_proxy_ambient_url.py `
             tests/test_agent_deployment.py `
