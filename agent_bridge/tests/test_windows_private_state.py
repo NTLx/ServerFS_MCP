@@ -108,7 +108,7 @@ def test_new_directory_is_created_protected_and_grants_only_the_bridge_user(
 def test_new_file_is_created_protected_and_grants_only_the_bridge_user(
     tmp_path: Path,
 ) -> None:
-    expected = windows_security.current_user_sid()
+    expected = windows_security.current_token_owner_sid()
     target = tmp_path / "guard.json"
     private_state.ensure_private_file(
         target, mode=0o600, not_regular="state file must be a regular file"
@@ -251,7 +251,7 @@ def test_state_parent_under_a_junction_is_refused(tmp_path: Path) -> None:
 
 
 def test_task_store_creates_a_protected_state_tree(tmp_path: Path) -> None:
-    expected = windows_security.current_user_sid()
+    expected = windows_security.current_token_owner_sid()
     store = TaskStore(tmp_path / "state")
     TaskStore(tmp_path / "state").create_task(
         task_id="agt_win",
@@ -270,7 +270,7 @@ def test_task_store_creates_a_protected_state_tree(tmp_path: Path) -> None:
 
 def test_sqlite_wal_and_shm_companions_stay_confined(tmp_path: Path) -> None:
     store = TaskStore(tmp_path / "state")
-    expected = windows_security.current_user_sid()
+    expected = windows_security.current_token_owner_sid()
     with store._connect() as connection:
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -303,7 +303,7 @@ def test_store_refuses_a_state_dir_pre_planted_insecurely(tmp_path: Path) -> Non
 
 
 def test_result_spool_directory_and_files_are_protected(tmp_path: Path) -> None:
-    expected = windows_security.current_user_sid()
+    expected = windows_security.current_token_owner_sid()
     state = tmp_path / "state"
     private_state.ensure_private_directory(state, mode=0o700, messages=messages())
     spool = ResultSpool(state)
@@ -338,7 +338,7 @@ def test_spooled_result_reads_back_through_the_seam(tmp_path: Path) -> None:
 
 
 def test_active_guard_directory_and_guard_file_are_protected(tmp_path: Path) -> None:
-    expected = windows_security.current_user_sid()
+    expected = windows_security.current_token_owner_sid()
     locks = tmp_path / "locks"
     private_state.ensure_private_directory(locks, mode=0o700, messages=messages(), parents=True)
     manager = ActiveGuardManager(locks)
@@ -376,7 +376,7 @@ def test_lease_artifact_is_private_state_and_is_leaseable(tmp_path: Path) -> Non
     same per-object descriptor as every other state file — never one inherited from the directory,
     which Phase 0A measured as silently denying the reader's open.
     """
-    expected = windows_security.current_user_sid()
+    expected = windows_security.current_token_owner_sid()
     lease_id = lease_identity.alias_lease_id("repo")
     manager = LeaseManager(tmp_path / "locks", lease_ids=[lease_id])
     artifact = manager.lock_dir / lease_identity.lock_artifact_name(lease_id)

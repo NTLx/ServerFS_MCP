@@ -219,11 +219,18 @@ jobs:
       # user-SID DACL, and this run's verification-only checks would refuse them. The runner is
       # a disposable machine -- nothing under the default ServerFS data home is real user data
       # -- so the stale agent-bridge state is cleared instead of poisoning the gate.
-      - name: clear stale agent-bridge state from earlier runs
+      - name: clear stale agent-bridge state and processes from earlier runs
         run: |
           $state = Join-Path $env:LOCALAPPDATA "ServerFS/agent-bridge"
           if (Test-Path $state) {
             Remove-Item -Recurse -Force $state
+          }
+          # A previously failed run can leave serve/Bridge processes alive, and
+          # the deterministic pipe name stays owned until they exit.
+          $stale = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
+            Where-Object { $_.CommandLine -match 'serverfs_mcp|serverfs_agent_bridge' }
+          foreach ($proc in $stale) {
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
           }
         shell: pwsh
 
