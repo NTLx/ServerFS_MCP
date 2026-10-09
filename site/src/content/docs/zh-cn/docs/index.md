@@ -28,7 +28,7 @@ ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆�
 - [安全模型](./security/) — 查看纵深防御模型。
 - [二进制传输](./binary-transfer/) — 启用有界 download/upload，以及可选的 ChatGPT 文件参数入口。
 - [Agent Bridge](./agent-bridge/) — 按需启用结构化 Codex/Claude/Qoder 委派。
-- [Windows 原生部署](./windows-native/) —— v0.10 的 Windows 原生形态：两个 wheel、stdio 传输、pinned tunnel-client 启动链，以及 fail-closed 的健康报告。
+- [Windows 原生部署](./windows-native/) —— Windows 原生形态：两个隔离环境中的预构建 wheel、stdio 传输、pinned tunnel-client 启动链、fail-closed 健康报告，以及（v0.11）Codex/Claude/Qoder 的 Agent 委派。
 - [Jev Advisors](./jev-advisors/) — 在 v0.9.0 宿主机 Bridge 中按需启用实验性的 task preflight、五路 runtime routing、提交前模型建议与 approval advice。
 
 实现细节与完整运维参考请查看仓库 [README](https://github.com/NTLx/ServerFS_MCP#readme)。

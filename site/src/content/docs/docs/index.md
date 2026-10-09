@@ -28,7 +28,7 @@ There is no shell, generic command executor, recursive delete, or unguarded over
 - [Security Model](./security/) — review the defense-in-depth model.
 - [Binary Transfer](./binary-transfer/) — enable bounded download/upload, including optional ChatGPT file-parameter ingress.
 - [Agent Bridge](./agent-bridge/) — opt into structured Codex/Claude/Qoder delegation.
-- [Windows Native](./windows-native/) — the v0.10 native Windows deployment: two wheels, stdio transport, pinned tunnel-client launcher chain and the fail-closed health report.
+- [Windows Native](./windows-native/) — the native Windows deployment: prebuilt wheels in two isolated environments, stdio transport, the pinned tunnel-client launcher chain, the fail-closed health report, and (v0.11) Agent delegation for Codex/Claude/Qoder.
 - [Jev Advisors](./jev-advisors/) — optional experimental task preflight, five-way runtime routing, pre-submit model advice, and approval advice included in the v0.9.0 host Bridge.
 
 For implementation detail and the complete operational reference, see the repository [README](https://github.com/NTLx/ServerFS_MCP#readme).

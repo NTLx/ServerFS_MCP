@@ -4,6 +4,8 @@
 
 Current stable release: **v0.10.0**. v0.10.0 adds a native Windows deployment: ServerFS runs directly on Windows 11 x64 over local NTFS as an MCP **stdio** service backed by a prebuilt Rust kernel wheel (`serverfs-windows-native`, abi3, Python >= 3.12) — no Docker, WSL, Rust or MSVC for end users — with `serverfs serve/doctor/tunnel/bootstrap`, the pinned official tunnel-client launcher chain (sanitized MCP child, `file:` credential boundary) and the shared four-field HTTP proxy contract. The Linux Docker deployment, tool surface and all prior contracts are unchanged; v0.9.0's provider-neutral model discovery and unified `SERVERFS_MAX_BINARY_TRANSFER_BYTES` ceiling carry over as-is.
 
+**v0.11 (in development, PR #40)** extends the native Windows deployment with Agent delegation for the three supported runtimes — **Codex, Claude Code and Qoder** — driven through the same ten Agent tools over the same Named-Pipe Bridge. Each runtime is a real provider process launched by a separate Agent Bridge venv (see [Windows Native Deployment](#windows-native-deployment) for the two-environment install). Capabilities are recorded per runtime, not advertised uniformly: Codex supports model discovery and request-scoped model override with its own loopback control channel bypassed from proxy policy; Claude and Qoder route provider traffic through the injected proxy when `use_proxy = true` (measured: 17 external CONNECTs, 0 loopback, attributed to the provider child) and direct when it is false; Claude does not expose model discovery (`model_discovery: unsupported`) and neither Claude nor Qoder supports live steering (`live_steer = false`); Qoder's model catalog is read live and its pricing state is never hard-coded. The full acceptance evidence is in `docs/phase-e-…`, `docs/phase-f-…`, `docs/phase-g-acceptance-2026-10.md` and `docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`.
+
 Agents reach your directories through the **OpenAI Secure MCP Tunnel**. They can list, find, search, read and stat files anywhere you mount; optionally transfer bounded whole binary files; and, in workdirs you explicitly mark read-write, create, edit, delete or revision-guarded replace files through narrow tools. Nothing else: no shell, no command execution, no unguarded overwrite, no recursive delete, no escape from the directories you configure.
 
 ```text
@@ -46,7 +48,7 @@ The MCP server container has **no Internet egress** and no published ports. The 
 
 The default `compose.yml` exposes the original 11 filesystem tools. Binary transfer is opt-in: when at least one workdir enables it, `download_binary_file` and `upload_binary_file` are added, producing a 13-tool filesystem surface. When the administrator also configures Agent policy and uses `compose.agent.yml`, the overlay adds ten structured Agent tools, including the read-only `list_agent_models`. The four supported surfaces are therefore 11 / 13 / 21 / 23 tools for filesystem-only / filesystem+binary / filesystem+Agent / filesystem+binary+Agent. Agent tools broker structured tasks through the host-side Bridge; they are not a shell, argv, or generic command executor. Delegated tasks should therefore stay objective-level and capability-bounded: one authorized goal, explicit mutation scope/stop conditions, and only the context/evidence needed for that goal. This improves clarity and reduces accidental ambiguity; it is not intended to bypass provider safety checks.
 
-The current v0.9.0 release includes an optional **advisory-only** Jev advisor inside the host Agent Bridge. It does not add a runtime, permission, automatic router, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and Agent submission/model discovery work without Jev. Task submission still evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a five-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, `qoder`, or `human_review`; that recommendation never overrides the caller's explicit runtime. v0.9.0 additionally lets `list_agent_models` accept the concrete task context and, when the selected runtime exposes a model catalog, ask the same pinned `jev-1.13.0` advisor which currently exposed model best fits the task. The returned `model_advice` is pre-submit evidence only: ServerFS never copies it into `submit_agent_task.model`, and ChatGPT/user decides whether to accept, ignore, or override it. Approval Advisor remains unchanged in authority: it may advise on a provider approval request but never approve/deny automatically. No Jev result blocks, rewrites, reroutes, selects a model automatically, approves, denies, or expands a task. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository experiment notes.
+The v0.9.0 release includes an optional **advisory-only** Jev advisor inside the host Agent Bridge. It does not add a runtime, permission, automatic router, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and Agent submission/model discovery work without Jev. Task submission still evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a five-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, `qoder`, or `human_review`; that recommendation never overrides the caller's explicit runtime. v0.9.0 additionally lets `list_agent_models` accept the concrete task context and, when the selected runtime exposes a model catalog, ask the same pinned `jev-1.13.0` advisor which currently exposed model best fits the task. The returned `model_advice` is pre-submit evidence only: ServerFS never copies it into `submit_agent_task.model`, and ChatGPT/user decides whether to accept, ignore, or override it. Approval Advisor remains unchanged in authority: it may advise on a provider approval request but never approve/deny automatically. No Jev result blocks, rewrites, reroutes, selects a model automatically, approves, denies, or expands a task. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository experiment notes.
 
 v0.7.0 introduced the current Agent Bridge reliability layer without turning ServerFS into a workflow engine. Every new task freezes an immutable execution manifest and optional opaque `correlation_id`; normalized events use schema-versioned envelopes; the original v0.7.0 default task deadline was 24 hours and terminal state is retained for seven days by default. Workspace-write runs add a persistent active-slot recovery guard on top of the existing `flock`, so an abnormal Bridge exit fails closed with `WORKDIR_RECOVERY_REQUIRED` until provider state is reconciled. Final responses up to 256 KiB remain inline; responses above 256 KiB and up to 8 MiB are atomically spooled in private Bridge state and can be reconstructed exactly through the read-only `read_agent_task_result` tool. Results above 8 MiB still fail with `AGENT_RESULT_TOO_LARGE`. v0.7.1 added the narrow Codex pre-provider-start reconciliation hotfix. v0.7.2 was the previous stable maintenance release on that frozen surface: `find_files` keeps directory-FD usage bounded on wide trees and reports `EMFILE`/`ENFILE` as `RESOURCE_EXHAUSTED`; lazy Agent recovery terminalizes a stale non-terminal task when reconciliation proves its provider is inactive, while unknown provider state remains fail-closed.
 
@@ -109,6 +111,8 @@ tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
 The v0.10.0 release publishes immutable tag `v0.10.0` and stable GHCR tags `0.10.0`, `0.10` and `latest`, plus the two Windows installation wheels (product + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests. Earlier release tags remain immutable. `latest` always points at the newest published stable release; pushes to `main` update only `edge`.
+
+The v0.11 release (in development) will publish **three** Windows installation wheels — product, `serverfs-agent-bridge` and `serverfs-windows-native` — gated against the tag version through each wheel's authoritative METADATA, clean-installed into the two environments described below, and attached to the GitHub Release with recorded SHA-256 digests.
 
 ## Workdir Configuration
 
@@ -189,7 +193,7 @@ CONTROL_PLANE_API_KEY=rtk_...
 
 The tunnel is **outbound-only**: no public domain, no TLS certificate, no inbound firewall rule, no reverse proxy. The container connects out to OpenAI's control plane and forwards MCP traffic to `http://serverfs-mcp:8000/mcp` over the internal Docker network.
 
-The v0.10 proxy configuration contract is shared across platforms and supports
+The proxy configuration contract is shared across platforms and supports
 HTTP proxy only. Linux Compose and the Windows native tunnel launcher use the
 same four fields.
 Set `SERVERFS_PROXY_HOST` and `SERVERFS_PROXY_PORT` in `.env`;
@@ -209,18 +213,26 @@ explicit `--env-file`). It passes the derived URL only in tunnel-client's
 environment and removes proxy, OpenAI and tunnel binding variables before
 starting ServerFS. Supply the control-plane API key with `--api-key-file`; the
 launcher passes only the official `file:` reference, and the key file must be
-outside every configured workdir.
+outside every configured workdir. When Agent delegation is enabled, the
+launcher additionally injects the Agent-side values from the same `.env` —
+`SERVERFS_AGENT_PROXY_URL` / `SERVERFS_AGENT_NO_PROXY` (the credentialless
+Agent egress proxy) and `SERVERFS_BRIDGE_PYTHON` (the Agent Bridge venv's
+interpreter, the frozen two-environment boundary) — into the launcher
+environment; absent or empty values are simply not injected, and the
+product's fail-closed validation reports what is missing.
 
 To troubleshoot the tunnel, use the official client's own diagnostics (`tunnel-client doctor`, `/readyz`) rather than guessing.
 
-## Windows Native Deployment (v0.10)
+## Windows Native Deployment
 
-v0.10 adds a native Windows deployment: ServerFS runs directly on the machine
+v0.10 added a native Windows deployment: ServerFS runs directly on the machine
 as an MCP **stdio** service backed by a Rust/NTFS kernel — no Docker, no WSL,
 no localhost listener. The Linux Docker deployment above is unchanged and
 remains the supported Linux shape. Windows support is scoped to **Windows 11
 x64 + local NTFS**; the GA claim is only made after the Phase F acceptance
-record.
+record. v0.11 enables Agent delegation on this deployment for Codex, Claude
+Code and Qoder (accepted through the live ChatGPT tunnel E2E; see
+`docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`).
 
 The runtime chain is:
 
@@ -230,32 +242,53 @@ serverfs tunnel
        -> sanitizer supervisor            (strips tunnel/proxy environment)
             -> serverfs serve             (MCP stdio child, sees no secrets)
                  -> serverfs-windows-native wheel (HANDLE-relative NTFS kernel)
+       -> Agent Bridge                    (separate venv, per-user lifecycle lease)
+            -> real provider CLI          (codex / claude / qodercli)
 ```
 
-Windows users consume two prebuilt wheels from the GitHub Release and never
-need Rust, Cargo, MSVC Build Tools or the Windows SDK. The `serverfs-windows-native`
+Windows users consume prebuilt wheels from the GitHub Release and never need
+Rust, Cargo, MSVC Build Tools or the Windows SDK. The `serverfs-windows-native`
 wheel is `cp312-abi3-win_amd64` (stable ABI, Python ≥ 3.12; validated on
 CPython 3.12 in artifact CI and on 3.13 in development evidence).
 
-### Clean install
+### Two-environment clean install (v0.11)
+
+The product and the Agent Bridge are **independent distributions in two
+isolated virtual environments**, connected by a frozen process boundary: the
+supervisor launches the Bridge through `SERVERFS_BRIDGE_PYTHON`. They are
+never installed into one shared dependency graph (measured: `serverfs-mcp`
+freezes `mcp==2.2.0` while the pinned Qoder SDK declares `mcp<2.0.0`).
 
 1. Install [uv](https://docs.astral.sh/uv/) (or any Python ≥ 3.12).
-2. From the release assets, install both wheels:
+2. From the release assets, install the **ServerFS environment** (product +
+   native wheels) and the **Agent Bridge environment** (bridge wheel) into two
+   separate venvs:
 
 ```powershell
-uv venv --python 3.12
-.venv\Scripts\activate
-uv pip install serverfs_mcp-<ver>-py3-none-any.whl serverfs_windows_native-<ver>-cp312-abi3-win_amd64.whl
+uv venv --python 3.12 .venv-serverfs
+uv pip install --python .venv-serverfs\Scripts\python.exe serverfs_mcp-<ver>-py3-none-any.whl serverfs_windows_native-<ver>-cp312-abi3-win_amd64.whl
+
+uv venv --python 3.12 .venv-bridge
+uv pip install --python .venv-bridge\Scripts\python.exe serverfs_agent_bridge-<ver>-py3-none-any.whl
 ```
 
-3. Copy `serverfs.toml.example` to `serverfs.toml` and set your workdirs
+3. Point the supervisor at the Bridge venv by setting
+   `SERVERFS_BRIDGE_PYTHON=C:\path\to\.venv-bridge\Scripts\python.exe` in the
+   `.env` next to `serverfs.toml` (the tunnel launcher injects it into the
+   serverfs process environment). The Bridge environment never needs the
+   product package, and the product environment never needs the Bridge
+   package — the packaging gate proves neither can import the other's.
+4. Copy `serverfs.toml.example` to `serverfs.toml` and set your workdirs
    (paths are operator configuration; agents only ever see aliases;
    `read_only = true` is the default and mutations are refused by the kernel
-   unless a workdir opts in). Never put secrets in `serverfs.toml`.
-4. Run the health report — it must exit 0 with `0 FAIL` before you serve:
+   unless a workdir opts in). Agent delegation is **disabled unless you add
+   an `[agent]` section with `enabled = true`** plus per-workdir
+   `agent_mode`/`agent_runtimes` policy; a config without `[agent]` behaves
+   exactly like v0.10. Never put secrets in `serverfs.toml`.
+5. Run the health report — it must exit 0 with `0 FAIL` before you serve:
 
 ```powershell
-serverfs doctor --config serverfs.toml
+.venv-serverfs\Scripts\serverfs.exe doctor --config serverfs.toml
 ```
 
 `serverfs doctor` probes config parse, native backend import/version, each
@@ -264,19 +297,26 @@ shares, FAT/exFAT/ReFS and any storage whose class cannot be measured are
 `filesystem: FAIL` and a non-zero exit), reparse topology, a real
 policy-filtered root listing, a non-mutating write capability check, the
 bootstrapped tunnel-client version and the project-managed HTTP proxy
-reachability — with proxy/tunnel credentials never displayed.
+reachability — with proxy/tunnel credentials never displayed. With
+`[agent]` enabled it additionally reports (read-only, never starting a
+Bridge or a provider): the per-workdir Agent policy, each runtime's enabled
+state and proxy routing, the Agent data home, the private-state safety of
+whatever exists, the Agent proxy endpoint wiring and reachability (the
+endpoint itself is never displayed), the user identity derivation, and that
+the Bridge package is importable by the configured `SERVERFS_BRIDGE_PYTHON`
+interpreter.
 
-5. Serve (usually the tunnel launcher starts this for you):
+6. Serve (usually the tunnel launcher starts this for you):
 
 ```powershell
-serverfs serve --config serverfs.toml     # MCP frames on stdout, logs on stderr
+.venv-serverfs\Scripts\serverfs.exe serve --config serverfs.toml
 ```
 
 ### Connectivity bootstrap
 
 ```powershell
-serverfs bootstrap tunnel-client          # pinned official release, SHA-256 verified
-serverfs tunnel --config serverfs.toml `
+.venv-serverfs\Scripts\serverfs.exe bootstrap tunnel-client          # pinned official release, SHA-256 verified
+.venv-serverfs\Scripts\serverfs.exe tunnel --config serverfs.toml `
   --tunnel-id tunnel_... --api-key-file C:\Users\you\.config\serverfs\api-key
 ```
 
@@ -298,16 +338,17 @@ are unsupported upstream — do not run the native profile twice.
 
 For the native wheel itself, `serverfs bootstrap native-wheel --url <asset>
 --sha256 <recorded>` verifies the digest and stores the wheel under the
-ServerFS data directory; the release notes table records both wheel SHA-256
-values.
+ServerFS data directory; the release notes table records all three wheel
+SHA-256 digests (product, Agent Bridge, native).
 
 ### Upgrade
 
-Install the new release wheels into the venv (`uv pip install --upgrade …`),
-rerun `serverfs doctor`, then restart `serverfs tunnel` (recreating the child
-is how the new version gets served). `serverfs bootstrap tunnel-client`
-updates only when this project raises its pinned release; the digest chain
-fails closed on any upstream re-recording.
+Install the new release wheels into their venvs — product and native into the
+ServerFS venv, the Agent Bridge wheel into the Bridge venv
+(`uv pip install --upgrade …`) — rerun `serverfs doctor`, then restart
+`serverfs tunnel` (recreating the child is how the new version gets served).
+`serverfs bootstrap tunnel-client` updates only when this project raises its
+pinned release; the digest chain fails closed on any upstream re-recording.
 
 ## Security Model
 

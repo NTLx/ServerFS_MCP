@@ -28,6 +28,15 @@
 # (plus optional SERVERFS_AGENT_NO_PROXY) and is deliberately absent from this
 # file, from the generated Bridge configuration, and from every log and MCP
 # result. The booleans below are routing policy only.
+#
+# The Agent Bridge is a SEPARATE distribution in a SEPARATE virtual environment
+# (the frozen two-environment boundary): point the supervisor at its
+# interpreter with SERVERFS_BRIDGE_PYTHON in the .env next to this file, e.g.
+#   SERVERFS_BRIDGE_PYTHON=C:\path\to\.venv-bridge\Scripts\python.exe
+# The root environment never contains the Bridge package and the Bridge
+# environment never contains the product package. Runtime binaries below are
+# optional: an absent field means the product default, which is the launch
+# path a default deployment runs.
 
 [server]
 # DEBUG | INFO | WARNING | ERROR (default: INFO)
