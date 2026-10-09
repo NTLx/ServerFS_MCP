@@ -196,6 +196,56 @@ class TestBootstrapReachesTheRuntime:
         asyncio.run(drive())
         assert captured["proxy"] is None
 
+    def test_serve_hands_the_bootstrap_proxy_to_the_claude_runtime(
+        self, bridge_config, monkeypatch
+    ):
+        """The Claude construction line is held to the same wiring as Codex and Qoder.
+
+        The defect this pins was found preparing Phase G: the Claude call site in ``_serve`` was
+        the only adapter construction that did not pass ``runtime_proxy``, so the §7.2 frozen
+        mapping had no route to the one runtime §7.2 names for it.
+        """
+        from dataclasses import replace
+
+        from serverfs_agent_bridge import adapters as runtime_adapters
+        from serverfs_agent_bridge.adapters.claude import ClaudeAdapter
+        from serverfs_agent_bridge.config import ClaudeSettings
+
+        captured: dict = {}
+
+        class _Recording(ClaudeAdapter):
+            def __init__(self, settings, *, client_factory=None, runtime_proxy=None):
+                super().__init__(
+                    settings, client_factory=client_factory, runtime_proxy=runtime_proxy
+                )
+                captured["proxy"] = runtime_proxy
+
+        monkeypatch.setattr(runtime_adapters, "ClaudeAdapter", _Recording)
+        claude_config = replace(bridge_config, claude=ClaudeSettings(enabled=True))
+
+        async def drive():
+            task = asyncio.ensure_future(
+                _serve(
+                    claude_config,
+                    shutdown_event=asyncio.Event(),
+                    bootstrap=_bootstrap_stub(FRAME_ONLY_URL),
+                    supervised=True,
+                )
+            )
+            await asyncio.sleep(0.3)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(drive())
+        assert "proxy" in captured, "the Claude runtime was never constructed"
+        assert captured["proxy"] is not None, (
+            "the bootstrap proxy was dropped before the Claude adapter"
+        )
+        assert captured["proxy"].url == FRAME_ONLY_URL
+
 
 class TestPolicyIsConsumedByARealChild:
     """The consumption half: a spawned child reports its own environment."""

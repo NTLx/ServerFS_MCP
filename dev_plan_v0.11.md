@@ -36,9 +36,11 @@ C  C1–C5 PASS (2026-10-06) — the writer lease has a Windows twin: a platform
 ```
 
 No Phase 0 gate or design decision is outstanding (§18). Phase D is **CLOSED-PASS** (merged at
-`bc3500f`). **Phase E — the Windows Codex runtime — is CLOSED-PASS.** PR #37
-(`feat(v0.11): add Windows Codex runtime`, branch `v0.11-phase-e-windows-codex`) is open against
-`main` and **not merged**. **Phase F is next and not started.**
+`bc3500f`). **Phase E — the Windows Codex runtime — is CLOSED-PASS** (squash-merged at
+`1ba25e4`, PR #37). **Phase F — the Windows Qoder runtime — is CLOSED-PASS** (squash-merged at
+`39ce843`, PR #38). **Phase G — the Windows Claude runtime — is CLOSED-PASS** (evidence in
+`docs/phase-g-acceptance-2026-10.md`; PR open against `main` and **not merged**). **Phase H —
+CI, packaging and release closure — is next.**
 
 Phase E's §40–§49 gates were all measured on the real provider through the public MCP surface: §40,
 §41, §42, §44, §45, §46, §47, §48 pass; §43 is NOT APPLICABLE because Codex 0.159.2 does not expose
@@ -2065,6 +2067,38 @@ Run deterministic adapter tests plus real smoke covering:
 - cleanup.
 
 Do not claim stronger in-flight recovery than the provider exposes.
+
+Phase G status (2026-10-09): **CLOSED-PASS.** Evidence in
+`docs/phase-g-acceptance-2026-10.md`; real-provider acceptance driver
+`tests/e2e/run_phase_g_acceptance.py` (three phases, per-gate `passed` contract, 16/16 gates).
+
+G0/G1: the §7.2 frozen Claude mapping is wired (`ClaudeAdapter` receives the bootstrap
+`RuntimeProxy`; `main.py` no longer drops it), the adapter builds the child env through the
+shared `build_runtime_environment` and hands the SDK an addition-only diff — the Claude SDK
+cannot delete inherited names, so the proxy-free arm omits `env` entirely (measured: the frozen
+pin crashes on an explicit `None` in its spawn path) and `use_proxy=true` injects exactly
+`HTTPS_PROXY` + merged `NO_PROXY`, failing closed before any client exists when no endpoint is
+configured. The stale module-level `linux_only` skip on the Claude suite was removed and the
+fixture now passes `policies.lease_ids()` like the product; the whole suite executes on Windows
+(19 tests, including a real-child probe set).
+
+G2 measured facts, all through the public MCP surface with real provider turns and no
+specified model: Claude consumes the `ClaudeAgentOptions.env`-injected `HTTPS_PROXY` (17
+external CONNECTs observed at a credentialless local forwarder, 0 loopback, attributed to the
+claude child), and the WorkPC provider path is also direct-capable, so `use_proxy=false`
+remains the sane default and the Agent proxy is an optional routing policy on that host.
+Session creation, continuation (same native session, own turn id), file mutation, approval and
+AskUserQuestion (provider-originated), interrupt (claude child gone mid-turn; completion
+artifact never written) and cancellation (terminal `cancelled`, lease released, follow-up task
+succeeds) each carry their own evidence. Recovery: containment reaped the Bridge and the claude
+child with a bystander surviving; with the adapter now persisting the native session from the
+provider's `init` system message (maintainer-approved, Qoder-shaped — identity durability, not
+a liveness claim; the adapter still returns `SESSION_RESUMABLE` with `provider_active=None`)
+a mid-turn crash reconciles to interrupted/resumable, the Windows containment proof turns the
+unknown liveness into effective inactive, the guard releases, and the post-restart
+continuation succeeds with the same native session. The two recovery facts are pinned
+separately from the public event surface, and a mutation forcing `NOT_RECOVERABLE` reddens the
+gate. live_steer remains false; model discovery remains unsupported.
 
 ### Phase H — CI, packaging and release closure
 
