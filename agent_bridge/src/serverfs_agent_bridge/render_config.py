@@ -415,9 +415,18 @@ def _create_private(path: Path) -> bool:
         return False
     # Imported here for the same reason as in ``render_native_bridge_config``: the module must stay
     # importable off Windows, and this function is the Windows-only one that needs the Win32 layer.
-    from .windows_security import create_private_file, current_user_sid, private_state_sddl
+    from .windows_security import (
+        create_private_file,
+        current_token_owner_sid,
+        private_state_sddl,
+    )
 
-    return create_private_file(path, private_state_sddl(current_user_sid()))
+    # The trustee must be the same SID the private-state assertions expect: the token's
+    # default owner (Windows object-ownership semantics). On a normal user token that is
+    # the user SID; on an elevated process it is the Administrators group. Using
+    # current_user_sid() here made creation and verification disagree the moment the two
+    # SIDs differ (measured on the Windows Agent CI runner).
+    return create_private_file(path, private_state_sddl(current_token_owner_sid()))
 
 
 def main(argv: list[str] | None = None) -> int:
