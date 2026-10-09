@@ -121,6 +121,50 @@ def _frame(url: str | None) -> RuntimeProxy | None:
     return parse_bootstrap_frame(raw).agent_proxy
 
 
+class _NoopProtocolServer:
+    """Keep adapter-wiring tests on the protocol seam, not the OS transport.
+
+    Named Pipe lifecycle is covered by its dedicated suites. These tests only need `_serve` to
+    construct the configured adapters and then follow its normal shutdown path.
+    """
+
+    def __init__(self, **_kwargs):
+        pass
+
+    async def start(self) -> None:
+        return None
+
+    async def serve_forever(self) -> None:
+        await asyncio.Future()
+
+    async def close(self) -> None:
+        return None
+
+
+async def _drive_until_adapter_constructed(
+    config: BridgeConfig,
+    captured: dict,
+    *,
+    bootstrap=None,
+) -> None:
+    """Run `_serve` until adapter construction is observable, then shut it down cleanly."""
+    shutdown = asyncio.Event()
+    task = asyncio.create_task(
+        _serve(config, shutdown_event=shutdown, bootstrap=bootstrap, supervised=True)
+    )
+    try:
+        for _ in range(100):
+            if "proxy" in captured:
+                break
+            if task.done():
+                await task
+            await asyncio.sleep(0.01)
+        assert "proxy" in captured, "the runtime was never constructed"
+    finally:
+        shutdown.set()
+        await asyncio.wait_for(task, timeout=2.0)
+
+
 class TestBootstrapReachesTheRuntime:
     """The wiring half: the parsed endpoint is handed to the adapter."""
 
@@ -136,36 +180,15 @@ class TestBootstrapReachesTheRuntime:
         from serverfs_agent_bridge import adapters as runtime_adapters
 
         monkeypatch.setattr(runtime_adapters, "FakeAdapter", _Recording)
+        monkeypatch.setattr("serverfs_agent_bridge.main.BridgeProtocolServer", _NoopProtocolServer)
 
-        async def scenario():
-            # shutdown_event makes _serve return immediately: this test is about the wiring, and the
-            # transport is covered by the supervised lifecycle tests.
-            await _serve(
+        asyncio.run(
+            _drive_until_adapter_constructed(
                 bridge_config,
-                shutdown_event=asyncio.Event(),
+                captured,
                 bootstrap=_bootstrap_stub(FRAME_ONLY_URL),
-                supervised=True,
             )
-
-        # _serve blocks on its listener, so drive it as a task and stop it once constructed.
-        async def drive():
-            task = asyncio.ensure_future(
-                _serve(
-                    bridge_config,
-                    shutdown_event=asyncio.Event(),
-                    bootstrap=_bootstrap_stub(FRAME_ONLY_URL),
-                    supervised=True,
-                )
-            )
-            await asyncio.sleep(0.3)
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-
-        asyncio.run(drive())
-        assert "proxy" in captured, "the runtime was never constructed"
+        )
         assert captured["proxy"] is not None, "the bootstrap proxy was dropped before the runtime"
         assert captured["proxy"].url == FRAME_ONLY_URL
 
@@ -181,19 +204,9 @@ class TestBootstrapReachesTheRuntime:
                 captured["proxy"] = runtime_proxy
 
         monkeypatch.setattr(runtime_adapters, "FakeAdapter", _Recording)
+        monkeypatch.setattr("serverfs_agent_bridge.main.BridgeProtocolServer", _NoopProtocolServer)
 
-        async def drive():
-            task = asyncio.ensure_future(
-                _serve(bridge_config, shutdown_event=asyncio.Event(), supervised=True)
-            )
-            await asyncio.sleep(0.3)
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-
-        asyncio.run(drive())
+        asyncio.run(_drive_until_adapter_constructed(bridge_config, captured))
         assert captured["proxy"] is None
 
     def test_serve_hands_the_bootstrap_proxy_to_the_claude_runtime(
@@ -221,26 +234,16 @@ class TestBootstrapReachesTheRuntime:
                 captured["proxy"] = runtime_proxy
 
         monkeypatch.setattr(runtime_adapters, "ClaudeAdapter", _Recording)
+        monkeypatch.setattr("serverfs_agent_bridge.main.BridgeProtocolServer", _NoopProtocolServer)
         claude_config = replace(bridge_config, claude=ClaudeSettings(enabled=True))
 
-        async def drive():
-            task = asyncio.ensure_future(
-                _serve(
-                    claude_config,
-                    shutdown_event=asyncio.Event(),
-                    bootstrap=_bootstrap_stub(FRAME_ONLY_URL),
-                    supervised=True,
-                )
+        asyncio.run(
+            _drive_until_adapter_constructed(
+                claude_config,
+                captured,
+                bootstrap=_bootstrap_stub(FRAME_ONLY_URL),
             )
-            await asyncio.sleep(0.3)
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-
-        asyncio.run(drive())
-        assert "proxy" in captured, "the Claude runtime was never constructed"
+        )
         assert captured["proxy"] is not None, (
             "the bootstrap proxy was dropped before the Claude adapter"
         )

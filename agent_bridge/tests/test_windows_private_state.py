@@ -90,30 +90,35 @@ def test_data_home_never_falls_back_to_cwd_or_temp(monkeypatch, tmp_path: Path) 
 def test_new_directory_is_created_protected_and_grants_only_the_bridge_user(
     tmp_path: Path,
 ) -> None:
-    expected = windows_security.current_user_sid()
+    # Two identity fields, verified separately: Windows assigns the created object's
+    # ownership to the token owner, while the explicit DACL must name the Bridge user
+    # alone (§6.1) -- the account, not the token owner group.
+    owner_expected = windows_security.current_token_owner_sid()
+    trustee_expected = windows_security.current_user_sid()
     target = tmp_path / "state"
     private_state.ensure_private_directory(target, mode=0o700, messages=messages(), parents=True)
     descriptor = security(target)
-    assert descriptor.owner_sid == expected
+    assert descriptor.owner_sid == owner_expected
     assert descriptor.dacl_present
     assert descriptor.dacl_protected
     assert descriptor.broad_trustee() is None
-    assert [ace["sid"] for ace in descriptor.aces] == [expected]
-    assert descriptor.grants(expected)
+    assert [ace["sid"] for ace in descriptor.aces] == [trustee_expected]
+    assert descriptor.grants(trustee_expected)
 
 
 def test_new_file_is_created_protected_and_grants_only_the_bridge_user(
     tmp_path: Path,
 ) -> None:
-    expected = windows_security.current_user_sid()
+    owner_expected = windows_security.current_token_owner_sid()
+    trustee_expected = windows_security.current_user_sid()
     target = tmp_path / "guard.json"
     private_state.ensure_private_file(
         target, mode=0o600, not_regular="state file must be a regular file"
     )
     descriptor = security(target)
-    assert descriptor.owner_sid == expected
+    assert descriptor.owner_sid == owner_expected
     assert descriptor.dacl_protected
-    assert [ace["sid"] for ace in descriptor.aces] == [expected]
+    assert [ace["sid"] for ace in descriptor.aces] == [trustee_expected]
 
 
 def test_ancestors_created_by_the_bridge_are_protected_too(tmp_path: Path) -> None:
@@ -157,7 +162,9 @@ def test_foreign_expected_owner_sid_fails_closed(
     """§26: the SID string is the authority, so a mismatched expectation stops the Bridge."""
     target = tmp_path / "state"
     private_state.ensure_private_directory(target, mode=0o700, messages=messages())
-    monkeypatch.setattr(windows_security, "current_user_sid", lambda: FOREIGN_SID)
+    # The expected owner comes from TokenOwner (Windows assigns ownership from that field,
+    # which differs from the TokenUser on an elevated process), so that is the seam to patch.
+    monkeypatch.setattr(windows_security, "current_token_owner_sid", lambda: FOREIGN_SID)
     error = expect_bridge_error(
         "PRIVATE_STATE_UNSAFE",
         lambda: private_state.verify_private_file(target, not_regular="nope", not_private="nope"),
@@ -246,7 +253,8 @@ def test_state_parent_under_a_junction_is_refused(tmp_path: Path) -> None:
 
 
 def test_task_store_creates_a_protected_state_tree(tmp_path: Path) -> None:
-    expected = windows_security.current_user_sid()
+    owner_expected = windows_security.current_token_owner_sid()
+    trustee_expected = windows_security.current_user_sid()
     store = TaskStore(tmp_path / "state")
     TaskStore(tmp_path / "state").create_task(
         task_id="agt_win",
@@ -258,14 +266,15 @@ def test_task_store_creates_a_protected_state_tree(tmp_path: Path) -> None:
         continue_from_task_id=None,
     )
     descriptor = security(store.state_dir)
-    assert descriptor.owner_sid == expected
+    assert descriptor.owner_sid == owner_expected
     assert descriptor.broad_trustee() is None
-    assert security(store.db_path).grants(expected)
+    assert security(store.db_path).grants(trustee_expected)
 
 
 def test_sqlite_wal_and_shm_companions_stay_confined(tmp_path: Path) -> None:
     store = TaskStore(tmp_path / "state")
-    expected = windows_security.current_user_sid()
+    owner_expected = windows_security.current_token_owner_sid()
+    trustee_expected = windows_security.current_user_sid()
     with store._connect() as connection:
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -276,9 +285,9 @@ def test_sqlite_wal_and_shm_companions_stay_confined(tmp_path: Path) -> None:
         if not companion.exists():
             continue
         descriptor = security(companion)
-        assert descriptor.owner_sid == expected, name
+        assert descriptor.owner_sid == owner_expected, name
         assert descriptor.broad_trustee() is None, name
-        assert [ace["sid"] for ace in descriptor.aces] == [expected], name
+        assert [ace["sid"] for ace in descriptor.aces] == [trustee_expected], name
 
 
 def test_planted_sidecar_is_refused_rather_than_repaired(tmp_path: Path) -> None:
@@ -298,7 +307,8 @@ def test_store_refuses_a_state_dir_pre_planted_insecurely(tmp_path: Path) -> Non
 
 
 def test_result_spool_directory_and_files_are_protected(tmp_path: Path) -> None:
-    expected = windows_security.current_user_sid()
+    owner_expected = windows_security.current_token_owner_sid()
+    trustee_expected = windows_security.current_user_sid()
     state = tmp_path / "state"
     private_state.ensure_private_directory(state, mode=0o700, messages=messages())
     spool = ResultSpool(state)
@@ -308,8 +318,8 @@ def test_result_spool_directory_and_files_are_protected(tmp_path: Path) -> None:
     assert security(results_dir).dacl_protected
     written = results_dir / "agt_win.txt"
     descriptor = security(written)
-    assert descriptor.owner_sid == expected
-    assert [ace["sid"] for ace in descriptor.aces] == [expected]
+    assert descriptor.owner_sid == owner_expected
+    assert [ace["sid"] for ace in descriptor.aces] == [trustee_expected]
 
 
 def test_spooled_result_reads_back_through_the_seam(tmp_path: Path) -> None:
@@ -333,7 +343,7 @@ def test_spooled_result_reads_back_through_the_seam(tmp_path: Path) -> None:
 
 
 def test_active_guard_directory_and_guard_file_are_protected(tmp_path: Path) -> None:
-    expected = windows_security.current_user_sid()
+    expected = windows_security.current_token_owner_sid()
     locks = tmp_path / "locks"
     private_state.ensure_private_directory(locks, mode=0o700, messages=messages(), parents=True)
     manager = ActiveGuardManager(locks)
@@ -371,7 +381,7 @@ def test_lease_artifact_is_private_state_and_is_leaseable(tmp_path: Path) -> Non
     same per-object descriptor as every other state file — never one inherited from the directory,
     which Phase 0A measured as silently denying the reader's open.
     """
-    expected = windows_security.current_user_sid()
+    expected = windows_security.current_token_owner_sid()
     lease_id = lease_identity.alias_lease_id("repo")
     manager = LeaseManager(tmp_path / "locks", lease_ids=[lease_id])
     artifact = manager.lock_dir / lease_identity.lock_artifact_name(lease_id)
@@ -399,3 +409,82 @@ def test_unprepared_lease_artifact_fails_closed(tmp_path: Path) -> None:
 
 def test_private_state_module_reports_windows() -> None:
     assert private_state.WINDOWS is (sys.platform == "win32")
+
+
+class TestElevatedTokenIdentitySeparation:
+    r"""§6.1 "Bridge user alone" survives an elevated token: owner and trustee are two fields.
+
+    Windows defines two independent identity fields in the access token: ``TokenUser`` is the
+    account the DACL must name, while ``TokenOwner`` is what Windows assigns newly created
+    objects to. On a normal user token the two are identical; on an elevated process
+    ``TokenUser`` is the account (…-500) and ``TokenOwner`` is ``BUILTIN\Administrators``
+    (S-1-5-32-544). Conflating them widened the frozen descriptor from one user to a whole
+    group — the defect this class pins, measured on the Phase H Windows Agent runner.
+    """
+
+    OWNER = "S-1-5-32-544"  # TokenOwner on an elevated process
+    USER = "S-1-5-21-3-4-5-500"  # TokenUser on that same process
+
+    @staticmethod
+    def _security(owner: str, granted: list[str], *, protected: bool = True):
+        return windows_security.ObjectSecurity(
+            owner_sid=owner,
+            dacl_present=True,
+            dacl_protected=protected,
+            aces=[{"type": windows_security.ACE_ACCESS_ALLOWED, "sid": sid} for sid in granted],
+        )
+
+    def test_elevated_shape_owner_is_token_owner_dacl_names_the_bridge_user(self) -> None:
+        # The measured CI shape: Windows owned the object with the Administrators group while
+        # the DACL names only the Bridge user. This is a correct elevated deployment: PASS.
+        security = self._security(self.OWNER, [self.USER])
+        private_state._assert_windows_private(  # noqa: SLF001 - the contract under test
+            security, self.OWNER, self.USER, protected=True
+        )
+
+    def test_object_owned_by_the_token_user_is_refused(self) -> None:
+        # An object owned by the account instead of the token owner is not what Windows
+        # produces for this process; refuse rather than guess which token it came from.
+        security = self._security(self.USER, [self.USER])
+        with pytest.raises(BridgeError, match="another owner"):
+            private_state._assert_windows_private(  # noqa: SLF001
+                security, self.OWNER, self.USER, protected=True
+            )
+
+    def test_dacl_granting_only_the_token_owner_is_refused(self) -> None:
+        # The regression this class exists for: a DACL widened to the Administrators group —
+        # exactly what conflating owner and trustee produced — is not "Bridge user alone",
+        # even though the group is a tolerable trustee on an inherited object.
+        security = self._security(self.OWNER, [self.OWNER])
+        with pytest.raises(BridgeError, match="does not grant the Bridge user"):
+            private_state._assert_windows_private(  # noqa: SLF001
+                security, self.OWNER, self.USER, protected=True
+            )
+
+    def test_a_foreign_account_ace_is_refused(self) -> None:
+        foreign = "S-1-5-21-99-99-99-1001"
+        security = self._security(self.OWNER, [self.USER, foreign])
+        with pytest.raises(BridgeError, match="another trustee"):
+            private_state._assert_windows_private(  # noqa: SLF001
+                security, self.OWNER, self.USER, protected=True
+            )
+
+    def test_created_descriptor_names_the_bridge_user_not_the_token_owner(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # ``render_config._create_private`` is the one state-file DACL built outside
+        # private_state; on an elevated token it must still name the Bridge user.
+        import serverfs_agent_bridge.render_config as render_config
+
+        monkeypatch.setattr(windows_security, "current_user_sid", lambda: self.USER)
+        monkeypatch.setattr(windows_security, "current_token_owner_sid", lambda: self.OWNER)
+        captured: dict[str, str] = {}
+
+        def fake_create(path, sddl):
+            captured["sddl"] = sddl
+            return True
+
+        monkeypatch.setattr(windows_security, "create_private_file", fake_create)
+        render_config._create_private(tmp_path / "config.tmp")
+        assert self.USER in captured["sddl"]
+        assert self.OWNER not in captured["sddl"]

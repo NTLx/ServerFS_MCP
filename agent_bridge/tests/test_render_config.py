@@ -38,6 +38,16 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_codex_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Render tests must not lean on the host's real ~/.codex (absent on CI runners)."""
+    import serverfs_agent_bridge.config as config_module
+
+    fake = tmp_path / "codex-home"
+    fake.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(config_module, "_default_codex_home", lambda: fake)
+
+
 def _request(workdir: Path, **overrides) -> dict:
     request = {
         "workdirs": [

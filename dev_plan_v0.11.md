@@ -39,8 +39,16 @@ No Phase 0 gate or design decision is outstanding (§18). Phase D is **CLOSED-PA
 `bc3500f`). **Phase E — the Windows Codex runtime — is CLOSED-PASS** (squash-merged at
 `1ba25e4`, PR #37). **Phase F — the Windows Qoder runtime — is CLOSED-PASS** (squash-merged at
 `39ce843`, PR #38). **Phase G — the Windows Claude runtime — is CLOSED-PASS** (evidence in
-`docs/phase-g-acceptance-2026-10.md`; PR open against `main` and **not merged**). **Phase H —
-CI, packaging and release closure — is next.**
+`docs/phase-g-acceptance-2026-10.md`; merged at `81bdc8e`). **Phase H — CI, packaging and
+release closure — is CLOSED-PASS** on `phase-h-release-closure` (PR #40): H0 audit, H1
+version convergence (three packages 0.11.0), H2 Windows Agent CI (the owner/trustee identity
+separation landed after maintainer review), H3 three-wheel split-environment pipeline, H4
+doctor gates, H5 wheel-only real-provider package smoke, H6 live ChatGPT Tunnel E2E
+(`docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`), H7 docs/site closure and H8 final gates
+are all complete; the full layered evidence and the release-contract status are in
+`docs/phase-h-acceptance-2026-10.md`. The production WorkPC deployment runs the candidate
+wheels with a preserved rollback baseline. **Everything is merged-ready except the stable
+tag/release themselves**, which stay with the maintainer.
 
 Phase E's §40–§49 gates were all measured on the real provider through the public MCP surface: §40,
 §41, §42, §44, §45, §46, §47, §48 pass; §43 is NOT APPLICABLE because Codex 0.159.2 does not expose
@@ -2101,6 +2109,17 @@ separately from the public event surface, and a mutation forcing `NOT_RECOVERABL
 gate. live_steer remains false; model discovery remains unsupported.
 
 ### Phase H — CI, packaging and release closure
+
+Maintainer ruling (2026-10-09, H3): the three release wheels install into **two isolated
+environments** matching the frozen ServerFS/Agent-Bridge process boundary — never one shared
+dependency graph. The first clean-install attempt correctly failed dependency resolution
+(`serverfs-mcp` freezes `mcp==2.2.0`; the frozen `qoder-agent-sdk==1.0.15` declares
+`mcp<2.0.0`; measured: the Qoder SDK imports fully under 2.2.0, so the upstream bound is just
+conservative, and `1.0.15` is upstream's latest with no relaxed bound to upgrade to). The
+conflict was **not** overridden; acceptance was corrected to the already-frozen independent
+Bridge-interpreter boundary (`SERVERFS_BRIDGE_PYTHON`), the release notes document both
+environments, and the packaging gate proves neither environment can import the other's
+package.
 
 Required Windows CI includes:
 

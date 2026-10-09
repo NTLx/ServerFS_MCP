@@ -161,8 +161,11 @@ def _windows_ensure_directory(
             "group-readable private state is a POSIX mechanism; Windows state is protected by "
             "an explicit owner DACL",
         )
-    expected_sid = windows_security.current_user_sid()
-    sddl = windows_security.private_state_sddl(expected_sid)
+    expected_owner_sid = windows_security.current_token_owner_sid()
+    expected_trustee_sid = windows_security.current_user_sid()
+    # The DACL names the Bridge user alone (§6.1); object ownership is left to the Windows
+    # default (the token owner) and verified against that field separately.
+    sddl = windows_security.private_state_sddl(expected_trustee_sid)
     if parents:
         _windows_create_ancestors(path, sddl=sddl, messages=messages)
     _windows_refuse_reparse(path, messages.not_a_directory)
@@ -171,7 +174,10 @@ def _windows_ensure_directory(
     # it grants nobody but the Bridge user.
     created = windows_security.create_private_directory(path, sddl)
     _assert_windows_private(
-        windows_security.read_object_security(path), expected_sid, protected=created
+        windows_security.read_object_security(path),
+        expected_owner_sid,
+        expected_trustee_sid,
+        protected=created,
     )
     try:
         stat_result = path.stat()
@@ -231,15 +237,24 @@ def _windows_refuse_reparse(path: Path, not_a_directory: str) -> None:
         raise BridgeError("PRIVATE_STATE_UNSAFE", f"{not_a_directory} (reparse point)")
 
 
-def _assert_windows_private(security, expected_sid: str, *, protected: bool) -> None:
-    """§27: present, explicit where we created it, and granting the Bridge user and nobody else."""
+def _assert_windows_private(
+    security, expected_owner_sid: str, expected_trustee_sid: str, *, protected: bool
+) -> None:
+    """§27: present, explicit where we created it, and granting the Bridge user and nobody else.
+
+    Two identity fields, because Windows carries two: ``expected_owner_sid`` is what Windows
+    assigns newly created objects to (the token owner — the user on a normal token, the
+    Administrators group on an elevated one), while ``expected_trustee_sid`` is the Bridge
+    user the explicit DACL must name. Conflating them would widen the DACL from
+    "Bridge user alone" to "the token owner" on exactly the deployments where those differ.
+    """
     from . import windows_security
 
     if not security.dacl_present:
         raise BridgeError("PRIVATE_STATE_UNSAFE", "state object has no explicit DACL")
     if protected and not security.dacl_protected:
         raise BridgeError("PRIVATE_STATE_UNSAFE", "state object inherits an unexpected DACL")
-    if security.owner_sid != expected_sid:
+    if security.owner_sid != expected_owner_sid:
         raise BridgeError("PRIVATE_STATE_UNSAFE", "state object has another owner")
     banned = security.broad_trustee()
     if banned is not None:
@@ -247,10 +262,10 @@ def _assert_windows_private(security, expected_sid: str, *, protected: bool) -> 
     for ace in security.aces:
         if ace["type"] != windows_security.ACE_ACCESS_ALLOWED:
             raise BridgeError("PRIVATE_STATE_UNSAFE", "state DACL contains a non-allow ACE")
-        if ace["sid"] == expected_sid or ace["sid"] in windows_security.SYSTEM_TRUSTEES:
+        if ace["sid"] == expected_trustee_sid or ace["sid"] in windows_security.SYSTEM_TRUSTEES:
             continue
         raise BridgeError("PRIVATE_STATE_UNSAFE", "state DACL grants another trustee")
-    if not security.grants(expected_sid):
+    if not security.grants(expected_trustee_sid):
         raise BridgeError("PRIVATE_STATE_UNSAFE", "state DACL does not grant the Bridge user")
 
 
@@ -271,14 +286,18 @@ def ensure_private_file(
                 "BRIDGE_PLATFORM_UNSUPPORTED",
                 "group-readable private state is a POSIX mechanism",
             )
-        expected_sid = windows_security.current_user_sid()
+        expected_owner_sid = windows_security.current_token_owner_sid()
+        expected_trustee_sid = windows_security.current_user_sid()
         _windows_refuse_reparse(path, not_regular)
         existed = path.exists()
         windows_security.create_private_file(
-            path, windows_security.private_state_sddl(expected_sid)
+            path, windows_security.private_state_sddl(expected_trustee_sid)
         )
         _assert_windows_private(
-            windows_security.read_object_security(path), expected_sid, protected=not existed
+            windows_security.read_object_security(path),
+            expected_owner_sid,
+            expected_trustee_sid,
+            protected=not existed,
         )
         return
     require_regular_file(path, not_regular=not_regular)
@@ -344,10 +363,14 @@ def verify_private_file(path: Path, *, not_regular: str, not_private: str) -> No
     if WINDOWS:
         from . import windows_security
 
-        expected_sid = windows_security.current_user_sid()
+        expected_owner_sid = windows_security.current_token_owner_sid()
+        expected_trustee_sid = windows_security.current_user_sid()
         _windows_refuse_reparse(path, not_regular)
         _assert_windows_private(
-            windows_security.read_object_security(path), expected_sid, protected=False
+            windows_security.read_object_security(path),
+            expected_owner_sid,
+            expected_trustee_sid,
+            protected=False,
         )
         return
     try:

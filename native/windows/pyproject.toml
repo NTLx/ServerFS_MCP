@@ -18,8 +18,8 @@ classifiers = [
     "Private :: Do Not Upload",
 ]
 
-# The version is owned by Cargo.toml (0.10.0-dev normalizes to
-# 0.10.0.dev0); maturity, not duplication, keeps the two in step.
+# The version is owned by Cargo.toml; maturity, not duplication, keeps the
+# release metadata in step.
 
 [tool.maturin]
 features = ["pyo3"]

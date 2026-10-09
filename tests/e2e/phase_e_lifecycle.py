@@ -50,7 +50,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FAKE_TUNNEL_SOURCE = REPO_ROOT / "tests" / "e2e" / "fake_tunnel_client.py"
 
 ROOT_PYTHON = REPO_ROOT / ".venv" / "Scripts" / "python.exe"
-BRIDGE_PYTHON = REPO_ROOT / "agent_bridge" / ".venv" / "Scripts" / "python.exe"
+#: The Bridge interpreter the harness launches. Defaults to the development
+#: venv layout; ``SERVERFS_BRIDGE_PYTHON`` overrides it -- deliberately the same
+#: name the product supervisor honours, because split-environment acceptance
+#: (Phase H) points it at the Agent Bridge wheel's own clean venv.
+BRIDGE_PYTHON = Path(
+    os.environ.get(
+        "SERVERFS_BRIDGE_PYTHON",
+        str(REPO_ROOT / "agent_bridge" / ".venv" / "Scripts" / "python.exe"),
+    )
+)
 
 POWERSHELL = (
     Path(os.environ.get("SystemRoot", r"C:\Windows"))

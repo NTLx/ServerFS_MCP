@@ -1,15 +1,21 @@
 name: Windows wheel release
 
-# dev_plan_v0.10.md §24.2/§30: publication channel for the prebuilt release
-# wheels. Runs only when the maintainer creates a release tag. Both release
-# artifacts are built first and gated against the tag version (Cargo owns
-# the native version, pyproject owns the product version). Acceptance then
-# installs the TWO WHEELS ONLY into a clean venv -- no editable checkout, no
-# PYTHONPATH -- proving the release artifacts themselves serve as the sole
-# providers of the package and native module. Both wheels are then attached
-# to the tag's GitHub Release; the wheel section in the release body is
-# regenerated in place under a management marker, preserving any notes the
-# maintainer wrote. The "Private :: Do Not Upload" trove classifier in
+# dev_plan_v0.11.md §15 Phase H (H3): publication channel for the v0.11
+# release wheels. Runs only when the maintainer creates a release tag. All
+# THREE release artifacts are built first -- product (hatchling), Agent
+# Bridge (hatchling) and native kernel (maturin, whose Cargo.toml owns the
+# native version) -- and gated against the tag version through each wheel's
+# authoritative METADATA. Acceptance then installs the three release wheels
+# into the TWO ISOLATED ENVIRONMENTS defined by the frozen
+# ServerFS/Agent-Bridge process boundary -- no editable checkout, no
+# PYTHONPATH, provenance checked from outside the checkout -- proving the
+# release artifacts themselves are the sole providers of all three
+# distributions, that neither environment can import the other's package,
+# and that the real supervisor chain works across SERVERFS_BRIDGE_PYTHON.
+# All three wheels are then attached to the tag's GitHub Release; the wheel
+# section in the release body is regenerated in place under a management
+# marker, preserving any notes the maintainer wrote. The
+# "Private :: Do Not Upload" trove classifier in
 # native/windows/pyproject.toml remains a PyPI guard: this workflow does not
 # publish to any package index.
 
@@ -37,31 +43,77 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: build release wheels (maturin native + hatchling product)
+      - name: build release wheels (maturin native + hatchling product + hatchling Agent Bridge)
         run: |
           uv tool run --from maturin==1.8.2 maturin build --release --features pyo3 --locked -m native/windows/Cargo.toml
           uv build --wheel -o dist
+          uv build --wheel -o ../dist --directory agent_bridge
         shell: pwsh
 
-      - name: both wheel versions must match the tag (METADATA is authoritative)
+      - name: all three wheel versions must match the tag (METADATA is authoritative)
         run: |
           $native = (Get-ChildItem native/windows/target/wheels/*.whl).FullName
-          $product = (Get-ChildItem dist/*.whl).FullName
+          $product = (Get-ChildItem dist/serverfs_mcp-*.whl).FullName
+          $bridge = (Get-ChildItem dist/serverfs_agent_bridge-*.whl).FullName
           uv run --no-project --python 3.12 python deployment/native/wheel_release.py version-gate `
-            --tag "${{ github.ref_name }}" --wheel $native --wheel $product
+            --tag "${{ github.ref_name }}" --wheel $native --wheel $product --wheel $bridge
         shell: pwsh
 
-      - name: two-wheel clean-install acceptance (no editable checkout)
+      - name: three-wheel clean-install acceptance across the frozen two-interpreter boundary
         run: |
           $native = (Get-ChildItem native/windows/target/wheels/*.whl).FullName
-          $product = (Get-ChildItem dist/*.whl).FullName
-          uv venv --python 3.12 .venv-release
-          $py = ".venv-release/Scripts/python.exe"
-          uv pip install --python $py $native $product pytest
+          $product = (Get-ChildItem dist/serverfs_mcp-*.whl).FullName
+          $bridge = (Get-ChildItem dist/serverfs_agent_bridge-*.whl).FullName
+          # Two isolated environments, matching the frozen ServerFS/Agent-Bridge process
+          # boundary: the wheels never share one dependency graph (root freezes mcp==2.2.0,
+          # the Bridge's frozen Qoder SDK declares mcp<2.0.0), and the supervisor selects the
+          # Bridge interpreter through SERVERFS_BRIDGE_PYTHON.
+          uv venv --python 3.12 .venv-serverfs
+          $serverfsPy = ".venv-serverfs/Scripts/python.exe"
+          uv pip install --python $serverfsPy $native $product pytest
+          uv venv --python 3.12 .venv-bridge
+          $bridgePy = ".venv-bridge/Scripts/python.exe"
+          uv pip install --python $bridgePy $bridge
           if (Test-Path Env:PYTHONPATH) { Remove-Item Env:PYTHONPATH }
-          & $py -c "import serverfs_mcp, serverfs_windows_native as n; locs=[serverfs_mcp.__file__, n.__file__]; assert all('.venv-release' in x.replace(chr(92),'/').lower() for x in locs), locs; print('wheel-only provenance ok:', *locs, sep=' ')"
-          .venv-release/Scripts/serverfs.exe --version
-          & $py -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py tests/test_doctor.py tests/test_tunnel_bootstrap.py -q
+          # Packaging gate, run from a temp cwd outside the checkout: each environment proves
+          # it carries exactly its own side of the frozen boundary -- neither may be able to
+          # import the other package, and versions must match the tag.
+          $probe = Join-Path $env:RUNNER_TEMP "wheel-acceptance-probe.py"
+          Set-Content -Encoding utf8NoBOM $probe @'
+          import importlib.metadata as md
+          from importlib.util import find_spec
+          import sys
+
+          side = sys.argv[1]
+          if side == "serverfs":
+              import serverfs_mcp, serverfs_windows_native as native
+              assert find_spec("serverfs_agent_bridge") is None, "product env must not contain the Bridge package"
+              locs = [serverfs_mcp.__file__, native.__file__]
+              assert all(".venv-serverfs" in x.replace(chr(92), "/").lower() for x in locs), locs
+              versions = {n: md.version(n) for n in ("serverfs-mcp", "serverfs-windows-native")}
+          elif side == "bridge":
+              import serverfs_agent_bridge
+              assert find_spec("serverfs_mcp") is None, "bridge env must not contain the product package"
+              assert find_spec("serverfs_windows_native") is None, "bridge env must not contain the native package"
+              locs = [serverfs_agent_bridge.__file__]
+              assert all(".venv-bridge" in x.replace(chr(92), "/").lower() for x in locs), locs
+              versions = {"serverfs-agent-bridge": md.version("serverfs-agent-bridge"),
+                          "qoder-agent-sdk": md.version("qoder-agent-sdk"),
+                          "claude-agent-sdk": md.version("claude-agent-sdk")}
+          else:
+              raise SystemExit(f"unknown side {side!r}")
+          print(f"{side} env provenance ok:", *locs, sep=" ")
+          print(f"{side} env versions:", versions, sep=" ")
+          '@
+          & $serverfsPy $probe serverfs
+          & $bridgePy $probe bridge
+          .venv-serverfs/Scripts/serverfs.exe --version
+          # Cross-environment product evidence: the real supervisor chain with
+          # SERVERFS_BRIDGE_PYTHON pointing at the Bridge clean venv, and the product CLI
+          # served by the ServerFS clean venv.
+          $env:SERVERFS_BRIDGE_PYTHON = (Resolve-Path $bridgePy).Path
+          $env:SERVERFS_TEST_ROOT_PYTHON = (Resolve-Path $serverfsPy).Path
+          & $serverfsPy -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py tests/test_doctor.py tests/test_tunnel_bootstrap.py tests/test_d9_native_lifecycle.py -q
         shell: pwsh
 
       - name: attach wheels to the tag's GitHub Release, preserving notes
@@ -73,21 +125,26 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $native = Get-ChildItem native/windows/target/wheels/*.whl
-          $product = Get-ChildItem dist/*.whl
+          $product = Get-ChildItem dist/serverfs_mcp-*.whl
+          $bridge = Get-ChildItem dist/serverfs_agent_bridge-*.whl
           if (-not (gh release view $tag 2>$null)) {
             gh release create $tag --target $env:COMMIT --verify-tag --title "ServerFS $tag" --notes "ServerFS $tag"
           }
           gh release upload $tag $native.FullName --clobber
           gh release upload $tag $product.FullName --clobber
+          gh release upload $tag $bridge.FullName --clobber
           $nativeHash = (Get-FileHash $native.FullName -Algorithm SHA256).Hash.ToLower()
           $productHash = (Get-FileHash $product.FullName -Algorithm SHA256).Hash.ToLower()
+          $bridgeHash = (Get-FileHash $bridge.FullName -Algorithm SHA256).Hash.ToLower()
           $nativeUrl = "$env:SERVER_URL/$env:REPO/releases/download/$tag/$($native.Name)"
           $productUrl = "$env:SERVER_URL/$env:REPO/releases/download/$tag/$($product.Name)"
+          $bridgeUrl = "$env:SERVER_URL/$env:REPO/releases/download/$tag/$($bridge.Name)"
           (gh release view $tag --json body --jq '.body') -join "`n" |
             Set-Content -Encoding utf8NoBOM release-body-in.md
           uv run --no-project --python 3.12 python deployment/native/wheel_release.py notes-update `
             --body-file release-body-in.md --out-file release-notes-out.md `
             --product-name $product.Name --product-url $productUrl --product-sha $productHash `
+            --bridge-name $bridge.Name --bridge-url $bridgeUrl --bridge-sha $bridgeHash `
             --native-name $native.Name --native-url $nativeUrl --native-sha $nativeHash
           if ($LASTEXITCODE -ne 0) {
             Write-Error "notes-update failed closed; release body left untouched"
