@@ -40,15 +40,15 @@ No Phase 0 gate or design decision is outstanding (§18). Phase D is **CLOSED-PA
 `1ba25e4`, PR #37). **Phase F — the Windows Qoder runtime — is CLOSED-PASS** (squash-merged at
 `39ce843`, PR #38). **Phase G — the Windows Claude runtime — is CLOSED-PASS** (evidence in
 `docs/phase-g-acceptance-2026-10.md`; merged at `81bdc8e`). **Phase H — CI, packaging and
-release closure — is IN PROGRESS** on `phase-h-release-closure` (PR #40, draft): H0 audit,
-H1 version convergence (three packages 0.11.0), H2 Windows Agent CI (CLOSED-PASS — the
-owner/trustee identity separation landed after maintainer review, all five CI jobs green),
-H3 three-wheel split-environment pipeline (CLOSED-PASS), H4 doctor gates (landed), H5
-wheel-only real-provider package smoke (PASS — all three runtimes turn through the public
-MCP surface from the candidate wheels), and H6 live ChatGPT Tunnel E2E (CLOSED-PASS — live
-ChatGPT reached Codex, Claude and Qoder through the Windows native chain; discovery, completion,
-approval and cancellation were observed; evidence in
-`docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`). H7–H9 follow.
+release closure — is CLOSED-PASS** on `phase-h-release-closure` (PR #40): H0 audit, H1
+version convergence (three packages 0.11.0), H2 Windows Agent CI (the owner/trustee identity
+separation landed after maintainer review), H3 three-wheel split-environment pipeline, H4
+doctor gates, H5 wheel-only real-provider package smoke, H6 live ChatGPT Tunnel E2E
+(`docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`), H7 docs/site closure and H8 final gates
+are all complete; the full layered evidence and the release-contract status are in
+`docs/phase-h-acceptance-2026-10.md`. The production WorkPC deployment runs the candidate
+wheels with a preserved rollback baseline. **Everything is merged-ready except the stable
+tag/release themselves**, which stay with the maintainer.
 
 Phase E's §40–§49 gates were all measured on the real provider through the public MCP surface: §40,
 §41, §42, §44, §45, §46, §47, §48 pass; §43 is NOT APPLICABLE because Codex 0.159.2 does not expose
