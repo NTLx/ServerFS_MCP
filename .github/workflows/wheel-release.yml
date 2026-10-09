@@ -110,7 +110,10 @@ jobs:
           .venv-serverfs/Scripts/serverfs.exe --version
           # Cross-environment product evidence: the real supervisor chain with
           # SERVERFS_BRIDGE_PYTHON pointing at the Bridge clean venv, and the product CLI
-          # served by the ServerFS clean venv.
+          # served by the ServerFS clean venv. The runner has no Codex state at all: the
+          # D9 chain renders a Codex-enabled config whose default codex_home only needs
+          # to exist for validation (measured on the first v0.11.0 tag run).
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE/.codex" | Out-Null
           $env:SERVERFS_BRIDGE_PYTHON = (Resolve-Path $bridgePy).Path
           $env:SERVERFS_TEST_ROOT_PYTHON = (Resolve-Path $serverfsPy).Path
           & $serverfsPy -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py tests/test_doctor.py tests/test_tunnel_bootstrap.py tests/test_d9_native_lifecycle.py -q
