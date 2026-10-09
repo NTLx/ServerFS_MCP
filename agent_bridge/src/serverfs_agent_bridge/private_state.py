@@ -171,7 +171,7 @@ def _windows_ensure_directory(
     # it grants nobody but the Bridge user.
     created = windows_security.create_private_directory(path, sddl)
     _assert_windows_private(
-        windows_security.read_object_security(path), expected_sid, protected=created
+        windows_security.read_object_security(path), expected_sid, protected=created, path=path
     )
     try:
         stat_result = path.stat()
@@ -231,7 +231,7 @@ def _windows_refuse_reparse(path: Path, not_a_directory: str) -> None:
         raise BridgeError("PRIVATE_STATE_UNSAFE", f"{not_a_directory} (reparse point)")
 
 
-def _assert_windows_private(security, expected_sid: str, *, protected: bool) -> None:
+def _assert_windows_private(security, expected_sid: str, *, protected: bool, path=None) -> None:
     """§27: present, explicit where we created it, and granting the Bridge user and nobody else."""
     from . import windows_security
 
@@ -251,9 +251,10 @@ def _assert_windows_private(security, expected_sid: str, *, protected: bool) -> 
             continue
         # The trustee SID is machine-local (a group or account identity, never a credential)
         # and naming it is what makes a remote runner mismatch diagnosable.
+        where = f" on {path}" if path is not None else ""
         raise BridgeError(
             "PRIVATE_STATE_UNSAFE",
-            f"state DACL grants another trustee ({ace['sid']}); expected {expected_sid}",
+            f"state DACL grants another trustee ({ace['sid']}); expected {expected_sid}{where}",
         )
     if not security.grants(expected_sid):
         raise BridgeError("PRIVATE_STATE_UNSAFE", "state DACL does not grant the Bridge user")
@@ -283,7 +284,10 @@ def ensure_private_file(
             path, windows_security.private_state_sddl(expected_sid)
         )
         _assert_windows_private(
-            windows_security.read_object_security(path), expected_sid, protected=not existed
+            windows_security.read_object_security(path),
+            expected_sid,
+            protected=not existed,
+            path=path,
         )
         return
     require_regular_file(path, not_regular=not_regular)
