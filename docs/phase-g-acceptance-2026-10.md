@@ -144,10 +144,10 @@ clean-baseline comparison at `39ce843` reproduced it, and reinstalling
   one-to-one mapping. What the frozen contract requires — real provider traffic attributable to
   the provider child, with the aggregate images containing `claude` — is what was measured.
 
-## 9. CI record (PR #39, head `95f3046`)
+## 9. CI record
 
-GitHub Actions on the PR head triggered exactly one workflow (`Container`, run
-37865530233):
+The last code-bearing PR head before the docs-only review fix was `95f3046`. GitHub Actions
+for that code-bearing head ran the `Container` workflow (run 37865530233):
 
 | Job | Result |
 | --- | --- |
@@ -155,6 +155,10 @@ GitHub Actions on the PR head triggered exactly one workflow (`Container`, run
 | Agent Bridge test (Linux Bridge suite) | Pass |
 | Container check | Pass |
 | Publish | Skipped |
+
+The subsequent evidence-only review commit changes no product or test code. Its PR-head
+`Container` workflow was also required to be green before merge; that status is a review-time
+GitHub fact rather than a SHA embedded back into this tracked evidence file.
 
 The **Windows-native workflow was not triggered**: its `pull_request` paths filter covers
 `native/**` and `src/serverfs_mcp/**` (plus named root-test files), none of which this PR
