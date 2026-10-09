@@ -45,7 +45,10 @@ H1 version convergence (three packages 0.11.0), H2 Windows Agent CI (CLOSED-PASS
 owner/trustee identity separation landed after maintainer review, all five CI jobs green),
 H3 three-wheel split-environment pipeline (CLOSED-PASS), H4 doctor gates (landed), H5
 wheel-only real-provider package smoke (PASS — all three runtimes turn through the public
-MCP surface from the candidate wheels). H6 (live ChatGPT Tunnel E2E) is next; H7–H9 follow.
+MCP surface from the candidate wheels), and H6 live ChatGPT Tunnel E2E (CLOSED-PASS — live
+ChatGPT reached Codex, Claude and Qoder through the Windows native chain; discovery, completion,
+approval and cancellation were observed; evidence in
+`docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`). H7–H9 follow.
 
 Phase E's §40–§49 gates were all measured on the real provider through the public MCP surface: §40,
 §41, §42, §44, §45, §46, §47, §48 pass; §43 is NOT APPLICABLE because Codex 0.159.2 does not expose
