@@ -48,10 +48,15 @@ Paired experiment per the ruling, both questions answered separately:
 1. **Does Claude consume the injected proxy?** Yes — proven, not assumed. With
    `use_proxy=true`, the supervisor's dedicated Agent endpoint was overridden to this run's own
    credentialless local forwarder (applied pre-spawn via the bootstrap namespace). The real turn
-   succeeded, and the forwarder observed **17 CONNECTs, all external, 0 loopback targets, all
-   attributed to the claude child** by OS-level connection attribution
-   (`Get-NetTCPConnection` → `Get-Process`). The SDK↔CLI control channel is stdio and never
-   touches the proxy; no fabricated loopback-bypass evidence was produced.
+   succeeded, and the forwarder observed **17 CONNECTs, all external, 0 loopback targets**;
+   **17/17 external CONNECTs carried a client PID attribution** (OS-level, queried via
+   `Get-NetTCPConnection` → `Get-Process`), and the aggregate client images included `claude`
+   (and `python`, a claude-side child tunneling through the same proxy). The attribution helper
+   queries concurrent established clients on the listener port, so this evidence does not claim
+   a one-to-one mapping of each CONNECT to a specific claude PID — the frozen contract requires
+   real provider traffic attributable to the provider child, which is what was measured. The
+   SDK↔CLI control channel is stdio and never touches the proxy; no fabricated loopback-bypass
+   evidence was produced.
 2. **Is the proxy required here?** No — the Phase 1 direct arm succeeded. Deployment fact now
    recorded: **Claude consumes `ClaudeAgentOptions.env`-injected `HTTPS_PROXY`; on this host
    direct access also works, so `use_proxy=false` remains a sane default and the Agent proxy is
@@ -113,11 +118,19 @@ Paired experiment per the ruling, both questions answered separately:
    Adapter semantics stay exactly `SESSION_RESUMABLE` + `provider_active=None`; identity
    durability is not a liveness claim.
 
-## 7. Deterministic gates
+## 7. Deterministic gates — WorkPC local Windows evidence
+
+Executed on the WorkPC itself (the Windows host), not in CI:
 
 - Bridge suite: **496 passed / 21 skipped / 0 failed** (Windows), including 19 Claude tests.
-- `ruff check .` and `ruff format --check .`: clean.
-- Root suite, D9 and Windows-native jobs: run in CI on the PR head (section 9).
+- Root suite: **1389 passed / 130 skipped** (Windows), D9 native-lifecycle file: **29/29**.
+- `ruff check .` and `ruff format --check .`: clean in both packages.
+
+Note: an environment incident during this run is recorded as a local fix, not as CI evidence —
+`uv sync --frozen` on the root venv uninstalled the locally installed native wheel (the trap
+Phase C §38 recorded), D9 then failed with `ModuleNotFoundError: serverfs_windows_native`, a
+clean-baseline comparison at `39ce843` reproduced it, and reinstalling
+`dist/serverfs_windows_native-0.10.0-cp312-abi3-win_amd64.whl` restored D9 to 29/29.
 
 ## 8. Residual limitations
 
@@ -125,10 +138,27 @@ Paired experiment per the ruling, both questions answered separately:
   model discovery remains `unsupported` (provider exposes no catalog through this path).
 - The proxy gate measured one host: the deployment fact recorded in section 4 is
   host-specific, not a universal claim.
-- `client_images_observed` in the proxy arm included `python` alongside `claude` (a
-  claude-side child tunneling through the same proxy); attribution of *claude* is what the
-  gate requires and what was observed.
+- The proxy gate's attribution is aggregate: `client_images_observed` included `python`
+  alongside `claude` (a claude-side child tunneling through the same proxy), and the helper
+  queries concurrent established clients on the listener port rather than proving a per-CONNECT
+  one-to-one mapping. What the frozen contract requires — real provider traffic attributable to
+  the provider child, with the aggregate images containing `claude` — is what was measured.
 
-## 9. CI record
+## 9. CI record (PR #39, head `95f3046`)
 
-Filled after the PR head run completes.
+GitHub Actions on the PR head triggered exactly one workflow (`Container`, run
+37865530233):
+
+| Job | Result |
+| --- | --- |
+| Test (Linux root suite) | Pass |
+| Agent Bridge test (Linux Bridge suite) | Pass |
+| Container check | Pass |
+| Publish | Skipped |
+
+The **Windows-native workflow was not triggered**: its `pull_request` paths filter covers
+`native/**` and `src/serverfs_mcp/**` (plus named root-test files), none of which this PR
+touches — the changes are confined to `agent_bridge/`, the G2 driver, docs and the plan. The
+Windows-side Bridge evidence for this phase is therefore the local WorkPC run in section 7
+(the host itself is Windows), and the Windows-native gate set remains green from the Phase F
+merge CI at `39ce843`, which this PR does not put at risk.
