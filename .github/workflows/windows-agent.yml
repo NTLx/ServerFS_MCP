@@ -215,6 +215,18 @@ jobs:
           $env:SERVERFS_BRIDGE_PYTHON = $null
         shell: pwsh
 
+      # A previous run's default data home predates the TokenOwner fix: its objects carry a
+      # user-SID DACL, and this run's verification-only checks would refuse them. The runner is
+      # a disposable machine -- nothing under the default ServerFS data home is real user data
+      # -- so the stale agent-bridge state is cleared instead of poisoning the gate.
+      - name: clear stale agent-bridge state from earlier runs
+        run: |
+          $state = Join-Path $env:LOCALAPPDATA "ServerFS/agent-bridge"
+          if (Test-Path $state) {
+            Remove-Item -Recurse -Force $state
+          }
+        shell: pwsh
+
       - name: Agent Bridge suite on Windows (the full Windows-executed Bridge suite)
         working-directory: agent_bridge
         run: |
