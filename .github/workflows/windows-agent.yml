@@ -243,6 +243,10 @@ jobs:
 
       - name: agent-related root tests on Windows (wheel-built native, repo tests)
         run: |
+          # The agent tests render Bridge configs with Codex enabled, whose
+          # default codex_home (~/.codex) only needs to exist for the config
+          # validation to pass -- no Codex auth or binary is involved.
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE/.codex" | Out-Null
           uv sync --frozen
           uv pip install --python .venv/Scripts/python.exe (Get-ChildItem native/windows/target/wheels/*.whl).FullName
           $env:SERVERFS_BRIDGE_PYTHON = "$PWD/agent_bridge/.venv/Scripts/python.exe"
