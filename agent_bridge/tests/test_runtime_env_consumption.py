@@ -22,9 +22,12 @@ import asyncio
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
+
+from serverfs_agent_bridge.errors import BridgeError
 
 from serverfs_agent_bridge.bootstrap import (
     RuntimeProxy,
@@ -239,7 +242,22 @@ class TestBootstrapReachesTheRuntime:
             except asyncio.CancelledError:
                 pass
 
-        asyncio.run(drive())
+        # Windows names the Bridge pipe deterministically from the user SID (one owner, by
+        # design), and the previous test's server instance is released asynchronously -- so a
+        # retry after a bounded wait is the correct shape, not an immediate re-serve.
+        last_error: Exception | None = None
+        for _attempt in range(4):
+            try:
+                asyncio.run(drive())
+                last_error = None
+                break
+            except BridgeError as exc:
+                if "already owned" not in str(exc):
+                    raise
+                last_error = exc
+                captured.clear()
+                time.sleep(1.0)
+        assert last_error is None, f"pipe stayed owned across retries: {last_error}"
         assert "proxy" in captured, "the Claude runtime was never constructed"
         assert captured["proxy"] is not None, (
             "the bootstrap proxy was dropped before the Claude adapter"

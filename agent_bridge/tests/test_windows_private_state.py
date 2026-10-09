@@ -90,7 +90,10 @@ def test_data_home_never_falls_back_to_cwd_or_temp(monkeypatch, tmp_path: Path) 
 def test_new_directory_is_created_protected_and_grants_only_the_bridge_user(
     tmp_path: Path,
 ) -> None:
-    expected = windows_security.current_user_sid()
+    # Windows assigns new objects to the token owner (the user on a normal
+    # token, the Administrators group on an elevated one) -- the same field
+    # the private-state assertions compare against.
+    expected = windows_security.current_token_owner_sid()
     target = tmp_path / "state"
     private_state.ensure_private_directory(target, mode=0o700, messages=messages(), parents=True)
     descriptor = security(target)
