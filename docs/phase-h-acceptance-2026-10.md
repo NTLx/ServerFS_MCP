@@ -10,7 +10,7 @@ in-development.
 
 | Layer | What it proves | Where |
 | --- | --- | --- |
-| GitHub CI, final PR head `898cb7a` | Linux root/Bridge suites, container, Windows native kernel, **Windows Agent** (three-wheel build + split-env packaging gate + both doctor gates + Bridge suite + root agent tests), site build | PR #40 current-head checks: Container, Windows native, Windows Agent and Pages all green |
+| GitHub CI, H9 closure head `898cb7a` | Linux root/Bridge suites, container, Windows native kernel, **Windows Agent** (three-wheel build + split-env packaging gate + both doctor gates + Bridge suite + root agent tests), site build | PR #40 workflows all green at the H9 closure head; any later review-only documentation commit must independently be green before merge |
 | WorkPC local deterministic at `62186d9` | root **1392 passed / 130 skipped**, Bridge **501 / 21**, D9 included, native Rust fmt + clippy + **48 tests**, ruff ×2 packages | H8 final matrix (see "Verification window" below); `898cb7a` adds only H9 plan/evidence documentation |
 | Wheel-only acceptance | three 0.11.0 wheels, METADATA version gate, two isolated clean venvs, neither can import the other's package, `serverfs --version` = 0.11.0 | H3 + H8 final packaging gate |
 | Real-provider package smoke | same implementation, as shipped, one real turn per runtime | H5 (`tests/e2e/run_phase_h_package_smoke.py`) |
@@ -90,18 +90,18 @@ the production chain was verified back before anything else proceeded.
 | Three wheels version-gated | ✅ (`wheel_release.py version-gate --tag v0.11.0`) |
 | Three wheels clean-install | ✅ (two environments, provenance both ways) |
 | Windows native CI green | ✅ |
-| Windows Agent CI green | ✅ (all five jobs PASS on `62186d9`) |
+| Windows Agent CI green | ✅ (H8 gate at `62186d9`; H9 closure head `898cb7a` reran the workflow successfully) |
 | Linux CI green | ✅ |
 | Doctor green | ✅ (agent-disabled and agent-enabled static) |
 | WorkPC wheel-only provider smoke | ✅ (H5, three runtimes) |
 | Live ChatGPT Tunnel E2E | ✅ (H6, CLOSED-PASS) |
 | Docs/site truthful and aligned | ✅ (H7; v0.11 marked in-development everywhere) |
 | Secrets clean | ✅ (pattern scan over the full PR diff) |
-| Phase H PR green and mergeable | ✅ (#40, OPEN / non-draft / MERGEABLE, current head `898cb7a`) |
+| Phase H PR green and mergeable | ✅ (#40 was OPEN / non-draft / MERGEABLE at maintainer review; exact current-head checks are verified dynamically before merge) |
 | **Stable tag `v0.11.0`** | ⬜ outstanding by design |
 | **Stable release** | ⬜ outstanding by design |
 
-## Candidate wheel digests (built from the final head)
+## Candidate wheel digests (built from the H8 acceptance head)
 
 ```text
 5c058978d116a72cc8d2df41ee0fe70740bcd2f2a97cf27f238c455837b19c52  serverfs_agent_bridge-0.11.0-py3-none-any.whl
@@ -110,9 +110,10 @@ the production chain was verified back before anything else proceeded.
 ```
 
 These are the locally recorded H8 acceptance artifacts built at `62186d9`.
-The current PR head `898cb7a` changes only `dev_plan_v0.11.md` and this H9
-evidence document relative to that head, and the current-head Windows Agent
-workflow rebuilt, version-gated and clean-installed all three wheels
-successfully. These local hashes are evidence, not promised release hashes;
-the release workflow rebuilds from the stable tag and its produced artifacts
-are authoritative.
+The H9 closure head `898cb7a` changed only `dev_plan_v0.11.md` and this H9
+evidence document relative to that head, and GitHub's Windows Agent workflow
+rebuilt, version-gated and clean-installed all three wheels successfully at
+that closure head. Later maintainer-review corrections to this evidence are
+documentation-only and do not redefine these hashes. These local hashes are
+evidence, not promised release hashes; the release workflow rebuilds from the
+stable tag and its produced artifacts are authoritative.
