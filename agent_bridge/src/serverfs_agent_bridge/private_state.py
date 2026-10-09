@@ -249,7 +249,12 @@ def _assert_windows_private(security, expected_sid: str, *, protected: bool) -> 
             raise BridgeError("PRIVATE_STATE_UNSAFE", "state DACL contains a non-allow ACE")
         if ace["sid"] == expected_sid or ace["sid"] in windows_security.SYSTEM_TRUSTEES:
             continue
-        raise BridgeError("PRIVATE_STATE_UNSAFE", "state DACL grants another trustee")
+        # The trustee SID is machine-local (a group or account identity, never a credential)
+        # and naming it is what makes a remote runner mismatch diagnosable.
+        raise BridgeError(
+            "PRIVATE_STATE_UNSAFE",
+            f"state DACL grants another trustee ({ace['sid']}); expected {expected_sid}",
+        )
     if not security.grants(expected_sid):
         raise BridgeError("PRIVATE_STATE_UNSAFE", "state DACL does not grant the Bridge user")
 
