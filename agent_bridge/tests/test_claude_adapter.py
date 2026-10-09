@@ -762,9 +762,12 @@ async def test_claude_probe_resolves_a_bare_binary_name_through_path_lookup(
 ) -> None:
     # The deployment shape on Windows: a bare `claude_bin` resolved through PATH/PATHEXT rather
     # than an absolute path. A copy of a standalone interpreter named like an executable makes
-    # `shutil.which` do the real lookup.
+    # `shutil.which` do the real lookup. copyfile copies contents but not the mode, so the copy
+    # needs the execute bit back or the POSIX lookup refuses it.
     binary_name = "claude-fake.exe" if sys.platform == "win32" else "claude-fake"
-    shutil.copyfile(_standalone_python(), tmp_path / binary_name)
+    copied = tmp_path / binary_name
+    shutil.copyfile(_standalone_python(), copied)
+    copied.chmod(copied.stat().st_mode | 0o111)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}")
 
     adapter = ClaudeAdapter(ClaudeSettings(enabled=True, claude_bin="claude-fake"))
