@@ -22,6 +22,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
     ResultMessage,
+    SystemMessage,
     TextBlock,
     ToolUseBlock,
 )
@@ -32,9 +33,11 @@ from claude_agent_sdk.types import (
     ToolPermissionContext,
 )
 
+from ..bootstrap import RuntimeProxy
 from ..config import ClaudeSettings
 from ..errors import BridgeError
 from ..models import AgentProfile, ReconciliationStatus, RuntimeInfo, TaskRecord
+from ..runtime_proxy import build_runtime_environment
 from .base import AdapterResult, AgentAdapter, ReconcileResult, TaskContext
 
 _ClientFactory = Callable[[ClaudeAgentOptions], ClaudeSDKClient]
@@ -56,9 +59,17 @@ class ClaudeAdapter(AgentAdapter):
         settings: ClaudeSettings,
         *,
         client_factory: _ClientFactory = ClaudeSDKClient,
+        runtime_proxy: RuntimeProxy | None = None,
     ) -> None:
         self.settings = settings
         self._client_factory = client_factory
+        # Runtime-only egress material from the private bootstrap channel. The Claude SDK spawns
+        # its CLI child by copying this process's environment wholesale and layering
+        # `options.env` on top -- and unlike Qoder's SDK it has no way to *delete* an inherited
+        # name -- so the overlay built from this value may only add or override, never clean.
+        # Held in memory for the life of the adapter; never persisted, never placed in this
+        # process's own environment (§7.2).
+        self._runtime_proxy = runtime_proxy
         self._active: dict[str, _ActiveClaudeTask] = {}
         self._active_lock = asyncio.Lock()
         self._cancel_requested: set[str] = set()
@@ -190,6 +201,47 @@ class ClaudeAdapter(AgentAdapter):
             except Exception:
                 pass
 
+    def _child_env_overlay(self) -> dict[str, str] | None:
+        """The addition-only env overlay the SDK layers over the Bridge environment.
+
+        ``build_runtime_environment`` states the whole downward policy for one child: the proxy
+        trust domain is cleared and, when ``use_proxy`` is true, re-established as exactly
+        ``HTTPS_PROXY`` plus a merged ``NO_PROXY`` -- or a ``RuntimeProxyError`` when policy
+        demands a proxy and none exists. The Claude SDK cannot delete inherited names, so handing
+        it that whole environment as ``options.env`` would be meaningless at best: the child
+        already inherits it. What the SDK can do is add or override, and that is exactly what this
+        diff expresses -- the names the policy *changes* relative to the environment it is layered
+        onto.
+
+        Two boundaries this shape keeps honest:
+
+        - ``use_proxy=false`` yields ``None``, and the caller must then *omit* the ``env``
+          parameter entirely. The child inherits the Bridge environment as the supervisor
+          scrubbed it. Nothing here can clean a polluted Bridge environment -- that is the
+          supervisor's responsibility and it is asserted there, not in this overlay, because an
+          overlay that cannot delete cannot claim to. (The frozen SDK pin crashes on an explicit
+          ``env=None``; omission is both the compatibility requirement and the honest shape.)
+        - Provider-native names (``ANTHROPIC_*`` and the rest) survive through the same
+          inheritance and are deliberately absent from the overlay: the overlay adds proxy policy
+          and nothing else.
+        """
+        if self.settings.use_proxy and self._runtime_proxy is None:
+            # Fail closed before any client exists, so a misconfigured deployment never spawns a
+            # claude child at all: sending provider traffic direct because a setting was forgotten
+            # is exactly the outcome the Agent proxy exists to prevent.
+            raise BridgeError(
+                "AGENT_RUNTIME_NOT_READY",
+                "Claude is configured to use the Agent proxy but no endpoint is available",
+            )
+        built = build_runtime_environment(
+            os.environ,
+            runtime=self.name,
+            use_proxy=self.settings.use_proxy,
+            proxy=self._runtime_proxy,
+        )
+        overlay = {name: value for name, value in built.items() if os.environ.get(name) != value}
+        return overlay or None
+
     async def _run(self, context: TaskContext, *, resume: bool) -> AdapterResult:
         if self._closed:
             raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", "Claude adapter is closed")
@@ -208,6 +260,11 @@ class ClaudeAdapter(AgentAdapter):
                 "configured Claude Code CLI is unavailable",
             )
 
+        # Resolved before any client exists: a missing proxy endpoint must cost nothing and start
+        # nothing, and the endpoint itself reaches the child only through this overlay -- never
+        # argv, never a file, never this process's own environment.
+        child_env_overlay = self._child_env_overlay()
+
         async def can_use_tool(
             tool_name: str,
             tool_input: dict[str, Any],
@@ -220,7 +277,12 @@ class ClaudeAdapter(AgentAdapter):
                 permission_context,
             )
 
-        options = ClaudeAgentOptions(
+        # The SDK's frozen pin defaults `env` to an empty dict and crashes on an explicit None
+        # inside its spawn path ('NoneType' object is not a mapping, measured against a real turn
+        # in G2), so the overlay is *omitted* rather than passed as None when the runtime sits
+        # outside the Agent proxy trust domain -- which is also the honest shape: absence is
+        # exactly what pure inheritance means.
+        options_kwargs: dict[str, Any] = dict(
             cwd=context.cwd,
             cli_path=cli_path,
             # Agent SDK intentionally loads no filesystem settings by default.
@@ -232,6 +294,9 @@ class ClaudeAdapter(AgentAdapter):
             resume=context.continue_native_session_id if resume else None,
             model=context.requested_model,
         )
+        if child_env_overlay is not None:
+            options_kwargs["env"] = child_env_overlay
+        options = ClaudeAgentOptions(**options_kwargs)
         client = self._client_factory(options)
         active = _ActiveClaudeTask(context=context, client=client)
 
@@ -244,6 +309,9 @@ class ClaudeAdapter(AgentAdapter):
         try:
             await client.connect()
             if context.continue_native_session_id is not None:
+                # Keep the in-memory state consistent with the persisted session, as the Qoder
+                # adapter does: a later init announcement carrying the same id is then a no-op.
+                active.session_id = context.continue_native_session_id
                 await context.record_native_ids(context.continue_native_session_id, None)
             await client.query(context.prompt)
             active.client_ready.set()
@@ -302,11 +370,32 @@ class ClaudeAdapter(AgentAdapter):
                     "Claude response ended without a ResultMessage",
                 ) from exc
 
+            if isinstance(message, SystemMessage):
+                # The provider announces the native session in `init`, long before the turn
+                # completes. Persisting it here is what makes a crash mid-turn genuinely
+                # resumable: without it a task killed mid-flight has no persisted session id and
+                # recovery must honestly classify it NOT_RECOVERABLE. Same shape and semantics as
+                # the Qoder adapter; this raises identity durability, never a liveness claim.
+                await self._handle_system_message(active, message)
+                continue
             if isinstance(message, AssistantMessage):
                 await self._handle_assistant_message(active, message)
                 continue
             if isinstance(message, ResultMessage):
                 return message
+
+    async def _handle_system_message(
+        self,
+        active: _ActiveClaudeTask,
+        message: SystemMessage,
+    ) -> None:
+        if message.subtype != "init" or not isinstance(message.data, dict):
+            return
+        session_id = message.data.get("session_id")
+        if not isinstance(session_id, str) or not session_id or session_id == active.session_id:
+            return
+        active.session_id = session_id
+        await active.context.record_native_ids(session_id, None)
 
     async def _next_message(self, active: _ActiveClaudeTask, iterator: Any) -> Any:
         async def receive_one() -> Any:

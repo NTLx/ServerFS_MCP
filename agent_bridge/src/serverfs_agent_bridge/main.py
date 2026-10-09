@@ -51,7 +51,11 @@ async def _serve(
         )
         adapters[codex.name] = codex
     if config.claude.enabled:
-        claude = runtime_adapters.ClaudeAdapter(config.claude)
+        # The Claude SDK inherits this process's environment wholesale and layers options.env on
+        # top, with no way to delete an inherited name. The endpoint therefore reaches the child
+        # as an addition-only overlay built by the adapter (§7.2); the supervisor scrub of this
+        # process's environment remains the boundary that keeps the inheritance clean.
+        claude = runtime_adapters.ClaudeAdapter(config.claude, runtime_proxy=runtime_proxy)
         adapters[claude.name] = claude
     if config.qoder.enabled:
         # The Qoder SDK inherits the Bridge environment wholesale and applies an overlay on top, so
