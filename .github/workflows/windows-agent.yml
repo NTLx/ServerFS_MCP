@@ -195,9 +195,16 @@ jobs:
           # is read-only.
           $workdir = Join-Path $env:RUNNER_TEMP "doctor-smoke-workdir"
           New-Item -ItemType Directory -Force -Path $workdir | Out-Null
-          $escaped = $workdir.Replace('\', '\\')
-          "log_level = \"INFO\"\n\n[[workdirs]]\nalias = \"smoke\"\npath = \"$escaped\"\nread_only = true\n" |
-            Set-Content -Encoding utf8NoBOM doctor-smoke.toml
+          $escaped = $workdir.Replace('\', '/')
+          $lines = @(
+            'log_level = "INFO"'
+            ''
+            '[[workdirs]]'
+            'alias = "smoke"'
+            "path = `"$escaped`""
+            'read_only = true'
+          )
+          $lines | Set-Content -Encoding utf8NoBOM doctor-smoke.toml
           .venv-serverfs/Scripts/serverfs.exe doctor --config doctor-smoke.toml
           # Agent-enabled static doctor across the real boundary: the doctor
           # runs in the ServerFS env while SERVERFS_BRIDGE_PYTHON points at the
