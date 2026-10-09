@@ -161,7 +161,7 @@ def _windows_ensure_directory(
             "group-readable private state is a POSIX mechanism; Windows state is protected by "
             "an explicit owner DACL",
         )
-    expected_sid = windows_security.current_user_sid()
+    expected_sid = windows_security.current_token_owner_sid()
     sddl = windows_security.private_state_sddl(expected_sid)
     if parents:
         _windows_create_ancestors(path, sddl=sddl, messages=messages)
@@ -271,7 +271,7 @@ def ensure_private_file(
                 "BRIDGE_PLATFORM_UNSUPPORTED",
                 "group-readable private state is a POSIX mechanism",
             )
-        expected_sid = windows_security.current_user_sid()
+        expected_sid = windows_security.current_token_owner_sid()
         _windows_refuse_reparse(path, not_regular)
         existed = path.exists()
         windows_security.create_private_file(
@@ -344,7 +344,7 @@ def verify_private_file(path: Path, *, not_regular: str, not_private: str) -> No
     if WINDOWS:
         from . import windows_security
 
-        expected_sid = windows_security.current_user_sid()
+        expected_sid = windows_security.current_token_owner_sid()
         _windows_refuse_reparse(path, not_regular)
         _assert_windows_private(
             windows_security.read_object_security(path), expected_sid, protected=False

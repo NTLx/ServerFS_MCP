@@ -227,6 +227,10 @@ KERNEL32, ADVAPI32 = _load()
 
 TOKEN_QUERY = 0x0008
 TOKEN_USER_CLASS = 1
+# TokenOwner: the default owner new objects created by this token get (Windows
+# assigns file ownership from this field, not from TokenUser -- an elevated or
+# service process creates objects owned by the Administrators group).
+TOKEN_OWNER_CLASS = 4
 
 
 def last_error() -> int:
@@ -268,6 +272,44 @@ def sid_to_string(sid: int) -> str | None:
         return ctypes.wstring_at(text)
     finally:
         KERNEL32.LocalFree(ctypes.cast(text, ctypes.c_void_p))
+
+
+def current_token_owner_sid() -> str:
+    """The TokenOwner SID of this process, as the canonical ``S-1-…`` string.
+
+    Windows assigns newly created objects to this SID -- not to the TokenUser.
+    For a normal user token the two are identical; for an elevated or service
+    process the token carries ``SE_GROUP_OWNER`` on Administrators and new
+    objects are owned by ``S-1-5-32-544``. Private-state ownership assertions
+    must compare against this field or a correct deployment fails its own
+    check (measured on the GitHub Windows runner, Phase H).
+    """
+    token = wintypes.HANDLE()
+    if not ADVAPI32.OpenProcessToken(
+        KERNEL32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(token)
+    ):
+        raise BridgeError(
+            "BRIDGE_IDENTITY_UNAVAILABLE",
+            "the process token owner could not be read: token unavailable",
+        )
+    try:
+        needed = wintypes.DWORD()
+        ADVAPI32.GetTokenInformation(token, TOKEN_OWNER_CLASS, None, 0, ctypes.byref(needed))
+        buffer = ctypes.create_string_buffer(needed.value)
+        if not ADVAPI32.GetTokenInformation(
+            token, TOKEN_OWNER_CLASS, buffer, needed, ctypes.byref(needed)
+        ):
+            raise BridgeError("BRIDGE_IDENTITY_UNAVAILABLE", "the token owner could not be read")
+        # TOKEN_OWNER is a bare PSID (no SID_AND_ATTRIBUTES wrapper).
+        sid = ctypes.cast(buffer, ctypes.POINTER(ctypes.c_void_p)).contents.value
+        text = sid_to_string(sid)
+        if not text:
+            raise BridgeError(
+                "BRIDGE_IDENTITY_UNAVAILABLE", "the token owner could not be converted"
+            )
+        return text
+    finally:
+        KERNEL32.CloseHandle(token)
 
 
 def current_user_sid() -> str:

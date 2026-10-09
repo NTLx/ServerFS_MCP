@@ -157,7 +157,9 @@ def test_foreign_expected_owner_sid_fails_closed(
     """§26: the SID string is the authority, so a mismatched expectation stops the Bridge."""
     target = tmp_path / "state"
     private_state.ensure_private_directory(target, mode=0o700, messages=messages())
-    monkeypatch.setattr(windows_security, "current_user_sid", lambda: FOREIGN_SID)
+    # The expected owner comes from TokenOwner (Windows assigns ownership from that field,
+    # which differs from the TokenUser on an elevated process), so that is the seam to patch.
+    monkeypatch.setattr(windows_security, "current_token_owner_sid", lambda: FOREIGN_SID)
     error = expect_bridge_error(
         "PRIVATE_STATE_UNSAFE",
         lambda: private_state.verify_private_file(target, not_regular="nope", not_private="nope"),
