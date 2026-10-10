@@ -91,6 +91,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bw.add_argument("--url", required=True, help="Exact https release URL of the .whl")
     bw.add_argument("--sha256", required=True, help="Release-recorded SHA-256 of the wheel")
+
+    agent = sub.add_parser(
+        "agent-bridge",
+        help="Manage the macOS user LaunchAgent for the Agent Bridge (v0.13, darwin only)",
+    )
+    agent_sub = agent.add_subparsers(dest="agent_command", required=True)
+    ai = agent_sub.add_parser("install", help="Generate the LaunchAgent plist and bootstrap it")
+    ai.add_argument("--bridge-config", required=True, type=Path, help="Bridge JSON config path")
+    ai.add_argument(
+        "--bridge-executable",
+        type=Path,
+        help="serverfs-agent-bridge executable (default: beside the active interpreter)",
+    )
+    ai.add_argument("--log-dir", type=Path, help="Bridge stdout/stderr log directory")
+    ai.add_argument("--force", action="store_true", help="Reinstall over an existing plist")
+    agent_sub.add_parser("start", help="Kickstart the LaunchAgent")
+    agent_sub.add_parser("restart", help="Kickstart -k the LaunchAgent")
+    agent_sub.add_parser("stop", help="Boot the LaunchAgent out")
+    agent_sub.add_parser("status", help="Read-only launchctl print summary")
+    agent_sub.add_parser("uninstall", help="Boot the LaunchAgent out and remove the plist")
     return parser
 
 
@@ -256,6 +276,53 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     return _fail(f"unknown bootstrap target {args.bootstrap_target!r}")
 
 
+def cmd_agent_bridge(args: argparse.Namespace) -> int:
+    import platform as _platform
+
+    if sys.platform != "darwin":
+        return _fail("agent-bridge lifecycle management is macOS-only in v0.13")
+    if _platform.machine() != "arm64":
+        return _fail("the macOS Agent Bridge runs on Apple Silicon only")
+    from . import darwin_lifecycle as lifecycle
+    from .native_endpoint import bridge_home
+
+    command = args.agent_command
+    try:
+        if command == "install":
+            plan = lifecycle.LaunchAgentPlan(
+                bridge_executable=(
+                    args.bridge_executable
+                    if args.bridge_executable is not None
+                    else lifecycle.default_bridge_executable()
+                ),
+                bridge_config_path=args.bridge_config,
+                log_dir=args.log_dir if args.log_dir is not None else bridge_home() / "logs",
+            )
+            path = lifecycle.install(plan, force=args.force)
+            sys.stderr.write(f"LaunchAgent installed and bootstrapped: {path}\n")
+            return 0
+        if command == "start":
+            lifecycle.start()
+            return 0
+        if command == "restart":
+            lifecycle.restart()
+            return 0
+        if command == "stop":
+            lifecycle.stop()
+            return 0
+        if command == "status":
+            for key, value in lifecycle.status().items():
+                sys.stderr.write(f"{key}: {value}\n")
+            return 0
+        if command == "uninstall":
+            lifecycle.uninstall()
+            sys.stderr.write("LaunchAgent removed\n")
+            return 0
+    except lifecycle.LaunchAgentError as exc:
+        return _fail(str(exc))
+    return _fail(f"unknown agent-bridge command {command!r}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -267,6 +334,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_tunnel(args)
     if args.command == "bootstrap":
         return cmd_bootstrap(args)
+    if args.command == "agent-bridge":
+        return cmd_agent_bridge(args)
     parser.error(f"unknown command {args.command!r}")
 
 
