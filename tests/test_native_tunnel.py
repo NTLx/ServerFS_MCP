@@ -526,3 +526,93 @@ def test_health_addr_validation_is_fail_closed(raw: str) -> None:
 @pytest.mark.parametrize("raw", ["127.0.0.1:0", "127.0.0.1:18080", "127.0.0.1:65535"])
 def test_health_addr_accepts_loopback_ports(raw: str) -> None:
     assert native_tunnel._validated_health_addr(raw) == raw
+
+
+class TestDarwinTunnel:
+    """v0.13 macOS tunnel launcher: measured gate + .env key materialization."""
+
+    def _setup(self, tmp_path: Path):
+        root = tmp_path / "work"
+        root.mkdir()
+        config = tmp_path / "serverfs.toml"
+        config.write_text(
+            f'[[workdirs]]\nalias="repo"\npath="{root.as_posix()}"\n', encoding="utf-8"
+        )
+        client = tmp_path / "tunnel-client"
+        client.touch()
+        return config, client
+
+    def test_env_key_is_materialized_to_a_private_file_outside_workdirs(
+        self, tmp_path, monkeypatch
+    ):
+
+        from serverfs_mcp.native_tunnel import run_native_tunnel
+
+        config, client = self._setup(tmp_path)
+        captured: dict[str, object] = {}
+
+        def fake_run(argv, *, env, check):
+            captured.update(argv=argv)
+            return subprocess.CompletedProcess(argv, 0)
+
+        monkeypatch.setattr(native_tunnel.subprocess, "run", fake_run)
+        result = run_native_tunnel(
+            config_path=config,
+            env_file=None,
+            tunnel_client=client,
+            tunnel_id="tunnel_" + "a" * 32,
+            api_key="darwin-key-sentinel",
+        )
+        assert result == 0
+        argv = captured["argv"]
+        assert isinstance(argv, list)
+        key_index = argv.index("--control-plane.api-key")
+        assert argv[key_index + 1].startswith("file:")
+        key_path = Path(argv[key_index + 1].removeprefix("file:"))
+        # 0600 private file, outside every workdir, carrying the exact value
+        assert (key_path.stat().st_mode & 0o777) == 0o600
+        assert key_path.read_text(encoding="utf-8") == "darwin-key-sentinel"
+        assert not key_path.resolve().is_relative_to(tmp_path / "work")
+
+    def test_both_key_sources_are_refused(self, tmp_path, monkeypatch):
+        from serverfs_mcp.native_tunnel import NativeTunnelError, run_native_tunnel
+
+        config, client = self._setup(tmp_path)
+        key = tmp_path / "api-key.txt"
+        key.write_text("k", encoding="utf-8")
+        monkeypatch.setenv("CONTROL_PLANE_API_KEY", "darwin-key-sentinel")
+        with pytest.raises(NativeTunnelError, match="exactly one way"):
+            run_native_tunnel(
+                config_path=config,
+                env_file=None,
+                tunnel_client=client,
+                tunnel_id="tunnel_" + "a" * 32,
+                api_key_file=key,
+                api_key="darwin-key-sentinel",
+            )
+
+    def test_missing_key_is_refused_clearly(self, tmp_path, monkeypatch):
+        from serverfs_mcp.native_tunnel import NativeTunnelError, run_native_tunnel
+
+        config, client = self._setup(tmp_path)
+        monkeypatch.delenv("CONTROL_PLANE_API_KEY", raising=False)
+        with pytest.raises(NativeTunnelError, match="API key is required"):
+            run_native_tunnel(
+                config_path=config,
+                env_file=None,
+                tunnel_client=client,
+                tunnel_id="tunnel_" + "a" * 32,
+            )
+
+    def test_empty_env_key_is_refused(self, tmp_path, monkeypatch):
+        from serverfs_mcp.native_tunnel import NativeTunnelError, run_native_tunnel
+
+        config, client = self._setup(tmp_path)
+        with pytest.raises(NativeTunnelError, match="empty"):
+            run_native_tunnel(
+                config_path=config,
+                env_file=None,
+                tunnel_client=client,
+                tunnel_id="tunnel_" + "a" * 32,
+                api_key="   ",
+            )

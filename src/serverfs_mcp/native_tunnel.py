@@ -110,19 +110,62 @@ def _api_key_is_outside_workdirs(api_key_path: Path, config_path: Path) -> bool:
     return True
 
 
+def _materialize_key_file(api_key: str) -> Path:
+    """Write a key VALUE to a 0600 private file and return its path.
+
+    The operator may keep the control-plane key directly in ``.env``
+    (``CONTROL_PLANE_API_KEY``). The ``file:`` credential boundary of the
+    tunnel argv is preserved anyway: the launcher materializes the value
+    into a private file outside every workdir instead of putting the
+    secret into argv (visible in ``ps``) or the child environment. The
+    runtime location is the OS-provided per-user runtime directory on
+    macOS; Windows deployments keep the explicit key-file flow.
+    """
+    if sys.platform == "darwin":
+        from .darwin_libc import darwin_runtime_dir
+
+        directory = darwin_runtime_dir() / "control-plane"
+    else:
+        raise NativeTunnelError("on this platform, pass the control-plane key as an --api-key-file")
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    key_path = directory / "api-key"
+    fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, api_key.encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.chmod(key_path, 0o600)
+    return key_path
+
+
 def run_native_tunnel(
     *,
     config_path: Path,
     env_file: Path | None,
     tunnel_client: Path | None,
     tunnel_id: str,
-    api_key_file: Path,
+    api_key_file: Path | None = None,
+    api_key: str | None = None,
     base_url: str | None = None,
     health_listen_addr: str | None = None,
 ) -> int:
-    """Run tunnel-client, whose stdio child is the minimal sanitizer supervisor."""
-    if sys.platform != "win32":
-        raise NativeTunnelError("native tunnel is supported only on Windows")
+    """Run tunnel-client, whose stdio child is the minimal sanitizer supervisor.
+
+    The control-plane key comes from exactly one source: ``--api-key-file``
+    (the frozen Windows flow) or, on macOS, the ``CONTROL_PLANE_API_KEY``
+    value (materialized to a 0600 private file so the argv keeps the
+    ``file:`` credential boundary).
+    """
+    if sys.platform == "linux":
+        raise NativeTunnelError(
+            "the Linux deployment runs the Docker compose topology; the native "
+            "tunnel launcher is supported on Windows and macOS 27"
+        )
+    if sys.platform == "darwin":
+        from .darwin_platform import ensure_supported_darwin
+
+        ensure_supported_darwin()
     if base_url is not None:
         base_url = _validated_base_url(base_url)
     if health_listen_addr is not None:
@@ -142,7 +185,21 @@ def run_native_tunnel(
         raise NativeTunnelError("native config file does not exist")
     if not tunnel_client.is_file():
         raise NativeTunnelError("tunnel-client executable does not exist")
-    key_path = api_key_file.resolve(strict=True)
+    if api_key is not None and api_key_file is not None:
+        raise NativeTunnelError(
+            "provide the control-plane key exactly one way: CONTROL_PLANE_API_KEY or --api-key-file"
+        )
+    if api_key is not None:
+        if not api_key.strip():
+            raise NativeTunnelError("CONTROL_PLANE_API_KEY is empty")
+        key_path = _materialize_key_file(api_key)
+    elif api_key_file is not None:
+        key_path = api_key_file.resolve(strict=True)
+    else:
+        raise NativeTunnelError(
+            "an API key is required: set CONTROL_PLANE_API_KEY in the environment "
+            "or pass --api-key-file"
+        )
     _api_key_is_outside_workdirs(key_path, config_path)
     env_path = env_file
     if env_path is None:

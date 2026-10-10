@@ -64,7 +64,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to official tunnel-client.exe (default: bootstrapped copy)",
     )
     tunnel.add_argument("--tunnel-id", required=True, help="OpenAI tunnel_... identifier")
-    tunnel.add_argument("--api-key-file", required=True, type=Path, help="Control-plane key file")
+    tunnel.add_argument(
+        "--api-key-file",
+        type=Path,
+        help=(
+            "Control-plane key file (Windows flow). On macOS the key may instead be "
+            "set as CONTROL_PLANE_API_KEY in the environment (.env)"
+        ),
+    )
     tunnel.add_argument(
         "--base-url",
         help="Override the https control-plane endpoint (acceptance/ops use; default upstream)",
@@ -263,6 +270,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 def cmd_tunnel(args: argparse.Namespace) -> int:
     from .native_tunnel import run_native_tunnel
 
+    api_key = os.environ.get("CONTROL_PLANE_API_KEY", "").strip() or None
     try:
         return run_native_tunnel(
             config_path=args.config,
@@ -270,6 +278,7 @@ def cmd_tunnel(args: argparse.Namespace) -> int:
             tunnel_client=args.tunnel_client,
             tunnel_id=args.tunnel_id,
             api_key_file=args.api_key_file,
+            api_key=api_key,
             base_url=args.base_url,
             health_listen_addr=args.health_listen_addr,
         )
