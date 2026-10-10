@@ -39,8 +39,21 @@ Automated gates at the acceptance commit: MCP suite 1118 passed / 0 failed (macO
 Bridge suite 327 passed / 0 failed, ruff + ruff format clean, `git diff --check` clean. The
 macOS Native CI workflow runs the same suites behind measured platform assertions.
 
+### CI status at this record
+
+- Hosted runners (Linux Container, Windows native, Windows Agent, site): **all green** on
+  PR #41 after the wheel-version alignment.
+- Hosted `macos-27` runners remained queued for over an hour (free-account capacity), so the
+  plan's §16 fallback applies: the exact macOS workflow step sequence was executed on this
+  acceptance machine with identical measured assertions and recorded as
+  `docs/phase-i-macos-ci-local-equivalence-2026-10.md` — **all steps PASS**. The workflow now
+  also supports switching every job to an M-series self-hosted runner via the repository
+  variable `MACOS_RUNNER` without any other change; hosted runs stay queued and will execute
+  when capacity frees.
+
 Release tagging remains blocked until the operator-assisted evidence above is captured and CI
-is green on the release commit.
+is green on the release commit (the local CI-equivalence run satisfies the macOS gate until a
+hosted or self-hosted run completes).
 
 ## Supported platform — intentionally narrow
 
