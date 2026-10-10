@@ -14,7 +14,7 @@ export default defineConfig({
         alt: 'ServerFS',
       },
       description:
-        'Secure, scoped Linux filesystem access for ChatGPT and AI agents — read-only by default, with controlled mutations, binary transfer, an optional Agent Bridge, and opt-in Jev advisory decisions.',
+        'Secure, scoped filesystem access on Linux, Windows and macOS for ChatGPT and AI agents — read-only by default, with controlled mutations, binary transfer and optional Agent delegation.',
       defaultLocale: 'root',
       locales: {
         root: {
@@ -55,6 +55,11 @@ export default defineConfig({
               label: 'Windows Native',
               translations: { 'zh-CN': 'Windows 原生部署' },
               slug: 'docs/windows-native',
+            },
+            {
+              label: 'macOS Native',
+              translations: { 'zh-CN': 'macOS 原生部署' },
+              slug: 'docs/macos-native',
             },
           ],
         },

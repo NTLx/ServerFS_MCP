@@ -16,7 +16,7 @@ serverfs tunnel
             -> file-ingress helper            (separate process, private AF_UNIX socket)
        -> Agent Bridge (launchd user agent)   (com.ntlx.serverfs.agent-bridge)
             -> AF_UNIX + getpeereid           (0700 runtime dir, no peer PID fabrication)
-            -> real provider CLI              (codex / claude; native arm64 only)
+            -> real provider CLI              (codex / claude / qoder; native arm64 only)
 ```
 
 There is no Docker, VM, Rosetta requirement or compiled macOS kernel package: the Darwin backend is pure Python over descriptor-relative POSIX primitives plus three narrow libc bindings (`fcopyfile`, `getpeereid`, `confstr`). There is no `serverfs-macos-native` wheel.

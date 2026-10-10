@@ -3,6 +3,8 @@ title: 快速开始
 description: 使用 Docker Compose 与 OpenAI Secure MCP Tunnel 部署 ServerFS MCP。
 ---
 
+本页介绍 Linux/Docker 部署。原生部署请分别查看 [Windows 原生部署](./windows-native/) 或 [macOS 原生部署](./macos-native/)。
+
 ## 前置条件
 
 - Linux 服务器

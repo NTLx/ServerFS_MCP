@@ -48,4 +48,4 @@ The TypeSafe API key is rendered only into the user-owned Bridge config and is n
 
 See [Jev Advisors](./jev-advisors/) for the complete advisory contract.
 
-For the full threat model and implementation details, see the repository [Security Model](https://github.com/NTLx/ServerFS_MCP#security-model).
+For adjacent trust-boundary detail, see [Architecture](./architecture/) and [Configuration](./configuration/). Version-specific implementation evidence remains in the repository's phase acceptance records rather than the project README.

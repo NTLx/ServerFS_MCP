@@ -46,8 +46,8 @@ source-checkout tolerance, `78f4547` release-workflow runner fix) landed on `mai
 **`v0.11.0`** and the stable GitHub Release (three wheels, two-environment install notes,
 per-wheel digests) were published 2026-10-09. Layered evidence and the release-contract
 table are in `docs/phase-h-acceptance-2026-10.md`. The production WorkPC deployment runs
-the released code with a preserved rollback baseline. **v0.11.0 is the current stable
-release.**
+the released code with a preserved rollback baseline. **v0.11.0 was the stable release
+produced by this plan; repository current stable is v0.13.0.**
 
 Phase E's §40–§49 gates were all measured on the real provider through the public MCP surface: §40,
 §41, §42, §44, §45, §46, §47, §48 pass; §43 is NOT APPLICABLE because Codex 0.159.2 does not expose
@@ -56,9 +56,9 @@ measured. The full evidence, including the intermediate conclusions that were la
 `docs/windows-phase-e-codex-2026-10-06.md`.
 
 Where this document describes Phase E work in the past tense below, that is chronology. The two
-statements above are the authoritative current status; the Phase E narrative further down records what
+statements above are the authoritative v0.11 phase status; the Phase E narrative further down records what
 was measured in which order, including conclusions that were later superseded.
-Baseline: v0.10.0 / current main
+Baseline: v0.10.0 / `main` at the start of v0.11 development
 Primary target: Windows 11 x64 + local NTFS + native ServerFS
 Runtime target: Codex + Claude Code + Qoder
 

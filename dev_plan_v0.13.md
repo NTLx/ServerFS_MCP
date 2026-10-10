@@ -1,6 +1,6 @@
 # ServerFS v0.13.0 Development Plan — Native macOS 27 on Apple Silicon M-series
 
-**Status:** IMPLEMENTED — release candidate (not yet tagged)
+**Status:** RELEASED — v0.13.0
 **Target:** v0.13.0
 **Baseline:** released/frozen v0.12.0 on `main`
 
@@ -51,9 +51,9 @@ macOS Native CI workflow runs the same suites behind measured platform assertion
   variable `MACOS_RUNNER` without any other change; hosted runs stay queued and will execute
   when capacity frees.
 
-Release tagging remains blocked until the operator-assisted evidence above is captured and CI
-is green on the release commit (the local CI-equivalence run satisfies the macOS gate until a
-hosted or self-hosted run completes).
+Release closeout is complete and **v0.13.0 is published**. The operator-assisted evidence and
+release-gate results above remain the acceptance record for the released line; queued hosted
+macOS runner notes are historical CI-capacity context, not a current release blocker.
 
 ## Supported platform — intentionally narrow
 
