@@ -22,7 +22,13 @@ import sys
 from .errors import BridgeError
 
 LINUX = sys.platform.startswith("linux")
+DARWIN = sys.platform == "darwin"
 WINDOWS = sys.platform == "win32"
+#: The genuinely POSIX-shared seams: descriptor-based private state and the
+#: flock writer lease behave identically on Linux and Darwin (probe evidence:
+#: docs/phase-0-macos27-arm64-capability-probe-2026-10.md, 0B/0F). Peer
+#: identity is NOT POSIX-shared: Linux uses SO_PEERCRED, Darwin getpeereid.
+POSIX = LINUX or DARWIN
 
 LOCAL_IPC = "local IPC"
 PEER_IDENTITY = "peer identity"
@@ -35,18 +41,25 @@ UNIMPLEMENTED_ON_WINDOWS: dict[str, str] = {}
 
 __all__ = [
     "LINUX",
+    "DARWIN",
     "WINDOWS",
+    "POSIX",
     "LOCAL_IPC",
     "PEER_IDENTITY",
     "PRIVATE_STATE",
     "WRITER_LEASE",
-    "require_linux_seam",
+    "require_posix_seam",
 ]
 
 
-def require_linux_seam(seam: str) -> None:
-    """Fail closed when a caller asks a Windows process for an unimplemented seam."""
-    if LINUX:
+def require_posix_seam(seam: str) -> None:
+    """Fail closed when a caller asks a non-POSIX process for a POSIX seam.
+
+    The flock-backed writer lease and the owner/mode private state behave
+    identically on Linux and Darwin, so both pass; Windows has its own
+    twins and never runs this path.
+    """
+    if POSIX:
         return
     phase = UNIMPLEMENTED_ON_WINDOWS.get(seam)
     detail = f"; the Windows twin is scheduled for {phase}" if phase else ""

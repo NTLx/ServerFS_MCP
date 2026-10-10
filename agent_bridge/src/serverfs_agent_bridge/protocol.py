@@ -20,12 +20,15 @@ from typing import Any
 from .errors import BridgeError
 from .local_ipc import (
     PIPE_NAMESPACE,
+    authorize_darwin_peer,
     authorize_posix_peer,
     authorize_windows_peer,
     derive_pipe_name,
+    max_socket_path_bytes,
+    measure_darwin_peer,
     measure_posix_peer,
 )
-from .platform_seams import WINDOWS
+from .platform_seams import DARWIN, WINDOWS
 from .service import BridgeService
 
 PROTOCOL_VERSION = 1
@@ -92,6 +95,14 @@ class BridgeProtocolServer:
         if WINDOWS:
             await self._start_pipe()
             return
+        if DARWIN and len(os.fsencode(str(self.socket_path))) > max_socket_path_bytes():
+            # sun_path is 104 bytes on Darwin including the NUL; refuse a
+            # too-long endpoint before bind instead of discovering it as a
+            # confusing bind failure (dev_plan_v0.13.md §11 D2).
+            raise BridgeError(
+                "SOCKET_PATH_TOO_LONG",
+                "socket path exceeds the Darwin sun_path limit",
+            )
         self._prepare_socket_parent()
         await self._prepare_socket_path()
         self._server = await asyncio.start_unix_server(
@@ -319,16 +330,25 @@ class BridgeProtocolServer:
     def _check_peer(self, writer: asyncio.StreamWriter) -> None:
         """Assert the identity the endpoint measured for this connection.
 
-        Linux measures here (SO_PEERCRED is available at connection setup); Windows measured
-        during the first read and hands the result over, so this is where the SID assertion
-        runs. Either way a failure means nothing was dispatched.
+        Linux measures SO_PEERCRED here (available at connection setup); Darwin measures
+        getpeereid here — the authoritative euid/egid, with no PID fabricated; Windows
+        measured during the first read and hands the result over, so this is where the SID
+        assertion runs. Either way a failure means nothing was dispatched.
         """
         if WINDOWS:
             assert self._pipe is not None
             authorize_windows_peer(self._pipe.peer(writer), allowed_sid=self.allowed_peer_sid or "")
             return
+        sock = writer.get_extra_info("socket")
+        if DARWIN:
+            authorize_darwin_peer(
+                measure_darwin_peer(sock),
+                allowed_uid=self.allowed_peer_uid,
+                allowed_gid=self.allowed_peer_gid,
+            )
+            return
         authorize_posix_peer(
-            measure_posix_peer(writer.get_extra_info("socket")),
+            measure_posix_peer(sock),
             allowed_uid=self.allowed_peer_uid,
             allowed_gid=self.allowed_peer_gid,
         )

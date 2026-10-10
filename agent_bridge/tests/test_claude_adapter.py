@@ -738,6 +738,11 @@ def _standalone_python() -> Path:
     return Path(sys.base_prefix) / "bin" / "python3"
 
 
+def _version_tuple() -> str:
+    """The version string the PATH-lookup shim prints (``Python X.Y.Z``)."""
+    return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+
+
 @pytest.mark.asyncio
 async def test_claude_probe_reports_unavailable_without_a_resolvable_binary() -> None:
     adapter = ClaudeAdapter(
@@ -781,7 +786,15 @@ async def test_claude_probe_resolves_a_bare_binary_name_through_path_lookup(
     # needs the execute bit back or the POSIX lookup refuses it.
     binary_name = "claude-fake.exe" if sys.platform == "win32" else "claude-fake"
     copied = tmp_path / binary_name
-    shutil.copyfile(_standalone_python(), copied)
+    if sys.platform == "darwin":
+        # macOS uv CPython links libpython through @executable_path/../lib
+        # (measured: a copied base interpreter dies in dyld with
+        # "Library not loaded"), so a relocated interpreter copy cannot run
+        # here. The intent under test is the PATH lookup -> probe flow, so
+        # a shebang shim standing in for the CLI keeps that intent intact.
+        copied.write_text(f'#!/bin/sh\necho "Python {_version_tuple()}"\n')
+    else:
+        shutil.copyfile(_standalone_python(), copied)
     copied.chmod(copied.stat().st_mode | 0o111)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}")
 
