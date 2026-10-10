@@ -352,7 +352,7 @@ async def test_qoder_uses_native_server_environment_without_model_override_and_r
         assert str(first_options.cli_path) == "/usr/bin/qodercli"
         assert first_options.auth == {"type": "qodercli"}
         assert first_options.setting_sources == ["user", "project", "local"]
-        assert first_options.permission_mode is None
+        assert first_options.permission_mode == "default"
         assert first_options.resume is None
         assert first_options.model is None
 

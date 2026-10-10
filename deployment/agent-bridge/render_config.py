@@ -14,11 +14,13 @@ advisor suite is the explicit exception: SERVERFS_JEV_API_KEY is read from the u
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
 import os
 import re
 import shlex
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,19 @@ _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 _AGENT_MODES = {"disabled", "review", "workspace-write"}
 _RUNTIMES = {"codex", "claude", "qoder"}
+_MAX_SPOOLED_RESULT_BYTES = 8 * 1024 * 1024
+
+_SHARED_PROXY_PATH = (
+    Path(__file__).resolve().parents[2] / "src" / "serverfs_mcp" / "shared_proxy.py"
+)
+_SHARED_PROXY_SPEC = importlib.util.spec_from_file_location(
+    "_serverfs_shared_proxy_config",
+    _SHARED_PROXY_PATH,
+)
+assert _SHARED_PROXY_SPEC is not None and _SHARED_PROXY_SPEC.loader is not None
+_shared_proxy = importlib.util.module_from_spec(_SHARED_PROXY_SPEC)
+sys.modules.setdefault("_serverfs_shared_proxy_config", _shared_proxy)
+_SHARED_PROXY_SPEC.loader.exec_module(_shared_proxy)
 
 
 class ConfigRenderError(ValueError):
@@ -310,6 +325,27 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         values.get("SERVERFS_JEV_API_KEY", ""),
         "SERVERFS_JEV_API_KEY",
     )
+    agent_use_proxy = _bool(
+        values.get("SERVERFS_AGENT_USE_PROXY", ""),
+        "SERVERFS_AGENT_USE_PROXY",
+        False,
+    )
+    jev_use_proxy = _bool(
+        values.get("SERVERFS_JEV_USE_PROXY", ""),
+        "SERVERFS_JEV_USE_PROXY",
+        False,
+    )
+    shared_proxy = None
+    if agent_use_proxy or jev_use_proxy:
+        shared_proxy = _shared_proxy.parse_shared_proxy(values, error_type=ConfigRenderError)
+        if shared_proxy is None:
+            raise ConfigRenderError(
+                "shared proxy HOST/PORT are required when Agent or Jev proxy is enabled"
+            )
+        if agent_use_proxy and shared_proxy.authenticated:
+            raise ConfigRenderError(
+                "Agent runtime proxy must be credentialless; use a credentialless local broker"
+            )
 
     task_timeout_seconds = _positive_int(
         values.get("SERVERFS_AGENT_TASK_TIMEOUT_SECONDS", ""),
@@ -331,6 +367,15 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         "SERVERFS_AGENT_TASK_RETENTION_HOURS",
         168,
     )
+    result_spool_threshold_bytes = _positive_int(
+        values.get("SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES", ""),
+        "SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES",
+        262_144,
+    )
+    if result_spool_threshold_bytes > _MAX_SPOOLED_RESULT_BYTES:
+        raise ConfigRenderError(
+            "SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES must not exceed 8388608"
+        )
 
     config = {
         "socket_path": socket_path,
@@ -344,6 +389,7 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
             "interaction_timeout_seconds": interaction_timeout_seconds,
             "max_active_tasks": max_active_tasks,
             "retention_seconds": retention_hours * 60 * 60,
+            "result_spool_threshold_bytes": result_spool_threshold_bytes,
         },
         "codex": {
             "enabled": codex_enabled,
@@ -354,6 +400,7 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
             ),
             "codex_home": values.get("SERVERFS_CODEX_HOME", "~/.codex").strip() or "~/.codex",
             "codex_bin": codex_bin,
+            "use_proxy": agent_use_proxy,
             "request_timeout_seconds": _positive_float(
                 values.get("SERVERFS_CODEX_REQUEST_TIMEOUT_SECONDS", ""),
                 "SERVERFS_CODEX_REQUEST_TIMEOUT_SECONDS",
@@ -365,6 +412,7 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         "claude": {
             "enabled": claude_enabled,
             "claude_bin": claude_bin,
+            "use_proxy": agent_use_proxy,
             "probe_timeout_seconds": _positive_float(
                 values.get("SERVERFS_CLAUDE_PROBE_TIMEOUT_SECONDS", ""),
                 "SERVERFS_CLAUDE_PROBE_TIMEOUT_SECONDS",
@@ -375,6 +423,7 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         "qoder": {
             "enabled": qoder_enabled,
             "qoder_bin": qoder_bin,
+            "use_proxy": agent_use_proxy,
             "probe_timeout_seconds": _positive_float(
                 values.get("SERVERFS_QODER_PROBE_TIMEOUT_SECONDS", ""),
                 "SERVERFS_QODER_PROBE_TIMEOUT_SECONDS",
@@ -384,8 +433,15 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         },
         "workdirs": workdirs,
     }
-    if jev_api_key is not None:
-        config["jev"] = {"api_key": jev_api_key}
+    if shared_proxy is not None:
+        config["proxy"] = {
+            "url": shared_proxy.url,
+            "authenticated": shared_proxy.authenticated,
+        }
+    if jev_api_key is not None or jev_use_proxy:
+        config["jev"] = {"use_proxy": jev_use_proxy}
+        if jev_api_key is not None:
+            config["jev"]["api_key"] = jev_api_key
     return config
 
 

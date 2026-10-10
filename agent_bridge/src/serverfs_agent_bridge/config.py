@@ -9,6 +9,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from . import lease_identity
 from .models import KNOWN_RUNTIME_NAMES, AgentMode
@@ -29,6 +30,7 @@ _CONFIG_KEYS = frozenset(
         "claude",
         "qoder",
         "jev",
+        "proxy",
         "workdirs",
     }
 )
@@ -65,10 +67,18 @@ _QODER_KEYS = frozenset(
         "event_idle_timeout_seconds",
     }
 )
-_JEV_KEYS = frozenset({"api_key"})
+_JEV_KEYS = frozenset({"api_key", "use_proxy"})
+_PROXY_KEYS = frozenset({"url", "authenticated"})
 _LIMIT_KEYS = frozenset(
-    {"task_timeout_seconds", "interaction_timeout_seconds", "max_active_tasks", "retention_seconds"}
+    {
+        "task_timeout_seconds",
+        "interaction_timeout_seconds",
+        "max_active_tasks",
+        "retention_seconds",
+        "result_spool_threshold_bytes",
+    }
 )
+_MAX_SPOOLED_RESULT_BYTES = 8 * 1024 * 1024
 _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _LEASE_KEY_SLOT = "slot"
 _LEASE_KEY_ALIAS = "alias"
@@ -148,11 +158,19 @@ class LifecycleLimits:
     interaction_timeout_seconds: int = 1800
     max_active_tasks: int = 4
     retention_seconds: int = 168 * 60 * 60
+    result_spool_threshold_bytes: int = 262_144
+
+
+@dataclass(frozen=True)
+class SharedProxySettings:
+    url: str = field(repr=False)
+    authenticated: bool = False
 
 
 @dataclass(frozen=True)
 class JevSettings:
     api_key: str | None = field(default=None, repr=False)
+    use_proxy: bool = False
 
     @property
     def enabled(self) -> bool:
@@ -173,6 +191,7 @@ class BridgeConfig:
     claude: ClaudeSettings
     qoder: QoderSettings
     jev: JevSettings
+    proxy: SharedProxySettings | None
     policies: PolicyRegistry
 
     @classmethod
@@ -250,6 +269,7 @@ class BridgeConfig:
         claude = _load_claude_settings(data.get("claude"))
         qoder = _load_qoder_settings(data.get("qoder"))
         jev = _load_jev_settings(data.get("jev"))
+        proxy = _load_proxy_settings(data.get("proxy"))
         codex_policies = [policy for policy in policies if "codex" in policy.runtimes]
         if not codex.enabled and codex_policies:
             raise ValueError("codex runtime is allowlisted but codex.enabled is false")
@@ -277,6 +297,16 @@ class BridgeConfig:
                 "for every allowlisted workdir"
             )
 
+        agent_proxy_enabled = codex.use_proxy or claude.use_proxy or qoder.use_proxy
+        # Agent proxy material may arrive later through the private supervised bootstrap channel
+        # (the Windows v0.11 contract), so BridgeConfig must not require a persisted endpoint.
+        # Linux's renderer does require one before launch. Jev has no bootstrap-specific transport:
+        # when explicitly proxied, its endpoint must already be present in this private config.
+        if jev.use_proxy and proxy is None:
+            raise ValueError("proxy configuration is required when Jev proxy is enabled")
+        if agent_proxy_enabled and proxy is not None and proxy.authenticated:
+            raise ValueError("Agent runtime proxy must be credentialless")
+
         endpoint, default_state_dir, default_lock_dir = _default_paths()
         return cls(
             socket_path=_config_path(data.get("socket_path", endpoint), "socket_path"),
@@ -295,6 +325,7 @@ class BridgeConfig:
             claude=claude,
             qoder=qoder,
             jev=jev,
+            proxy=proxy,
             policies=PolicyRegistry(policies),
         )
 
@@ -311,6 +342,8 @@ def _load_lifecycle_limits(value: Any) -> LifecycleLimits:
     for key in _LIMIT_KEYS:
         raw = value.get(key, getattr(defaults, key))
         parsed[key] = _strict_positive_int(raw, f"limits.{key}")
+    if parsed["result_spool_threshold_bytes"] > _MAX_SPOOLED_RESULT_BYTES:
+        raise ValueError("limits.result_spool_threshold_bytes must not exceed 8388608")
     return LifecycleLimits(**parsed)
 
 
@@ -321,17 +354,49 @@ def _load_jev_settings(value: Any) -> JevSettings:
         raise ValueError("jev must be an object")
     _reject_unknown_keys(value, _JEV_KEYS, "jev")
 
+    use_proxy = _strict_bool(value.get("use_proxy", False), "jev.use_proxy")
     raw = value.get("api_key")
     if raw is None:
-        return JevSettings()
+        return JevSettings(use_proxy=use_proxy)
     if not isinstance(raw, str):
         raise ValueError("jev.api_key must be a string")
     api_key = raw.strip()
     if not api_key:
-        return JevSettings()
+        return JevSettings(use_proxy=use_proxy)
     if not api_key.isascii() or any(char.isspace() or ord(char) < 32 for char in api_key):
         raise ValueError("jev.api_key has an invalid format")
-    return JevSettings(api_key=api_key)
+    return JevSettings(api_key=api_key, use_proxy=use_proxy)
+
+
+def _load_proxy_settings(value: Any) -> SharedProxySettings | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("proxy must be an object")
+    _reject_unknown_keys(value, _PROXY_KEYS, "proxy")
+    url = _strict_string(value.get("url"), "proxy.url")
+    authenticated = _strict_bool(value.get("authenticated", False), "proxy.authenticated")
+    if "\x00" in url or any(char.isspace() for char in url):
+        raise ValueError("proxy.url has an invalid format")
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError as exc:
+        raise ValueError("proxy.url has an invalid format") from exc
+    if (
+        parts.scheme != "http"
+        or not parts.hostname
+        or port is None
+        or not 1 <= port <= 65535
+        or parts.path not in ("", "/")
+        or parts.query
+        or parts.fragment
+    ):
+        raise ValueError("proxy.url has an invalid format")
+    has_userinfo = parts.username is not None
+    if authenticated != has_userinfo:
+        raise ValueError("proxy.authenticated does not match proxy.url")
+    return SharedProxySettings(url=url, authenticated=authenticated)
 
 
 def _load_claude_settings(value: Any) -> ClaudeSettings:

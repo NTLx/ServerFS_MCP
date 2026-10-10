@@ -54,6 +54,17 @@ class LargeResultAdapter(FakeAdapter):
         return await super().run_task(context)
 
 
+class LargeEventResultAdapter(FakeAdapter):
+    async def run_task(self, context: TaskContext) -> AdapterResult:
+        text = '界"\\' * 4000
+        await context.emit_event("agent.message", {"text": text})
+        return AdapterResult(
+            final_response=text,
+            native_session_id=f"event-session-{context.task_id}",
+            native_turn_id=f"event-turn-{context.task_id}",
+        )
+
+
 class UnknownRecoveryAdapter(FakeAdapter):
     async def run_task(self, context: TaskContext) -> AdapterResult:
         await asyncio.Event().wait()
@@ -255,6 +266,48 @@ async def test_large_result_spool_exact_utf8_retrieval_and_protocol_dispatch(
     assert final_chunk["correlation_id"] == "result-run-1"
     assert final_chunk["next_offset_bytes"] <= 7
     assert final_chunk["text"].encode("utf-8") == expected[: final_chunk["next_offset_bytes"]]
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_large_agent_message_event_is_bounded_without_truncating_spooled_result(
+    tmp_path: Path,
+) -> None:
+    limits = BridgeLimits(
+        max_final_response_bytes=1024,
+        result_preview_bytes=1024,
+        max_event_bytes=2048,
+    )
+    service = make_service(tmp_path, adapter=LargeEventResultAdapter(), limits=limits)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="large-event",
+    )
+    task = await wait_for_status(service, submitted["task_id"], "succeeded")
+    expected = ('界"\\' * 4000).encode("utf-8")
+    assert task["result"]["storage"] == "spool"
+    assert task["result"]["size_bytes"] == len(expected)
+    assert task["result"]["sha256"] == hashlib.sha256(expected).hexdigest()
+
+    message_events = [
+        event
+        for event in service.read_events(submitted["task_id"])["events"]
+        if event["event_type"] == "agent.message"
+    ]
+    assert len(message_events) == 1
+    payload = message_events[0]["payload"]
+    assert payload["truncated"] is True
+    assert payload["size_bytes"] == len(expected)
+    assert payload["sha256"] == hashlib.sha256(expected).hexdigest()
+    assert len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) <= limits.max_event_bytes
+
+    chunk = service.read_result(submitted["task_id"], offset_bytes=0, max_bytes=65_536)
+    assert chunk["text"].encode("utf-8") == expected
+    assert chunk["eof"] is True
     await service.close()
 
 

@@ -38,11 +38,13 @@ The transport accepts only the fixed internal authority `serverfs-mcp:8000`, rej
 
 Agent support is opt-in and lives behind a host-side Unix socket. The MCP container receives structured Agent capabilities, not shell access to the host.
 
+In v0.12, Linux Agent egress is explicit and independent from Tunnel/Jev routing. `SERVERFS_AGENT_USE_PROXY=true` may use only a credentialless shared HTTP proxy; authenticated proxy fields cause rendering/startup to fail closed so provider credentials are never embedded in standard proxy environment variables. Proxied Codex is isolated in a Bridge-owned standalone app-server rather than changing the user's shared managed daemon. Native provider approvals remain provider-controlled and require an explicit response through the existing public Agent tool.
+
 ## Jev advisor boundary
 
 Jev is optional and runs only from the host Agent Bridge. It is not part of the MCP authorization path, runtime allowlist, writer lease, or native provider approval authority. A missing/failed Jev call removes advisory context only; it never grants additional capability.
 
-The TypeSafe API key is rendered only into the user-owned Bridge config and is never passed to the MCP container. Approval Advisor sends a minimized, redacted approval state and applies an additional secret/token/password sanitizer before the external request. Identical approval advice may be cached only within the same task and never resolves the approval automatically.
+The TypeSafe API key is rendered only into the user-owned Bridge config and is never passed to the MCP container. In v0.12, `SERVERFS_JEV_USE_PROXY` supplies the shared proxy through Jev's explicit HTTP client rather than mutating process-wide proxy variables. Approval Advisor sends a minimized, redacted approval state and applies an additional secret/token/password sanitizer before the external request. Identical approval advice may be cached only within the same task and never resolves the approval automatically.
 
 See [Jev Advisors](./jev-advisors/) for the complete advisory contract.
 

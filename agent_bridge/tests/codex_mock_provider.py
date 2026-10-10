@@ -103,19 +103,53 @@ class MockCodexServer:
                 self.thread_starts += 1
                 params = message["params"]
                 self.thread_start_params.append(dict(params))
-                assert {"cwd", "serviceName"} <= set(params) <= {"cwd", "serviceName", "model"}
+                assert {
+                    "cwd",
+                    "serviceName",
+                    "approvalPolicy",
+                    "approvalsReviewer",
+                    "config",
+                } <= set(params) <= {
+                    "cwd",
+                    "serviceName",
+                    "model",
+                    "approvalPolicy",
+                    "approvalsReviewer",
+                    "config",
+                }
+                assert params["approvalPolicy"] == "on-request"
+                assert params["approvalsReviewer"] == "user"
+                assert params["config"] == {
+                    "features.request_permissions_tool": True,
+                    "features.guardian_approval": True,
+                }
                 assert "sandbox" not in message["params"]
-                assert "approvalPolicy" not in message["params"]
-                assert "config" not in message["params"]
                 await respond(ws, message, {"thread": {"id": thread_id}})
                 continue
             if method == "thread/resume":
                 params = message["params"]
                 self.thread_resume_params.append(dict(params))
-                assert {"threadId", "cwd"} <= set(params) <= {"threadId", "cwd", "model"}
+                assert {
+                    "threadId",
+                    "cwd",
+                    "approvalPolicy",
+                    "approvalsReviewer",
+                    "config",
+                } <= set(params) <= {
+                    "threadId",
+                    "cwd",
+                    "model",
+                    "approvalPolicy",
+                    "approvalsReviewer",
+                    "config",
+                }
+                assert params["approvalPolicy"] == "on-request"
+                assert params["approvalsReviewer"] == "user"
+                assert params["config"] == {
+                    "features.request_permissions_tool": True,
+                    "features.guardian_approval": True,
+                }
                 assert "sandbox" not in message["params"]
-                assert "approvalPolicy" not in message["params"]
-                assert "config" not in message["params"]
                 thread_id = message["params"]["threadId"]
                 self.thread_resumes.append(thread_id)
                 await respond(ws, message, {"thread": {"id": thread_id}})
@@ -123,9 +157,16 @@ class MockCodexServer:
             if method == "turn/start":
                 params = message["params"]
                 self.turn_starts.append(params)
-                assert set(params) == {"threadId", "input", "cwd"}
+                assert set(params) == {
+                    "threadId",
+                    "input",
+                    "cwd",
+                    "approvalPolicy",
+                    "approvalsReviewer",
+                }
+                assert params["approvalPolicy"] == "on-request"
+                assert params["approvalsReviewer"] == "user"
                 assert "sandboxPolicy" not in params
-                assert "approvalPolicy" not in params
                 prompt = params["input"][0]["text"]
                 await respond(
                     ws,

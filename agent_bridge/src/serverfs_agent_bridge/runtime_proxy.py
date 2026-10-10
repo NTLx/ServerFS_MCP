@@ -160,6 +160,20 @@ def _with_mandatory_bypass(no_proxy: str) -> str:
     return ",".join(entries)
 
 
+def scrub_process_proxy_environment(env: dict[str, str] | None = None) -> None:
+    """Delete proxy trust-domain variables before any provider SDK is constructed.
+
+    Windows already receives a supervisor-scrubbed environment. Linux runs the Bridge as a user
+    service and can inherit ambient proxy variables from the systemd manager/provider.env; Claude's
+    SDK cannot delete those from its child. v0.12 therefore performs a deletion-only scrub at Bridge
+    startup. It never adds or rewrites a proxy value in process-wide state.
+    """
+    environ = os.environ if env is None else env
+    for name in list(environ):
+        if _is_proxy_variable(name) or _is_forbidden_prefix(name):
+            environ.pop(name, None)
+
+
 def process_environment_is_clean(env: Mapping[str, str] | None = None) -> bool:
     """Whether this process's own environment carries no proxy variable and no Agent namespace.
 
@@ -216,4 +230,5 @@ __all__ = [
     "build_runtime_environment",
     "build_runtime_environment_overlay",
     "process_environment_is_clean",
+    "scrub_process_proxy_environment",
 ]

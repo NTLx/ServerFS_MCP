@@ -311,9 +311,9 @@ async def test_claude_uses_native_server_environment_and_resumes_session(
         assert first_options.setting_sources == ["user", "project", "local"]
         assert first_options.system_prompt == {"type": "preset", "preset": "claude_code"}
         assert first_options.resume is None
-        # Native mode must not synthesize any execution-policy override; the
-        # user's own Claude configuration stays authoritative.
-        assert first_options.permission_mode is None
+        # ServerFS owns the remote HITL callback, so it explicitly selects Claude's normal
+        # interactive permission mode instead of inheriting a persistent bypassPermissions mode.
+        assert first_options.permission_mode == "default"
         assert first_options.allowed_tools == []
         assert first_options.disallowed_tools == []
         assert first_options.mcp_servers == {}

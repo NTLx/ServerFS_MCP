@@ -47,6 +47,8 @@ def test_load_review_config(tmp_path: Path) -> None:
     assert config.limits.interaction_timeout_seconds == 1800
     assert config.limits.max_active_tasks == 4
     assert config.limits.retention_seconds == 168 * 60 * 60
+    assert config.limits.result_spool_threshold_bytes == 262_144
+    assert config.proxy is None
 
 
 def test_lifecycle_limits_are_strict_positive_integers(tmp_path: Path) -> None:
@@ -63,12 +65,59 @@ def test_lifecycle_limits_are_strict_positive_integers(tmp_path: Path) -> None:
     assert config.limits.interaction_timeout_seconds == 30
     assert config.limits.max_active_tasks == 2
     assert config.limits.retention_seconds == 3600
+    assert config.limits.result_spool_threshold_bytes == 262_144
 
     for key in valid:
         invalid = dict(valid)
         invalid[key] = 0
         with pytest.raises(ValueError, match=key):
             BridgeConfig.load(write_config(tmp_path, repo, limits=invalid))
+
+
+def test_proxy_config_supports_jev_auth_and_rejects_agent_auth(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    proxy = {"url": "http://user:secret@proxy.internal:7890", "authenticated": True}
+    config = BridgeConfig.load(
+        write_config(
+            tmp_path,
+            repo,
+            proxy=proxy,
+            jev={"api_key": "jev-test-secret-123", "use_proxy": True},
+        )
+    )
+    assert config.jev.use_proxy is True
+    assert config.proxy is not None
+    assert config.proxy.authenticated is True
+    assert "secret" not in repr(config.proxy)
+
+    with pytest.raises(ValueError, match="credentialless"):
+        BridgeConfig.load(
+            write_config(
+                tmp_path,
+                repo,
+                proxy=proxy,
+                codex={"enabled": False, "use_proxy": True},
+            )
+        )
+
+
+def test_result_spool_threshold_is_bounded_by_spool_capacity(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = BridgeConfig.load(
+        write_config(tmp_path, repo, limits={"result_spool_threshold_bytes": 2048})
+    )
+    assert config.limits.result_spool_threshold_bytes == 2048
+
+    with pytest.raises(ValueError, match="must not exceed"):
+        BridgeConfig.load(
+            write_config(
+                tmp_path,
+                repo,
+                limits={"result_spool_threshold_bytes": 8 * 1024 * 1024 + 1},
+            )
+        )
 
 
 def test_jev_config_is_opt_in_and_secret_repr_is_redacted(tmp_path: Path) -> None:

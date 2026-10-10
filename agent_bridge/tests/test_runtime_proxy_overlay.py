@@ -22,6 +22,7 @@ import pytest
 from serverfs_agent_bridge.runtime_proxy import (
     build_runtime_environment,
     build_runtime_environment_overlay,
+    scrub_process_proxy_environment,
 )
 
 #: Standard spellings, both cases, plus the ambient suffix shapes Phase E measured.
@@ -66,6 +67,15 @@ def _environment(*, scrubbed: bool, preserved: bool) -> dict[str, str]:
         for index, name in enumerate(PRESERVED_NAMES):
             env[name] = f"value-{index}"
     return env
+
+
+def test_process_scrub_is_deletion_only_and_preserves_provider_config() -> None:
+    env = _environment(scrubbed=True, preserved=True)
+    scrub_process_proxy_environment(env)
+    for name in SCRUBBED_NAMES:
+        assert name not in env
+    for name in PRESERVED_NAMES:
+        assert name in env
 
 
 class TestOverlayRemovesWhatThePolicyRemoves:

@@ -9,7 +9,7 @@ Jev is a System One model: instead of generating prose, it evaluates typed quest
 
 The integration is **opt-in, advisory-only, and fail-open**. Jev is not an Agent runtime, authorization source, or security boundary.
 
-> **Status:** this opt-in experimental capability was introduced in v0.6.0 and remains included in the current v0.9.0 release. v0.9.0 adds Model Advisor behind the new `list_agent_models` tool; Jev itself remains an internal host-Bridge advisor and never gains execution authority.
+> **Status:** this opt-in experimental capability was introduced in v0.6.0, extended with Model Advisor in v0.9.0, and remains included in the current v0.11.0 stable release. v0.12 adds an independent explicit Jev proxy switch; Jev remains an internal host-Bridge advisor and never gains execution authority.
 
 ## Enable it
 
@@ -26,6 +26,8 @@ Leave the value empty to disable every Jev feature. When disabled:
 - Agent submission and approval behavior follow the non-Jev path.
 
 The installer renders a configured key only into the user-owned Agent Bridge config with mode `0600`. The key is not passed into the MCP container.
+
+In v0.12, Jev egress is controlled independently with `SERVERFS_JEV_USE_PROXY`. When false, the Jev client is created without a proxy even if Tunnel or Agent proxying is enabled. When true, the Bridge supplies the shared ServerFS HTTP proxy to Jev through an explicit `httpx2.AsyncClient`; it does not mutate process-wide proxy environment variables, so provider children cannot inherit Jev routing accidentally. Jev may use authenticated shared proxy credentials; this is separate from the credentialless-only Linux Agent proxy rule.
 
 ## Current model contract
 

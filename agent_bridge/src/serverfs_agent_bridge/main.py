@@ -13,12 +13,14 @@ from . import adapters as runtime_adapters
 from .bootstrap import (
     BootstrapError,
     BootstrapFrame,
+    RuntimeProxy,
     parse_bootstrap_frame,
 )
 from .config import BridgeConfig
 from .leases import LeaseManager
 from .preflight import JevTaskPreflight
 from .protocol import BridgeProtocolServer
+from .runtime_proxy import scrub_process_proxy_environment
 from .service import BridgeLimits, BridgeService
 from .store import TaskStore
 
@@ -30,11 +32,31 @@ async def _serve(
     bootstrap: BootstrapFrame | None = None,
     supervised: bool = False,
 ) -> None:
+    # Linux may inherit ambient proxy variables from its user-service environment; Claude's SDK
+    # cannot delete inherited names from the child. Remove the whole proxy trust domain before any
+    # provider SDK/client is constructed. Explicit v0.12 proxy endpoints are held in
+    # config/bootstrap objects and mapped downward afterwards, never written back here.
+    scrub_process_proxy_environment()
     adapters = {}
     # The runtime-only egress material from the private bootstrap channel. It is handed to the
     # adapters here and applied downward to each runtime's network-owning child; it is never placed
     # in this process's environment, never persisted, and never logged (§15 D2/D4).
-    runtime_proxy = bootstrap.agent_proxy if bootstrap is not None else None
+    if bootstrap is not None:
+        # Windows/native supervision remains authoritative: runtime-only proxy material arrives over
+        # the private bootstrap channel and is never persisted in its generated Bridge config.
+        runtime_proxy = bootstrap.agent_proxy
+    elif config.proxy is not None and (
+        config.codex.use_proxy or config.claude.use_proxy or config.qoder.use_proxy
+    ):
+        # Linux v0.12 is an unsupervised user service. Its private 0600 config may carry the
+        # normalized shared endpoint; provider credentials are forbidden for Agent use at config
+        # validation, so only a credentialless URL reaches runtime children.
+        runtime_proxy = RuntimeProxy(
+            url=config.proxy.url,
+            no_proxy="127.0.0.1,localhost,::1",
+        )
+    else:
+        runtime_proxy = None
     if config.enable_fake_runtime:
         # The fake runtime is given the same runtime-only material a real adapter would receive, so
         # the D2 tests exercise the real wiring rather than a parallel path.
@@ -65,7 +87,14 @@ async def _serve(
         adapters[qoder.name] = qoder
 
     preflight = (
-        JevTaskPreflight.from_api_key(config.jev.api_key)
+        JevTaskPreflight.from_api_key(
+            config.jev.api_key,
+            proxy_url=(
+                config.proxy.url
+                if config.jev.use_proxy and config.proxy is not None
+                else None
+            ),
+        )
         if config.jev.enabled and config.jev.api_key is not None
         else None
     )
@@ -85,6 +114,8 @@ async def _serve(
             interaction_timeout_seconds=config.limits.interaction_timeout_seconds,
             max_active_tasks=config.limits.max_active_tasks,
             retention_seconds=config.limits.retention_seconds,
+            max_final_response_bytes=config.limits.result_spool_threshold_bytes,
+            result_preview_bytes=min(65_536, config.limits.result_spool_threshold_bytes),
         ),
         preflight=preflight,
         # The supervisor's containment proof, over the private bootstrap channel only. Defaults to

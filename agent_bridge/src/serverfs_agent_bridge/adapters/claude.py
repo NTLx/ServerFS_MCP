@@ -291,6 +291,10 @@ class ClaudeAdapter(AgentAdapter):
             setting_sources=["user", "project", "local"],
             system_prompt={"type": "preset", "preset": "claude_code"},
             can_use_tool=can_use_tool,
+            # Make the remote can_use_tool callback reachable even when the user's persistent
+            # Claude configuration selected bypassPermissions. Native allow/deny rules remain
+            # provider-owned; only native `ask` decisions cross the ServerFS HITL channel.
+            permission_mode="default",
             resume=context.continue_native_session_id if resume else None,
             model=context.requested_model,
         )

@@ -9,7 +9,7 @@ Jev 属于 System One 模型：它不是生成面向人类阅读的长文本，�
 
 这套集成始终是 **opt-in、advisory-only、fail-open**。Jev 不是 Agent runtime，不是授权源，也不是安全边界。
 
-> **状态：**这套 opt-in 实验能力在 v0.6.0 引入，并继续包含在当前 v0.9.0 稳定版中。v0.9.0 在新的 `list_agent_models` 工具后增加 Model Advisor；Jev 本身仍只是宿主机 Bridge 内部 advisor，不获得执行权。
+> **状态：**这套 opt-in 实验能力在 v0.6.0 引入，v0.9.0 增加 Model Advisor，并继续包含在当前 v0.11.0 稳定版中。v0.12 增加独立、显式的 Jev 代理开关；Jev 本身仍只是宿主机 Bridge 内部 advisor，不获得执行权。
 
 ## 启用方式
 
@@ -26,6 +26,8 @@ SERVERFS_JEV_API_KEY=<your key>
 - Agent task 与 approval 行为回到完全不依赖 Jev 的路径。
 
 安装器只会把已配置的 Key 渲染到用户自有、权限为 `0600` 的 Agent Bridge 配置中；Key 不会进入 MCP 容器。
+
+v0.12 中，Jev 出站由 `SERVERFS_JEV_USE_PROXY` 独立控制。为 false 时，即使 Tunnel 或 Agent 已启用代理，Jev client 仍不使用代理；为 true 时，Bridge 通过显式 `httpx2.AsyncClient` 把共享 ServerFS HTTP 代理交给 Jev，而不会修改进程级代理环境变量，因此 provider 子进程不会意外继承 Jev 路由。Jev 可以使用带认证的共享代理，这与 Linux Agent 代理仅允许无凭据代理的规则彼此独立。
 
 ## 当前模型契约
 

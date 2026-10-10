@@ -100,16 +100,23 @@ class JevTaskPreflight:
     model: str = JEV_MODEL
 
     @classmethod
-    def from_api_key(cls, api_key: str) -> JevTaskPreflight:
+    def from_api_key(cls, api_key: str, *, proxy_url: str | None = None) -> JevTaskPreflight:
         from typesafe_sdk import AsyncTypeSafeClient, RetryPolicy
 
-        client = AsyncTypeSafeClient(
-            api_key=api_key,
-            model=JEV_MODEL,
-            timeout=5.0,
-            retry=RetryPolicy(max_retries=1, timeout=8.0),
-        )
-        return cls(_client=client)
+        kwargs: dict[str, Any] = {
+            "api_key": api_key,
+            "model": JEV_MODEL,
+            "timeout": 5.0,
+            "retry": RetryPolicy(max_retries=1, timeout=8.0),
+        }
+        if proxy_url is not None:
+            # typesafe-sdk 0.7.1 accepts an explicit http_client. Using that supported seam keeps
+            # Jev proxying local to this client and, critically, does not set process-wide proxy
+            # environment variables that provider SDK children could inherit.
+            from httpx2 import AsyncClient
+
+            kwargs["http_client"] = AsyncClient(proxy=proxy_url, timeout=5.0)
+        return cls(_client=AsyncTypeSafeClient(**kwargs))
 
     async def close(self) -> None:
         await self._client.aclose()

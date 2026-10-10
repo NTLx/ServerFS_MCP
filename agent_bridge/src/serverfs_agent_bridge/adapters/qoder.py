@@ -106,6 +106,10 @@ class QoderAdapter(AgentAdapter):
             # "inherit whatever the host happens to export".
             env=build_runtime_environment_overlay(os.environ, runtime=self.name),
             can_use_tool=can_use_tool,
+            # Explicitly use the provider's normal interactive permission mode whenever ServerFS
+            # supplies a remote callback. This prevents a persistent bypass-style user setting from
+            # silently making the public approval flow unreachable.
+            permission_mode="default" if can_use_tool is not None else None,
             resume=resume,
             model=model,
             proxy=None,

@@ -8,12 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-PROXY_KEYS = (
-    "SERVERFS_PROXY_HOST",
-    "SERVERFS_PROXY_PORT",
-    "SERVERFS_PROXY_USERNAME",
-    "SERVERFS_PROXY_PASSWORD",
-)
+from .shared_proxy import PROXY_KEYS, parse_shared_proxy
+
 _TUNNEL_ID = re.compile(r"^tunnel_[a-z0-9]{32}$")
 
 
@@ -77,46 +73,9 @@ def _parse_env_value(raw: str, key: str, line_number: int) -> str:
 
 
 def proxy_url(values: dict[str, str]) -> str | None:
-    """Validate shared fields and derive the Linux-contract HTTP proxy URL."""
-    host = values.get("SERVERFS_PROXY_HOST", "")
-    port = values.get("SERVERFS_PROXY_PORT", "")
-    username = values.get("SERVERFS_PROXY_USERNAME", "")
-    password = values.get("SERVERFS_PROXY_PASSWORD", "")
-    if not host:
-        if port:
-            raise NativeTunnelError("proxy PORT requires HOST")
-        if username:
-            raise NativeTunnelError("proxy USERNAME requires HOST")
-        if password:
-            raise NativeTunnelError("proxy PASSWORD requires HOST")
-        return None
-    if not port:
-        raise NativeTunnelError("proxy HOST requires PORT")
-    if (
-        any(not (char.isascii() and (char.isalnum() or char in ".-")) for char in host)
-        or host.startswith(".")
-        or host.endswith((".", "-"))
-        or ".." in host
-        or "-." in host
-        or ".-" in host
-        or host.startswith("-")
-    ):
-        raise NativeTunnelError("proxy HOST must be a DNS name or IPv4 address")
-    if not port.isascii() or not port.isdecimal():
-        raise NativeTunnelError("proxy PORT must be an integer from 1 to 65535")
-    normalized_port = int(port)
-    if not 1 <= normalized_port <= 65535:
-        raise NativeTunnelError("proxy PORT must be an integer from 1 to 65535")
-    if password and not username:
-        raise NativeTunnelError("proxy PASSWORD requires USERNAME")
-    authority = f"{host}:{normalized_port}"
-    if username:
-        authority = f"{_percent_encode(username)}:{_percent_encode(password)}@{authority}"
-    return f"http://{authority}"
-
-
-def _percent_encode(value: str) -> str:
-    return "".join(f"%{byte:02x}" for byte in value.encode("utf-8"))
+    """Validate shared fields and derive the canonical HTTP proxy URL."""
+    parsed = parse_shared_proxy(values, error_type=NativeTunnelError)
+    return None if parsed is None else parsed.url
 
 
 def encode_tunnel_command_argv(argv: list[str]) -> str:

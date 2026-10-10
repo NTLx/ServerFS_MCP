@@ -3,7 +3,7 @@ title: Agent Bridge
 description: Optional structured delegation to native Codex, Claude and Qoder runtimes.
 ---
 
-The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.9.0 is the current stable release and adds provider-neutral model discovery plus request-scoped model overrides while keeping runtime defaults provider-owned.
+The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.11.0 is the current published stable release; v0.12.0 is the active development target for Linux egress control, native interactive approvals and configurable result spooling.
 
 ```text
 ChatGPT
@@ -43,6 +43,14 @@ Current deployments can expose:
 - 21 tools: filesystem + Agent
 - 23 tools: filesystem + binary + Agent
 
+## v0.12 Linux egress and interaction contract
+
+v0.12 keeps the same ten public Agent tools and adds explicit Linux deployment controls rather than a new orchestration layer. `SERVERFS_AGENT_USE_PROXY` independently selects the shared HTTP proxy for native Agent provider traffic. Claude and Qoder receive a scrubbed deterministic proxy environment; proxied Codex uses a Bridge-owned standalone app-server so ServerFS never restarts or mutates the user's shared managed Codex daemon merely to impose proxy policy. Direct mode preserves the existing native provider paths.
+
+Agent proxying is intentionally credentialless-only in v0.12. If `SERVERFS_AGENT_USE_PROXY=true` while the shared proxy username/password is configured, deployment rendering fails closed. An authenticated upstream must be represented by a credentialless local broker. Tunnel and Jev have their own independent proxy switches and may use the authenticated shared endpoint.
+
+Provider-native approvals are surfaced through the existing `respond_agent_approval` tool; ServerFS does not auto-approve or weaken provider semantics. The inline/spool boundary is configured by `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES`, with the public default unchanged at 256 KiB and the maximum spooled result unchanged at 8 MiB. Large normalized message events are bounded independently so a valid large final response can still reach spool handling.
+
 ## v0.9 model discovery and selection
 
 `list_agent_models` is the one new read-only Agent tool. Codex uses App Server `model/list`; Qoder uses the structured Agent SDK current-account catalog; Claude returns `model_discovery=unsupported` because the installed Claude Code/Agent SDK does not expose an equivalent stable native-account enumeration API. Discovery never starts an inference turn.
@@ -71,7 +79,7 @@ These limits are separate from the MCP-to-Bridge RPC timeout and provider event-
 
 Workspace-write tasks also publish a persistent per-slot recovery guard alongside the existing `flock`. If the Bridge exits abnormally, mutations fail closed with `WORKDIR_RECOVERY_REQUIRED` until provider-aware reconciliation proves the prior provider is no longer active. ServerFS does not blindly rerun an interrupted task.
 
-Final responses up to 256 KiB stay inline. Responses above 256 KiB through 8 MiB are atomically spooled to private Bridge state and exposed by `get_agent_task` as a bounded preview plus size/SHA-256 metadata. `read_agent_task_result` retrieves the exact UTF-8 result in bounded chunks. Results above 8 MiB fail with `AGENT_RESULT_TOO_LARGE`.
+Final responses stay inline up to the configured spool threshold. The default remains 256 KiB; v0.12 exposes that boundary as `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES`. Larger responses through 8 MiB are atomically spooled to private Bridge state and exposed by `get_agent_task` as a bounded preview plus size/SHA-256 metadata. `read_agent_task_result` retrieves the exact UTF-8 result in bounded chunks. Results above 8 MiB fail with `AGENT_RESULT_TOO_LARGE`.
 
 ## Deployment verification
 
@@ -89,7 +97,7 @@ When recreating the MCP container, always preserve both `-f compose.yml -f compo
 
 The host Bridge can optionally use TypeSafe Jev as an **advisory-only** decision layer. It does not become an Agent runtime or automatic router.
 
-With `SERVERFS_JEV_API_KEY` configured, one task-submission request provides Agent Task Preflight and Runtime Router advice. v0.9.0 also lets `list_agent_models` include a concrete proposed task: after successful native model discovery, Model Advisor may recommend one of the currently exposed candidates before submission. ServerFS returns that advice with `automatic=false` and never copies it into `submit_agent_task.model`. If the native provider later creates a concrete approval request, Approval Advisor may make one additional Jev request; identical approvals within the same task reuse cached advice. With no key, model discovery/submission still work and no Jev requests occur.
+With `SERVERFS_JEV_API_KEY` configured, one task-submission request provides Agent Task Preflight and Runtime Router advice. v0.9.0 also lets `list_agent_models` include a concrete proposed task: after successful native model discovery, Model Advisor may recommend one of the currently exposed candidates before submission. In v0.12, `SERVERFS_JEV_USE_PROXY` independently selects the shared proxy for Jev's explicit HTTP client; this does not affect Agent provider or Tunnel routing. ServerFS returns that advice with `automatic=false` and never copies it into `submit_agent_task.model`. If the native provider later creates a concrete approval request, Approval Advisor may make one additional Jev request; identical approvals within the same task reuse cached advice. With no key, model discovery/submission still work and no Jev requests occur.
 
 Jev never overrides the explicit runtime/model, workdir policy, writer lease, provider approval state, or `respond_agent_approval`. See [Jev Advisors](./jev-advisors/) for the model contract, request flow, data minimization, and failure behavior.
 

@@ -3,7 +3,7 @@ title: Agent Bridge
 description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时委派。
 ---
 
-Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.9.0 是当前稳定版本，在保持 runtime 默认配置归 provider 所有的前提下新增 provider-neutral 模型发现与单次任务模型覆盖。
+Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.11.0 是当前已发布稳定版本；v0.12.0 是当前开发目标，重点补齐 Linux 出站代理控制、原生交互 approval 与可配置结果 spool。
 
 ```text
 ChatGPT
@@ -43,6 +43,14 @@ Unix socket
 - 21 个工具：文件系统 + Agent
 - 23 个工具：文件系统 + 二进制 + Agent
 
+## v0.12 Linux 出站与交互契约
+
+v0.12 保持现有 10 个公开 Agent 工具不变，增加的是显式 Linux 部署控制，而不是新的编排层。`SERVERFS_AGENT_USE_PROXY` 独立决定原生 Agent provider 流量是否使用共享 HTTP 代理。Claude 与 Qoder 获得经过清洗的确定性代理环境；Codex 在代理模式下使用 Bridge 自己管理的 standalone app-server，因此 ServerFS 不会为了施加代理策略而重启或改写用户共享的 managed Codex daemon。关闭 Agent 代理时继续沿用既有原生 provider 路径。
+
+v0.12 的 Agent 代理刻意限制为**无凭据代理**。当 `SERVERFS_AGENT_USE_PROXY=true` 且共享代理配置了用户名/密码时，部署渲染会 fail closed；需要认证的上游应通过无凭据本地 broker 转接。Tunnel 与 Jev 各自拥有独立代理开关，并可使用带认证的共享端点。
+
+Provider 原生 approval 通过现有 `respond_agent_approval` 工具显式返回；ServerFS 不自动批准，也不弱化 provider 语义。`SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES` 配置 inline/spool 边界，公开默认值仍为 256 KiB，最大 spool 结果仍为 8 MiB。大型标准化 message event 会独立限界，避免阻止合法的大型最终结果进入 spool 流程。
+
 ## v0.9 模型发现与选择
 
 `list_agent_models` 是唯一新增的只读 Agent 工具。Codex 使用 App Server `model/list`；Qoder 使用结构化 Agent SDK 的当前账户模型目录；Claude 因当前 Claude Code/Agent SDK 没有等价、稳定的原生账户枚举 API，因此明确返回 `model_discovery=unsupported`。模型发现不会启动推理任务。
@@ -71,7 +79,7 @@ Agent 生命周期改为管理员策略，不再固定为 24 小时。默认值�
 
 workspace-write 任务还会在现有 `flock` 之外发布持久化的 slot recovery guard。Bridge 异常退出后，在 provider-aware reconciliation 能证明旧 provider 已停止之前，文件写入会以 `WORKDIR_RECOVERY_REQUIRED` 失败关闭；ServerFS 不会盲目重跑中断任务。
 
-最终响应不超过 256 KiB 时继续内联返回；超过 256 KiB、且不超过 8 MiB 时，会原子写入 Bridge 私有 spool，`get_agent_task` 返回有界 preview 以及大小/SHA-256 元数据，`read_agent_task_result` 可分块精确重建 UTF-8 原文。超过 8 MiB 仍返回 `AGENT_RESULT_TOO_LARGE`。
+最终响应在配置的 spool 阈值以内时内联返回。默认值仍为 256 KiB；v0.12 通过 `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES` 暴露这一边界。超过阈值且不超过 8 MiB 时，会原子写入 Bridge 私有 spool，`get_agent_task` 返回有界 preview 以及大小/SHA-256 元数据，`read_agent_task_result` 可分块精确重建 UTF-8 原文。超过 8 MiB 仍返回 `AGENT_RESULT_TOO_LARGE`。
 
 ## 部署验收
 
@@ -89,7 +97,7 @@ python3 deployment/agent-bridge/verify_host.py --require-runtimes
 
 宿主机 Bridge 可以按需使用 TypeSafe Jev 作为 **advisory-only** 决策辅助层。它不会成为新的 Agent runtime 或自动路由器。
 
-配置 `SERVERFS_JEV_API_KEY` 后，任务提交阶段的一次请求会给出 Agent Task Preflight 与 Runtime Router 建议。v0.9.0 还允许 `list_agent_models` 携带即将提交的任务上下文：原生模型发现成功后，Model Advisor 可以在提交前从当前暴露的候选模型中给出建议；返回值始终 `automatic=false`，ServerFS 不会把建议自动填入 `submit_agent_task.model`。如果原生 provider 后续真的生成 approval request，Approval Advisor 才可能再发起一次 Jev 请求，同一 task 内完全相同的 approval 会复用缓存。未配置 Key 时，模型发现和任务提交照常工作，但不会发生 Jev 请求。
+配置 `SERVERFS_JEV_API_KEY` 后，任务提交阶段的一次请求会给出 Agent Task Preflight 与 Runtime Router 建议。v0.9.0 还允许 `list_agent_models` 携带即将提交的任务上下文：原生模型发现成功后，Model Advisor 可以在提交前从当前暴露的候选模型中给出建议；返回值始终 `automatic=false`，ServerFS 不会把建议自动填入 `submit_agent_task.model`。v0.12 中，`SERVERFS_JEV_USE_PROXY` 独立决定 Jev 的显式 HTTP client 是否使用共享代理，不会影响 Agent provider 或 Tunnel 的路由。如果原生 provider 后续真的生成 approval request，Approval Advisor 才可能再发起一次 Jev 请求，同一 task 内完全相同的 approval 会复用缓存。未配置 Key 时，模型发现和任务提交照常工作，但不会发生 Jev 请求。
 
 Jev 不会覆盖显式 runtime/model、workdir policy、writer lease、provider approval 状态或 `respond_agent_approval`。模型契约、请求流、数据最小化与失败行为详见 [Jev Advisors](./jev-advisors/)。
 

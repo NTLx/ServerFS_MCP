@@ -38,11 +38,13 @@ v0.4.0 引入了 MCP Streamable HTTP DNS-rebinding protection；v0.5.0 保持这
 
 Agent 支持是 opt-in，并位于宿主机 Unix socket 之后。MCP 容器获得的是结构化 Agent 能力，而不是宿主机 Shell。
 
+v0.12 中，Linux Agent 出站路由与 Tunnel/Jev 保持显式独立。`SERVERFS_AGENT_USE_PROXY=true` 只允许使用无凭据的共享 HTTP 代理；一旦共享代理配置了认证字段，部署渲染/启动就 fail closed，避免把代理凭据放入 provider 的标准代理环境变量。代理模式下 Codex 使用 Bridge 自己管理的 standalone app-server，而不是修改用户共享的 managed daemon。Provider 原生 approval 仍由 provider 控制，并且必须通过现有公开 Agent 工具显式响应。
+
 ## Jev Advisor 边界
 
 Jev 是可选能力，只从宿主机 Agent Bridge 发起调用。它不属于 MCP 授权路径、runtime allowlist、writer lease，也不拥有 provider 原生 approval 的决定权。Jev 调用缺失或失败时，只会缺少 advisory context，不会因此得到更宽能力。
 
-TypeSafe API Key 只会渲染到用户自有的 Bridge 配置，不会进入 MCP 容器。Approval Advisor 只发送最小化、已 redaction 的 approval state，并在外发前再次清洗 secret/token/password 等敏感模式。同一 task 内完全相同的 approval advice 可以复用缓存，但缓存本身绝不会完成审批。
+TypeSafe API Key 只会渲染到用户自有的 Bridge 配置，不会进入 MCP 容器。v0.12 中，`SERVERFS_JEV_USE_PROXY` 通过 Jev 的显式 HTTP client 使用共享代理，而不会修改进程级代理变量。Approval Advisor 只发送最小化、已 redaction 的 approval state，并在外发前再次清洗 secret/token/password 等敏感模式。同一 task 内完全相同的 approval advice 可以复用缓存，但缓存本身绝不会完成审批。
 
 完整 advisory 契约详见 [Jev Advisors](./jev-advisors/)。
 

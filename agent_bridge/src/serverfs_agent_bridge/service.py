@@ -1339,6 +1339,8 @@ class BridgeService:
     def _append_event(self, task_id: str, event_type: str, payload: dict[str, Any]) -> None:
         redacted_payload = self._redact_value(task_id, payload)
         encoded = json.dumps(redacted_payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        if len(encoded) > self.limits.max_event_bytes and event_type == "agent.message":
+            redacted_payload, encoded = self._bounded_agent_message_event(redacted_payload)
         if len(encoded) > self.limits.max_event_bytes:
             raise BridgeError("AGENT_EVENT_TOO_LARGE", "agent event exceeds configured limit")
         self.store.append_event(
@@ -1347,6 +1349,38 @@ class BridgeService:
             redacted_payload,
             max_events_per_task=self.limits.max_events_per_task,
         )
+
+    def _bounded_agent_message_event(
+        self, payload: dict[str, Any]
+    ) -> tuple[dict[str, Any], bytes]:
+        """Bound only large agent prose events; never alter the provider's final result.
+
+        Approval/question/tool payloads keep their hard size validation. Agent prose is evidence,
+        not the result transport, so a provider TextBlock larger than the event limit is represented
+        by a UTF-8-safe preview plus exact metadata instead of failing an otherwise valid task.
+        """
+        text = payload.get("text")
+        if not isinstance(text, str):
+            encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            return payload, encoded
+        text_bytes = text.encode("utf-8")
+        metadata = dict(payload)
+        metadata.update(
+            {
+                "truncated": True,
+                "size_bytes": len(text_bytes),
+                "sha256": hashlib.sha256(text_bytes).hexdigest(),
+            }
+        )
+        preview_limit = min(len(text_bytes), max(1, self.limits.max_event_bytes // 2))
+        while True:
+            metadata["text"] = utf8_prefix(text, preview_limit)
+            encoded = json.dumps(metadata, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            if len(encoded) <= self.limits.max_event_bytes:
+                return metadata, encoded
+            if preview_limit <= 1:
+                raise BridgeError("AGENT_EVENT_TOO_LARGE", "agent event exceeds configured limit")
+            preview_limit = max(1, preview_limit // 2)
 
     def _ensure_interaction_size(self, payload: dict[str, Any]) -> None:
         try:

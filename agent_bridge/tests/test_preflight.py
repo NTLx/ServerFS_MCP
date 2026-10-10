@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -83,6 +84,57 @@ class FakeClient:
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_jev_from_api_key_uses_explicit_http_client_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    constructed: dict[str, object] = {}
+
+    class FakeHttpClient:
+        def __init__(self, *, proxy: str, timeout: float) -> None:
+            constructed["proxy"] = proxy
+            constructed["http_timeout"] = timeout
+            self.closed = False
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    class FakeRetryPolicy:
+        def __init__(self, *, max_retries: int, timeout: float) -> None:
+            constructed["retry"] = (max_retries, timeout)
+
+    class FakeTypeSafeClient:
+        def __init__(self, **kwargs: object) -> None:
+            constructed["sdk_kwargs"] = kwargs
+            self.http_client = kwargs.get("http_client")
+
+        async def aclose(self) -> None:
+            if self.http_client is not None:
+                await self.http_client.aclose()
+
+    httpx2 = ModuleType("httpx2")
+    httpx2.AsyncClient = FakeHttpClient  # type: ignore[attr-defined]
+    typesafe = ModuleType("typesafe_sdk")
+    typesafe.AsyncTypeSafeClient = FakeTypeSafeClient  # type: ignore[attr-defined]
+    typesafe.RetryPolicy = FakeRetryPolicy  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "httpx2", httpx2)
+    monkeypatch.setitem(sys.modules, "typesafe_sdk", typesafe)
+
+    advisor = JevTaskPreflight.from_api_key(
+        "jev-test-secret",
+        proxy_url="http://user:pass@proxy.internal:7890",
+    )
+    assert constructed["proxy"] == "http://user:pass@proxy.internal:7890"
+    assert constructed["http_timeout"] == 5.0
+    kwargs = constructed["sdk_kwargs"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["api_key"] == "jev-test-secret"
+    assert kwargs["http_client"] is advisor._client.http_client
+
+    await advisor.close()
+    assert advisor._client.http_client.closed is True
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 # Phase E — user-scoped Agent Bridge deployment
 
-Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.9.0 is the current stable release, adding provider-neutral runtime model discovery, request-scoped model overrides and optional Jev model advice on top of the Codex/Claude/Qoder runtime set.** The deployment topology and user-scoped security boundary are unchanged.
+Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.11.0 is the current published stable release; v0.12.0 is the active development target.** v0.12 keeps the user-scoped topology but adds independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling.
 
 The deployment has one non-negotiable rule:
 
@@ -120,11 +120,17 @@ SERVERFS_GID=<id -g>
 SERVERFS_AGENT_BRIDGE_ENABLED=false
 # MCP container -> Bridge RPC timeout; not the lifetime of an Agent task.
 SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS=30
-# v0.9.0 lifecycle policy, enforced by the host Bridge.
+# Agent lifecycle policy, enforced by the host Bridge.
 SERVERFS_AGENT_TASK_TIMEOUT_SECONDS=7200
 SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS=1800
 SERVERFS_AGENT_MAX_ACTIVE_TASKS=4
 SERVERFS_AGENT_TASK_RETENTION_HOURS=168
+# v0.12: configurable inline/spool boundary; public default remains 256 KiB.
+SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES=262144
+# v0.12: Agent egress uses the shared proxy endpoint only when explicitly enabled.
+SERVERFS_AGENT_USE_PROXY=false
+# Jev egress is independent from Agent and Tunnel proxy policy.
+SERVERFS_JEV_USE_PROXY=false
 SERVERFS_AGENT_PEER_UID=
 SERVERFS_AGENT_PEER_GID=
 SERVERFS_AGENT_BRIDGE_HOST_SOCKET_DIR=/home/<user>/.local/share/serverfs-agent-bridge/runtime/socket
@@ -143,8 +149,8 @@ Agent settings into the container, so these values remain inert without
 Provider secrets and shell-only environment are intentionally **not** stored in
 `.env`; they remain in the user-owned `provider.env` described in step 4. The experimental
 Jev advisory features are the one explicit exception: `SERVERFS_JEV_API_KEY` is their opt-in
-master gate in the current v0.9.0 release. Leave it empty to disable Preflight,
-Runtime Router, Model Advisor, and Approval Advisor functionality. When non-empty, the installer renders
+master gate carried through the current v0.11.0 stable release. Leave it empty to disable Preflight,
+Runtime Router, Model Advisor, and Approval Advisor functionality. In v0.12, `SERVERFS_JEV_USE_PROXY` selects the shared proxy explicitly without changing Jev's advisory-only authority. When non-empty, the installer renders
 the key only into the user-owned
 `0600` Bridge `config.json`; it is never passed into the MCP container.
 
@@ -226,7 +232,9 @@ SERVERFS_QODER_BIN=/home/me/.local/bin/qodercli
 ```
 
 Provider authentication/settings remain the same user's native files. Jev is not an
-Agent runtime and does not inherit Codex/Claude/Qoder credentials. For the experimental advisory
+Agent runtime and does not inherit Codex/Claude/Qoder credentials.
+
+For v0.12 Linux egress control, `SERVERFS_AGENT_USE_PROXY=true` injects the shared **credentialless** HTTP proxy into Claude/Qoder provider processes and uses a Bridge-owned standalone Codex app-server with that same deterministic proxy environment. The user's shared managed Codex daemon is left untouched. If `SERVERFS_PROXY_USERNAME` or `SERVERFS_PROXY_PASSWORD` is configured while Agent proxying is enabled, rendering/startup fails closed; use a credentialless local broker for an authenticated upstream. Tunnel and Jev may independently use the authenticated shared endpoint. For the experimental advisory
 Jev features, put the TypeSafe key only in the repository `.env` as
 `SERVERFS_JEV_API_KEY=<key>`; an empty value means all Jev advisory features are absent. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) for the model contract, request economy, and authority boundary.
 
@@ -496,7 +504,7 @@ Before host acceptance, run both independent code gates: the repository-root gat
 `bash -n deployment/agent-bridge/*.sh` for deployment shell syntax. Root `pytest`
 collects only `tests/` and does not validate `agent_bridge/tests/`.
 
-For the current ServerFS v0.9.0 package, verify the target host proves:
+For the current v0.11.0 stable package and the v0.12.0 Linux release candidate, verify the target host proves:
 
 - install/update/rollback require no sudo/root;
 - real peer UID/GID equal the current login user;
@@ -511,12 +519,16 @@ For the current ServerFS v0.9.0 package, verify the target host proves:
 - `list_agent_models` returns Codex/Qoder normalized catalogs and Claude's explicit unsupported model-discovery contract without starting inference;
 - explicit per-task model overrides and omission/native-default behavior are both verified without changing provider configuration;
 - Jev model advice is advisory-only when enabled and absent from execution authority;
+- v0.12 Linux direct/proxy acceptance proves Tunnel, Agent and Jev routing independently;
+- v0.12 Linux Agent proxying rejects authenticated shared proxy configuration and never places proxy credentials in provider environment variables;
+- proxied Linux Codex uses the Bridge-owned standalone app-server while direct mode preserves the user's managed daemon path;
+- real provider approval and configurable result-spool acceptance remain green;
 - Agent mode exposes 21 tools without binary transfer and 23 tools with binary transfer;
 - real submit/poll/HITL/cancel works;
 - shared writer lease works across host/container;
 - rollback implementation and recovery tests remain green; the live base
   11-tool rollback/re-cutover drill was **WAIVED BY MAINTAINER for v0.3.0**
-  (2026-09-20) as a historical release decision and is not repeated as a v0.9.0
+  (2026-09-20) as a historical release decision and is not repeated as a later
   verification requirement;
 - no provider credentials enter the MCP container;
 - MCP container still has no Internet egress;
@@ -529,5 +541,5 @@ to the default 11-tool surface. Workdir `AGENT_MODE/RUNTIMES` values in
 container.
 
 If post-release verification fails, use the documented rollback script to restore the
-previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The v0.9.0 release uses an immutable
-tag; earlier release tags remain immutable as well.
+previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The current v0.11.0 stable release uses an immutable
+tag; earlier release tags remain immutable as well. The v0.12.0 tag must not be created until the unified Linux + Windows release gates are green.

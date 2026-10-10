@@ -1,14 +1,13 @@
 """Codex App Server adapter for the ServerFS Agent Bridge.
 
-The adapter reuses the official managed Codex App Server daemon.  It owns no
-Codex worker lifecycle beyond an optional, administrator-enabled invocation of
-the official idempotent `codex app-server daemon start` command.
+The normal Linux path reuses the official managed Codex App Server daemon. When the v0.12 Agent
+proxy policy is enabled, however, an already-running shared daemon cannot prove which proxy
+environment it inherited, so the Bridge owns one standalone Unix-listening app-server for its
+lifetime. Windows likewise owns an app-server child because it has no usable AF_UNIX client path.
 
-Windows differs in exactly one respect: there is no AF_UNIX control socket there, so the Bridge owns
-a `codex app-server` child and dials its authenticated loopback WebSocket endpoint. That is a
-transport and process-lifecycle difference only. Model discovery, threads, turns, steering,
+These are transport/process-lifecycle differences only. Model discovery, threads, turns, steering,
 interrupt, approvals, questions, events, results, reconciliation and the request-scoped model
-override all remain the single implementation below, shared by both platforms.
+override remain the single implementation below, shared by all paths.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ from .codex_transport import (
 )
 
 if TYPE_CHECKING:
+    from .codex_linux import LinuxCodexAppServer
     from .codex_windows import WindowsCodexAppServer
 
 _WINDOWS = os.name == "nt"
@@ -87,6 +87,7 @@ class CodexAdapter(AgentAdapter):
         #: a handle on its lifecycle. Constructed lazily so a Linux process never imports the
         #: Windows runtime module and never allocates the object.
         self._windows_runtime: WindowsCodexAppServer | None = None
+        self._linux_runtime: LinuxCodexAppServer | None = None
         if _WINDOWS and settings.enabled:
             # Imported here, not at module scope. codex_windows builds a Windows-only environment
             # contract, and a module-scope import would make this file unimportable on Linux — the
@@ -104,6 +105,19 @@ class CodexAdapter(AgentAdapter):
                 runtime_proxy=runtime_proxy,
                 client_version=client_version,
             )
+        elif settings.enabled and settings.use_proxy:
+            from .codex_linux import LinuxCodexAppServer as _LinuxRuntime
+
+            if state_dir is None:
+                raise BridgeError(
+                    "AGENT_RUNTIME_UNAVAILABLE",
+                    "Codex proxy mode requires a Bridge state directory on Linux",
+                )
+            self._linux_runtime = _LinuxRuntime(
+                settings,
+                state_dir=state_dir,
+                runtime_proxy=runtime_proxy,
+            )
 
     @property
     def name(self) -> str:
@@ -112,6 +126,14 @@ class CodexAdapter(AgentAdapter):
     async def probe(self) -> RuntimeInfo:
         if not self.settings.enabled or self._closed:
             return self._runtime_info(available=False)
+        if self._linux_runtime is not None:
+            # A proxy-scoped standalone app-server may perform provider/MCP network initialization
+            # before binding its Unix listener. Starting that process inside runtime.list or
+            # task.submit would therefore turn a local capability probe into a synchronous network
+            # operation and can exceed the MCP-to-Bridge RPC budget. Match Claude/Qoder semantics:
+            # prove the configured CLI is locally executable here; the asynchronous task owns the
+            # real provider startup and its task deadline.
+            return await self._probe_owned_linux_cli()
         connection = await self._acquire_connection()
         try:
             await connection.connect()
@@ -124,6 +146,37 @@ class CodexAdapter(AgentAdapter):
             )
         finally:
             await connection.close()
+
+    async def _probe_owned_linux_cli(self) -> RuntimeInfo:
+        process: asyncio.subprocess.Process | None = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                self.settings.codex_bin,
+                "--version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                env=build_runtime_environment(
+                    os.environ,
+                    runtime=self.name,
+                    use_proxy=False,
+                ),
+            )
+            stdout, _ = await asyncio.wait_for(
+                process.communicate(),
+                timeout=min(5.0, self.settings.request_timeout_seconds),
+            )
+        except TimeoutError:
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.wait()
+            return self._runtime_info(available=False)
+        except OSError:
+            return self._runtime_info(available=False)
+        if process.returncode != 0:
+            return self._runtime_info(available=False)
+        text = stdout.decode("utf-8", errors="replace").strip()
+        version = text.removeprefix("codex-cli ").strip() or None
+        return self._runtime_info(available=True, version=version)
 
     async def list_models(self) -> dict[str, Any]:
         connection = await self._acquire_connection()
@@ -314,6 +367,9 @@ class CodexAdapter(AgentAdapter):
         runtime = self._windows_runtime
         if runtime is not None:
             await runtime.close()
+        linux_runtime = self._linux_runtime
+        if linux_runtime is not None:
+            await linux_runtime.close()
 
     async def _run(self, context: TaskContext, *, resume: bool) -> AdapterResult:
         if self._closed:
@@ -374,6 +430,15 @@ class CodexAdapter(AgentAdapter):
         params: dict[str, Any] = {
             "cwd": str(context.cwd),
             "serviceName": "serverfs-agent-bridge",
+            # ServerFS owns a remote human-review channel. Keep the provider's sandbox/profile
+            # untouched, but make native approval requests route to this client instead of an
+            # auto-reviewer and expose Codex's native request_permissions capability for the turn.
+            "approvalPolicy": "on-request",
+            "approvalsReviewer": "user",
+            "config": {
+                "features.request_permissions_tool": True,
+                "features.guardian_approval": True,
+            },
         }
         if context.requested_model is not None:
             params["model"] = context.requested_model
@@ -388,6 +453,12 @@ class CodexAdapter(AgentAdapter):
         params: dict[str, Any] = {
             "threadId": context.continue_native_session_id,
             "cwd": str(context.cwd),
+            "approvalPolicy": "on-request",
+            "approvalsReviewer": "user",
+            "config": {
+                "features.request_permissions_tool": True,
+                "features.guardian_approval": True,
+            },
         }
         if context.requested_model is not None:
             params["model"] = context.requested_model
@@ -412,6 +483,8 @@ class CodexAdapter(AgentAdapter):
                 "threadId": thread_id,
                 "input": [{"type": "text", "text": context.prompt}],
                 "cwd": str(context.cwd),
+                "approvalPolicy": "on-request",
+                "approvalsReviewer": "user",
             },
         )
         return _turn_id_from_result(result)
@@ -834,10 +907,9 @@ class CodexAdapter(AgentAdapter):
             return connection
         except BridgeError:
             await connection.close()
-            if _WINDOWS:
-                # On Windows the failure is handled inside the Bridge-owned lifecycle: the child
-                # that could not be reached is torn down, and the next attempt starts a fresh one.
-                # Re-running the official Linux autostart command here would be meaningless.
+            if _WINDOWS or self._linux_runtime is not None:
+                # Bridge-owned runtimes never fall back to the user's managed daemon. In Linux
+                # proxy mode that separation is the property that makes proxy routing deterministic.
                 raise
             if not self.settings.autostart:
                 raise
@@ -860,10 +932,14 @@ class CodexAdapter(AgentAdapter):
         ``UNKNOWN`` for every recoverable task and hold its writer-lease recovery guard forever.
         """
         runtime = self._windows_runtime
-        if runtime is None:
+        if runtime is not None:
+            endpoint = await runtime.ensure_started()
+        elif self._linux_runtime is not None:
+            endpoint = await self._linux_runtime.ensure_started()
+        else:
             return self._new_unix_connection()
         return CodexConnection(
-            endpoint=await runtime.ensure_started(),
+            endpoint=endpoint,
             client_name="serverfs-agent-bridge",
             client_version=self.client_version,
             request_timeout=self.settings.request_timeout_seconds,

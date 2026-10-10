@@ -78,6 +78,7 @@ def test_build_config_uses_same_user_identity_and_user_paths(tmp_path: Path) -> 
         "interaction_timeout_seconds": 1800,
         "max_active_tasks": 4,
         "retention_seconds": 168 * 60 * 60,
+        "result_spool_threshold_bytes": 262_144,
     }
     assert config["codex"]["enabled"] is True
     assert config["claude"]["enabled"] is False
@@ -108,6 +109,7 @@ def test_build_config_enables_qoder_with_absolute_host_binary(tmp_path: Path) ->
     assert config["qoder"] == {
         "enabled": True,
         "qoder_bin": str(qoder),
+        "use_proxy": False,
         "probe_timeout_seconds": 5.0,
         "event_idle_timeout_seconds": None,
     }
@@ -136,10 +138,71 @@ def test_jev_api_key_is_opt_in_and_rendered_only_when_nonempty(tmp_path: Path) -
 
     values["SERVERFS_JEV_API_KEY"] = "jev-test-secret-123"
     config = render.build_config(values)
-    assert config["jev"] == {"api_key": "jev-test-secret-123"}
+    assert config["jev"] == {"use_proxy": False, "api_key": "jev-test-secret-123"}
 
     values["SERVERFS_JEV_API_KEY"] = "bad key"
     with pytest.raises(render.ConfigRenderError, match="SERVERFS_JEV_API_KEY"):
+        render.build_config(values)
+
+
+def test_proxy_switches_share_one_endpoint_and_remain_independent(tmp_path: Path) -> None:
+    values = valid_env(tmp_path)
+    values.update(
+        {
+            "SERVERFS_PROXY_HOST": "proxy.internal",
+            "SERVERFS_PROXY_PORT": "7890",
+            "SERVERFS_AGENT_USE_PROXY": "true",
+            "SERVERFS_JEV_USE_PROXY": "false",
+        }
+    )
+    config = render.build_config(values)
+    assert config["proxy"] == {
+        "url": "http://proxy.internal:7890",
+        "authenticated": False,
+    }
+    assert config["codex"]["use_proxy"] is True
+    assert config["claude"]["use_proxy"] is True
+    assert config["qoder"]["use_proxy"] is True
+    assert "jev" not in config
+
+    values["SERVERFS_AGENT_USE_PROXY"] = "false"
+    values["SERVERFS_JEV_USE_PROXY"] = "true"
+    values["SERVERFS_JEV_API_KEY"] = "jev-test-secret-123"
+    config = render.build_config(values)
+    assert config["codex"]["use_proxy"] is False
+    assert config["jev"] == {"use_proxy": True, "api_key": "jev-test-secret-123"}
+
+
+def test_agent_proxy_rejects_credentials_but_jev_accepts_them(tmp_path: Path) -> None:
+    values = valid_env(tmp_path)
+    values.update(
+        {
+            "SERVERFS_PROXY_HOST": "proxy.internal",
+            "SERVERFS_PROXY_PORT": "7890",
+            "SERVERFS_PROXY_USERNAME": "user",
+            "SERVERFS_PROXY_PASSWORD": "secret-sentinel",
+            "SERVERFS_AGENT_USE_PROXY": "true",
+        }
+    )
+    with pytest.raises(render.ConfigRenderError, match="credentialless") as exc:
+        render.build_config(values)
+    assert "secret-sentinel" not in str(exc.value)
+
+    values["SERVERFS_AGENT_USE_PROXY"] = "false"
+    values["SERVERFS_JEV_USE_PROXY"] = "true"
+    values["SERVERFS_JEV_API_KEY"] = "jev-test-secret-123"
+    config = render.build_config(values)
+    assert config["proxy"]["authenticated"] is True
+    assert "secret-sentinel" not in repr(config["proxy"])
+
+
+def test_result_spool_threshold_renders_and_is_bounded(tmp_path: Path) -> None:
+    values = valid_env(tmp_path)
+    values["SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES"] = "2048"
+    assert render.build_config(values)["limits"]["result_spool_threshold_bytes"] == 2048
+
+    values["SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES"] = str(8 * 1024 * 1024 + 1)
+    with pytest.raises(render.ConfigRenderError, match="must not exceed"):
         render.build_config(values)
 
 
@@ -195,6 +258,7 @@ def test_agent_lifecycle_limits_render_from_env(tmp_path: Path) -> None:
         "interaction_timeout_seconds": 30,
         "max_active_tasks": 2,
         "retention_seconds": 3 * 60 * 60,
+        "result_spool_threshold_bytes": 262_144,
     }
 
 
@@ -336,6 +400,9 @@ def test_env_example_has_single_agent_policy_pair_for_all_slots() -> None:
     assert text.count("SERVERFS_BINARY_TRANSFER_ENABLED=false") == 1
     assert text.count("SERVERFS_MAX_BINARY_TRANSFER_BYTES=8388608") == 1
     assert text.count("SERVERFS_JEV_API_KEY=") == 1
+    assert text.count("SERVERFS_AGENT_USE_PROXY=false") == 1
+    assert text.count("SERVERFS_JEV_USE_PROXY=false") == 1
+    assert text.count("SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES=262144") == 1
     for slot in range(1, 17):
         prefix = f"WORKDIR_{slot:02d}"
         assert text.count(f"{prefix}_AGENT_MODE=") == 1
