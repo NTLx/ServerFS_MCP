@@ -75,11 +75,16 @@ class TestCliRefusals:
         fake_exe = tmp_path / "serverfs-agent-bridge"
         fake_exe.write_text("#!/bin/sh\n")
         fake_exe.chmod(0o755)
-        code = cli.main([
-            "agent-bridge", "install",
-            "--bridge-executable", str(fake_exe),
-            "--bridge-config", str(tmp_path / "absent.json"),
-        ])
+        code = cli.main(
+            [
+                "agent-bridge",
+                "install",
+                "--bridge-executable",
+                str(fake_exe),
+                "--bridge-config",
+                str(tmp_path / "absent.json"),
+            ]
+        )
         assert code == 2
         assert "bridge configuration file not found" in capsys.readouterr().err
 
@@ -94,17 +99,17 @@ class TestCliRefusals:
         assert "not-bootstrapped" in capsys.readouterr().err
 
 
-@pytest.mark.skipif(os.environ.get("SERVERFS_LIVE_LAUNCHD") != "1",
-                    reason="live launchd proof is opt-in (SERVERFS_LIVE_LAUNCHD=1)")
+@pytest.mark.skipif(
+    os.environ.get("SERVERFS_LIVE_LAUNCHD") != "1",
+    reason="live launchd proof is opt-in (SERVERFS_LIVE_LAUNCHD=1)",
+)
 class TestLiveLaunchd:
     """Real bootstrap/kickstart/bootout of the real bridge under launchd."""
 
     @pytest.fixture()
     def bridge_setup(self, tmp_path_factory):
         bridge_python = Path(
-            os.path.abspath(
-                os.path.join(os.path.dirname(__file__), "..", "agent_bridge", ".venv")
-            )
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "agent_bridge", ".venv"))
         )
         exe = bridge_python / "bin" / "serverfs-agent-bridge"
         if not exe.is_file():

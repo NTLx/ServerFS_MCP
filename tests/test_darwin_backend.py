@@ -353,9 +353,7 @@ class TestSymlinkSecurity:
         with pytest.raises(SymlinkNotAllowedError):
             session.stat(_resolved(workdir, "dirlink/f.txt"))
         with pytest.raises(SymlinkNotAllowedError):
-            session.create_file(
-                _resolved(workdir, "dirlink/f.txt"), "x\n", max_write_bytes=1024
-            )
+            session.create_file(_resolved(workdir, "dirlink/f.txt"), "x\n", max_write_bytes=1024)
 
     def test_symlinked_directory_not_traversed_by_find(self, session, workdir) -> None:
         root = workdir.container_path
@@ -375,8 +373,13 @@ class TestDarwinSearch:
         (root / "other.txt").write_text("NEEDLE too\n")
         resolved = _resolved(workdir, "")
         matches, truncated = session.search(
-            resolved, query="NEEDLE", glob=None, case_sensitive=True,
-            limit=10, timeout_seconds=5.0, max_file_bytes=65536,
+            resolved,
+            query="NEEDLE",
+            glob=None,
+            case_sensitive=True,
+            limit=10,
+            timeout_seconds=5.0,
+            max_file_bytes=65536,
         )
         assert not truncated
         assert [(m.path, m.line) for m in matches] == [
@@ -385,13 +388,23 @@ class TestDarwinSearch:
             ("other.txt", 1),
         ]
         insensitive, _ = session.search(
-            resolved, query="needle", glob=None, case_sensitive=False,
-            limit=10, timeout_seconds=5.0, max_file_bytes=65536,
+            resolved,
+            query="needle",
+            glob=None,
+            case_sensitive=False,
+            limit=10,
+            timeout_seconds=5.0,
+            max_file_bytes=65536,
         )
         assert len(insensitive) == 3
         limited, truncated_limited = session.search(
-            resolved, query="NEEDLE", glob=None, case_sensitive=True,
-            limit=2, timeout_seconds=5.0, max_file_bytes=65536,
+            resolved,
+            query="NEEDLE",
+            glob=None,
+            case_sensitive=True,
+            limit=2,
+            timeout_seconds=5.0,
+            max_file_bytes=65536,
         )
         assert truncated_limited and len(limited) == 2
 
@@ -403,13 +416,23 @@ class TestDarwinSearch:
         (root / "sub" / "c.py").write_text("hit\n")
         resolved = _resolved(workdir, "")
         by_name, _ = session.search(
-            resolved, query="hit", glob="*.py", case_sensitive=True,
-            limit=10, timeout_seconds=5.0, max_file_bytes=65536,
+            resolved,
+            query="hit",
+            glob="*.py",
+            case_sensitive=True,
+            limit=10,
+            timeout_seconds=5.0,
+            max_file_bytes=65536,
         )
         assert sorted(m.path for m in by_name) == ["a.py", "sub/c.py"]
         by_path, _ = session.search(
-            resolved, query="hit", glob="sub/*.py", case_sensitive=True,
-            limit=10, timeout_seconds=5.0, max_file_bytes=65536,
+            resolved,
+            query="hit",
+            glob="sub/*.py",
+            case_sensitive=True,
+            limit=10,
+            timeout_seconds=5.0,
+            max_file_bytes=65536,
         )
         assert [m.path for m in by_path] == ["sub/c.py"]
 
@@ -423,8 +446,13 @@ class TestDarwinSearch:
         (root / ".serverfs-tmp-abcdef0123456789").write_text("secret\n")
         resolved = _resolved(workdir, "")
         matches, _ = session.search(
-            resolved, query="secret", glob=None, case_sensitive=True,
-            limit=10, timeout_seconds=5.0, max_file_bytes=65536,
+            resolved,
+            query="secret",
+            glob=None,
+            case_sensitive=True,
+            limit=10,
+            timeout_seconds=5.0,
+            max_file_bytes=65536,
         )
         assert matches == []
         # the same files DO surface when hidden is allowed and not denied
@@ -434,8 +462,13 @@ class TestDarwinSearch:
             workdir, "", allow_hidden=True, deny_policy=DenyPolicy(default_deny_enabled=False)
         )
         allowed, _ = session.search(
-            open_resolved, query="secret", glob=None, case_sensitive=True,
-            limit=10, timeout_seconds=5.0, max_file_bytes=65536,
+            open_resolved,
+            query="secret",
+            glob=None,
+            case_sensitive=True,
+            limit=10,
+            timeout_seconds=5.0,
+            max_file_bytes=65536,
         )
         paths_found = sorted(m.path for m in allowed)
         # .git and the reserved temp name are never searched; .hidden.txt
@@ -448,8 +481,13 @@ class TestDarwinSearch:
         (root / "nul.bin").write_bytes(b"needle\x00needle")
         resolved = _resolved(workdir, "")
         matches, _ = session.search(
-            resolved, query="needle", glob=None, case_sensitive=True,
-            limit=10, timeout_seconds=5.0, max_file_bytes=1024,
+            resolved,
+            query="needle",
+            glob=None,
+            case_sensitive=True,
+            limit=10,
+            timeout_seconds=5.0,
+            max_file_bytes=1024,
         )
         assert matches == []
         # big.txt matches under a bigger bound; nul.bin never does — the
@@ -458,8 +496,13 @@ class TestDarwinSearch:
         # probe-verified Linux behavior: a needle before the NUL in one
         # small file still yields nothing)
         matches2, _ = session.search(
-            resolved, query="needle", glob=None, case_sensitive=True,
-            limit=10, timeout_seconds=5.0, max_file_bytes=65536,
+            resolved,
+            query="needle",
+            glob=None,
+            case_sensitive=True,
+            limit=10,
+            timeout_seconds=5.0,
+            max_file_bytes=65536,
         )
         assert [m.path for m in matches2] == ["big.txt"]
         # a needle in the first chunk of a file whose first NUL sits in a
@@ -467,8 +510,13 @@ class TestDarwinSearch:
         # the file must stay under the size bound, so this uses 128 KiB
         (root / "late.bin").write_bytes(b"needle" + b"x" * 65530 + b"\x00tail")
         matches3, _ = session.search(
-            resolved, query="needle", glob=None, case_sensitive=True,
-            limit=10, timeout_seconds=5.0, max_file_bytes=131072,
+            resolved,
+            query="needle",
+            glob=None,
+            case_sensitive=True,
+            limit=10,
+            timeout_seconds=5.0,
+            max_file_bytes=131072,
         )
         assert sorted(m.path for m in matches3) == ["big.txt", "late.bin"]
 
@@ -478,8 +526,13 @@ class TestDarwinSearch:
         resolved = _resolved(workdir, "")
         with pytest.raises(BackendError) as excinfo:
             session.search(
-                resolved, query="needle", glob=None, case_sensitive=True,
-                limit=10, timeout_seconds=0.0, max_file_bytes=65536,
+                resolved,
+                query="needle",
+                glob=None,
+                case_sensitive=True,
+                limit=10,
+                timeout_seconds=0.0,
+                max_file_bytes=65536,
             )
         assert excinfo.value.code == "SEARCH_TIMEOUT"
 

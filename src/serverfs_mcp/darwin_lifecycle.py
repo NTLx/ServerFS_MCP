@@ -92,9 +92,7 @@ def _gui_domain() -> str:
 
 def _run_launchctl(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     try:
-        completed = subprocess.run(
-            ["launchctl", *args], capture_output=True, text=True, timeout=30
-        )
+        completed = subprocess.run(["launchctl", *args], capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as exc:
         raise LaunchAgentError(
             f"launchctl {' '.join(args[:2])} failed ({type(exc).__name__})"
@@ -115,8 +113,7 @@ def install(plan: LaunchAgentPlan, *, force: bool = False) -> Path:
     plist_path = launch_agent_plist_path()
     if plist_path.exists() and not force:
         raise LaunchAgentError(
-            f"{plist_path} already exists; pass force to reinstall "
-            "(this re-bootstraps the agent)"
+            f"{plist_path} already exists; pass force to reinstall (this re-bootstraps the agent)"
         )
     # A LaunchAgent with KeepAlive boots on login and restarts on crash; the
     # label is fixed, so an existing running agent must be booted out first.

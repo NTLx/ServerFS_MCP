@@ -353,9 +353,7 @@ def _backend_line(report: _Report) -> None:
         try:
             from .darwin_libc import fcopyfile_metadata  # noqa: F401
         except Exception:
-            report.status(
-                "native backend", FAIL, "darwin libc bindings unavailable (fcopyfile)"
-            )
+            report.status("native backend", FAIL, "darwin libc bindings unavailable (fcopyfile)")
             return
         report.status("native backend", OK, f"darwin FD kernel (macOS {status.macos_version})")
     else:

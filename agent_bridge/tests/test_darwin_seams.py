@@ -39,7 +39,6 @@ class TestPeerIdentity:
     @staticmethod
     async def _measure_from_connection():
 
-
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         endpoint = darwin_runtime_dir() / "serverfs-peer-probe.sock"
         try:
