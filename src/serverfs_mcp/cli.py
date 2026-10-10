@@ -152,8 +152,17 @@ def _native_agent_settings(native_settings) -> tuple | None:
 
 def cmd_serve(args: argparse.Namespace) -> int:
     """Run the shared MCP tool registration over native stdio."""
-    if sys.platform != "win32":
-        return _fail("native serve is supported only on Windows")
+    if sys.platform == "darwin":
+        # v0.13 macOS gate: M-series / native arm64 / macOS 27 / not Rosetta
+        # (dev_plan_v0.13.md §2.1). Any other Darwin environment refuses
+        # loudly instead of silently executing.
+        from .darwin_platform import UNSUPPORTED_CODE, darwin_platform_status
+
+        status = darwin_platform_status()
+        if not status.supported:
+            return _fail(f"{UNSUPPORTED_CODE}: {status.reason}")
+    elif sys.platform != "win32":
+        return _fail("native serve is supported only on Windows and macOS 27 (Apple Silicon)")
     workdirs, native_settings = _load(args.config)
     from .config import Settings
     from .main import create_server
@@ -212,10 +221,29 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
 
     try:
         if args.bootstrap_target == "tunnel-client":
+            if sys.platform == "darwin":
+                # v0.13 ships and accepts only the darwin-arm64 official
+                # asset; refuse anything else before downloading (C3).
+                from .darwin_platform import UNSUPPORTED_CODE, darwin_platform_status
+
+                status = darwin_platform_status()
+                if not status.supported:
+                    return _fail(
+                        f"{UNSUPPORTED_CODE}: tunnel-client bootstrap requires native arm64 "
+                        f"macOS 27 ({status.reason})"
+                    )
             path = bootstrap_tunnel_client(force=args.force)
             sys.stderr.write(f"tunnel-client installed: {path}\n")
             return 0
         if args.bootstrap_target == "native-wheel":
+            if sys.platform == "darwin":
+                # C4: the native wheel stays Windows-only; macOS needs no
+                # compiled kernel package, so refuse clearly instead of
+                # creating a dummy artifact.
+                return _fail(
+                    "native-wheel is not required on macOS: the Darwin backend is pure "
+                    "Python over POSIX/Darwin primitives (no native package exists for v0.13)"
+                )
             path = bootstrap_native_wheel(url=args.url, sha256=args.sha256)
             sys.stderr.write(f"native wheel verified and stored: {path}\n")
             sys.stderr.write(
