@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
 
 import pytest
@@ -85,3 +87,53 @@ class TestBootstrap:
         assert result == 2
         err = capsys.readouterr().err
         assert "not required on macOS" in err
+
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+BRIDGE_PYTHON = os.path.join(REPO_ROOT, "agent_bridge", ".venv", "bin", "python")
+
+
+class TestParityWithTheBridge:
+    """§23: independent derivation, pinned by comparing the two implementations."""
+
+    @pytest.fixture()
+    def bridge_python(self):
+        if not os.path.exists(BRIDGE_PYTHON):
+            pytest.skip(f"bridge virtualenv interpreter is missing at {BRIDGE_PYTHON}")
+        return BRIDGE_PYTHON
+
+    def test_both_packages_derive_the_same_socket_path(self, bridge_python) -> None:
+        script = (
+            "import json\n"
+            "from serverfs_agent_bridge.config import _default_paths\n"
+            "endpoint, state, locks = _default_paths()\n"
+            "print(json.dumps({'endpoint': endpoint, 'locks': locks}))\n"
+        )
+        completed = subprocess.run(
+            [bridge_python, "-c", script],
+            capture_output=True,
+            cwd=os.path.join(REPO_ROOT, "agent_bridge"),
+        )
+        assert completed.returncode == 0, completed.stderr.decode(errors="replace")
+        theirs = json.loads(completed.stdout.decode("utf-8"))
+        from serverfs_mcp.native_endpoint import derive_endpoint, derive_lock_dir
+
+        assert derive_endpoint() == theirs["endpoint"]
+        assert str(derive_lock_dir()) == theirs["locks"]
+
+    def test_both_packages_derive_the_same_data_home(self, bridge_python) -> None:
+        script = (
+            "import json\n"
+            "from serverfs_agent_bridge.data_home import serverfs_data_dir\n"
+            "print(json.dumps({'home': str(serverfs_data_dir())}))\n"
+        )
+        completed = subprocess.run(
+            [bridge_python, "-c", script],
+            capture_output=True,
+            cwd=os.path.join(REPO_ROOT, "agent_bridge"),
+        )
+        assert completed.returncode == 0, completed.stderr.decode(errors="replace")
+        theirs = json.loads(completed.stdout.decode("utf-8"))["home"]
+        from serverfs_mcp.native_endpoint import data_home
+
+        assert str(data_home()) == theirs

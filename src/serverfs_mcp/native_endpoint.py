@@ -119,7 +119,18 @@ def derive_lock_dir(env=None) -> Path:
 
 
 def derive_endpoint(env=None) -> str:
-    """The deterministic native pipe endpoint for the current user."""
+    """The deterministic native Bridge endpoint for the current user.
+
+    Windows: the user-scoped pipe name (§6). Darwin (v0.13 §11 D2): the
+    OS-provided per-user runtime directory holding a 0700
+    ``serverfs-agent-bridge-v1/bridge.sock``, length-checked against the
+    sun_path budget. Other platforms have no native derivation (the Linux
+    Docker deployment passes its endpoint explicitly).
+    """
+    if sys.platform == "darwin":
+        from .darwin_libc import darwin_bridge_socket_path
+
+        return str(darwin_bridge_socket_path())
     return derive_pipe_name(current_user_sid())
 
 

@@ -575,11 +575,20 @@ def _strict_positive_number(value: Any, label: str) -> float:
 
 
 def _default_paths() -> tuple[str, str, str]:
-    """The endpoint and directory defaults for this platform (§6.2, §22).
+    """The endpoint and directory defaults for this platform (§6.2, §22, §11 D2/D6).
 
     Linux keeps the frozen Phase E paths so an existing deployment needs no change. Windows
     derives them from the Bridge data home and from a deterministic, user-scoped pipe name.
+    Darwin (v0.13) derives the endpoint from the OS-provided per-user runtime directory
+    (a 0700 ServerFS-created child holds ``bridge.sock``) and keeps state/locks under the
+    Bridge data home in Application Support.
     """
+    if sys.platform == "darwin":
+        from .data_home import RUNTIME_DIRECTORY, SOCKET_NAME, bridge_data_home, darwin_runtime_dir
+
+        endpoint = darwin_runtime_dir() / RUNTIME_DIRECTORY / SOCKET_NAME
+        home = bridge_data_home()
+        return (str(endpoint), str(home / "state"), str(home / "locks"))
     if sys.platform != "win32":
         return (
             "/run/serverfs-agent-bridge/bridge.sock",

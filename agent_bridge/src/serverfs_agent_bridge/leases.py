@@ -17,7 +17,7 @@ from typing import Protocol
 from . import lease_identity, private_state
 from .errors import BridgeError
 from .lease_identity import lock_artifact_name, slot_lease_id, validate_lease_id
-from .platform_seams import WRITER_LEASE, require_linux_seam
+from .platform_seams import WRITER_LEASE, require_posix_seam
 
 try:
     import fcntl
@@ -137,7 +137,7 @@ class LeaseManager:
         return self._acquire_flock(lease_id, path)
 
     def _acquire_flock(self, lease_id: str, path: Path) -> WorkdirLease:
-        require_linux_seam(WRITER_LEASE)
+        require_posix_seam(WRITER_LEASE)
         try:
             fd = os.open(
                 path,
