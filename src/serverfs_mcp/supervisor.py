@@ -100,6 +100,15 @@ def main(argv: list[str] | None = None) -> int:
     if not agent_enabled:
         command = [sys.executable, "-m", "serverfs_mcp.cli", "serve", "--config", args.config]
         return forward_stdio(command, env)
+    if sys.platform == "darwin":
+        # v0.13 topology (§12 E5): launchd owns the persistent Agent Bridge;
+        # the stdio supervisor's job is only the sanitized environment plus
+        # the ServerFS child, which connects to the Bridge's AF_UNIX endpoint
+        # (derived, same address the launchd Bridge serves). The Windows
+        # Agent path below starts and contains a Bridge child — that is the
+        # Windows lifecycle, not a shape macOS should imitate.
+        command = [sys.executable, "-m", "serverfs_mcp.cli", "serve", "--config", args.config]
+        return forward_stdio(command, env)
     # Imported here, not at module scope, because this module must build its sanitized environment
     # before it imports any runtime module; a top-level import would defeat that ordering. The Agent
     # path is the only caller that needs it, so an installation without delegation never loads it.
