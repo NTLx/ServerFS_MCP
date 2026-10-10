@@ -229,27 +229,20 @@ def _strict_bool_field(data: dict[str, Any], label: str, key: str) -> bool:
     return value
 
 
-def build_config_document(
-    request: dict[str, Any],
-    *,
-    socket_path: Path,
-    state_dir: Path,
-    lock_dir: Path,
-    peer_sid: str,
-) -> dict[str, Any]:
-    """Assemble the Bridge JSON document. Contains policy and identity, never a credential."""
+def build_policy_document(request: dict[str, Any]) -> dict[str, Any]:
+    """Build the non-secret Bridge policy derived from operator configuration.
+
+    Native deployments have one operator-facing policy source (``serverfs.toml``).  The platform
+    lifecycle may persist additional private material beside that derived policy (for example Jev
+    credentials or a proxy endpoint), so this helper deliberately emits only fields owned by the
+    operator policy.  Both the Windows renderer and the macOS policy synchronizer use this exact
+    projection; they must never grow independent workdir/runtime translations.
+    """
     _reject_unknown(request, _INPUT_KEYS, "render request")
     policies = _validate_workdirs(request.get("workdirs"))
-    # Shape validation belongs to _runtime_block, which accepts both the legacy name list and the
-    # policy mapping. Validating it as an array here would reject the mapping form.
     runtimes = request.get("runtimes", [])
     document: dict[str, Any] = {
         "lease_key": NATIVE_LEASE_KEY,
-        "socket_path": str(socket_path),
-        "state_dir": str(state_dir),
-        "lock_dir": str(lock_dir),
-        # Identity comes from the live process, never from a username and never hardcoded (§4.4).
-        "allowed_peer_sid": peer_sid,
         "enable_fake_runtime": bool(request.get("enable_fake_runtime", False)),
         "workdirs": [
             {
@@ -265,6 +258,28 @@ def build_config_document(
     if isinstance(request.get("limits"), dict):
         document["limits"] = request["limits"]
     document.update(_runtime_block(runtimes))
+    return document
+
+
+def build_config_document(
+    request: dict[str, Any],
+    *,
+    socket_path: Path,
+    state_dir: Path,
+    lock_dir: Path,
+    peer_sid: str,
+) -> dict[str, Any]:
+    """Assemble the Windows Bridge JSON from derived policy plus native identity/paths."""
+    document = build_policy_document(request)
+    document.update(
+        {
+            "socket_path": str(socket_path),
+            "state_dir": str(state_dir),
+            "lock_dir": str(lock_dir),
+            # Identity comes from the live process, never a username or hardcoded SID (§4.4).
+            "allowed_peer_sid": peer_sid,
+        }
+    )
     return document
 
 
@@ -334,7 +349,7 @@ def _publish_private_file(path: Path, text: str) -> None:
     half-written document, and the temp file is created inside the already-secured directory so it
     inherits the protected descriptor instead of landing in a world-readable temp location.
     """
-    ensure_private_directory(path.parent, mode=0o700, messages=_STATE_MESSAGES)
+    ensure_private_directory(path.parent, mode=0o700, messages=_STATE_MESSAGES, parents=True)
 
     # Fail closed on an existing object we could not vouch for, *before* writing anything. A
     # reparse point, a non-regular file or a foreign/broad DACL all leave the target exactly as they
@@ -412,7 +427,13 @@ def _is_reparse(path: Path) -> bool:
 
 def _create_private(path: Path) -> bool:
     if not sys.platform.startswith("win"):
-        return False
+        # POSIX private-state publication uses the same create-first invariant as Windows: the
+        # random temp name must not already exist, and it is private from its first inode.  The
+        # renderer used to return without creating anything here because it was Windows-only;
+        # macOS policy synchronization now legitimately reuses the publication primitive.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.close(fd)
+        return True
     # Imported here for the same reason as in ``render_native_bridge_config``: the module must stay
     # importable off Windows, and this function is the Windows-only one that needs the Win32 layer.
     from .windows_security import (

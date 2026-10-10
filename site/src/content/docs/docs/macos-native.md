@@ -33,9 +33,12 @@ There is no Docker, VM, Rosetta requirement or compiled macOS kernel package: th
 The Bridge runs as a per-user LaunchAgent (`com.ntlx.serverfs.agent-bridge`) managed with modern `launchctl bootstrap/kickstart/bootout`:
 
 ```bash
-serverfs agent-bridge install --bridge-config agent_bridge/config.json
-serverfs agent-bridge start | restart | stop | status | uninstall
+serverfs agent-bridge configure --config serverfs.toml --env-file .env
+serverfs agent-bridge install --bridge-config "$HOME/Library/Application Support/ServerFS/agent-bridge/bridge.json"
+serverfs agent-bridge start | stop | status | uninstall
 ```
+
+The private `bridge.json` lives outside every exposed workdir and may contain Jev/proxy material; it is **derived/private state, not a second operator config**. Workdir, runtime and lifecycle policy remains owned by `serverfs.toml`. `configure` creates or refreshes the private 0600 document from that policy plus the narrow Agent/Jev/proxy values in `.env`. For a TOML-only change, `serverfs agent-bridge restart --config serverfs.toml` preserves private material; if private Jev/proxy values also changed, add `--env-file .env`. `serverfs doctor --config serverfs.toml` reports a FAIL on drift, and a newly started native `serve`/tunnel refuses to run until the policy is synchronized.
 
 The generated plist carries paths only — never secrets. launchd is a service manager, not a containment kernel: no Job-Object equivalence is claimed, the recovery guard is retained, and workspace-write fails closed when provider state is unknown.
 

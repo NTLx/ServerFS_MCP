@@ -9,7 +9,7 @@ Jev 属于 System One 模型：它不是生成面向人类阅读的长文本，�
 
 这套集成始终是 **opt-in、advisory-only、fail-open**。Jev 不是 Agent runtime，不是授权源，也不是安全边界。
 
-> **状态：**这套 opt-in 实验能力在 v0.6.0 引入，v0.9.0 增加 Model Advisor，并继续包含在当前 v0.12.0 稳定版中。v0.12 增加独立、显式的 Jev 代理开关；Jev 本身仍只是宿主机 Bridge 内部 advisor，不获得执行权。
+> **状态：**这套 opt-in 实验能力在 v0.6.0 引入，v0.9.0 增加 Model Advisor，并继续包含在当前 v0.13.0 稳定版中。v0.12 增加独立、显式的 Jev 代理开关；v0.13 将该契约延伸到 macOS 原生 Bridge。Jev 本身仍只是宿主机 Bridge 内部 advisor，不获得执行权。
 
 ## 启用方式
 

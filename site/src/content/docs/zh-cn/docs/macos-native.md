@@ -33,9 +33,12 @@ serverfs tunnel
 Bridge 以每用户 LaunchAgent（`com.ntlx.serverfs.agent-bridge`）运行，使用现代 `launchctl bootstrap/kickstart/bootout` 管理：
 
 ```bash
-serverfs agent-bridge install --bridge-config agent_bridge/config.json
-serverfs agent-bridge start | restart | stop | status | uninstall
+serverfs agent-bridge configure --config serverfs.toml --env-file .env
+serverfs agent-bridge install --bridge-config "$HOME/Library/Application Support/ServerFS/agent-bridge/bridge.json"
+serverfs agent-bridge start | stop | status | uninstall
 ```
+
+私有 `bridge.json` 位于所有暴露 workdir 之外，并可能包含 Jev/proxy 私有材料；它是**派生/私有状态，不是第二份用户配置**。Workdir、runtime 与生命周期 policy 仍只由 `serverfs.toml` 定义。`configure` 从这些 policy 与 `.env` 中限定的 Agent/Jev/proxy 私有值创建或刷新 0600 私有配置。仅修改 TOML policy 时，执行 `serverfs agent-bridge restart --config serverfs.toml` 会保留现有私有材料；若 Jev/proxy 私有值也发生变化，再加 `--env-file .env`。`serverfs doctor --config serverfs.toml` 会在发生漂移时报告 FAIL，新启动的原生 `serve`/tunnel 也会拒绝在陈旧 Bridge policy 下运行。
 
 生成的 plist 只包含路径——绝不包含机密。launchd 是服务管理器而非包含内核：不声称 Job Object 等价语义，保留 recovery guard，provider 状态未知时 workspace-write 失败关闭。
 

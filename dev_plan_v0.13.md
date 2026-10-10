@@ -1200,6 +1200,30 @@ OpenAI tunnel
 
 Do not start a second Bridge from every Tunnel/MCP process.
 
+## E6 — single policy source and private Bridge state
+
+The native operator policy has exactly one source:
+
+```text
+serverfs.toml
+```
+
+The launchd Bridge still needs a private 0600 JSON document because Jev/proxy material must stay
+outside every exposed workdir. That document is **derived/private state**, not a second operator
+configuration. Therefore:
+
+- workdir, runtime and lifecycle policy is always derived from `serverfs.toml`;
+- `agent-bridge configure` creates/refreshes private state from TOML policy plus the narrow private
+  Agent/Jev/proxy environment values;
+- a TOML-only change can be synchronized without rewriting existing private material;
+- `doctor` reports policy drift as FAIL and a newly started Darwin `serve`/tunnel refuses stale
+  Bridge policy;
+- the release does **not** add hot reload: long-lived processes still freeze validated policy at
+  startup and configuration changes take effect through an explicit synchronize/restart boundary.
+
+This prevents MCP and Bridge from entering different workdir/lease namespaces while preserving the
+existing secret boundary and simple process-lifecycle model.
+
 ---
 
 # 13. Phase F — Agent runtimes

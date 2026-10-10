@@ -38,9 +38,19 @@ if its supervisor disappears.
 ## Agent Bridge (launchd)
 
 ```bash
-serverfs agent-bridge install --bridge-config agent_bridge/config.json
-serverfs agent-bridge start | restart | stop | status | uninstall
+serverfs agent-bridge configure --config serverfs.toml --env-file .env
+serverfs agent-bridge install --bridge-config "$HOME/Library/Application Support/ServerFS/agent-bridge/bridge.json"
+serverfs agent-bridge start | stop | status | uninstall
 ```
+
+The private `bridge.json` is derived/private state outside every exposed workdir, not a second
+operator configuration. Workdir/runtime/lifecycle policy is owned by `serverfs.toml`; `configure`
+creates or refreshes the private 0600 document from that policy plus the narrow Agent/Jev/proxy
+values in `.env`. For a TOML-only change, `serverfs agent-bridge restart --config serverfs.toml`
+synchronizes policy while preserving private material. If private Jev/proxy values also changed,
+use `serverfs agent-bridge restart --config serverfs.toml --env-file .env`.
+`serverfs doctor --config serverfs.toml` fails on policy drift, and a newly started native
+`serve`/tunnel refuses to run until the two policy views agree.
 
 The install command generates
 `~/Library/LaunchAgents/com.ntlx.serverfs.agent-bridge.plist` from the

@@ -47,6 +47,33 @@ def launch_agent_plist_path() -> Path:
     return launch_agents_dir() / f"{AGENT_LABEL}.plist"
 
 
+def installed_bridge_config_path() -> Path | None:
+    """Return the Bridge config path recorded in the installed LaunchAgent, if readable.
+
+    The plist contains paths only and is the authoritative record of which private config launchd
+    will pass to the Bridge.  Reading that path avoids a second deployment convention in doctor or
+    sync code when an operator used a non-default ``--bridge-config`` location.
+    """
+    plist_path = launch_agent_plist_path()
+    try:
+        payload = plistlib.loads(plist_path.read_bytes())
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    argv = payload.get("ProgramArguments")
+    if (
+        not isinstance(argv, list)
+        or len(argv) < 3
+        or argv[1] != "--config"
+        or not isinstance(argv[2], str)
+        or not argv[2]
+    ):
+        return None
+    path = Path(argv[2]).expanduser()
+    return path if path.is_absolute() else None
+
+
 def default_bridge_executable() -> Path:
     """The console script beside the Bridge interpreter (two-environment layout).
 
