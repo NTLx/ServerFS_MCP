@@ -48,13 +48,27 @@ def launch_agent_plist_path() -> Path:
 
 
 def default_bridge_executable() -> Path:
-    """The console script next to this interpreter (``uv sync`` layout)."""
+    """The console script beside the Bridge interpreter (two-environment layout).
+
+    Resolved like the supervisor resolves it: ``SERVERFS_BRIDGE_PYTHON`` when
+    set (its sibling bin holds the console script), otherwise the active
+    interpreter's own bin directory.
+    """
+    override = os.environ.get("SERVERFS_BRIDGE_PYTHON", "").strip()
+    if override:
+        candidate = (Path(override).parent / "serverfs-agent-bridge").resolve()
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+        raise LaunchAgentError(
+            "SERVERFS_BRIDGE_PYTHON points at an interpreter without a sibling "
+            "serverfs-agent-bridge executable; pass --bridge-executable"
+        )
     candidate = Path(sys.executable).parent / "serverfs-agent-bridge"
     if candidate.is_file() and os.access(candidate, os.X_OK):
         return candidate
     raise LaunchAgentError(
         "serverfs-agent-bridge executable not found beside the active interpreter; "
-        "pass --bridge-python or run 'uv sync --project agent_bridge'"
+        "pass --bridge-executable or run 'uv sync --project agent_bridge'"
     )
 
 
@@ -106,10 +120,21 @@ def _run_launchctl(*args: str, check: bool = True) -> subprocess.CompletedProces
 
 def install(plan: LaunchAgentPlan, *, force: bool = False) -> Path:
     """Write the generated plist and bootstrap the agent into this user's gui domain."""
-    if not plan.bridge_executable.is_file():
+    # launchd runs the job with cwd=/ : every path in the plist MUST be
+    # absolute, so relative operator input is resolved here, once.
+    bridge_executable = plan.bridge_executable.expanduser().resolve()
+    bridge_config_path = plan.bridge_config_path.expanduser().resolve()
+    log_dir = plan.log_dir.expanduser().resolve()
+    if not bridge_executable.is_file():
         raise LaunchAgentError("bridge executable not found")
-    if not plan.bridge_config_path.is_file():
+    if not bridge_config_path.is_file():
         raise LaunchAgentError("bridge configuration file not found")
+    plan = LaunchAgentPlan(
+        bridge_executable=bridge_executable,
+        bridge_config_path=bridge_config_path,
+        log_dir=log_dir,
+        label=plan.label,
+    )
     plist_path = launch_agent_plist_path()
     if plist_path.exists() and not force:
         raise LaunchAgentError(
