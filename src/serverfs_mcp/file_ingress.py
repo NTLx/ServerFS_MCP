@@ -10,6 +10,7 @@ import socket
 import ssl
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
 _READ_CHUNK = 64 * 1024
@@ -365,16 +366,91 @@ def _handler(settings: IngressSettings):
     return Handler
 
 
+def _orphan_guard() -> None:
+    """Exit when the supervisor that spawned this helper is gone.
+
+    Enabled with SERVERFS_FILE_INGRESS_PARENT_GUARD=1: the native (macOS)
+    supervisor owns the helper lifecycle, and a supervisor crash must not
+    leave a fetch-capable helper orphaned. The Docker deployment does not
+    set it (the sidecar is a compose-owned service with its own lifecycle).
+    """
+    import time
+
+    if os.environ.get("SERVERFS_FILE_INGRESS_PARENT_GUARD", "").strip() != "1":
+        return
+    original_ppid = os.getppid()
+
+    def _watch() -> None:
+        while True:
+            if os.getppid() == 1:
+                os._exit(0)
+            time.sleep(1.0)
+
+    import threading
+
+    threading.Thread(target=_watch, name="serverfs-ingress-parent-guard", daemon=True).start()
+    del original_ppid
+
+
+class _UnixThreadingHTTPServer(ThreadingHTTPServer):
+    """The same HTTP handler over a private AF_UNIX socket (v0.13 Phase H).
+
+    macOS native deployments bind the helper to a 0700-runtime-dir socket
+    instead of a TCP listener, so nothing outside the local user can even
+    reach the fetch endpoint. The request contract is unchanged.
+    """
+
+    address_family = socket.AF_UNIX
+
+    def server_bind(self) -> None:
+        # a stale socket file from a crashed helper must not block the bind
+        try:
+            st = os.lstat(self.server_address)  # type: ignore[arg-type]
+        except OSError:
+            pass
+        else:
+            import stat as _stat
+
+            if _stat.S_ISSOCK(st.st_mode):
+                os.unlink(self.server_address)  # type: ignore[arg-type]
+        super().server_bind()
+
+
 def main() -> int:
+    _orphan_guard()
     try:
         settings = settings_from_env()
     except ValueError as exc:
         raise SystemExit(f"ServerFS file ingress: configuration error: {exc}") from exc
-    server = ThreadingHTTPServer(
-        (settings.listen_host, settings.listen_port),
-        _handler(settings),
-    )
-    server.serve_forever()
+    socket_path = os.environ.get("SERVERFS_FILE_INGRESS_SOCKET", "").strip()
+    if socket_path:
+        if len(socket_path.encode("utf-8", "surrogateescape")) >= 104:
+            raise SystemExit("ServerFS file ingress: socket path exceeds the sun_path limit")
+        Path(socket_path).parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(Path(socket_path).parent, 0o700)
+        server = _UnixThreadingHTTPServer(socket_path, _handler(settings))
+
+        def _terminate(signum: int, frame: object) -> None:
+            raise SystemExit(0)
+
+        import signal
+
+        signal.signal(signal.SIGTERM, _terminate)
+        signal.signal(signal.SIGINT, _terminate)
+    else:
+        server = ThreadingHTTPServer(
+            (settings.listen_host, settings.listen_port),
+            _handler(settings),
+        )
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+        if socket_path:
+            try:
+                os.unlink(socket_path)
+            except OSError:
+                pass
     return 0
 
 

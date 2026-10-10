@@ -33,6 +33,9 @@ class Settings:
     max_binary_transfer_bytes: int = 8_388_608
     file_ingress_enabled: bool = False
     file_ingress_timeout_seconds: float = 30.0
+    #: When set, the ingress helper serves HTTP over this private AF_UNIX
+    # socket instead of a TCP listener (v0.13 macOS native deployments).
+    file_ingress_socket: str = ""
     agent_mode: str = "disabled"
     agent_runtimes: frozenset[str] = frozenset()
     max_edits_per_call: int = 50
@@ -160,6 +163,7 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         ),
         file_ingress_enabled=_get_strict_bool(env, "SERVERFS_FILE_INGRESS_ENABLED", False),
         file_ingress_timeout_seconds=_get_float(env, "SERVERFS_FILE_INGRESS_TIMEOUT_SECONDS", 30.0),
+        file_ingress_socket=env.get("SERVERFS_FILE_INGRESS_SOCKET", "").strip(),
         agent_mode=agent_mode,
         agent_runtimes=agent_runtimes,
         max_edits_per_call=_get_int(env, "SERVERFS_MAX_EDITS_PER_CALL", 50),
