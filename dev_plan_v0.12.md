@@ -1,6 +1,6 @@
 # ServerFS v0.12.0 Development Plan — Linux network reachability, real interactive approval, and live result spooling
 
-Status: **Release-ready; implementation, live acceptance, deterministic tests, docs/site, and platform CI complete; tag/release not yet performed**
+Status: **RELEASED / FROZEN v0.12.0 — implementation, live acceptance, deterministic tests, docs/site, platform CI, tag and GitHub Release complete**
 Target: **v0.12.0**
 Primary platform: **Linux deployment**
 Baseline analyzed: `main` = `origin/main` = `a89df78744798ec6563c4df8b48364be359d20ec` (v0.11.0 released).
@@ -459,10 +459,10 @@ v0.12.0 is release-ready only when all are true:
 - [x] Linux/container CI passes.
 - [x] Windows/native/Windows-Agent regression CI passes.
 - [x] Restricted-network Linux live acceptance passes for Tunnel + Agent + Jev independently; see `docs/v0.12.0-linux-live-acceptance-2026-10-10.md`.
-- [x] Documentation/site are aligned to the v0.12.0 release-candidate contract; the site builds 21 pages without warnings/errors while v0.11.0 remains identified as the published stable release.
+- [x] Documentation/site are aligned to the published v0.12.0 contract; the site builds 21 pages without warnings/errors and identifies v0.12.0 as the current stable release.
 - [x] Secrets/proxy credentials are absent from the tracked diff and all nine new v0.12 files; live acceptance/public evidence is redacted.
 
-Release-candidate CI evidence:
+Release CI evidence:
 
 - `b4f64040ecfa8cffe4c34e14c939f61e179130d7`: Container run `38014406082` — success.
 - `b4f64040ecfa8cffe4c34e14c939f61e179130d7`: Windows Native run `38014406119` — success, including hard-required symlink kernel cases, Ruff, Windows Python/native tests, release wheel build, and clean-environment wheel acceptance.

@@ -45,7 +45,7 @@ WORKDIR_02_READ_ONLY=false
 - ChatGPT 文件入口默认关闭，并且需要同时设置 `SERVERFS_FILE_INGRESS_ENABLED=true` 与启用 `file-ingress` Compose profile。
 - 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
 - Agent 策略只有在显式配置后才启用。
-- v0.12 开发线把 Tunnel、Agent runtime 与 Jev 的代理选择保持独立：`SERVERFS_OPENAI_TUNNEL_USE_PROXY`、`SERVERFS_AGENT_USE_PROXY`、`SERVERFS_JEV_USE_PROXY` 复用同一组 `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` 端点字段，但不会互相隐式启用。
+- v0.12.0 把 Tunnel、Agent runtime 与 Jev 的代理选择保持独立：`SERVERFS_OPENAI_TUNNEL_USE_PROXY`、`SERVERFS_AGENT_USE_PROXY`、`SERVERFS_JEV_USE_PROXY` 复用同一组 `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` 端点字段，但不会互相隐式启用。
 - v0.12 的 Linux Agent 代理仅支持无凭据代理；若启用 Agent 代理同时配置了共享代理用户名/密码，部署渲染会 fail closed。需要认证的上游应通过无凭据本地 broker 转接。
 - `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES` 配置 inline/spool 边界；默认仍为 256 KiB，最大 spool 结果仍为 8 MiB。
 - Jev Advisors 只有在 `SERVERFS_JEV_API_KEY` 非空时才启用；该 Key 只进入宿主机 Agent Bridge 部署路径，不进入 MCP 容器。

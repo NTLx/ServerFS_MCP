@@ -3,7 +3,7 @@ title: Agent Bridge
 description: Optional structured delegation to native Codex, Claude and Qoder runtimes.
 ---
 
-The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.11.0 is the current published stable release; v0.12.0 is the active development target for Linux egress control, native interactive approvals and configurable result spooling.
+The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.12.0 is the current published stable release, adding Linux egress control, native interactive approvals and configurable result spooling while preserving the existing ten-tool Agent surface.
 
 ```text
 ChatGPT
@@ -45,7 +45,7 @@ Current deployments can expose:
 
 ## v0.12 Linux egress and interaction contract
 
-v0.12 keeps the same ten public Agent tools and adds explicit Linux deployment controls rather than a new orchestration layer. `SERVERFS_AGENT_USE_PROXY` independently selects the shared HTTP proxy for native Agent provider traffic. Claude and Qoder receive a scrubbed deterministic proxy environment; proxied Codex uses a Bridge-owned standalone app-server so ServerFS never restarts or mutates the user's shared managed Codex daemon merely to impose proxy policy. Direct mode preserves the existing native provider paths.
+v0.12.0 keeps the same ten public Agent tools and adds explicit Linux deployment controls rather than a new orchestration layer. `SERVERFS_AGENT_USE_PROXY` independently selects the shared HTTP proxy for native Agent provider traffic. Claude and Qoder receive a scrubbed deterministic proxy environment; proxied Codex uses a Bridge-owned standalone app-server so ServerFS never restarts or mutates the user's shared managed Codex daemon merely to impose proxy policy. Direct mode preserves the existing native provider paths.
 
 Agent proxying is intentionally credentialless-only in v0.12. If `SERVERFS_AGENT_USE_PROXY=true` while the shared proxy username/password is configured, deployment rendering fails closed. An authenticated upstream must be represented by a credentialless local broker. Tunnel and Jev have their own independent proxy switches and may use the authenticated shared endpoint.
 

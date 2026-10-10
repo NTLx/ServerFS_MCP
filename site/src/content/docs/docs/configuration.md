@@ -45,7 +45,7 @@ Extra deny globs are stricter: global and workdir rules are **unioned**, so a wo
 - ChatGPT file ingress is disabled by default and requires both `SERVERFS_FILE_INGRESS_ENABLED=true` and the `file-ingress` Compose profile.
 - The constrained OpenAI Blob host-family policy is separately disabled by default; enable it with `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` only when ChatGPT file parameters are required. Exact additional hosts belong in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
 - Agent policy is disabled unless explicitly configured.
-- The v0.12 development line keeps Tunnel, Agent runtime and Jev proxy decisions independent: `SERVERFS_OPENAI_TUNNEL_USE_PROXY`, `SERVERFS_AGENT_USE_PROXY`, and `SERVERFS_JEV_USE_PROXY` each reuse the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields but never implicitly enable one another.
+- v0.12.0 keeps Tunnel, Agent runtime and Jev proxy decisions independent: `SERVERFS_OPENAI_TUNNEL_USE_PROXY`, `SERVERFS_AGENT_USE_PROXY`, and `SERVERFS_JEV_USE_PROXY` each reuse the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields but never implicitly enable one another.
 - Linux Agent proxying in v0.12 is credentialless-only. If Agent proxying is enabled while shared proxy credentials are configured, deployment rendering fails closed; use a credentialless local broker for an authenticated upstream.
 - `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES` configures the inline/spool boundary; the default remains 256 KiB and the maximum spooled result remains 8 MiB.
 - Jev advisors are disabled unless `SERVERFS_JEV_API_KEY` is non-empty. The key is consumed only by the host Agent Bridge deployment path, not the MCP container.

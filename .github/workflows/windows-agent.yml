@@ -1,15 +1,15 @@
 name: Windows Agent
 
-# dev_plan_v0.11.md §15 Phase H (H2): the v0.11 Agent-side Windows gate.
+# Agent-side Windows gate introduced by the v0.11 release contract and carried forward.
 #
 # Why this workflow exists: the `Windows native` workflow is the v0.10
 # filesystem/kernel compatibility gate, and its `pull_request` paths filter
 # covers native/ and src/serverfs_mcp/** only. Phase G measured the resulting
 # hole first-hand: the Windows Bridge product changed and no Windows job ran.
-# This workflow owns the v0.11 Agent layer instead:
+# This workflow owns the Agent Bridge/runtime compatibility layer introduced in v0.11:
 #
 #   Windows native -> v0.10 filesystem/kernel compatibility (native/** paths)
-#   Windows Agent  -> v0.11 Agent Bridge/runtime/packaging compatibility
+#   Windows Agent  -> Agent Bridge/runtime/packaging compatibility (introduced in v0.11)
 #
 # so an Agent-only change never re-runs the Rust kernel test suite, and a
 # Bridge change can never again land without a Windows job. The job builds

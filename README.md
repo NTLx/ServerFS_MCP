@@ -2,11 +2,11 @@
 
 > ServerFS MCP is a secure MCP server that exposes explicitly configured directories as controlled workdirs to AI agents, **read-only by default** with opt-in per-workdir file mutation.
 
-Current stable release: **v0.11.0**. v0.10.0 added the native Windows deployment: ServerFS runs directly on Windows 11 x64 over local NTFS as an MCP **stdio** service backed by a prebuilt Rust kernel wheel (`serverfs-windows-native`, abi3, Python >= 3.12) — no Docker, WSL, Rust or MSVC for end users — with `serverfs serve/doctor/tunnel/bootstrap`, the pinned official tunnel-client launcher chain (sanitized MCP child, `file:` credential boundary) and the shared four-field HTTP proxy contract. The Linux Docker deployment, tool surface and all prior contracts are unchanged; v0.9.0's provider-neutral model discovery and unified `SERVERFS_MAX_BINARY_TRANSFER_BYTES` ceiling carry over as-is.
+Current stable release: **v0.12.0**. v0.10.0 added the native Windows deployment: ServerFS runs directly on Windows 11 x64 over local NTFS as an MCP **stdio** service backed by a prebuilt Rust kernel wheel (`serverfs-windows-native`, abi3, Python >= 3.12) — no Docker, WSL, Rust or MSVC for end users — with `serverfs serve/doctor/tunnel/bootstrap`, the pinned official tunnel-client launcher chain (sanitized MCP child, `file:` credential boundary) and the shared four-field HTTP proxy contract. v0.11.0 then added native Windows Agent delegation for Codex, Claude Code and Qoder. v0.12.0 keeps those Windows contracts intact while extending the Linux deployment and shared Agent Bridge behavior described below.
 
 **v0.11.0** extends the native Windows deployment with Agent delegation for the three supported runtimes — **Codex, Claude Code and Qoder** — driven through the same ten Agent tools over the same Named-Pipe Bridge. Each runtime is a real provider process launched by a separate Agent Bridge venv (see [Windows Native Deployment](#windows-native-deployment) for the two-environment install). Capabilities are recorded per runtime, not advertised uniformly: Codex supports model discovery and request-scoped model override with its own loopback control channel bypassed from proxy policy; Claude and Qoder route provider traffic through the injected proxy when `use_proxy = true` (measured: 17 external CONNECTs, 0 loopback, attributed to the provider child) and direct when it is false; Claude does not expose model discovery (`model_discovery: unsupported`) and neither Claude nor Qoder supports live steering (`live_steer = false`); Qoder's model catalog is read live and its pricing state is never hard-coded. The full acceptance evidence is in `docs/phase-e-…`, `docs/phase-f-…`, `docs/phase-g-acceptance-2026-10.md`, `docs/phase-h-acceptance-2026-10.md` and `docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`.
 
-**v0.12.0 is the current development target, not yet the published stable release.** It brings the Linux deployment to parity around explicit egress control and interactive Agent behavior: OpenAI Tunnel, Agent runtimes and Jev each get an independent `*_USE_PROXY` switch while reusing the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields; Linux Agent proxying is credentialless-only and fails closed when upstream proxy credentials are configured; proxied Linux Codex runs through a Bridge-owned standalone app-server instead of mutating the user's managed daemon; native provider approvals are surfaced explicitly; and the Agent result spool threshold becomes configurable while the public 256 KiB default and 8 MiB maximum remain unchanged. Restricted-network Linux acceptance has proven direct/proxy isolation for Tunnel, Jev, Claude, Codex and Qoder.
+**v0.12.0** is the current stable release. It brings the Linux deployment to parity around explicit egress control and interactive Agent behavior: OpenAI Tunnel, Agent runtimes and Jev each have an independent `*_USE_PROXY` switch while reusing the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields; Linux Agent proxying is credentialless-only and fails closed when upstream proxy credentials are configured; proxied Linux Codex runs through a Bridge-owned standalone app-server instead of mutating the user's managed daemon; native provider approvals are surfaced explicitly; and the Agent result spool threshold is configurable while the public 256 KiB default and 8 MiB maximum remain unchanged. Restricted-network Linux acceptance proved direct/proxy isolation for Tunnel, Jev, Claude, Codex and Qoder.
 
 Agents reach your directories through the **OpenAI Secure MCP Tunnel**. They can list, find, search, read and stat files anywhere you mount; optionally transfer bounded whole binary files; and, in workdirs you explicitly mark read-write, create, edit, delete or revision-guarded replace files through narrow tools. Nothing else: no shell, no command execution, no unguarded overwrite, no recursive delete, no escape from the directories you configure.
 
@@ -52,7 +52,7 @@ The default `compose.yml` exposes the original 11 filesystem tools. Binary trans
 
 The v0.9.0 release includes an optional **advisory-only** Jev advisor inside the host Agent Bridge. It does not add a runtime, permission, automatic router, or safety authority. When `SERVERFS_JEV_API_KEY` is empty or absent, no Jev client is constructed and Agent submission/model discovery work without Jev. Task submission still evaluates task atomicity, mutation scope, stop conditions, verification evidence, execution fit, and a five-way route recommendation: `direct_serverfs_tool`, `codex`, `claude`, `qoder`, or `human_review`; that recommendation never overrides the caller's explicit runtime. v0.9.0 additionally lets `list_agent_models` accept the concrete task context and, when the selected runtime exposes a model catalog, ask the same pinned `jev-1.13.0` advisor which currently exposed model best fits the task. The returned `model_advice` is pre-submit evidence only: ServerFS never copies it into `submit_agent_task.model`, and ChatGPT/user decides whether to accept, ignore, or override it. Approval Advisor remains unchanged in authority: it may advise on a provider approval request but never approve/deny automatically. No Jev result blocks, rewrites, reroutes, selects a model automatically, approves, denies, or expands a task. See the public [Jev Advisors guide](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) plus the repository experiment notes.
 
-v0.7.0 introduced the current Agent Bridge reliability layer without turning ServerFS into a workflow engine. Every new task freezes an immutable execution manifest and optional opaque `correlation_id`; normalized events use schema-versioned envelopes; the original v0.7.0 default task deadline was 24 hours and terminal state is retained for seven days by default. Workspace-write runs add a persistent active-slot recovery guard on top of the existing `flock`, so an abnormal Bridge exit fails closed with `WORKDIR_RECOVERY_REQUIRED` until provider state is reconciled. Final responses stay inline up to the configured spool threshold and are atomically spooled in private Bridge state above it, up to the fixed 8 MiB maximum; `read_agent_task_result` reconstructs the exact UTF-8 result. The release default remains **256 KiB**, preserving the existing public contract. v0.12 adds `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES` so deployments/tests can lower that threshold without changing the 8 MiB maximum; results above 8 MiB still fail with `AGENT_RESULT_TOO_LARGE`, and large `agent.message` events are bounded independently so they cannot prevent an otherwise valid final result from reaching spool handling. v0.7.1 added the narrow Codex pre-provider-start reconciliation hotfix. v0.7.2 was the previous stable maintenance release on that frozen surface: `find_files` keeps directory-FD usage bounded on wide trees and reports `EMFILE`/`ENFILE` as `RESOURCE_EXHAUSTED`; lazy Agent recovery terminalizes a stale non-terminal task when reconciliation proves its provider is inactive, while unknown provider state remains fail-closed.
+v0.7.0 introduced the current Agent Bridge reliability layer without turning ServerFS into a workflow engine. Every new task freezes an immutable execution manifest and optional opaque `correlation_id`; normalized events use schema-versioned envelopes; the original v0.7.0 default task deadline was 24 hours and terminal state is retained for seven days by default. Workspace-write runs add a persistent active-slot recovery guard on top of the existing `flock`, so an abnormal Bridge exit fails closed with `WORKDIR_RECOVERY_REQUIRED` until provider state is reconciled. Final responses stay inline up to the configured spool threshold and are atomically spooled in private Bridge state above it, up to the fixed 8 MiB maximum; `read_agent_task_result` reconstructs the exact UTF-8 result. The release default remains **256 KiB**, preserving the existing public contract. v0.12 adds `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES` so deployments/tests can lower that threshold without changing the 8 MiB maximum; results above 8 MiB still fail with `AGENT_RESULT_TOO_LARGE`, and large `agent.message` events are bounded independently so they cannot prevent an otherwise valid final result from reaching spool handling. v0.7.1 added the narrow Codex pre-provider-start reconciliation hotfix. v0.7.2 was a maintenance release on that frozen surface: `find_files` keeps directory-FD usage bounded on wide trees and reports `EMFILE`/`ENFILE` as `RESOURCE_EXHAUSTED`; lazy Agent recovery terminalizes a stale non-terminal task when reconciliation proves its provider is inactive, while unknown provider state remains fail-closed.
 
 The v0.7.3 release addresses ChatGPT/MCP caller disappearance and ambiguous submission outcomes. `submit_agent_task` gains an optional opaque `idempotency_key`: retrying the same logical submission with the same key returns the retained original task instead of starting a second provider turn, while conflicting reuse fails with `AGENT_IDEMPOTENCY_CONFLICT`. `correlation_id` remains metadata-only and is not repurposed for idempotency. Host policy now configures a 2-hour task timeout, 30-minute approval/question timeout, maximum four active tasks, and seven-day terminal retention by default. An unanswered interaction expires independently, interrupts the task with `AGENT_INTERACTION_TIMED_OUT`, and stales late replies. Explicit cancellation — including an approval decision of `cancel_task` — persists the task as `cancelled` before its RPC returns; provider interrupt is best-effort and internally bounded to 10 seconds. Live writer leases are released only after background cleanup, and persistent recovery guards clear only when provider-aware reconciliation proves that doing so is safe. MCP/UDS disconnect alone still does not cancel a healthy asynchronous task.
 
@@ -99,8 +99,8 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.11.0` | `v0.11.0` |
-| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.11` | newest `v0.11.x` tag |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.12.0` | `v0.12.0` |
+| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.12` | newest `v0.12.x` tag |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
 Every image is multi-arch: `linux/amd64` and `linux/arm64`.
@@ -112,9 +112,9 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-The v0.11.0 release publishes immutable tag `v0.11.0` and stable GHCR tags `0.11.0`, `0.11` and `latest`. Earlier release tags remain immutable; pushes to `main` update only `edge`.
+The v0.12.0 release publishes immutable tag `v0.12.0` and stable GHCR tags `0.12.0`, `0.12` and `latest`. Earlier release tags remain immutable; pushes to `main` update only `edge`.
 
-The v0.11.0 release also publishes **three** Windows installation wheels — product, `serverfs-agent-bridge` and `serverfs-windows-native` — gated against the tag version through each wheel's authoritative METADATA, clean-installed into the two environments described below, and attached to the GitHub Release with recorded SHA-256 digests.
+The v0.12.0 release also publishes **three** Windows installation wheels — product, `serverfs-agent-bridge` and `serverfs-windows-native` — gated against the tag version through each wheel's authoritative METADATA, clean-installed into the two environments described below, and attached to the GitHub Release with recorded SHA-256 digests.
 
 ## Workdir Configuration
 
@@ -195,7 +195,7 @@ CONTROL_PLANE_API_KEY=rtk_...
 
 The tunnel is **outbound-only**: no public domain, no TLS certificate, no inbound firewall rule, no reverse proxy. The container connects out to OpenAI's control plane and forwards MCP traffic to `http://serverfs-mcp:8000/mcp` over the internal Docker network.
 
-The shared proxy contract is HTTP-only. In v0.12 development builds, three independent switches decide which subsystem consumes the same endpoint fields:
+The shared proxy contract is HTTP-only. In v0.12.0, three independent switches decide which subsystem consumes the same endpoint fields:
 
 ```env
 SERVERFS_OPENAI_TUNNEL_USE_PROXY=false
@@ -234,7 +234,7 @@ as an MCP **stdio** service backed by a Rust/NTFS kernel — no Docker, no WSL,
 no localhost listener. The Linux Docker deployment above is unchanged and
 remains the supported Linux shape. Windows support is scoped to **Windows 11
 x64 + local NTFS**; the GA claim is only made after the Phase F acceptance
-record. v0.11 enables Agent delegation on this deployment for Codex, Claude
+record. v0.11 enabled Agent delegation on this deployment for Codex, Claude
 Code and Qoder (accepted through the live ChatGPT tunnel E2E; see
 `docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`).
 
@@ -255,7 +255,7 @@ Rust, Cargo, MSVC Build Tools or the Windows SDK. The `serverfs-windows-native`
 wheel is `cp312-abi3-win_amd64` (stable ABI, Python ≥ 3.12; validated on
 CPython 3.12 in artifact CI and on 3.13 in development evidence).
 
-### Two-environment clean install (v0.11)
+### Two-environment clean install (v0.12)
 
 The product and the Agent Bridge are **independent distributions in two
 isolated virtual environments**, connected by a frozen process boundary: the

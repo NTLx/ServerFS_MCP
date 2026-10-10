@@ -1,7 +1,7 @@
 name: Windows wheel release
 
-# dev_plan_v0.11.md §15 Phase H (H3): publication channel for the v0.11
-# release wheels. Runs only when the maintainer creates a release tag. All
+# Three-wheel publication channel introduced by the v0.11 release contract and
+# carried forward for current releases. Runs only when the maintainer creates a release tag. All
 # THREE release artifacts are built first -- product (hatchling), Agent
 # Bridge (hatchling) and native kernel (maturin, whose Cargo.toml owns the
 # native version) -- and gated against the tag version through each wheel's
@@ -112,7 +112,7 @@ jobs:
           # SERVERFS_BRIDGE_PYTHON pointing at the Bridge clean venv, and the product CLI
           # served by the ServerFS clean venv. The runner has no Codex state at all: the
           # D9 chain renders a Codex-enabled config whose default codex_home only needs
-          # to exist for validation (measured on the first v0.11.0 tag run).
+          # to exist for validation (measured on the first v0.11.0 tag run and retained as the compatibility baseline).
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE/.codex" | Out-Null
           $env:SERVERFS_BRIDGE_PYTHON = (Resolve-Path $bridgePy).Path
           $env:SERVERFS_TEST_ROOT_PYTHON = (Resolve-Path $serverfsPy).Path

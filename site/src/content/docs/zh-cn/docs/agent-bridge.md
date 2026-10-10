@@ -3,7 +3,7 @@ title: Agent Bridge
 description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时委派。
 ---
 
-Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.11.0 是当前已发布稳定版本；v0.12.0 是当前开发目标，重点补齐 Linux 出站代理控制、原生交互 approval 与可配置结果 spool。
+Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.12.0 是当前已发布稳定版本，新增 Linux 出站代理控制、原生交互 approval 与可配置结果 spool，同时保持既有 10 个 Agent 工具不变。
 
 ```text
 ChatGPT
@@ -45,7 +45,7 @@ Unix socket
 
 ## v0.12 Linux 出站与交互契约
 
-v0.12 保持现有 10 个公开 Agent 工具不变，增加的是显式 Linux 部署控制，而不是新的编排层。`SERVERFS_AGENT_USE_PROXY` 独立决定原生 Agent provider 流量是否使用共享 HTTP 代理。Claude 与 Qoder 获得经过清洗的确定性代理环境；Codex 在代理模式下使用 Bridge 自己管理的 standalone app-server，因此 ServerFS 不会为了施加代理策略而重启或改写用户共享的 managed Codex daemon。关闭 Agent 代理时继续沿用既有原生 provider 路径。
+v0.12.0 保持现有 10 个公开 Agent 工具不变，增加的是显式 Linux 部署控制，而不是新的编排层。`SERVERFS_AGENT_USE_PROXY` 独立决定原生 Agent provider 流量是否使用共享 HTTP 代理。Claude 与 Qoder 获得经过清洗的确定性代理环境；Codex 在代理模式下使用 Bridge 自己管理的 standalone app-server，因此 ServerFS 不会为了施加代理策略而重启或改写用户共享的 managed Codex daemon。关闭 Agent 代理时继续沿用既有原生 provider 路径。
 
 v0.12 的 Agent 代理刻意限制为**无凭据代理**。当 `SERVERFS_AGENT_USE_PROXY=true` 且共享代理配置了用户名/密码时，部署渲染会 fail closed；需要认证的上游应通过无凭据本地 broker 转接。Tunnel 与 Jev 各自拥有独立代理开关，并可使用带认证的共享端点。
 

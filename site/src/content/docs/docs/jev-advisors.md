@@ -9,7 +9,7 @@ Jev is a System One model: instead of generating prose, it evaluates typed quest
 
 The integration is **opt-in, advisory-only, and fail-open**. Jev is not an Agent runtime, authorization source, or security boundary.
 
-> **Status:** this opt-in experimental capability was introduced in v0.6.0, extended with Model Advisor in v0.9.0, and remains included in the current v0.11.0 stable release. v0.12 adds an independent explicit Jev proxy switch; Jev remains an internal host-Bridge advisor and never gains execution authority.
+> **Status:** this opt-in experimental capability was introduced in v0.6.0, extended with Model Advisor in v0.9.0, and remains included in the current v0.12.0 stable release. v0.12 adds an independent explicit Jev proxy switch; Jev remains an internal host-Bridge advisor and never gains execution authority.
 
 ## Enable it
 
