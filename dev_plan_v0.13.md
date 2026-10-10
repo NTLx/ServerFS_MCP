@@ -1,8 +1,46 @@
 # ServerFS v0.13.0 Development Plan — Native macOS 27 on Apple Silicon M-series
 
-**Status:** PLANNED  
-**Target:** v0.13.0  
+**Status:** IMPLEMENTED — release candidate (not yet tagged)
+**Target:** v0.13.0
 **Baseline:** released/frozen v0.12.0 on `main`
+
+## Implementation & acceptance record (2026-10-10)
+
+All phases 0–K are implemented on `feat/v0.13-macos27-arm64` and validated on the development
+baseline machine (MacBook Air Mac16,12 / Apple M4 / macOS 27.0.1 build 26A434, native arm64,
+not Rosetta):
+
+- Phase 0 — `docs/phase-0-macos27-arm64-capability-probe-2026-10.md` (every
+  design-load-bearing primitive PROVEN or SUPPORTED VIA SMALL DARWIN WRAPPER with the wrapper
+  PROVEN).
+- Phase A — `src/serverfs_mcp/posix_fdio.py` extraction; Linux call path unchanged.
+- Phase B — `src/serverfs_mcp/darwin_backend.py` + explicit backend dispatch
+  (`NATIVE_PLATFORM_UNSUPPORTED` elsewhere); `search_scan.py`/`read_page.py` shared cores.
+- Phase C — measured serve/bootstrap gates; `~/Library/Application Support/ServerFS` data
+  home; Darwin doctor diagnostics (APFS/network verdict, platform facts, TCC hint);
+  `native-wheel` refuses on macOS.
+- Phase D — Bridge platform seams (LINUX/DARWIN/WINDOWS/POSIX), `getpeereid` peer identity,
+  validated runtime dir, sun_path budget enforcement before bind, §23 parity tests.
+- Phase E — `serverfs agent-bridge …` launchd lifecycle; live LaunchAgent proof
+  (bootstrap/kickstart/bootout) in `tests/test_darwin_lifecycle.py` (opt-in live, PASS).
+- Phase F — Codex adapter recognized POSIX-generic (`codex_posix.py`); live darwin probes:
+  codex 0.162.1 via the real managed daemon, claude 2.1.294, `model/list` 11 models.
+- Phase G — Jev/proxy reused unchanged (zero Darwin-specific code); suites green.
+- Phase H — native file-ingress helper over private AF_UNIX (`SERVERFS_FILE_INGRESS_SOCKET`,
+  parent guard, SIGTERM cleanup); real subprocess/socket tests.
+- Phase I — `.github/workflows/macos-native.yml` with measured platform assertions.
+- Phase J — `docs/phase-macos-native-acceptance-2026-10.md` (23/23 on APFS),
+  `docs/phase-macos-agent-acceptance-2026-10.md` (9/9), and
+  `docs/phase-macos-live-chatgpt-e2e-2026-10.md` (operator run book: the ChatGPT tunnel E2E
+  and live proxied egress need the operator's real tunnel credentials/proxy; a Qoder live run
+  needs a host with the Qoder CLI — the release statement narrows accordingly).
+
+Automated gates at the acceptance commit: MCP suite 1118 passed / 0 failed (macOS 27 arm64),
+Bridge suite 327 passed / 0 failed, ruff + ruff format clean, `git diff --check` clean. The
+macOS Native CI workflow runs the same suites behind measured platform assertions.
+
+Release tagging remains blocked until the operator-assisted evidence above is captured and CI
+is green on the release commit.
 
 ## Supported platform — intentionally narrow
 

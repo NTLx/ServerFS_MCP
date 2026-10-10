@@ -1,11 +1,11 @@
 ---
 title: ServerFS MCP
-description: 让 ChatGPT 与 AI Agent 在 Linux 与 Windows 上安全、受控地访问 workdir。
+description: 让 ChatGPT 与 AI Agent 在 Linux、Windows 与 macOS 上安全、受控地访问 workdir。
 ---
 
-ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux 容器为既有形态，v0.10.0 起支持 Windows 原生）暴露为**受控 workdir**。
+ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux 容器为既有形态，v0.10.0 起支持 Windows 原生，v0.13.0 起支持 macOS 原生）暴露为**受控 workdir**。
 
-当前稳定版本：**v0.12.0**。该版本新增 Linux Tunnel / Agent / Jev 三条彼此独立的显式出站代理控制、原生 Agent approval 与可配置结果 spool，同时保持既有 Windows 原生部署与公开工具面不变。
+当前稳定版本：**v0.13.0**。该版本新增 macOS 原生部署——**运行 macOS 27 Golden Gate 的 Apple M 系列 Mac、原生 arm64、无需 Docker 与 Rosetta**——包括 Darwin FD 文件系统后端（`fcopyfile` 元数据保留、FD 安全搜索）、launchd 用户代理下经 `getpeereid` 认证的 AF_UNIX Agent Bridge，以及原生 AF_UNIX file-ingress helper，同时保持既有 Linux 与 Windows 原生部署及公开工具面不变。
 
 它**默认只读**。管理员可以按 workdir 显式启用受控文件写入、有界整文件二进制传输，以及隔离且独立门控的 ChatGPT 文件参数入口。宿主机 Agent Bridge 仍然是可选能力；v0.9.0 支持 Codex、Claude 和 Qoder，并在原生 runtime 支持时提供 provider-neutral 模型发现与单次任务模型覆盖，同时可按需启用 advisory-only 的 TypeSafe Jev 支持。v0.10.0 新增 Windows 原生部署：预构建 Rust/NTFS 内核 wheel 之上的 MCP stdio 服务，无需 Docker、WSL 或 MSVC。
 

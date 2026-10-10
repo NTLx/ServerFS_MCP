@@ -2,11 +2,13 @@
 
 > ServerFS MCP is a secure MCP server that exposes explicitly configured directories as controlled workdirs to AI agents, **read-only by default** with opt-in per-workdir file mutation.
 
-Current stable release: **v0.12.0**. v0.10.0 added the native Windows deployment: ServerFS runs directly on Windows 11 x64 over local NTFS as an MCP **stdio** service backed by a prebuilt Rust kernel wheel (`serverfs-windows-native`, abi3, Python >= 3.12) — no Docker, WSL, Rust or MSVC for end users — with `serverfs serve/doctor/tunnel/bootstrap`, the pinned official tunnel-client launcher chain (sanitized MCP child, `file:` credential boundary) and the shared four-field HTTP proxy contract. v0.11.0 then added native Windows Agent delegation for Codex, Claude Code and Qoder. v0.12.0 keeps those Windows contracts intact while extending the Linux deployment and shared Agent Bridge behavior described below.
+Current stable release: **v0.13.0**. v0.10.0 added the native Windows deployment: ServerFS runs directly on Windows 11 x64 over local NTFS as an MCP **stdio** service backed by a prebuilt Rust kernel wheel (`serverfs-windows-native`, abi3, Python >= 3.12) — no Docker, WSL, Rust or MSVC for end users — with `serverfs serve/doctor/tunnel/bootstrap`, the pinned official tunnel-client launcher chain (sanitized MCP child, `file:` credential boundary) and the shared four-field HTTP proxy contract. v0.11.0 then added native Windows Agent delegation for Codex, Claude Code and Qoder. v0.12.0 keeps those Windows contracts intact while extending the Linux deployment and shared Agent Bridge behavior described below. v0.13.0 adds first-class **native macOS support**: see [macOS Native Deployment](#macos-native-deployment-v013) below.
 
 **v0.11.0** extends the native Windows deployment with Agent delegation for the three supported runtimes — **Codex, Claude Code and Qoder** — driven through the same ten Agent tools over the same Named-Pipe Bridge. Each runtime is a real provider process launched by a separate Agent Bridge venv (see [Windows Native Deployment](#windows-native-deployment) for the two-environment install). Capabilities are recorded per runtime, not advertised uniformly: Codex supports model discovery and request-scoped model override with its own loopback control channel bypassed from proxy policy; Claude and Qoder route provider traffic through the injected proxy when `use_proxy = true` (measured: 17 external CONNECTs, 0 loopback, attributed to the provider child) and direct when it is false; Claude does not expose model discovery (`model_discovery: unsupported`) and neither Claude nor Qoder supports live steering (`live_steer = false`); Qoder's model catalog is read live and its pricing state is never hard-coded. The full acceptance evidence is in `docs/phase-e-…`, `docs/phase-f-…`, `docs/phase-g-acceptance-2026-10.md`, `docs/phase-h-acceptance-2026-10.md` and `docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`.
 
 **v0.12.0** is the current stable release. It brings the Linux deployment to parity around explicit egress control and interactive Agent behavior: OpenAI Tunnel, Agent runtimes and Jev each have an independent `*_USE_PROXY` switch while reusing the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields; Linux Agent proxying is credentialless-only and fails closed when upstream proxy credentials are configured; proxied Linux Codex runs through a Bridge-owned standalone app-server instead of mutating the user's managed daemon; native provider approvals are surfaced explicitly; and the Agent result spool threshold is configurable while the public 256 KiB default and 8 MiB maximum remain unchanged. Restricted-network Linux acceptance proved direct/proxy isolation for Tunnel, Jev, Claude, Codex and Qoder.
+
+**v0.13.0** adds native macOS support specifically for **Apple M-series Macs running macOS 27 Golden Gate**. It runs natively as **arm64** without Docker or Rosetta and provides the existing ServerFS filesystem, binary-transfer and Agent delegation capabilities using Darwin descriptor-relative filesystem operations, metadata-preserving atomic mutation (`fcopyfile(COPYFILE_METADATA)`: mode + xattrs + ACL), authenticated Unix-domain IPC via peer credentials (`getpeereid`), `flock` writer leases and a user-scoped **launchd** Agent Bridge. Codex, Claude Code, Jev advisors, proxy routing, approvals, recovery, result spooling and ChatGPT file ingress (through a native helper over a private AF_UNIX socket) are supported on this validated platform. The platform gate is measured at startup — `darwin` + `arm64` + macOS major 27 + not Rosetta — and anything else refuses with `NATIVE_PLATFORM_UNSUPPORTED`. Intel Macs, x86_64 processes, Rosetta, macOS 26 or older and macOS 28+ are explicitly unsupported in v0.13.
 
 Agents reach your directories through the **OpenAI Secure MCP Tunnel**. They can list, find, search, read and stat files anywhere you mount; optionally transfer bounded whole binary files; and, in workdirs you explicitly mark read-write, create, edit, delete or revision-guarded replace files through narrow tools. Nothing else: no shell, no command execution, no unguarded overwrite, no recursive delete, no escape from the directories you configure.
 
@@ -226,6 +228,74 @@ environment; absent or empty values are simply not injected, and the
 product's fail-closed validation reports what is missing.
 
 To troubleshoot the tunnel, use the official client's own diagnostics (`tunnel-client doctor`, `/readyz`) rather than guessing.
+
+## macOS Native Deployment (v0.13)
+
+v0.13 adds a native macOS deployment. The supported platform is exactly:
+
+```text
+Apple Mac with Apple M-series SoC
+native arm64 execution (no Rosetta, no x86_64)
+macOS 27 Golden Gate (27.x; the acceptance runs on the newest available 27.x patch)
+local APFS workdirs
+```
+
+Everything else — Intel Macs, Hackintosh, macOS 26 or older, macOS 28 or newer — is
+unsupported and refused by the measured runtime gate, never silently executed.
+
+The runtime chain is:
+
+```text
+serverfs tunnel
+  -> official pinned tunnel-client            (darwin-arm64 asset only)
+       -> sanitizer supervisor
+            -> serverfs serve                 (MCP stdio child, measured darwin gate)
+                 -> Darwin FD backend         (posix_fdio + darwin_libc, pure Python)
+            -> file-ingress helper            (separate process, private AF_UNIX socket)
+       -> Agent Bridge (launchd user agent)   (com.ntlx.serverfs.agent-bridge)
+            -> AF_UNIX + getpeereid           (0700 runtime dir, no peer PID fabrication)
+            -> real provider CLI              (codex / claude; native arm64 only)
+```
+
+Key facts:
+
+- **No Docker, no VM, no Rosetta, no compiled macOS kernel package.** The Darwin backend is
+  pure Python over descriptor-relative POSIX primitives plus three narrow libc bindings
+  (`fcopyfile`, `getpeereid`, `confstr`) — there is no `serverfs-macos-native` wheel and none
+  is needed.
+- **Metadata-preserving atomic mutation**: replacing a file carries the original mode, user
+  xattrs and extended ACLs onto the new inode via `fcopyfile(COPYFILE_METADATA)` and fails
+  before publication if anything cannot be preserved.
+- **Search** never uses ripgrep or `/proc`: it is an FD-secure directory walk → bounded
+  regular-file read → literal UTF-8 scan, contract-identical to the Linux rg channel and the
+  Windows native searcher (shared pure helpers).
+- **The Agent Bridge is a per-user LaunchAgent** (`com.ntlx.serverfs.agent-bridge`) managed
+  with modern `launchctl bootstrap/kickstart/bootout` via `serverfs agent-bridge
+  install|start|restart|stop|status|uninstall`. The plist carries paths only, never secrets.
+  launchd is a service manager, not a containment kernel: no Job-Object equivalence is
+  claimed, the recovery guard is retained and workspace-write fails closed when provider
+  state is unknown.
+- **Private state**: `~/Library/Application Support/ServerFS` (override:
+  `SERVERFS_DATA_HOME`) for data; the OS-provided per-user runtime directory
+  (`_CS_DARWIN_USER_TEMP_DIR`, validated — never an inherited `$TMPDIR`) holds sockets.
+- **TCC**: ServerFS never bypasses macOS privacy controls. Protected paths fail cleanly and
+  `serverfs doctor` identifies the likely TCC denial.
+
+Development/install target:
+
+```bash
+uv sync
+uv sync --project agent_bridge
+serverfs bootstrap tunnel-client        # darwin-arm64 asset only
+serverfs doctor --config serverfs.toml
+serverfs serve --config serverfs.toml   # or via the tunnel chain
+serverfs agent-bridge install --bridge-config agent_bridge/config.json   # when Agent delegation is enabled
+```
+
+Acceptance evidence: `docs/phase-0-macos27-arm64-capability-probe-2026-10.md`,
+`docs/phase-macos-native-acceptance-2026-10.md`,
+`docs/phase-macos-agent-acceptance-2026-10.md` and
+`docs/phase-macos-live-chatgpt-e2e-2026-10.md`.
 
 ## Windows Native Deployment
 
