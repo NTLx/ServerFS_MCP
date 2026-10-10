@@ -145,9 +145,7 @@ def run_search(
     stack: list[tuple[str, ...]] = [()]
     while stack and not truncated:
         if time.monotonic() > deadline:
-            raise BackendError(
-                "SEARCH_TIMEOUT", f"search exceeded the {timeout_seconds}s deadline"
-            )
+            raise BackendError("SEARCH_TIMEOUT", f"search exceeded the {timeout_seconds}s deadline")
         parts = stack.pop()
         try:
             with open_directory_fd(root_fd, parts) as current_fd:
@@ -311,9 +309,7 @@ class DarwinWorkdirSession:
     def delete_file(self, resolved: ResolvedPath, expected_revision: str) -> DeleteFileResult:
         return mutations.delete_file(resolved, expected_revision)
 
-    def create_binary_file(
-        self, resolved: ResolvedPath, data: bytes, *, max_binary_bytes: int
-    ):
+    def create_binary_file(self, resolved: ResolvedPath, data: bytes, *, max_binary_bytes: int):
         return mutations.create_binary_file(resolved, data, max_binary_bytes=max_binary_bytes)
 
     def replace_binary_file(

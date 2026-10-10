@@ -116,6 +116,7 @@ def _rfc3339_from_100ns(ticks: int) -> str | None:
 # that exclusion (ALWAYS_EXCLUDED_DIRS, shared with the Darwin searcher)
 # so every backend scans the same set of files.
 
+
 class WindowsWorkdirSession:
     """One retained-root session for one workdir."""
 

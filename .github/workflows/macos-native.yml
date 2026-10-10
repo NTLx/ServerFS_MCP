@@ -1,0 +1,130 @@
+name: macOS Native
+
+# v0.13 macOS gate: Apple M-series, native arm64, macOS 27 Golden Gate
+# ONLY (dev_plan_v0.13.md §16). There is no x86_64 matrix, no macOS 26
+# matrix, no Intel compatibility and no Rosetta CI. The platform
+# assertions at the start of every job are authoritative — runner
+# labels are never trusted on their own. If hosted infrastructure
+# cannot satisfy them, run this workflow on an M-series self-hosted
+# runner with the same assertions.
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/v0.13-macos27-arm64"
+    tags:
+      - "v*.*.*"
+    paths-ignore:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  platform-assert:
+    name: Assert macOS 27 arm64 native
+    runs-on: macos-27
+    steps:
+      - name: Measure the platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "uname -m: $(uname -m)"
+          echo "macOS:     $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
+          echo "kernel:    $(uname -r)"
+          test "$(uname -m)" = "arm64" || { echo "FAIL: not arm64"; exit 1; }
+          MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
+          test "$MAJOR" = "27" || { echo "FAIL: macOS major is $MAJOR, need 27"; exit 1; }
+          TRANSLATED="$(sysctl -n sysctl.proc_translated)"
+          test "$TRANSLATED" = "0" || { echo "FAIL: Rosetta-translated process"; exit 1; }
+          echo "platform assertions passed: native arm64 macOS 27, not Rosetta"
+
+  test:
+    name: MCP suite (macOS 27 arm64)
+    needs: platform-assert
+    runs-on: macos-27
+    steps:
+      - name: Assert the platform again inside the job
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "arm64"
+          test "$(sw_vers -productVersion | cut -d. -f1)" = "27"
+          test "$(sysctl -n sysctl.proc_translated)" = "0"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Verify the test interpreter is native arm64
+        shell: bash
+        run: |
+          set -euo pipefail
+          .venv/bin/python -c "import platform, sys; assert platform.machine() == 'arm64', platform.machine(); assert sys.platform == 'darwin'"
+          file "$(.venv/bin/python -c 'import sys; print(sys.executable)')" | grep -q arm64
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Test
+        run: uv run pytest
+
+      - name: Whitespace check
+        run: git diff --check
+
+  bridge-test:
+    name: Agent Bridge suite (macOS 27 arm64)
+    needs: platform-assert
+    runs-on: macos-27
+    defaults:
+      run:
+        working-directory: agent_bridge
+    steps:
+      - name: Assert the platform again inside the job
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "arm64"
+          test "$(sw_vers -productVersion | cut -d. -f1)" = "27"
+          test "$(sysctl -n sysctl.proc_translated)" = "0"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      # The live-launchd proof is opt-in (SERVERFS_LIVE_LAUNCHD=1) and stays
+      # out of hosted CI by design; everything else in the Bridge suite runs.
+      - name: Test
+        run: uv run pytest

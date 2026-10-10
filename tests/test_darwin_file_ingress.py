@@ -97,7 +97,8 @@ class TestUnixHelperTransport:
         # (an unrelated dev server may own 8081 on a developer machine)
         proc = subprocess.run(
             ["lsof", "-a", "-p", str(unix_helper.process.pid), "-iTCP", "-sTCP:LISTEN"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         listeners = [
             line for line in proc.stdout.splitlines() if line and not line.startswith("COMMAND")

@@ -24,18 +24,14 @@ class TestDataHome:
 
         monkeypatch.delenv("SERVERFS_DATA_HOME", raising=False)
         home = data_home(env={})
-        assert home == pathlib.Path(
-            os.path.expanduser("~/Library/Application Support/ServerFS")
-        )
+        assert home == pathlib.Path(os.path.expanduser("~/Library/Application Support/ServerFS"))
         assert home.name == "ServerFS"
         assert BRIDGE_DIRECTORY == "agent-bridge"
 
     def test_explicit_override_wins(self) -> None:
         import pathlib
 
-        assert data_home(env={"SERVERFS_DATA_HOME": "/tmp/custom"}) == pathlib.Path(
-            "/tmp/custom"
-        )
+        assert data_home(env={"SERVERFS_DATA_HOME": "/tmp/custom"}) == pathlib.Path("/tmp/custom")
 
     def test_tunnel_bootstrap_data_dir_matches(self, monkeypatch) -> None:
         from serverfs_mcp.tunnel_bootstrap import serverfs_data_dir
@@ -72,9 +68,7 @@ class TestServeGate:
         assert "NATIVE_PLATFORM_UNSUPPORTED" not in message
 
     def test_serve_refusal_is_measured_not_label_based(self, monkeypatch, tmp_path) -> None:
-        monkeypatch.setattr(
-            "serverfs_mcp.darwin_platform._rosetta_translated", lambda: True
-        )
+        monkeypatch.setattr("serverfs_mcp.darwin_platform._rosetta_translated", lambda: True)
         code, message = self._run_capture(["serve", "--config", str(tmp_path / "absent.toml")])
         assert code == 2
         assert "Rosetta" in message
@@ -82,8 +76,9 @@ class TestServeGate:
 
 class TestBootstrap:
     def test_native_wheel_refused_on_macos(self, capsys) -> None:
-        result = cli.main(["bootstrap", "native-wheel", "--url", "https://x/y.whl",
-                           "--sha256", "0" * 64])
+        result = cli.main(
+            ["bootstrap", "native-wheel", "--url", "https://x/y.whl", "--sha256", "0" * 64]
+        )
         assert result == 2
         err = capsys.readouterr().err
         assert "not required on macOS" in err
