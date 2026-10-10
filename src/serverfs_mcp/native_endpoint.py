@@ -80,10 +80,13 @@ def derive_pipe_name(user_sid: str) -> str:
 
 
 def data_home(env=None) -> Path:
-    """The frozen ServerFS data home: ``SERVERFS_DATA_HOME`` or ``%LOCALAPPDATA%\\ServerFS``.
+    """The frozen ServerFS data home for native deployments.
 
-    The XDG branch exists so this helper is importable off Windows, but a native Agent endpoint is a
-    Windows deployment shape and the POSIX branch is never used for one.
+    Windows: ``SERVERFS_DATA_HOME`` or ``%LOCALAPPDATA%\\ServerFS``.
+    macOS (v0.13): ``SERVERFS_DATA_HOME`` or
+    ``~/Library/Application Support/ServerFS`` (§10 C2 — never the Linux
+    XDG defaults on macOS).
+    Linux: ``SERVERFS_DATA_HOME`` or XDG ``~/.local/share/serverfs``.
     """
     environ = os.environ if env is None else env
     override = environ.get("SERVERFS_DATA_HOME", "").strip()
@@ -97,6 +100,8 @@ def data_home(env=None) -> Path:
                 "location cannot be determined"
             )
         return Path(base) / "ServerFS"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "ServerFS"
     xdg = environ.get("XDG_DATA_HOME", "").strip()
     if xdg:
         return Path(xdg) / "serverfs"

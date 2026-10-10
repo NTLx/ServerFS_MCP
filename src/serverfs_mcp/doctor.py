@@ -21,6 +21,7 @@ Rules this module must never break:
 
 from __future__ import annotations
 
+import errno
 import os
 import platform
 import socket
@@ -86,11 +87,65 @@ def _filesystem_probe(report: _Report, root: Path) -> None:
         state, detail = _classify_windows_storage(_windows_volume_info(root))
         report.status("filesystem", state, detail)
         return
+    if sys.platform == "darwin":
+        state, detail = _classify_darwin_storage(_darwin_volume_info(root))
+        report.status("filesystem", state, detail)
+        return
     fs_name = _linux_mount_fstype(root)
     if fs_name is None:
         report.status("filesystem", WARN, "mount entry not found (unknown filesystem)")
     else:
         report.status("filesystem", OK, fs_name)
+
+
+def _darwin_volume_info(root: Path) -> tuple[str, bool] | None:
+    """(filesystem type, is network storage) from mount(8) output.
+
+    Longest-mount-point prefix match against the resolved root, the same
+    shape as the Linux /proc/mounts probe. The first mount option is the
+    filesystem type (e.g. ``apfs``); a mount without the ``local`` option
+    is treated as network storage. Diagnostics-only: runs outside the
+    request path on the operator's own configured root and assembles no
+    request paths.
+    """
+    try:
+        resolved = os.path.realpath(root)
+        completed = subprocess.run(["mount"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    best_point = ""
+    best: tuple[str, bool] | None = None
+    for line in completed.stdout.splitlines():
+        if " on " not in line or " (" not in line:
+            continue
+        point, rest = line.split(" on ", 1)[1].split(" (", 1)
+        options = rest.rstrip(")").split(", ")
+        if not options:
+            continue
+        if resolved == point or resolved.startswith(point.rstrip("/") + "/"):
+            if len(point) > len(best_point):
+                best_point = point
+                best = (options[0].lower(), "local" not in options)
+    return best
+
+
+def _classify_darwin_storage(info: tuple[str, bool] | None) -> tuple[str, str]:
+    """v0.13 GA filesystem verdict for one macOS root (dev_plan §9 B6).
+
+    GA support is LOCAL APFS on macOS 27. Network volumes break the
+    atomicity assumptions behind revision/CAS and fail outright; other
+    local filesystems work mechanically but carry no support claim.
+    """
+    if info is None:
+        return FAIL, "storage class could not be determined -- failing closed"
+    fs_name, is_remote = info
+    if is_remote:
+        return FAIL, f"{fs_name} on network storage -- unsupported (atomicity assumptions)"
+    if fs_name == "apfs":
+        return OK, "APFS"
+    return WARN, f"{fs_name} -- not local APFS, functional but unsupported in v0.13"
 
 
 def _windows_volume_info(root: Path) -> tuple[str, bool] | None:
@@ -279,8 +334,48 @@ def _backend_line(report: _Report) -> None:
         report.status("native backend", OK, f"serverfs-windows-native {version}")
     elif sys.platform == "linux":
         report.status("native backend", OK, "linux fdio kernel")
+    elif sys.platform == "darwin":
+        from .darwin_platform import darwin_platform_status
+
+        status = darwin_platform_status()
+        if not status.supported:
+            report.status(
+                "native backend",
+                FAIL,
+                f"unsupported Darwin platform -- {status.reason} "
+                f"(v0.13 supports native arm64 macOS 27 only)",
+            )
+            return
+        # metadata-copy support is the one Darwin primitive the mutation
+        # path cannot do without; binding presence is checked read-only
+        # here (a live fcopyfile probe is exercised by the test-suite and
+        # acceptance, never against user files from doctor).
+        try:
+            from .darwin_libc import fcopyfile_metadata  # noqa: F401
+        except Exception:
+            report.status(
+                "native backend", FAIL, "darwin libc bindings unavailable (fcopyfile)"
+            )
+            return
+        report.status("native backend", OK, f"darwin FD kernel (macOS {status.macos_version})")
     else:
         report.status("native backend", WARN, f"unsupported platform ({sys.platform})")
+
+
+def _darwin_platform_note(report: _Report) -> None:
+    """One informational line naming the measured platform facts (§10 C5)."""
+    if sys.platform != "darwin":
+        return
+    from .darwin_platform import darwin_platform_status
+
+    status = darwin_platform_status()
+    darwin_release = platform.release()
+    rosetta = "unknown" if status.rosetta is None else ("yes" if status.rosetta else "no")
+    report.note(
+        "platform",
+        f"macOS {status.macos_version or 'unknown'} (Darwin {darwin_release}); "
+        f"machine={status.machine}; rosetta={rosetta}",
+    )
 
 
 def _distribution_version(package: str) -> str:
@@ -383,7 +478,13 @@ def _probe_workdir(report: _Report, backend: object | None, workdir: object) -> 
         report.status("root", FAIL, "configured root does not exist")
         return
     except OSError as exc:
-        report.status("root", FAIL, f"configured root cannot be inspected ({type(exc).__name__})")
+        detail = f"configured root cannot be inspected ({type(exc).__name__})"
+        if sys.platform == "darwin" and exc.errno in (errno.EPERM, errno.EACCES):
+            # macOS privacy controls surface as EPERM/EACCES on protected
+            # paths; doctor identifies the likely cause instead of hiding
+            # it (dev_plan_v0.13.md §9 B7). No TCC bypass is attempted.
+            detail += " -- likely macOS TCC denial; grant disk access to the host application"
+        report.status("root", FAIL, detail)
         return
     import stat as _stat
 
@@ -437,6 +538,7 @@ def run_doctor(
     report = _Report(writer)
     report.say(f"ServerFS {SERVER_VERSION}")
     report.say(f"Python {sys.version.split()[0]} ({sys.platform} {platform.machine()})")
+    _darwin_platform_note(report)
     try:
         workdirs, settings = load_native_config(config_path)
     except NativeConfigError as exc:
@@ -446,12 +548,12 @@ def run_doctor(
     _backend_line(report)
 
     backend: object | None
-    if sys.platform in {"win32", "linux"}:
+    if sys.platform in {"win32", "linux"} or sys.platform == "darwin":
         try:
             from .backends import get_backend
 
             backend = get_backend()
-        except Exception as exc:  # missing native wheel must be a line, not a traceback
+        except Exception as exc:  # missing native wheel / unsupported platform must be a line
             report.status("backend", FAIL, f"kernel unavailable ({type(exc).__name__})")
             backend = None
     else:

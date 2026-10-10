@@ -71,6 +71,10 @@ def serverfs_data_dir() -> Path:
         if not base:
             raise BootstrapError("LOCALAPPDATA is not set; configure SERVERFS_DATA_HOME")
         return Path(base) / "ServerFS"
+    if sys.platform == "darwin":
+        # v0.13 C2: macOS native deployments keep everything under the
+        # Application Support home, never the Linux XDG defaults.
+        return Path.home() / "Library" / "Application Support" / "ServerFS"
     xdg = os.environ.get("XDG_DATA_HOME", "").strip()
     if xdg:
         return Path(xdg) / "serverfs"
