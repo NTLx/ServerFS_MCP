@@ -122,7 +122,22 @@ def ensure_private_directory(
         directory_stat = path.lstat()
     except FileNotFoundError:
         if parents:
-            path.mkdir(parents=True, exist_ok=True, mode=mode)
+            # Windows creates every missing ancestor with the same protected
+            # descriptor (_windows_create_ancestors); the POSIX branch must
+            # do the same with mode bits, or a middle directory lands at the
+            # umask default (0755) and the private tree has a public root.
+            missing: list[Path] = []
+            current = path.parent
+            while not current.exists():
+                missing.append(current)
+                parent = current.parent
+                if parent == current:
+                    break
+                current = parent
+            for directory in reversed(missing):
+                directory.mkdir(mode=mode)
+                os.chmod(directory, mode)
+            path.mkdir(mode=mode)
         else:
             path.mkdir(mode=mode)
         directory_stat = path.lstat()
