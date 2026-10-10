@@ -1,6 +1,6 @@
 # ServerFS v0.12.0 Development Plan — Linux network reachability, real interactive approval, and live result spooling
 
-Status: **Linux implementation + live acceptance complete; release closure in progress**
+Status: **Release-ready; implementation, live acceptance, deterministic tests, docs/site, and platform CI complete; tag/release not yet performed**
 Target: **v0.12.0**
 Primary platform: **Linux deployment**
 Baseline analyzed: `main` = `origin/main` = `a89df78744798ec6563c4df8b48364be359d20ec` (v0.11.0 released).
@@ -456,8 +456,14 @@ v0.12.0 is release-ready only when all are true:
 - [x] Default 256 KiB inline / 8 MiB spool contract remains unchanged.
 - [x] Large message events cannot prevent a valid large final result from reaching spool handling.
 - [x] Root + Bridge tests and ruff pass.
-- [ ] Linux/container CI passes.
-- [ ] Windows/native/Windows-Agent regression CI passes.
+- [x] Linux/container CI passes.
+- [x] Windows/native/Windows-Agent regression CI passes.
 - [x] Restricted-network Linux live acceptance passes for Tunnel + Agent + Jev independently; see `docs/v0.12.0-linux-live-acceptance-2026-10-10.md`.
 - [x] Documentation/site are aligned to the v0.12.0 release-candidate contract; the site builds 21 pages without warnings/errors while v0.11.0 remains identified as the published stable release.
 - [x] Secrets/proxy credentials are absent from the tracked diff and all nine new v0.12 files; live acceptance/public evidence is redacted.
+
+Release-candidate CI evidence:
+
+- `b4f64040ecfa8cffe4c34e14c939f61e179130d7`: Container run `38014406082` — success.
+- `b4f64040ecfa8cffe4c34e14c939f61e179130d7`: Windows Native run `38014406119` — success, including hard-required symlink kernel cases, Ruff, Windows Python/native tests, release wheel build, and clean-environment wheel acceptance.
+- `1bd54f8de9aac14aaeb5f4dbfe185986d6036e80` (direct parent product-code commit): Windows Agent run `38013965570` — success. The subsequent `b4f64040` commit changes only the Windows Native workflow trigger surface, so no Agent product code changed after this successful run.
