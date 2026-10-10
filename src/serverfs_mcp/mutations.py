@@ -42,7 +42,7 @@ import errno
 import hashlib
 import os
 import stat as stat_module
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from . import fdio
 from . import logging as jsonlog
@@ -329,6 +329,7 @@ def replace_binary_file(
     expected_revision: str,
     *,
     max_binary_bytes: int,
+    preserve_metadata: Callable[[int, int, os.stat_result], None] = _preserve_metadata,
 ) -> UploadBinaryFileResult:
     """Atomically replace one regular file after an exact revision check."""
     if len(data) > max_binary_bytes:
@@ -349,6 +350,7 @@ def replace_binary_file(
                     fd,
                     before,
                     expected_revision,
+                    preserve_metadata=preserve_metadata,
                 )
     return UploadBinaryFileResult(
         workdir=resolved.workdir.alias,
@@ -394,12 +396,20 @@ def _replace_at(
     src_fd: int,
     original: os.stat_result,
     expected_revision: str,
+    *,
+    preserve_metadata: Callable[[int, int, os.stat_result], None] = _preserve_metadata,
 ) -> str:
-    """Atomically replace ``name`` with ``payload``, preserving metadata."""
+    """Atomically replace ``name`` with ``payload``, preserving metadata.
+
+    ``preserve_metadata`` is the platform strategy for carrying the
+    original inode's mode/ownership/xattrs (and on Darwin ACLs) onto the
+    replacement inode; it must fail before the rename if anything cannot
+    be preserved. The default is the Linux strategy above.
+    """
     temp_name, temp_fd = fdio.create_temp_at(parent_fd)
     try:
         _write_all(temp_fd, payload)
-        _preserve_metadata(src_fd, temp_fd, original)
+        preserve_metadata(src_fd, temp_fd, original)
         os.fsync(temp_fd)
         # last-moment re-check, inside the lock: the target must still be
         # the exact object the caller read
@@ -423,6 +433,7 @@ def edit_text_file(
     *,
     max_write_bytes: int,
     max_edits_per_call: int,
+    preserve_metadata: Callable[[int, int, os.stat_result], None] = _preserve_metadata,
 ) -> EditTextFileResult:
     """Replace exact text in an existing UTF-8 file; never creates one."""
     _validate_edits(
@@ -450,7 +461,15 @@ def edit_text_file(
                 payload = (_UTF8_BOM + body) if has_bom else body
                 if len(payload) > max_write_bytes:
                     raise WriteTooLargeError(f"result exceeds {max_write_bytes} bytes")
-                revision = _replace_at(parent_fd, name, payload, fd, before, expected_revision)
+                revision = _replace_at(
+                    parent_fd,
+                    name,
+                    payload,
+                    fd,
+                    before,
+                    expected_revision,
+                    preserve_metadata=preserve_metadata,
+                )
     return EditTextFileResult(
         workdir=resolved.workdir.alias,
         path=resolved.rel_path,

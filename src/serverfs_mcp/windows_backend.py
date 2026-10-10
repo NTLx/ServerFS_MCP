@@ -59,6 +59,9 @@ from .mutation_text import (
 )
 from .paths import is_hidden_component
 from .search_glob import glob_matches
+from .search_scan import ALWAYS_EXCLUDED_DIRS as _RG_ALWAYS_EXCLUDED_DIRS
+from .search_scan import rg_binary_truncate as _rg_binary_truncate
+from .search_scan import scan_file as _scan_file
 
 if TYPE_CHECKING:
     from .models import TextEdit
@@ -110,37 +113,8 @@ def _rfc3339_from_100ns(ticks: int) -> str | None:
 
 # The Linux search pins rg with `--glob !.git/!hg/!svn` regardless of
 # allow_hidden (rg never reads VCS internals); the Windows searcher keeps
-# that exclusion so both backends scan the same set of files.
-_RG_ALWAYS_EXCLUDED_DIRS = frozenset({".git", ".hg", ".svn"})
-
-# ripgrep reads in 64 KiB buffers and stops at the FIRST buffer containing a
-# NUL: matches from that buffer are suppressed and the file is abandoned
-# (measured: a needle before the NUL in one small file still yields nothing).
-# Truncating at the start of the NUL-containing chunk reproduces that exactly.
-_RG_READ_CHUNK = 65536
-
-
-def _rg_binary_truncate(data: bytes) -> bytes:
-    nul = data.find(b"\x00")
-    if nul < 0:
-        return data
-    return data[: (nul // _RG_READ_CHUNK) * _RG_READ_CHUNK]
-
-
-def _scan_file(data: bytes, path: str, needle: str, case_sensitive: bool):
-    for index, raw in enumerate(data.split(b"\n"), start=1):
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            # rg's UTF-8 matcher cannot match a line it cannot decode: an
-            # undecodable line contributes no matches, the file continues
-            continue
-        # trailing \n was consumed by the split; an interior \r stays in the
-        # reported text verbatim (rg does not normalize CRLF lines)
-        probe = text if case_sensitive else text.casefold()
-        if needle and needle in probe:
-            yield TextMatch(path=path, line=index, text=text)
-
+# that exclusion (ALWAYS_EXCLUDED_DIRS, shared with the Darwin searcher)
+# so every backend scans the same set of files.
 
 class WindowsWorkdirSession:
     """One retained-root session for one workdir."""

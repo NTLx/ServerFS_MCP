@@ -195,23 +195,45 @@ class FilesystemBackend(Protocol):
 
 
 def get_backend() -> FilesystemBackend:
-    """Return the platform backend for this process (Phase B dispatch).
+    """Return the platform backend for this process.
 
     Each kernel module is imported lazily so this contract module loads on
     every platform without touching the other platform's kernel: a Windows
-    process never imports fdio, and a Linux process never imports the
-    native extension. The Windows backend is a process singleton because
-    its sessions retain root capabilities for the process lifetime (§10.1);
-    the Linux backend is stateless and re-opened cheaply per call, matching
-    v0.9 behavior exactly.
+    process never imports fdio, a Darwin process never imports the native
+    extension, and a Linux process never imports either. The Windows
+    backend is a process singleton because its sessions retain root
+    capabilities for the process lifetime (§10.1); the Linux and Darwin
+    backends are stateless and re-opened cheaply per call.
+
+    v0.13 dispatch (dev_plan_v0.13.md §4) — the implicit "win32 -> Windows,
+    everything else -> Linux" split is gone:
+
+        linux                -> LinuxWorkdirSession
+        darwin (M-series,
+        macOS 27, native
+        arm64, not Rosetta)  -> DarwinWorkdirSession
+        win32                -> WindowsWorkdirSession
+        anything else        -> NATIVE_PLATFORM_UNSUPPORTED
     """
     if sys.platform == "win32":
         from .windows_backend import WindowsBackend
 
         return WindowsBackend.shared()
-    from .linux_backend import LinuxBackend
+    if sys.platform == "darwin":
+        from .darwin_platform import ensure_supported_darwin
 
-    return LinuxBackend()
+        ensure_supported_darwin()
+        from .darwin_backend import DarwinBackend
+
+        return DarwinBackend()
+    if sys.platform.startswith("linux"):
+        from .linux_backend import LinuxBackend
+
+        return LinuxBackend()
+    raise BackendError(
+        "NATIVE_PLATFORM_UNSUPPORTED",
+        f"no ServerFS filesystem backend for platform {sys.platform!r}",
+    )
 
 
 __all__ = [
