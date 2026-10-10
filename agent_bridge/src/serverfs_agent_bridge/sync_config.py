@@ -130,9 +130,7 @@ def _policy_matches(existing: dict[str, Any], request: dict[str, Any]) -> bool:
     return True
 
 
-def _merge_derived_policy(
-    existing: dict[str, Any], derived: dict[str, Any]
-) -> dict[str, Any]:
+def _merge_derived_policy(existing: dict[str, Any], derived: dict[str, Any]) -> dict[str, Any]:
     """Replace operator-owned policy while preserving runtime-local settings.
 
     The render request owns only the runtime keys accepted by ``_RUNTIME_KEYS``
