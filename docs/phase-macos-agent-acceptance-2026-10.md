@@ -5,7 +5,7 @@
 **OS:** macOS 27.0.1 (26A434), native arm64, not Rosetta
 **ServerFS commit:** `df94673e16927e4a27d22428ce693cac5f3ec665`
 **Runtimes (native arm64 binaries):** codex-cli 0.162.0 (managed daemon 0.162.1),
-Claude Code 2.1.294; Qoder not installed on this host (SDK-driven, see limitations)
+Claude Code 2.1.294, qodercli 1.1.67 (installed 2026-10-10; see the live-evidence update below)
 
 ## Results — 9/9 PASS (live bridge on AF_UNIX with getpeereid authorization)
 
@@ -51,16 +51,30 @@ fail-closed behavior are therefore retained unchanged on macOS; recovery stays p
   operator-provided proxy endpoint and is recorded as the remaining operator-assisted item
   together with the ChatGPT E2E (see the live ChatGPT E2E record).
 
+## Live-evidence update (2026-10-10, later same day)
+
+The user's real deployment was brought up on this machine (launchd Bridge with the real
+config): **all three runtimes probe live through the launchd Bridge**:
+
+```text
+runtime claude: available=True version=2.1.294 (Claude Code)
+runtime codex:  available=True version=0.162.1
+runtime qoder:  available=True version=1.1.67
+qoder model discovery: 17 models   codex model discovery: 10 models
+```
+
+This resolves limitation 1 below: Qoder is now verified live at the probe + model-discovery
+level (the SDK drives the installed qodercli 1.1.67). `serverfs doctor` on the deployed
+configuration reports **0 FAIL / 0 WARN**, including the POSIX private-state inspector
+(the Bridge inspector gained a POSIX owner/mode branch) and the runtime-dir-derived endpoint.
+
 ## Limitations on this host
 
-1. **Qoder**: no `qodercli` binary is installed; the Qoder adapter is driven by the official
-   Python Agent SDK and its coverage is the unit suite (`test_qoder_adapter.py`). Live Qoder
-   acceptance requires a host with the Qoder IDE CLI installed and logged in; the release
-   statement must remain narrowed accordingly until that run happens.
-2. **Live provider task turns**: Codex and Claude are proven live at the probe/daemon/model-list
-   level. A full paid provider turn (approvals, questions, cancellation against the real
-   provider) consumes the operator's provider quota and is listed under operator-assisted
-   evidence; the corresponding flows are covered by the adapter contract tests with harnesses.
-3. **Approvals / questions / cancellation live flows**: exercised against harnesses in the
+1. **Live provider task turns**: Codex, Claude and Qoder are proven live at the
+   probe/daemon/model-discovery level. A full paid provider turn (approvals, questions,
+   cancellation against the real provider) consumes the operator's provider quota and is listed
+   under operator-assisted evidence; the corresponding flows are covered by the adapter contract
+   tests with harnesses.
+2. **Approvals / questions / cancellation live flows**: exercised against harnesses in the
    automated suite (fake runtime + adapter tests) on this machine; the frozen semantics are
    unchanged from v0.12.

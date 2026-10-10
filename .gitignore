@@ -19,3 +19,7 @@ native/windows/pyd-staging/
 .venv-clean/
 scratchpad/
 .venv-abi*/
+
+# 本机启动脚本与 Bridge 配置（含机器路径）
+run-serverfs.sh
+agent-bridge.config.json

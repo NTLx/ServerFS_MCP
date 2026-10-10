@@ -137,3 +137,53 @@ class TestConfigDefaults:
         assert not str(config.socket_path).startswith("/run/")
         assert config.socket_path.name == SOCKET_NAME
         assert config.socket_path.parent.name == RUNTIME_DIRECTORY
+
+
+class TestPosixStateInspector:
+    """The Bridge inspector answers doctor's private-state question on POSIX too."""
+
+    def test_cold_deployment_reports_absent(self, tmp_path) -> None:
+        from serverfs_agent_bridge.inspect_state import ABSENT, inspect_private_state
+
+        report = inspect_private_state(tmp_path)
+        assert all(entry["status"] == ABSENT for entry in report.values()), report
+
+    def test_safe_private_state_and_unsafe_modes(self, tmp_path) -> None:
+        import os
+        import stat as stat_module
+
+        from serverfs_agent_bridge.inspect_state import SAFE, UNSAFE, inspect_private_state
+
+        home = tmp_path / "agent-bridge"
+        home.mkdir(mode=0o700)
+        (home / "state").mkdir(mode=0o700)
+        (home / "locks").mkdir(mode=0o700)
+        config = home / "bridge.json"
+        config.write_text("{}")
+        os.chmod(config, 0o600)
+        report = inspect_private_state(tmp_path)
+        assert report["state"]["status"] == SAFE
+        assert report["locks"]["status"] == SAFE
+        assert report["config"]["status"] == SAFE
+        assert report["data_home"]["status"] == SAFE
+
+        # a world-readable state directory is unsafe, not unknown
+        os.chmod(home / "state", 0o755)
+        report2 = inspect_private_state(tmp_path)
+        assert report2["state"]["status"] == UNSAFE
+        assert "Bridge user" in report2["state"]["reason"]
+        os.chmod(home / "state", 0o700)
+
+        # a foreign-owned file is unsafe
+        config.chmod(0o777)
+        report3 = inspect_private_state(tmp_path)
+        assert report3["config"]["status"] == UNSAFE
+        config.chmod(0o600)
+
+        # a symlinked entry is unsafe (never followed)
+        (tmp_path / "outside").mkdir()
+        (home / "state").rmdir()
+        (home / "state").symlink_to(tmp_path / "outside")
+        report4 = inspect_private_state(tmp_path)
+        assert report4["state"]["status"] == UNSAFE
+        assert stat_module.S_ISLNK((home / "state").lstat().st_mode)

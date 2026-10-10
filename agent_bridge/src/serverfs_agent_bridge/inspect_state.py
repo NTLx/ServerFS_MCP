@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import stat
 import sys
 from dataclasses import dataclass
@@ -202,6 +203,45 @@ def _reason_of(exc: BridgeError) -> str:
     return "failed the private-state check"
 
 
+def _inspect_posix_directory(path: Path, what: str) -> StateReport:
+    """Classify one POSIX directory by owner and mode bits (Linux and macOS v0.13).
+
+    The same rules the live path enforces through ``private_state``'s POSIX
+    branch: a real directory (no symlink), owned by the Bridge user, with no
+    group or world access. Same four-status vocabulary, same redaction.
+    """
+    try:
+        lstatted = path.lstat()
+    except FileNotFoundError:
+        return _absent(what)
+    except OSError:
+        return _unknown(what, "the entry could not be examined")
+    if stat.S_ISLNK(lstatted.st_mode) or not stat.S_ISDIR(lstatted.st_mode):
+        return _unsafe(what, "is not a directory")
+    if lstatted.st_uid != os.getuid():
+        return _unsafe(what, "has a different owner")
+    if lstatted.st_mode & 0o077:
+        return _unsafe(what, "grants access beyond the Bridge user")
+    return _safe(what)
+
+
+def _inspect_posix_file(path: Path, what: str) -> StateReport:
+    """Classify one POSIX regular file by owner and mode bits."""
+    try:
+        lstatted = path.lstat()
+    except FileNotFoundError:
+        return _absent(what)
+    except OSError:
+        return _unknown(what, "the entry could not be examined")
+    if stat.S_ISLNK(lstatted.st_mode) or not stat.S_ISREG(lstatted.st_mode):
+        return _unsafe(what, "is not a regular file")
+    if lstatted.st_uid != os.getuid():
+        return _unsafe(what, "has a different owner")
+    if lstatted.st_mode & 0o077:
+        return _unsafe(what, "grants access beyond the Bridge user")
+    return _safe(what)
+
+
 def inspect_private_state(data_home: Path) -> dict[str, dict[str, str]]:
     """Classify the four private-state locations under one data home.
 
@@ -209,6 +249,25 @@ def inspect_private_state(data_home: Path) -> dict[str, dict[str, str]]:
     answer -- an inspector that turned a missing directory into a fault would make a fresh install
     look broken.
     """
+    if private_state.WINDOWS:
+        return _inspect_windows_private_state(data_home)
+    return {
+        "data_home": _inspect_posix_directory(
+            Path(data_home) / "agent-bridge", "the Agent data home"
+        ).as_dict(),
+        STATE_DIR: _inspect_posix_directory(
+            Path(data_home) / "agent-bridge" / "state", "the Bridge state directory"
+        ).as_dict(),
+        LOCK_DIR: _inspect_posix_directory(
+            Path(data_home) / "agent-bridge" / "locks", "the writer lock directory"
+        ).as_dict(),
+        CONFIG_FILE: _inspect_posix_file(
+            Path(data_home) / "agent-bridge" / "bridge.json", "the rendered Bridge config"
+        ).as_dict(),
+    }
+
+
+def _inspect_windows_private_state(data_home: Path) -> dict[str, dict[str, str]]:
     home = Path(data_home) / "agent-bridge"
     return {
         "data_home": _inspect_directory(home, "the Agent data home").as_dict(),
@@ -228,16 +287,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Inspect ServerFS Agent Bridge private state")
     parser.add_argument("--data-home", required=True, type=Path)
     args = parser.parse_args(argv)
-
-    if not private_state.WINDOWS:
-        # The private-state contract this inspects is the Windows one. On POSIX the equivalent
-        # answer requires mode-bit inspection the Bridge does not expose, and guessing would be
-        # worse than declining.
-        print(
-            json.dumps({"error": "private-state inspection is only defined on Windows"}),
-            file=sys.stdout,
-        )
-        return 3
 
     try:
         report = inspect_private_state(args.data_home)
