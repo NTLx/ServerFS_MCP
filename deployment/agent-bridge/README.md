@@ -1,6 +1,6 @@
 # Phase E — user-scoped Agent Bridge deployment
 
-Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.12.0 is the current published stable release.** v0.12 keeps the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling.
+Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.13.0 is the current published stable release.** v0.12 kept the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling.
 
 The deployment has one non-negotiable rule:
 
@@ -149,7 +149,7 @@ Agent settings into the container, so these values remain inert without
 Provider secrets and shell-only environment are intentionally **not** stored in
 `.env`; they remain in the user-owned `provider.env` described in step 4. The experimental
 Jev advisory features are the one explicit exception: `SERVERFS_JEV_API_KEY` is their opt-in
-master gate carried through the current v0.12.0 stable release. Leave it empty to disable Preflight,
+master gate carried through the current v0.13.0 stable release. Leave it empty to disable Preflight,
 Runtime Router, Model Advisor, and Approval Advisor functionality. In v0.12, `SERVERFS_JEV_USE_PROXY` selects the shared proxy explicitly without changing Jev's advisory-only authority. When non-empty, the installer renders
 the key only into the user-owned
 `0600` Bridge `config.json`; it is never passed into the MCP container.
@@ -446,7 +446,7 @@ Only after host/container verification:
 1. confirm the OpenAI tunnel is healthy;
 2. refresh/reconnect the ServerFS MCP integration if the old 11-tool schema is
    cached;
-3. verify the configured 20-tool or 22-tool Agent surface;
+3. verify the configured 21-tool or 23-tool Agent surface;
 4. call `list_agent_runtimes`;
 5. submit disposable Codex and Claude tasks and poll them;
 6. exercise native approval/question paths when providers request them;
@@ -504,7 +504,7 @@ Before host acceptance, run both independent code gates: the repository-root gat
 `bash -n deployment/agent-bridge/*.sh` for deployment shell syntax. Root `pytest`
 collects only `tests/` and does not validate `agent_bridge/tests/`.
 
-For the current v0.12.0 stable package, verify the target host proves:
+For the current v0.13.0 stable package, verify the target host proves:
 
 - install/update/rollback require no sudo/root;
 - real peer UID/GID equal the current login user;
@@ -541,5 +541,5 @@ to the default 11-tool surface. Workdir `AGENT_MODE/RUNTIMES` values in
 container.
 
 If post-release verification fails, use the documented rollback script to restore the
-previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The current v0.12.0 stable release uses an immutable
-tag; earlier release tags remain immutable as well. The v0.12.0 release passed the unified Linux + Windows release gates before publication.
+previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The current v0.13.0 stable release uses an immutable
+tag; earlier release tags remain immutable as well. The v0.13.0 release passed the unified Linux + Windows + macOS release gates before publication.

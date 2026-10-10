@@ -19,7 +19,6 @@ on:
   push:
     branches:
       - main
-      - "feat/v0.13-macos27-arm64"
     tags:
       - "v*.*.*"
     paths-ignore:
@@ -94,6 +93,9 @@ jobs:
       - name: Ruff lint
         run: uv run ruff check .
 
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
       - name: Test
         run: uv run pytest
 
@@ -130,6 +132,9 @@ jobs:
 
       - name: Ruff lint
         run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
 
       # The live-launchd proof is opt-in (SERVERFS_LIVE_LAUNCHD=1) and stays
       # out of hosted CI by design; everything else in the Bridge suite runs.

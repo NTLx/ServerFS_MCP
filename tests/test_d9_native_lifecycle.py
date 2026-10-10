@@ -114,7 +114,9 @@ AGENT_TOOLS = frozenset(
 
 #: Every marker the secret scan looks for. Grouped by what it would mean if it appeared.
 FORBIDDEN_IN_CONFIG = (
-    (CONTROL_PLANE_KEY_VALUE,) + tuple(TUNNEL_MARKERS.values()) + tuple(GENERIC_PROXY_MARKERS.values())
+    (CONTROL_PLANE_KEY_VALUE,)
+    + tuple(TUNNEL_MARKERS.values())
+    + tuple(GENERIC_PROXY_MARKERS.values())
 )
 
 
