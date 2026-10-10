@@ -414,9 +414,7 @@ def main() -> int:
             workdir.mkdir()
             subprocess.run(["git", "init", "-q", str(workdir)], check=True)
             (workdir / "README.md").write_text("v0.12 Linux acceptance\n", encoding="utf-8")
-            proxy_url = (
-                f"http://127.0.0.1:{forwarder.port}" if forwarder is not None else None
-            )
+            proxy_url = f"http://127.0.0.1:{forwarder.port}" if forwarder is not None else None
             config_path = write_config(
                 root,
                 workdir,

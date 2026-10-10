@@ -17,6 +17,7 @@ PROXY_KEYS = (
     "SERVERFS_PROXY_PASSWORD",
 )
 
+
 @dataclass(frozen=True)
 class SharedProxyConfig:
     """Validated shared HTTP proxy values.

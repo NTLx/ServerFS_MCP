@@ -103,20 +103,24 @@ class MockCodexServer:
                 self.thread_starts += 1
                 params = message["params"]
                 self.thread_start_params.append(dict(params))
-                assert {
-                    "cwd",
-                    "serviceName",
-                    "approvalPolicy",
-                    "approvalsReviewer",
-                    "config",
-                } <= set(params) <= {
-                    "cwd",
-                    "serviceName",
-                    "model",
-                    "approvalPolicy",
-                    "approvalsReviewer",
-                    "config",
-                }
+                assert (
+                    {
+                        "cwd",
+                        "serviceName",
+                        "approvalPolicy",
+                        "approvalsReviewer",
+                        "config",
+                    }
+                    <= set(params)
+                    <= {
+                        "cwd",
+                        "serviceName",
+                        "model",
+                        "approvalPolicy",
+                        "approvalsReviewer",
+                        "config",
+                    }
+                )
                 assert params["approvalPolicy"] == "on-request"
                 assert params["approvalsReviewer"] == "user"
                 assert params["config"] == {
@@ -129,20 +133,24 @@ class MockCodexServer:
             if method == "thread/resume":
                 params = message["params"]
                 self.thread_resume_params.append(dict(params))
-                assert {
-                    "threadId",
-                    "cwd",
-                    "approvalPolicy",
-                    "approvalsReviewer",
-                    "config",
-                } <= set(params) <= {
-                    "threadId",
-                    "cwd",
-                    "model",
-                    "approvalPolicy",
-                    "approvalsReviewer",
-                    "config",
-                }
+                assert (
+                    {
+                        "threadId",
+                        "cwd",
+                        "approvalPolicy",
+                        "approvalsReviewer",
+                        "config",
+                    }
+                    <= set(params)
+                    <= {
+                        "threadId",
+                        "cwd",
+                        "model",
+                        "approvalPolicy",
+                        "approvalsReviewer",
+                        "config",
+                    }
+                )
                 assert params["approvalPolicy"] == "on-request"
                 assert params["approvalsReviewer"] == "user"
                 assert params["config"] == {

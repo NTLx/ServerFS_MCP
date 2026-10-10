@@ -90,9 +90,7 @@ async def _serve(
         JevTaskPreflight.from_api_key(
             config.jev.api_key,
             proxy_url=(
-                config.proxy.url
-                if config.jev.use_proxy and config.proxy is not None
-                else None
+                config.proxy.url if config.jev.use_proxy and config.proxy is not None else None
             ),
         )
         if config.jev.enabled and config.jev.api_key is not None

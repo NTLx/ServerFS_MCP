@@ -1350,9 +1350,7 @@ class BridgeService:
             max_events_per_task=self.limits.max_events_per_task,
         )
 
-    def _bounded_agent_message_event(
-        self, payload: dict[str, Any]
-    ) -> tuple[dict[str, Any], bytes]:
+    def _bounded_agent_message_event(self, payload: dict[str, Any]) -> tuple[dict[str, Any], bytes]:
         """Bound only large agent prose events; never alter the provider's final result.
 
         Approval/question/tool payloads keep their hard size validation. Agent prose is evidence,

@@ -185,8 +185,7 @@ async def test_codex_normal_task_and_continuation(tmp_path: Path, codex_home: Pa
         assert mock.thread_starts == 1
         assert mock.thread_resumes == ["thread-1"]
         assert all(
-            set(params)
-            == {"threadId", "input", "cwd", "approvalPolicy", "approvalsReviewer"}
+            set(params) == {"threadId", "input", "cwd", "approvalPolicy", "approvalsReviewer"}
             and params["approvalPolicy"] == "on-request"
             and params["approvalsReviewer"] == "user"
             for params in mock.turn_starts
