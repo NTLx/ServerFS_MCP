@@ -72,10 +72,11 @@ BRIDGE_PYTHON = Path(
     )
 )
 
-#: Markers planted in the parent so every scrub assertion has something real to catch. If any of
-#: these is absent from the environment the chain inherits, a "not leaked" assertion is vacuous.
+#: Markers planted in the parent so every scrub assertion has something real to catch. The
+#: control-plane API key is intentionally excluded because the Windows launcher consumes it from
+#: ``--api-key-file`` and now rejects a simultaneous ``CONTROL_PLANE_API_KEY`` source.
+CONTROL_PLANE_KEY_VALUE = "d9-not-a-real-key"
 TUNNEL_MARKERS: dict[str, str] = {
-    "CONTROL_PLANE_API_KEY": "cp-marker-0001",
     "CONTROL_PLANE_TUNNEL_ID": "cp-marker-0002",
     "TUNNEL_CLIENT_PROFILE": "tunnel-marker-0003",
     "SERVERFS_PROXY_PASSWORD": "proxy-marker-0004",
@@ -283,7 +284,7 @@ class Lifecycle:
             outside = self.tmp_path / "key-material"
             outside.mkdir(parents=True, exist_ok=True)
             api_key = outside / "api-key.txt"
-        api_key.write_text("d9-not-a-real-key\n", encoding="utf-8")
+        api_key.write_text(f"{CONTROL_PLANE_KEY_VALUE}\n", encoding="utf-8")
         env_file = self.tmp_path / ".env"
         env_file.write_text("", encoding="utf-8")
 

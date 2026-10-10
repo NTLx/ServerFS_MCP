@@ -78,6 +78,7 @@ WORKSPACE_WRITE_FILE = _bootstrap.WORKSPACE_WRITE_FILE
 
 AGENT_ENDPOINT_PORT = _lifecycle_module.AGENT_ENDPOINT_PORT
 BRIDGE_PYTHON = _lifecycle_module.BRIDGE_PYTHON
+CONTROL_PLANE_KEY_VALUE = _lifecycle_module.CONTROL_PLANE_KEY_VALUE
 GENERIC_PROXY_MARKERS = _lifecycle_module.GENERIC_PROXY_MARKERS
 TUNNEL_MARKERS = _lifecycle_module.TUNNEL_MARKERS
 Lifecycle = _lifecycle_module.Lifecycle
@@ -112,7 +113,9 @@ AGENT_TOOLS = frozenset(
 )
 
 #: Every marker the secret scan looks for. Grouped by what it would mean if it appeared.
-FORBIDDEN_IN_CONFIG = tuple(TUNNEL_MARKERS.values()) + tuple(GENERIC_PROXY_MARKERS.values())
+FORBIDDEN_IN_CONFIG = (
+    (CONTROL_PLANE_KEY_VALUE,) + tuple(TUNNEL_MARKERS.values()) + tuple(GENERIC_PROXY_MARKERS.values())
+)
 
 
 class Client:
@@ -475,9 +478,12 @@ class TestTrustDomainSeparation:
         # Raw Agent material: the child receives the *mapped* values, not the source ones.
         assert "SERVERFS_AGENT_PROXY_URL" not in environment
         assert "SERVERFS_AGENT_NO_PROXY" not in environment
-        # The Tunnel and Control Plane credentials.
-        for name in ("SERVERFS_PROXY_PASSWORD", "CONTROL_PLANE_API_KEY", "TUNNEL_CLIENT_PROFILE"):
+        # The Tunnel and Control Plane credentials. The API key itself entered through the
+        # Windows-only file boundary, so assert on its actual value rather than planting a second
+        # conflicting CONTROL_PLANE_API_KEY source in the launcher environment.
+        for name in ("SERVERFS_PROXY_PASSWORD", "TUNNEL_CLIENT_PROFILE"):
             assert name not in environment, name
+        assert CONTROL_PLANE_KEY_VALUE not in environment.values()
         # Generic proxy variables: the child gets HTTPS_PROXY and NO_PROXY only, because Phase 0F
         # measured that HTTP_PROXY alone is insufficient for HTTPS and that more names widen the
         # surface for no benefit.
