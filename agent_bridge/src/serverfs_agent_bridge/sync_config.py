@@ -27,8 +27,8 @@ from .config import BridgeConfig
 from .errors import BridgeError
 from .private_state import verify_private_file
 from .render_config import (
-    MAX_INPUT_BYTES,
     _RUNTIME_KEYS,
+    MAX_INPUT_BYTES,
     _publish_private_file,
     build_policy_document,
 )
