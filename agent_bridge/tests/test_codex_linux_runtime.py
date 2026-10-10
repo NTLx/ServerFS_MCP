@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from serverfs_agent_bridge.adapters.codex import CodexAdapter
-from serverfs_agent_bridge.adapters.codex_linux import LinuxCodexAppServer
+from serverfs_agent_bridge.adapters.codex_posix import PosixCodexAppServer
 from serverfs_agent_bridge.adapters.codex_transport import UnixSocketEndpoint
 from serverfs_agent_bridge.bootstrap import RuntimeProxy
 from serverfs_agent_bridge.config import CodexSettings
@@ -141,7 +141,7 @@ async def test_proxy_mode_owns_standalone_unix_app_server(
         codex_bin="/usr/bin/codex-test",
         use_proxy=True,
     )
-    runtime = LinuxCodexAppServer(
+    runtime = PosixCodexAppServer(
         settings,
         state_dir=tmp_path / "state",
         runtime_proxy=RuntimeProxy(
@@ -190,8 +190,8 @@ async def test_proxy_mode_owns_standalone_unix_app_server(
     assert not runtime._socket_path.exists()
 
 
-def _runtime_for_socket_policy(tmp_path: Path) -> LinuxCodexAppServer:
-    return LinuxCodexAppServer(
+def _runtime_for_socket_policy(tmp_path: Path) -> PosixCodexAppServer:
+    return PosixCodexAppServer(
         CodexSettings(
             enabled=True,
             codex_home=tmp_path / "codex-home",
@@ -270,7 +270,7 @@ async def test_proxy_mode_refuses_missing_runtime_proxy(tmp_path: Path) -> None:
         codex_bin="/usr/bin/codex-test",
         use_proxy=True,
     )
-    runtime = LinuxCodexAppServer(settings, state_dir=tmp_path / "state", runtime_proxy=None)
+    runtime = PosixCodexAppServer(settings, state_dir=tmp_path / "state", runtime_proxy=None)
 
     with pytest.raises(BridgeError, match="no endpoint is available"):
         await runtime.ensure_started()
