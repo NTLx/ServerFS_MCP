@@ -8,6 +8,13 @@ name: macOS Native
 # cannot satisfy them, run this workflow on an M-series self-hosted
 # runner with the same assertions.
 
+# Runner selection: jobs default to the hosted `macos-27` label. If hosted
+# capacity is unavailable (free-account queue), register an M-series
+# self-hosted runner (e.g. with the label `macos27-arm64`) and set the
+# repository Actions variable MACOS_RUNNER=macos27-arm64 — every job below
+# switches to it without any other change. The in-job platform assertions
+# remain authoritative either way.
+
 on:
   push:
     branches:
@@ -36,7 +43,7 @@ concurrency:
 jobs:
   platform-assert:
     name: Assert macOS 27 arm64 native
-    runs-on: macos-27
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-27' }}
     steps:
       - name: Measure the platform
         shell: bash
@@ -55,7 +62,7 @@ jobs:
   test:
     name: MCP suite (macOS 27 arm64)
     needs: platform-assert
-    runs-on: macos-27
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-27' }}
     steps:
       - name: Assert the platform again inside the job
         shell: bash
@@ -96,7 +103,7 @@ jobs:
   bridge-test:
     name: Agent Bridge suite (macOS 27 arm64)
     needs: platform-assert
-    runs-on: macos-27
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-27' }}
     defaults:
       run:
         working-directory: agent_bridge
