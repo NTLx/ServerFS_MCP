@@ -1,9 +1,10 @@
-"""Bridge-owned standalone Codex App Server for Linux proxy mode.
+"""Bridge-owned standalone Codex App Server for POSIX proxy mode (Linux and Darwin).
 
-The normal Linux path keeps using the user's managed Codex daemon.  That path cannot prove which
-proxy environment an already-running shared daemon inherited, so v0.12 uses this lifecycle only when
-``CodexSettings.use_proxy`` is true.  One standalone app-server is shared by the Bridge: Codex
-0.162.0 was measured accepting two simultaneous initialized Unix-WebSocket connections.
+The normal POSIX path keeps using the user's managed Codex daemon.  That path cannot prove which
+proxy environment an already-running shared daemon inherited, so v0.12 (Linux) and v0.13 (Darwin)
+use this lifecycle only when ``CodexSettings.use_proxy`` is true.  One standalone app-server is
+shared by the Bridge: Codex 0.162.0 was measured accepting two simultaneous initialized
+Unix-WebSocket connections.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ _START_TIMEOUT_SECONDS = 30.0
 _STOP_TIMEOUT_SECONDS = 10.0
 
 
-class LinuxCodexAppServer:
+class PosixCodexAppServer:
     """Own one proxy-scoped standalone Codex app-server child."""
 
     def __init__(

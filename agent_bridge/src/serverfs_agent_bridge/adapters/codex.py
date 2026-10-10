@@ -32,7 +32,7 @@ from .codex_transport import (
 )
 
 if TYPE_CHECKING:
-    from .codex_linux import LinuxCodexAppServer
+    from .codex_posix import PosixCodexAppServer
     from .codex_windows import WindowsCodexAppServer
 
 _WINDOWS = os.name == "nt"
@@ -87,7 +87,7 @@ class CodexAdapter(AgentAdapter):
         #: a handle on its lifecycle. Constructed lazily so a Linux process never imports the
         #: Windows runtime module and never allocates the object.
         self._windows_runtime: WindowsCodexAppServer | None = None
-        self._linux_runtime: LinuxCodexAppServer | None = None
+        self._linux_runtime: PosixCodexAppServer | None = None
         if _WINDOWS and settings.enabled:
             # Imported here, not at module scope. codex_windows builds a Windows-only environment
             # contract, and a module-scope import would make this file unimportable on Linux — the
@@ -106,12 +106,12 @@ class CodexAdapter(AgentAdapter):
                 client_version=client_version,
             )
         elif settings.enabled and settings.use_proxy:
-            from .codex_linux import LinuxCodexAppServer as _LinuxRuntime
+            from .codex_posix import PosixCodexAppServer as _LinuxRuntime
 
             if state_dir is None:
                 raise BridgeError(
                     "AGENT_RUNTIME_UNAVAILABLE",
-                    "Codex proxy mode requires a Bridge state directory on Linux",
+                    "Codex proxy mode requires a Bridge state directory on POSIX",
                 )
             self._linux_runtime = _LinuxRuntime(
                 settings,
