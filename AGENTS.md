@@ -10,7 +10,7 @@ Read `dev_plan_v0.8.md` for the frozen prior v0.8.0 release record: Qoder as the
 
 Read `dev_plan_v0.5.md` for the released/frozen v0.5.0 line: ChatGPT/OpenAI file-parameter ingress, the isolated file-ingress sidecar, MCP request-body sizing, and release closure. For every v0.5.0 change, that plan plus executed tests and implementation are authoritative over older binary-transfer assumptions.
 
-Read `README.md` for the current published v0.12.0 deployment/release contract and `dev_plan_v0.12.md` for the frozen development/acceptance record. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
+Read `README.md` for the current v0.13.0 release-facing deployment contract, `dev_plan_v0.13.md` for the active release-candidate development/acceptance record, and `dev_plan_v0.12.md` for the previous stable release's frozen record. Read `dev_plan_v0.4.md` for the frozen v0.4 design and
 acceptance baseline for hierarchical workdir policy, binary file transfer and the Issue #10
 transport-security fix.
 Read `dev_plan_v0.3.md` for the frozen v0.3 Agent Bridge contract: provider-neutral

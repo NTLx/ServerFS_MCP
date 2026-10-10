@@ -114,8 +114,38 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ai.add_argument("--log-dir", type=Path, help="Bridge stdout/stderr log directory")
     ai.add_argument("--force", action="store_true", help="Reinstall over an existing plist")
+    configure = agent_sub.add_parser(
+        "configure",
+        help="Create/update the private Bridge config from serverfs.toml and private env values",
+    )
+    configure.add_argument("--config", required=True, type=Path, help="native serverfs.toml path")
+    configure.add_argument(
+        "--env-file",
+        type=Path,
+        help="private Agent/Jev/proxy settings file (default: current process environment)",
+    )
     agent_sub.add_parser("start", help="Kickstart the LaunchAgent")
-    agent_sub.add_parser("restart", help="Kickstart -k the LaunchAgent")
+    ar = agent_sub.add_parser(
+        "restart",
+        help="Optionally synchronize serverfs.toml policy, then kickstart -k the LaunchAgent",
+    )
+    ar.add_argument(
+        "--config",
+        type=Path,
+        help="serverfs.toml to synchronize into the private Bridge config before restart",
+    )
+    ar.add_argument(
+        "--env-file",
+        type=Path,
+        help="also refresh private Agent/Jev/proxy settings from this file before restart",
+    )
+    async_parser = agent_sub.add_parser(
+        "sync",
+        help="Synchronize serverfs.toml-owned policy into the private Bridge config",
+    )
+    async_parser.add_argument(
+        "--config", required=True, type=Path, help="native serverfs.toml path"
+    )
     agent_sub.add_parser("stop", help="Boot the LaunchAgent out")
     agent_sub.add_parser("status", help="Read-only launchctl print summary")
     agent_sub.add_parser("uninstall", help="Boot the LaunchAgent out and remove the plist")
@@ -264,6 +294,18 @@ def cmd_serve(args: argparse.Namespace) -> int:
     elif sys.platform != "win32":
         return _fail("native serve is supported only on Windows and macOS 27 (Apple Silicon)")
     workdirs, native_settings = _load(args.config)
+    if sys.platform == "darwin" and native_settings.agent_enabled:
+        from .darwin_bridge_policy import DarwinBridgePolicyError, policy_is_synced
+
+        try:
+            synced = policy_is_synced(workdirs, native_settings)
+        except DarwinBridgePolicyError as exc:
+            return _fail(f"Agent Bridge policy check failed: {exc}")
+        if not synced:
+            return _fail(
+                "Agent Bridge policy is stale relative to serverfs.toml; run "
+                "'serverfs agent-bridge restart --config <serverfs.toml>' before starting serve"
+            )
     from .config import Settings
     from .main import create_server
     from .workdirs import WorkdirRegistry
@@ -390,10 +432,53 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
             path = lifecycle.install(plan, force=args.force)
             sys.stderr.write(f"LaunchAgent installed and bootstrapped: {path}\n")
             return 0
+        if command == "configure":
+            from .darwin_bridge_policy import DarwinBridgePolicyError, configure_policy
+
+            workdirs, native_settings = _load(args.config)
+            if not native_settings.agent_enabled:
+                return _fail("the native configuration does not enable Agent delegation")
+            try:
+                configure_policy(workdirs, native_settings, env_file=args.env_file)
+            except DarwinBridgePolicyError as exc:
+                return _fail(f"Agent Bridge configuration failed: {exc}")
+            sys.stderr.write("Agent Bridge private configuration published\n")
+            return 0
         if command == "start":
             lifecycle.start()
             return 0
+        if command == "sync":
+            from .darwin_bridge_policy import DarwinBridgePolicyError, sync_policy
+
+            workdirs, native_settings = _load(args.config)
+            if not native_settings.agent_enabled:
+                return _fail("the native configuration does not enable Agent delegation")
+            try:
+                sync_policy(workdirs, native_settings)
+            except DarwinBridgePolicyError as exc:
+                return _fail(f"Agent Bridge policy sync failed: {exc}")
+            sys.stderr.write("Agent Bridge policy synchronized\n")
+            return 0
         if command == "restart":
+            if args.env_file is not None and args.config is None:
+                return _fail("--env-file requires --config for Agent Bridge restart")
+            if args.config is not None:
+                from .darwin_bridge_policy import (
+                    DarwinBridgePolicyError,
+                    configure_policy,
+                    sync_policy,
+                )
+
+                workdirs, native_settings = _load(args.config)
+                if not native_settings.agent_enabled:
+                    return _fail("the native configuration does not enable Agent delegation")
+                try:
+                    if args.env_file is None:
+                        sync_policy(workdirs, native_settings)
+                    else:
+                        configure_policy(workdirs, native_settings, env_file=args.env_file)
+                except DarwinBridgePolicyError as exc:
+                    return _fail(f"Agent Bridge policy sync failed: {exc}")
             lifecycle.restart()
             return 0
         if command == "stop":

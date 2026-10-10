@@ -655,6 +655,32 @@ def _probe_workdir_policy(report, workdirs) -> None:
         )
 
 
+def _probe_darwin_policy_sync(report, workdirs, settings) -> None:
+    """Fail when launchd's private Bridge policy has drifted from serverfs.toml.
+
+    The comparison runs inside the Bridge package, so doctor never reads the private JSON containing
+    Jev/proxy material.  Only the redacted boolean result crosses the package boundary.
+    """
+    if sys.platform != "darwin":
+        return
+    from .darwin_bridge_policy import DarwinBridgePolicyError, policy_is_synced
+
+    try:
+        synced = policy_is_synced(workdirs, settings)
+    except DarwinBridgePolicyError as exc:
+        report.status("agent bridge policy", FAIL, f"could not verify synchronization ({exc})")
+        return
+    if synced:
+        report.status("agent bridge policy", OK, "matches serverfs.toml")
+    else:
+        report.status(
+            "agent bridge policy",
+            FAIL,
+            "stale relative to serverfs.toml; run 'serverfs agent-bridge restart --config "
+            "<serverfs.toml>'",
+        )
+
+
 def report_agent(
     report,
     workdirs,
@@ -674,6 +700,7 @@ def report_agent(
 
     report.status("agent", OK, "enabled")
     _probe_workdir_policy(report, workdirs)
+    _probe_darwin_policy_sync(report, workdirs, settings)
     _probe_runtimes(report, settings)
     _probe_data_home(report, env)
     _probe_bridge_availability(report, env)

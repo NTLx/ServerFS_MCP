@@ -6,7 +6,7 @@ Current stable release: **v0.13.0**. v0.10.0 added the native Windows deployment
 
 **v0.11.0** extends the native Windows deployment with Agent delegation for the three supported runtimes — **Codex, Claude Code and Qoder** — driven through the same ten Agent tools over the same Named-Pipe Bridge. Each runtime is a real provider process launched by a separate Agent Bridge venv (see [Windows Native Deployment](#windows-native-deployment) for the two-environment install). Capabilities are recorded per runtime, not advertised uniformly: Codex supports model discovery and request-scoped model override with its own loopback control channel bypassed from proxy policy; Claude and Qoder route provider traffic through the injected proxy when `use_proxy = true` (measured: 17 external CONNECTs, 0 loopback, attributed to the provider child) and direct when it is false; Claude does not expose model discovery (`model_discovery: unsupported`) and neither Claude nor Qoder supports live steering (`live_steer = false`); Qoder's model catalog is read live and its pricing state is never hard-coded. The full acceptance evidence is in `docs/phase-e-…`, `docs/phase-f-…`, `docs/phase-g-acceptance-2026-10.md`, `docs/phase-h-acceptance-2026-10.md` and `docs/phase-h6-live-chatgpt-e2e-2026-10-09.md`.
 
-**v0.12.0** is the current stable release. It brings the Linux deployment to parity around explicit egress control and interactive Agent behavior: OpenAI Tunnel, Agent runtimes and Jev each have an independent `*_USE_PROXY` switch while reusing the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields; Linux Agent proxying is credentialless-only and fails closed when upstream proxy credentials are configured; proxied Linux Codex runs through a Bridge-owned standalone app-server instead of mutating the user's managed daemon; native provider approvals are surfaced explicitly; and the Agent result spool threshold is configurable while the public 256 KiB default and 8 MiB maximum remain unchanged. Restricted-network Linux acceptance proved direct/proxy isolation for Tunnel, Jev, Claude, Codex and Qoder.
+**v0.12.0** brought the Linux deployment to parity around explicit egress control and interactive Agent behavior: OpenAI Tunnel, Agent runtimes and Jev each have an independent `*_USE_PROXY` switch while reusing the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields; Linux Agent proxying is credentialless-only and fails closed when upstream proxy credentials are configured; proxied Linux Codex runs through a Bridge-owned standalone app-server instead of mutating the user's managed daemon; native provider approvals are surfaced explicitly; and the Agent result spool threshold is configurable while the public 256 KiB default and 8 MiB maximum remain unchanged. Restricted-network Linux acceptance proved direct/proxy isolation for Tunnel, Jev, Claude, Codex and Qoder.
 
 **v0.13.0** adds native macOS support specifically for **Apple M-series Macs running macOS 27 Golden Gate**. It runs natively as **arm64** without Docker or Rosetta and provides the existing ServerFS filesystem, binary-transfer and Agent delegation capabilities using Darwin descriptor-relative filesystem operations, metadata-preserving atomic mutation (`fcopyfile(COPYFILE_METADATA)`: mode + xattrs + ACL), authenticated Unix-domain IPC via peer credentials (`getpeereid`), `flock` writer leases and a user-scoped **launchd** Agent Bridge. Codex, Claude Code, Jev advisors, proxy routing, approvals, recovery, result spooling and ChatGPT file ingress (through a native helper over a private AF_UNIX socket) are supported on this validated platform. The platform gate is measured at startup — `darwin` + `arm64` + macOS major 27 + not Rosetta — and anything else refuses with `NATIVE_PLATFORM_UNSUPPORTED`. Intel Macs, x86_64 processes, Rosetta, macOS 26 or older and macOS 28+ are explicitly unsupported in v0.13.
 
@@ -101,8 +101,8 @@ Images are published to GitHub Container Registry by GitHub Actions:
 | Channel | Tag | Updated by |
 |---|---|---|
 | Stable | `ghcr.io/ntlx/serverfs_mcp:latest` | newest `vX.Y.Z` tag |
-| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.12.0` | `v0.12.0` |
-| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.12` | newest `v0.12.x` tag |
+| Pinned release | `ghcr.io/ntlx/serverfs_mcp:0.13.0` | `v0.13.0` |
+| Pinned minor | `ghcr.io/ntlx/serverfs_mcp:0.13` | newest `v0.13.x` tag |
 | Development | `ghcr.io/ntlx/serverfs_mcp:edge` | every push to `main` |
 
 Every image is multi-arch: `linux/amd64` and `linux/arm64`.
@@ -114,9 +114,9 @@ push to main   →  edge
 tag vX.Y.Z     →  X.Y.Z  +  X.Y  +  latest
 ```
 
-The v0.12.0 release publishes immutable tag `v0.12.0` and stable GHCR tags `0.12.0`, `0.12` and `latest`. Earlier release tags remain immutable; pushes to `main` update only `edge`.
+The v0.13.0 release publishes immutable tag `v0.13.0` and stable GHCR tags `0.13.0`, `0.13` and `latest`. Earlier release tags remain immutable; pushes to `main` update only `edge`.
 
-The v0.12.0 release also publishes **three** Windows installation wheels — product, `serverfs-agent-bridge` and `serverfs-windows-native` — gated against the tag version through each wheel's authoritative METADATA, clean-installed into the two environments described below, and attached to the GitHub Release with recorded SHA-256 digests.
+The v0.13.0 release also publishes the existing **three** Windows installation wheels — product, `serverfs-agent-bridge` and `serverfs-windows-native` — gated against the tag version through each wheel's authoritative METADATA, clean-installed into the two environments described below, and attached to the GitHub Release with recorded SHA-256 digests. macOS uses the standard product and Bridge Python distributions directly; there is no separate macOS native wheel.
 
 ## Workdir Configuration
 
@@ -287,10 +287,13 @@ Development/install target:
 uv sync
 uv sync --project agent_bridge
 serverfs bootstrap tunnel-client        # darwin-arm64 asset only
+serverfs agent-bridge configure --config serverfs.toml --env-file .env
+serverfs agent-bridge install --bridge-config "$HOME/Library/Application Support/ServerFS/agent-bridge/bridge.json"
 serverfs doctor --config serverfs.toml
 serverfs serve --config serverfs.toml   # or via the tunnel chain
-serverfs agent-bridge install --bridge-config agent_bridge/config.json   # when Agent delegation is enabled
 ```
+
+The LaunchAgent's private `bridge.json` is **derived/private state, not a second operator config**. Workdir, runtime and lifecycle policy remains owned by `serverfs.toml`; `configure` creates or refreshes the private 0600 document from that policy plus the narrow Agent/Jev/proxy values in `.env`. After changing only TOML policy, `serverfs agent-bridge restart --config serverfs.toml` synchronizes those non-secret fields while preserving existing private material. When private Jev/proxy values also changed, use `serverfs agent-bridge restart --config serverfs.toml --env-file .env`. `serverfs doctor --config serverfs.toml` reports a FAIL if the two policy views drift, and a newly started native `serve`/tunnel refuses to run with stale Bridge policy.
 
 Acceptance evidence: `docs/phase-0-macos27-arm64-capability-probe-2026-10.md`,
 `docs/phase-macos-native-acceptance-2026-10.md`,

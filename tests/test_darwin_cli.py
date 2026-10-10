@@ -73,6 +73,54 @@ class TestServeGate:
         assert code == 2
         assert "Rosetta" in message
 
+    def test_agent_serve_refuses_stale_private_bridge_policy(self, monkeypatch, tmp_path) -> None:
+        root = tmp_path / "repo"
+        root.mkdir()
+        config = tmp_path / "serverfs.toml"
+        config.write_text(
+            f"""[agent]\nenabled = true\n\n[agent.codex]\nenabled = true\nuse_proxy = false\n\n"""
+            f'''[[workdirs]]\nalias = "repo"\npath = "{root}"\nread_only = false\n'''
+            'agent_mode = "workspace-write"\nagent_runtimes = ["codex"]\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            "serverfs_mcp.darwin_bridge_policy.policy_is_synced", lambda *_args: False
+        )
+
+        code, message = self._run_capture(["serve", "--config", str(config)])
+
+        assert code == 2
+        assert "Agent Bridge policy is stale relative to serverfs.toml" in message
+        assert "agent-bridge restart --config" in message
+
+
+class TestBridgePolicyDiagnostics:
+    def test_doctor_reports_stale_bridge_policy_as_failure(self, monkeypatch) -> None:
+        from serverfs_mcp import agent_doctor
+
+        class Report:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, str, str]] = []
+
+            def status(self, label: str, state: str, detail: str) -> None:
+                self.calls.append((label, state, detail))
+
+        monkeypatch.setattr(
+            "serverfs_mcp.darwin_bridge_policy.policy_is_synced", lambda *_args: False
+        )
+        report = Report()
+
+        agent_doctor._probe_darwin_policy_sync(report, [], object())
+
+        assert report.calls == [
+            (
+                "agent bridge policy",
+                "FAIL",
+                "stale relative to serverfs.toml; run 'serverfs agent-bridge restart --config "
+                "<serverfs.toml>'",
+            )
+        ]
+
 
 class TestBootstrap:
     def test_native_wheel_refused_on_macos(self, capsys) -> None:

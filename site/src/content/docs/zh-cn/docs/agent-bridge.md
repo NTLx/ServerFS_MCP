@@ -3,7 +3,7 @@ title: Agent Bridge
 description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时委派。
 ---
 
-Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.12.0 是当前已发布稳定版本，新增 Linux 出站代理控制、原生交互 approval 与可配置结果 spool，同时保持既有 10 个 Agent 工具不变。
+Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.13.0 是当前已发布稳定版本：继续保持 v0.12 的 Linux 出站代理、原生交互 approval 与可配置结果 spool 契约，并新增 macOS 原生 launchd/AF_UNIX 部署。
 
 ```text
 ChatGPT

@@ -41,11 +41,11 @@ def parse_proxy_env_file(path: Path | None) -> dict[str, str]:
             raise NativeTunnelError(f"duplicate {key} at line {line_number}")
         if not sep:
             raise NativeTunnelError(f"invalid {key} assignment at line {line_number}")
-        values[key] = _parse_env_value(raw.strip(), key, line_number)
+        values[key] = parse_env_value(raw.strip(), key, line_number)
     return values
 
 
-def _parse_env_value(raw: str, key: str, line_number: int) -> str:
+def parse_env_value(raw: str, key: str, line_number: int) -> str:
     if not raw or raw[0] not in "\"'":
         return raw.strip()
     quote = raw[0]
