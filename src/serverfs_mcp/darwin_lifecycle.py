@@ -144,7 +144,20 @@ def install(plan: LaunchAgentPlan, *, force: bool = False) -> Path:
     # label is fixed, so an existing running agent must be booted out first.
     _run_launchctl("bootout", f"{_gui_domain()}/{AGENT_LABEL}", check=False)
     plist_path.parent.mkdir(parents=True, exist_ok=True)
-    plan.log_dir.mkdir(parents=True, exist_ok=True)
+    # the log tree lives under the Bridge data home and must stay private:
+    # create every missing level at 0700 (launchd's default umask would
+    # leave the middle directories world-readable)
+    directory = log_dir
+    missing: list[Path] = []
+    while not directory.exists():
+        missing.append(directory)
+        if directory.parent == directory:
+            break
+        directory = directory.parent
+    for level in reversed(missing):
+        level.mkdir(mode=0o700)
+        os.chmod(level, 0o700)
+    os.chmod(log_dir, 0o700)
     plist_path.write_bytes(plan.render())
     os.chmod(plist_path, 0o644)
     _run_launchctl("bootstrap", _gui_domain(), str(plist_path))

@@ -187,3 +187,28 @@ class TestPosixStateInspector:
         report4 = inspect_private_state(tmp_path)
         assert report4["state"]["status"] == UNSAFE
         assert stat_module.S_ISLNK((home / "state").lstat().st_mode)
+
+
+class TestPrivateStateAncestors:
+    """parents=True must give every missing ancestor the private mode (like Windows)."""
+
+    def test_missing_middle_directories_are_private(self, tmp_path) -> None:
+        from serverfs_agent_bridge.private_state import DirectoryMessages, ensure_private_directory
+
+        target = tmp_path / "a" / "b" / "locks"
+        ensure_private_directory(
+            target,
+            mode=0o700,
+            messages=DirectoryMessages(
+                not_a_directory="not a directory",
+                not_owned="not owned",
+            ),
+            parents=True,
+        )
+        import os
+        import stat as stat_module
+
+        for directory in (tmp_path / "a", tmp_path / "a" / "b", target):
+            info = os.lstat(directory)
+            assert stat_module.S_IMODE(info.st_mode) == 0o700, directory
+            assert info.st_uid == os.getuid()
