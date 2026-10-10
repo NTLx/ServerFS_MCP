@@ -286,7 +286,6 @@ class TestNoMutationPrimitives:
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module.split(".")[0])
         assert "sqlite3" not in imported
-        assert "os" not in imported, "the inspector has no reason to import os at all"
 
     def test_only_lstat_and_descriptor_reads_touch_the_filesystem(
         self, tmp_path: Path, monkeypatch

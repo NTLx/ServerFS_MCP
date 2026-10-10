@@ -26,7 +26,12 @@ from typing import Any
 from .config import BridgeConfig
 from .errors import BridgeError
 from .private_state import verify_private_file
-from .render_config import MAX_INPUT_BYTES, _publish_private_file, build_policy_document
+from .render_config import (
+    MAX_INPUT_BYTES,
+    _RUNTIME_KEYS,
+    _publish_private_file,
+    build_policy_document,
+)
 
 _DERIVED_KEYS = frozenset(
     {
@@ -40,6 +45,7 @@ _DERIVED_KEYS = frozenset(
     }
 )
 _PRIVATE_KEYS = frozenset({"proxy", "jev"})
+_RUNTIME_NAMES = ("codex", "claude", "qoder")
 _MAX_CONFIG_BYTES = 256 * 1024
 
 
@@ -108,7 +114,7 @@ def _policy_matches(existing: dict[str, Any], request: dict[str, Any]) -> bool:
     ):
         return False
 
-    for runtime in ("codex", "claude", "qoder"):
+    for runtime in _RUNTIME_NAMES:
         expected_runtime = derived.get(runtime)
         actual_runtime = existing.get(runtime)
         if expected_runtime is None:
@@ -124,11 +130,41 @@ def _policy_matches(existing: dict[str, Any], request: dict[str, Any]) -> bool:
     return True
 
 
-def _merged_document(existing: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
-    derived = build_policy_document(request)
+def _merge_derived_policy(
+    existing: dict[str, Any], derived: dict[str, Any]
+) -> dict[str, Any]:
+    """Replace operator-owned policy while preserving runtime-local settings.
+
+    The render request owns only the runtime keys accepted by ``_RUNTIME_KEYS``
+    (for example ``enabled``, ``codex_bin`` and ``use_proxy``). Bridge-local
+    settings such as ``codex_home`` and timeout/message limits belong to the
+    private runtime configuration and must survive a policy synchronization.
+    """
     merged = {key: value for key, value in existing.items() if key not in _DERIVED_KEYS}
-    merged.update(derived)
+    for key, value in derived.items():
+        if key not in _RUNTIME_NAMES:
+            merged[key] = value
+
+    for runtime in _RUNTIME_NAMES:
+        derived_runtime = derived.get(runtime)
+        if derived_runtime is None:
+            continue
+        existing_runtime = existing.get(runtime)
+        preserved_runtime = (
+            {
+                key: value
+                for key, value in existing_runtime.items()
+                if key not in _RUNTIME_KEYS[runtime]
+            }
+            if isinstance(existing_runtime, dict)
+            else {}
+        )
+        merged[runtime] = {**preserved_runtime, **derived_runtime}
     return merged
+
+
+def _merged_document(existing: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
+    return _merge_derived_policy(existing, build_policy_document(request))
 
 
 def check_bridge_config(config_path: Path, request: dict[str, Any]) -> bool:
@@ -178,12 +214,11 @@ def configure_bridge_config(
         )
     existing = _load_existing(config_path) if config_path.exists() else {}
     derived = build_policy_document(request)
-    preserved = {
-        key: value
-        for key, value in existing.items()
-        if key not in _DERIVED_KEYS and key not in _PRIVATE_KEYS
+    without_private = {key: value for key, value in existing.items() if key not in _PRIVATE_KEYS}
+    candidate = {
+        **_merge_derived_policy(without_private, derived),
+        **private_overlay,
     }
-    candidate = {**preserved, **derived, **private_overlay}
     encoded = json.dumps(candidate, indent=2, sort_keys=True) + "\n"
     _validate_merged(config_path, encoded)
     _publish_private_file(config_path, encoded)

@@ -528,6 +528,7 @@ def test_health_addr_accepts_loopback_ports(raw: str) -> None:
     assert native_tunnel._validated_health_addr(raw) == raw
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only native tunnel contract")
 class TestDarwinTunnel:
     """v0.13 macOS tunnel launcher: measured gate + .env key materialization."""
 

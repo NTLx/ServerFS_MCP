@@ -28,8 +28,10 @@ def _write_private(path: Path, document: dict) -> None:
 def _base_config(tmp_path: Path, workdir: Path, *, authenticated_proxy: bool = False) -> dict:
     state = tmp_path / "state"
     locks = tmp_path / "locks"
+    codex_home = tmp_path / "codex-home"
     state.mkdir(mode=0o700)
     locks.mkdir(mode=0o700)
+    codex_home.mkdir(exist_ok=True)
     proxy_url = (
         "http://user:password@127.0.0.1:7897" if authenticated_proxy else "http://127.0.0.1:7897"
     )
@@ -47,7 +49,12 @@ def _base_config(tmp_path: Path, workdir: Path, *, authenticated_proxy: bool = F
             "max_active_tasks": 4,
             "retention_seconds": 604800,
         },
-        "codex": {"enabled": True, "codex_bin": "codex", "use_proxy": False},
+        "codex": {
+            "enabled": True,
+            "codex_bin": "codex",
+            "codex_home": str(codex_home),
+            "use_proxy": False,
+        },
         "proxy": {"url": proxy_url, "authenticated": authenticated_proxy},
         "jev": {"api_key": "jev-private-marker", "use_proxy": True},
         "workdirs": [
@@ -73,7 +80,13 @@ def _request(workdir: Path, *, use_proxy: bool = True) -> dict:
                 "agent_runtimes": ["codex"],
             }
         ],
-        "runtimes": {"codex": {"enabled": True, "codex_bin": "codex", "use_proxy": use_proxy}},
+        "runtimes": {
+            "codex": {
+                "enabled": True,
+                "codex_bin": "codex",
+                "use_proxy": use_proxy,
+            }
+        },
         "limits": {
             "task_timeout_seconds": 7200,
             "interaction_timeout_seconds": 1800,
@@ -105,12 +118,18 @@ def test_sync_replaces_only_derived_policy_and_preserves_private_material(tmp_pa
     assert synced["jev"] == original["jev"]
     assert synced["socket_path"] == original["socket_path"]
     assert synced["allowed_peer_uid"] == original["allowed_peer_uid"]
+    assert synced["codex"]["codex_home"] == original["codex"]["codex_home"]
     assert stat.S_IMODE(config_path.stat().st_mode) == 0o600
 
 
-def test_configure_can_create_private_config_from_scratch(tmp_path: Path) -> None:
+def test_configure_can_create_private_config_from_scratch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     workdir = tmp_path / "workdir"
     workdir.mkdir()
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
     config_path = tmp_path / "nested" / "agent-bridge" / "bridge.json"
     private = {
         "proxy": {"url": "http://127.0.0.1:7897", "authenticated": False},
@@ -146,6 +165,7 @@ def test_configure_replaces_private_overlay_without_preserving_removed_secret(
     assert "proxy" not in configured
     assert configured["jev"] == {"api_key": None, "use_proxy": False}
     assert configured["socket_path"] == original["socket_path"]
+    assert configured["codex"]["codex_home"] == original["codex"]["codex_home"]
 
 
 def test_invalid_merged_policy_is_refused_without_replacing_live_config(tmp_path: Path) -> None:
