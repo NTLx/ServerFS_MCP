@@ -62,4 +62,4 @@ SERVERFS_JEV_API_KEY=<your key>
 
 Leave it empty to disable Agent Task Preflight, Runtime Router, Model Advisor, and Approval Advisor completely. The normal Agent Bridge installer renders a configured key only into its user-owned `0600` config. In v0.12, `SERVERFS_JEV_USE_PROXY=true` routes only that explicit Jev HTTP client through the shared proxy; Agent and Tunnel routing remain independent. See [Jev Advisors](./jev-advisors/) for the runtime behavior and security boundary.
 
-See the repository [README](https://github.com/NTLx/ServerFS_MCP#workdir-configuration) for the complete environment-variable reference.
+For the complete Linux/Docker environment-variable surface, use the versioned [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example). Native Windows and macOS deployments use [`serverfs.toml.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/serverfs.toml.example) for non-secret policy plus `.env` only for the narrow secret/proxy/runtime values documented in their platform guides.

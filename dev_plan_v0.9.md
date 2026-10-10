@@ -1,6 +1,6 @@
 # ServerFS v0.9.0 Release Record — Runtime Model Discovery, Advisory & Per-Task Selection
 
-Status: released / frozen; v0.9.0 is the current stable release
+Status: released / frozen historical record; v0.9.0 release complete; repository current stable: v0.13.0
 Baseline: v0.8.0 / main
 Scope: add provider-neutral model discovery, optional Jev-backed pre-submit model advice, and an optional per-task model override without adding model defaults to ServerFS configuration or modifying users' native Agent configuration; also make `SERVERFS_MAX_BINARY_TRANSFER_BYTES` the single public global size limit for both native binary transfer and file-ingress fetches.
 

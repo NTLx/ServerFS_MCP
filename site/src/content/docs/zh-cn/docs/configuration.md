@@ -62,4 +62,4 @@ SERVERFS_JEV_API_KEY=<your key>
 
 留空即可完全关闭 Agent Task Preflight、Runtime Router、Model Advisor 与 Approval Advisor。正常 Agent Bridge 安装器只会把已配置的 Key 渲染到用户自有、权限为 `0600` 的配置中。v0.12 中，`SERVERFS_JEV_USE_PROXY=true` 只让 Jev 的显式 HTTP client 使用共享代理；Agent 与 Tunnel 的路由仍彼此独立。运行行为与安全边界详见 [Jev Advisors](./jev-advisors/)。
 
-完整环境变量参考请查看仓库 [README](https://github.com/NTLx/ServerFS_MCP#workdir-configuration)。
+完整 Linux/Docker 环境变量面请以版本化的 [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example) 为准。Windows 与 macOS 原生部署的非敏感策略使用 [`serverfs.toml.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/serverfs.toml.example)；`.env` 仅承载各平台指南所说明的少量 secret / proxy / runtime 配置。

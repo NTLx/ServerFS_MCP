@@ -9,7 +9,7 @@ each acceptance point.
 **Post-release (2026-10-09): `v0.11.0` was tagged at `78f4547` and the stable
 release published with the three wheel assets and the two-environment install
 notes. The two contract rows below that were "outstanding by design" are now
-complete — v0.11.0 is the current stable release.**
+complete — v0.11.0 was the stable release produced by this phase; repository current stable is v0.13.0.**
 
 ## Layered evidence map
 

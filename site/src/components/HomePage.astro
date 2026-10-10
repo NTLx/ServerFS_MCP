@@ -12,17 +12,17 @@ const isZh = locale === 'zh-cn';
 const copy = {
   en: {
     lang: 'en',
-    title: 'ServerFS MCP — Controlled filesystem access for AI on Linux and Windows',
+    title: 'ServerFS MCP — Controlled filesystem access for AI on Linux, Windows, and macOS',
     description:
-      'ServerFS MCP securely exposes selected directories as controlled workdirs to ChatGPT and AI agents on Linux and Windows.',
+      'ServerFS MCP securely exposes selected directories as controlled workdirs to ChatGPT and AI agents on Linux, Windows, and macOS.',
     nav: { docs: 'Docs', architecture: 'Architecture', security: 'Security' },
     languageSwitch: '简中',
     languageLabel: '切换到简体中文',
-    release: 'v0.10.0',
-    heroEyebrow: 'SECURE MCP FOR LINUX AND WINDOWS WORKDIRS',
+    release: 'v0.13.0',
+    heroEyebrow: 'SECURE MCP FOR LINUX · WINDOWS · MACOS WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
-      'Expose selected workdirs on Linux and Windows. Read-only by default, with guarded writes and bounded binary transfer on both platforms. Isolated ChatGPT file ingress and the host Agent Bridge are optional Linux deployment features, not Windows v0.10 features.',
+      'Expose selected workdirs on Linux, Windows, and macOS. Read-only by default, with guarded writes and bounded binary transfer. File ingress and native Agent delegation remain separately gated capabilities.',
     getStarted: 'Get started',
     viewSource: 'View source',
     guaranteesShort: ['No shell', 'No escape', 'Scoped writes', 'MIT licensed'],
@@ -33,13 +33,13 @@ const copy = {
       ['FILESYSTEM', 'scoped workdirs'],
       ['MUTATIONS', 'revision guarded'],
       ['BINARY I/O', 'bounded · optional'],
-      ['AGENT BRIDGE', 'Linux host · optional'],
+      ['AGENT BRIDGE', 'native host · optional'],
     ],
     workdirs: 'Scoped Workdirs',
     workdirDefault: 'read-only by default',
     userSocket: 'user-owned socket',
     internalNetwork: 'Linux: internal network',
-    noPorts: 'Windows: stdio · no MCP listener',
+    noPorts: 'Windows/macOS: stdio · no MCP listener',
     surfacesLabel: 'Capability surfaces',
     capabilityEyebrow: 'PROGRESSIVE CAPABILITY',
     capabilityTitle: 'Start narrow. Expand deliberately.',
@@ -48,8 +48,8 @@ const copy = {
     surfaces: [
       { count: '11', label: 'Filesystem', detail: 'safe read + guarded mutation surface' },
       { count: '13', label: '+ Binary', detail: 'bounded whole-file transfer' },
-      { count: '21', label: '+ Agent', detail: 'Linux host delegation + model discovery' },
-      { count: '23', label: 'Full surface', detail: 'binary + Linux Agent Bridge enabled' },
+      { count: '21', label: '+ Agent', detail: 'native delegation + model discovery' },
+      { count: '23', label: 'Full surface', detail: 'binary + Agent Bridge enabled' },
     ],
     architectureEyebrow: 'ARCHITECTURE',
     architectureTitle: 'Capability, not ambient authority.',
@@ -59,7 +59,7 @@ const copy = {
       ['01', 'ChatGPT', 'Calls narrow MCP tools'],
       ['02', 'Secure MCP Tunnel', 'Outbound-only control-plane connection'],
       ['03', 'ServerFS MCP', 'Policy, path confinement, revisions, audit'],
-      ['04', 'Deployment boundary', 'Linux Docker · Windows native stdio'],
+      ['04', 'Deployment boundary', 'Linux Docker · Windows/macOS native stdio'],
       ['05', 'Scoped workdirs', 'Read-only unless explicitly released'],
     ],
     bound: 'BOUND',
@@ -84,7 +84,7 @@ const copy = {
     agentEyebrow: 'OPTIONAL AGENT BRIDGE',
     agentTitle: 'Native agents stay on the host.',
     agentBody:
-      'The optional Agent Bridge is a Linux deployment feature; Windows v0.10 does not include Agent Bridge. On Linux, ServerFS brokers structured tasks over a user-owned Unix socket. Codex, Claude and Qoder keep native defaults; v0.9 adds model discovery and request-scoped overrides, while optional Jev advisors add pre-submit model advice without becoming execution authority.',
+      'The optional Agent Bridge delegates structured tasks to Codex, Claude and Qoder across supported deployments through platform-native local IPC and lifecycle integration. Provider defaults stay native; request-scoped model overrides remain explicit, while optional Jev advisors can add pre-submit advice without becoming execution authority.',
     exploreAgent: 'Explore Agent Bridge',
     exploreJev: 'Explore Jev Advisors',
     mcpContainer: 'MCP CONTAINER',
@@ -96,29 +96,29 @@ const copy = {
     quickTitleLine1: 'One controlled service.',
     quickTitleLine2: 'Your machine. Your policy.',
     quickBody:
-      'Start with the 11-tool filesystem surface. Add binary transfer on Linux or Windows; isolated ChatGPT file ingress, the Agent Bridge, and host-side Jev advisors are optional Linux deployment features.',
+      'Start with the 11-tool filesystem surface. Add bounded binary transfer as needed; file ingress, Agent delegation, and advisory-only Jev support remain explicit, separately gated capabilities on the deployments that support them.',
     readDeployment: 'Read the deployment guide',
     finalTitleLine1: 'Make your server legible to AI.',
     finalTitleLine2: 'Keep the boundary explicit.',
     readDocs: 'Read the docs',
-    footer: 'Secure MCP access to explicitly configured workdirs on Linux and Windows.',
+    footer: 'Secure MCP access to explicitly configured workdirs on Linux, Windows, and macOS.',
     footerDocs: 'Docs',
     footerSource: 'Source',
     footerReleases: 'Releases',
   },
   'zh-cn': {
     lang: 'zh-CN',
-    title: 'ServerFS MCP — 让 AI 在 Linux 和 Windows 上受控访问文件系统',
+    title: 'ServerFS MCP — 让 AI 在 Linux、Windows 和 macOS 上受控访问文件系统',
     description:
-      'ServerFS MCP 在 Linux 和 Windows 上将你明确指定的目录以受控 workdir 的形式安全开放给 ChatGPT 和 AI Agent。',
+      'ServerFS MCP 在 Linux、Windows 和 macOS 上将你明确指定的目录以受控 workdir 的形式安全开放给 ChatGPT 和 AI Agent。',
     nav: { docs: '文档', architecture: '架构', security: '安全' },
     languageSwitch: 'EN',
     languageLabel: 'Switch to English',
-    release: 'v0.10.0',
-    heroEyebrow: '面向 Linux 与 Windows Workdir 的安全 MCP',
+    release: 'v0.13.0',
+    heroEyebrow: '面向 Linux · Windows · macOS Workdir 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
-      '在 Linux 和 Windows 上只开放你明确指定的 workdir。两种平台均默认只读，并支持受控写入与有界二进制传输。隔离的 ChatGPT 文件入口和宿主机 Agent Bridge 是可选的 Linux 部署能力，不属于 Windows v0.10。',
+      '在 Linux、Windows 和 macOS 上只开放你明确指定的 workdir。默认只读，并支持受控写入与有界二进制传输；文件入口与原生 Agent 委托仍是分别门控的可选能力。',
     getStarted: '快速开始',
     viewSource: '查看源码',
     guaranteesShort: ['无 Shell', '无法越界', '受控写入', 'MIT 许可'],
@@ -129,13 +129,13 @@ const copy = {
       ['文件系统', '限定 workdir'],
       ['写入操作', 'revision 保护'],
       ['二进制 I/O', '有界 · 可选'],
-      ['AGENT BRIDGE', 'Linux 宿主机 · 可选'],
+      ['AGENT BRIDGE', '原生宿主机 · 可选'],
     ],
     workdirs: '限定 Workdirs',
     workdirDefault: '默认只读',
     userSocket: '用户自有 socket',
     internalNetwork: 'Linux：仅内部网络',
-    noPorts: 'Windows：stdio · 无 MCP 监听端口',
+    noPorts: 'Windows/macOS：stdio · 无 MCP 监听端口',
     surfacesLabel: '能力面',
     capabilityEyebrow: '渐进式能力',
     capabilityTitle: '从最小能力开始，按需扩展。',
@@ -144,8 +144,8 @@ const copy = {
     surfaces: [
       { count: '11', label: '文件系统', detail: '安全读取 + 受控写入能力面' },
       { count: '13', label: '+ 二进制', detail: '有界的整文件传输' },
-      { count: '21', label: '+ Agent', detail: 'Linux 宿主机委派 + 模型发现' },
-      { count: '23', label: '完整能力面', detail: '二进制 + Linux Agent Bridge' },
+      { count: '21', label: '+ Agent', detail: '原生 Agent 委派 + 模型发现' },
+      { count: '23', label: '完整能力面', detail: '二进制 + Agent Bridge' },
     ],
     architectureEyebrow: '架构',
     architectureTitle: '提供能力，而不是环境权限。',
@@ -155,7 +155,7 @@ const copy = {
       ['01', 'ChatGPT', '调用窄能力 MCP 工具'],
       ['02', 'Secure MCP Tunnel', '仅出站的控制平面连接'],
       ['03', 'ServerFS MCP', '策略、路径约束、revision 与审计'],
-      ['04', '部署边界', 'Linux Docker · Windows 原生 stdio'],
+      ['04', '部署边界', 'Linux Docker · Windows/macOS 原生 stdio'],
       ['05', '限定 Workdirs', '除非显式放开，否则保持只读'],
     ],
     bound: '受控',
@@ -179,7 +179,7 @@ const copy = {
     agentEyebrow: '可选 AGENT BRIDGE',
     agentTitle: '原生 Agent 留在宿主机。',
     agentBody:
-      '可选 Agent Bridge 仅适用于 Linux 部署；Windows v0.10 不包含 Agent Bridge。在 Linux 上，ServerFS 通过用户自有 Unix socket 转发结构化任务。Codex、Claude 和 Qoder 保留原生默认配置；v0.9 增加模型发现与单次任务覆盖，可选 Jev Advisors 还能在提交前给出模型建议，但不会获得执行权。',
+      '可选 Agent Bridge 在受支持的部署上通过平台原生本地 IPC 与生命周期集成，将结构化任务委托给 Codex、Claude 和 Qoder。Provider 默认配置保持原生；单次任务模型覆盖必须显式指定，可选 Jev Advisors 可在提交前提供建议，但不会获得执行权。',
     exploreAgent: '了解 Agent Bridge',
     exploreJev: '了解 Jev Advisors',
     mcpContainer: 'MCP 容器',
@@ -191,12 +191,12 @@ const copy = {
     quickTitleLine1: '一个受控服务。',
     quickTitleLine2: '你的机器，你的策略。',
     quickBody:
-      '从 11 个文件系统工具开始。Linux 和 Windows 均可按需增加二进制传输；隔离的 ChatGPT 文件入口、Agent Bridge 和宿主机 Jev Advisors 是可选的 Linux 部署能力。',
+      '从 11 个文件系统工具开始，按需增加有界二进制传输；文件入口、Agent 委托与仅提供建议的 Jev 支持仍是显式、独立门控的可选能力，并遵循各部署平台的支持边界。',
     readDeployment: '阅读部署指南',
     finalTitleLine1: '让 AI 理解你的服务器。',
     finalTitleLine2: '让边界始终清晰。',
     readDocs: '阅读文档',
-    footer: '让 MCP 在 Linux 和 Windows 上安全访问你明确配置的 workdir。',
+    footer: '让 MCP 在 Linux、Windows 和 macOS 上安全访问你明确配置的 workdir。',
     footerDocs: '文档',
     footerSource: '源码',
     footerReleases: '版本',
@@ -265,7 +265,7 @@ const canonicalUrl = isZh
         <div class="hero-copy">
           <a
             class="release-pill"
-            href="https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.10.0"
+            href="https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.13.0"
             target="_blank"
             rel="noreferrer"
           >
@@ -326,7 +326,7 @@ const canonicalUrl = isZh
               <div class="server-head">
                 <span class="server-led"></span>
                 <strong>ServerFS MCP</strong>
-                <code>v0.10.0</code>
+                <code>v0.13.0</code>
               </div>
               {c.serverRows.map(([label, detail]) => (
                 <div class="server-row" data-policy-row><span>{label}</span><em>{detail}</em></div>

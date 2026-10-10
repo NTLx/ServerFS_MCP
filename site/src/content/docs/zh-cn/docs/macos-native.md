@@ -16,7 +16,7 @@ serverfs tunnel
             -> file-ingress helper            （独立进程，私有 AF_UNIX socket）
        -> Agent Bridge（launchd 用户代理）     （com.ntlx.serverfs.agent-bridge）
             -> AF_UNIX + getpeereid           （0700 runtime 目录，不伪造 peer PID）
-            -> 真实 provider CLI              （codex / claude；仅原生 arm64）
+            -> 真实 provider CLI              （codex / claude / qoder；仅原生 arm64）
 ```
 
 没有 Docker、虚拟机、Rosetta 依赖，也没有编译版 macOS 内核包：Darwin 后端是纯 Python 的描述符相对 POSIX 原语，加上三个极窄的 libc 绑定（`fcopyfile`、`getpeereid`、`confstr`）。不存在 `serverfs-macos-native` wheel。

@@ -3,6 +3,8 @@ title: Getting Started
 description: Deploy ServerFS MCP with Docker Compose and the OpenAI Secure MCP Tunnel.
 ---
 
+This page covers the Linux/Docker deployment. For native deployments, use [Windows Native](./windows-native/) or [macOS Native](./macos-native/) instead.
+
 ## Prerequisites
 
 - Linux server

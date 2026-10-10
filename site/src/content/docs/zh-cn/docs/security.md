@@ -48,4 +48,4 @@ TypeSafe API Key 只会渲染到用户自有的 Bridge 配置，不会进入 MCP
 
 完整 advisory 契约详见 [Jev Advisors](./jev-advisors/)。
 
-完整 threat model 与实现细节请查看仓库 [Security Model](https://github.com/NTLx/ServerFS_MCP#security-model)。
+相邻的信任边界细节请继续查看 [架构](./architecture/) 与 [配置](./configuration/)。版本特定的实现与验收证据保留在仓库 phase acceptance 记录中，而不再堆叠到项目 README。

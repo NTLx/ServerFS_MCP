@@ -1,10 +1,12 @@
-# ServerFS Agent Bridge — v0.9.0 stable
+# ServerFS Agent Bridge — v0.13.0 stable
 
-This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.9.0 release. v0.9.0 adds provider-neutral runtime model discovery, advisory-only Jev pre-submit model advice, and request-scoped model overrides; the Agent MCP surface now contains ten tools. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite, v0.7.0 added runtime reliability, recovery evidence, immutable execution manifests and bounded large-result retrieval, v0.7.1 added a targeted Codex reconciliation hotfix, v0.7.2 closed stale non-terminal recovery state, and v0.7.3 adds retry-safe submission plus bounded task/interaction lifetime without turning the Bridge into a scheduler.
+This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.13.0 release. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite; v0.7–v0.7.3 added runtime reliability, recovery evidence, immutable manifests, bounded large-result retrieval, retry-safe submission and bounded task/interaction lifetimes; v0.8.0 added Qoder; and v0.9.0 added provider-neutral model discovery, advisory-only Jev model advice and request-scoped model overrides. v0.11 brought native Windows Agent delegation, v0.12 added independent Linux Agent/Jev proxy controls, and v0.13.0 adds native macOS Agent delegation while keeping Codex, Claude and Qoder behind the same provider-neutral contract.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
-Agent delegation is opt-in: `compose.agent.yml` wires the MCP container to the host Bridge,
-while the base `compose.yml` intentionally preserves the 11-tool filesystem-only surface.
+Agent delegation is opt-in. On Linux, `compose.agent.yml` wires the MCP container to the host
+Bridge while the base `compose.yml` intentionally preserves the 11-tool filesystem-only
+surface. Windows and macOS use their native platform lifecycle/integration paths rather than
+the Linux Compose/systemd deployment shape.
 
 > The Jev-backed Preflight, Runtime Router, Model Advisor, and Approval Advisor
 > remain optional and advisory-only. The v0.7 release line does not turn Jev into a runtime,
@@ -253,8 +255,9 @@ failure by changing the user's native permission configuration.
 ## v0.8 Qoder live smoke
 
 The deterministic suite uses a Qoder SDK test double. The real smoke uses the installed
-`qodercli` and the same login/configuration as the server user, but its model override is
-deliberately test-only: normal ServerFS submissions still expose no model parameter.
+`qodercli` and the same login/configuration as the server user. Its explicit model argument is
+a validation choice; production ServerFS also supports an optional request-scoped model
+override and preserves Qoder's native default when that argument is omitted.
 
 Prepare a development-only Bridge config that enables `qoder`, points `qoder.qoder_bin`
 at the existing system `qodercli`, and allowlists `qoder` on a writable/workspace-write
@@ -298,7 +301,7 @@ schema.
 - Do not add generic shell/argv/environment RPC methods.
 - Do not place provider credentials in the existing ServerFS MCP container.
 
-- Qoder uses the existing system CLI/login and official Agent SDK. Production ServerFS does not expose a Qoder model selector; the dedicated live-smoke script alone may pin an explicit disposable test model.
+- Qoder uses the existing system CLI/login and official Agent SDK. Production ServerFS may pass an explicit request-scoped model through the provider-native API; omission preserves Qoder's native default, and ServerFS does not write a provider/default model configuration.
 - Qoder `approve_session` may echo only provider-supplied permission suggestions; the Bridge does not invent or persist permission rules.
 
 The frozen provider-neutral architecture contract is `../dev_plan_v0.3.md`; the Qoder extension is specified in `../dev_plan_v0.8.md`, with real validation evidence in `../docs/qoder-runtime-validation-2026-09-29.md`.
