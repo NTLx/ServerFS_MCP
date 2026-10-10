@@ -223,6 +223,33 @@ def _darwin_ingress_helper(settings):  # noqa: ANN001 - Settings (avoid import c
     raise SystemExit(_fail("file ingress helper did not become ready in time"))
 
 
+def _overlay_ingress_env(settings):
+    """Return ``settings`` with file-ingress fields resolved from the env.
+
+    File-ingress policy is an environment-domain setting (the MCP child owns
+    the helper process), while the agent-wiring and log-level Settings are
+    built directly by their own code paths — so the env fields are overlaid
+    here on BOTH branches of ``cmd_serve``. Without this, a directly
+    constructed Settings kept ``file_ingress_enabled=False`` and the helper
+    never spawned even with SERVERFS_FILE_INGRESS_ENABLED=true (measured).
+    """
+    from dataclasses import replace
+
+    from .config import settings_from_env
+
+    env_settings = settings_from_env()
+    if env_settings.file_ingress_enabled == settings.file_ingress_enabled and (
+        env_settings.file_ingress_timeout_seconds == settings.file_ingress_timeout_seconds
+    ):
+        return settings
+    return replace(
+        settings,
+        file_ingress_enabled=env_settings.file_ingress_enabled,
+        file_ingress_timeout_seconds=env_settings.file_ingress_timeout_seconds,
+        file_ingress_socket=env_settings.file_ingress_socket,
+    )
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     """Run the shared MCP tool registration over native stdio."""
     if sys.platform == "darwin":
@@ -247,6 +274,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         client = None
     else:
         settings, client = agent_wiring
+    settings = _overlay_ingress_env(settings)
     file_ingress_client = None
     if settings.file_ingress_enabled and sys.platform == "darwin":
         helper = _darwin_ingress_helper(settings)
