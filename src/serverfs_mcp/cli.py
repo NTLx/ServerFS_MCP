@@ -19,6 +19,7 @@ reserved for protocol use even in diagnostic runs.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -170,6 +171,51 @@ def _native_agent_settings(native_settings) -> tuple | None:
     return settings, client
 
 
+def _darwin_ingress_helper(settings):  # noqa: ANN001 - Settings (avoid import cycle at module scope)
+    """Spawn the native file-ingress helper for a darwin serve (Phase H).
+
+    ServerFS MCP itself never fetches ChatGPT temporary URLs; the helper is
+    a separate process the supervisor owns, reached over a private AF_UNIX
+    HTTP socket in the per-user runtime dir. The child carries a parent
+    guard so a killed supervisor cannot orphan a fetch-capable helper.
+    """
+    import subprocess as _subprocess
+    import time as _time
+
+    from .config import Settings
+    from .darwin_libc import darwin_runtime_dir
+    from .file_ingress_client import FileIngressClient
+
+    assert isinstance(settings, Settings)
+    runtime = darwin_runtime_dir() / "file-ingress-v1"
+    runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
+    socket_path = runtime / "ingress.sock"
+    child_env = {
+        **os.environ,
+        "SERVERFS_FILE_INGRESS_ENABLED": "true",
+        "SERVERFS_FILE_INGRESS_SOCKET": str(socket_path),
+        "SERVERFS_FILE_INGRESS_PARENT_GUARD": "1",
+    }
+    process = _subprocess.Popen(
+        [sys.executable, "-m", "serverfs_mcp.file_ingress"],
+        env=child_env,
+        stdout=_subprocess.DEVNULL,
+        stderr=_subprocess.DEVNULL,
+    )
+    deadline = _time.monotonic() + 10.0
+    while _time.monotonic() < deadline:
+        if socket_path.exists():
+            return FileIngressClient(
+                timeout_seconds=settings.file_ingress_timeout_seconds,
+                socket_path=socket_path,
+            )
+        if process.poll() is not None:
+            raise SystemExit(_fail("file ingress helper exited during startup"))
+        _time.sleep(0.1)
+    process.kill()
+    raise SystemExit(_fail("file ingress helper did not become ready in time"))
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     """Run the shared MCP tool registration over native stdio."""
     if sys.platform == "darwin":
@@ -194,6 +240,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
         client = None
     else:
         settings, client = agent_wiring
+    file_ingress_client = None
+    if settings.file_ingress_enabled and sys.platform == "darwin":
+        helper = _darwin_ingress_helper(settings)
+        if helper is not None:
+            file_ingress_client = helper
     registry = WorkdirRegistry(workdirs)
     jsonlog.set_level(settings.log_level)
     jsonlog.info(
@@ -202,8 +253,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         read_write_workdirs=sum(1 for w in workdirs if not w.read_only),
         platform=sys.platform,
         agent_bridge_enabled=settings.agent_bridge_enabled,
+        file_ingress_enabled=file_ingress_client is not None,
     )
-    server = create_server(settings, registry, client)
+    server = create_server(settings, registry, client, file_ingress_client)
     server.run("stdio")
     return 0
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import http.client
 import json
+import socket
+from pathlib import Path
 
 from .binary_payload import BinaryTransferError
 
@@ -13,11 +15,26 @@ _INGRESS_PORT = 8081
 _INGRESS_PATH = "/fetch"
 
 
+class _UnixHTTPConnection(http.client.HTTPConnection):
+    """HTTP over a private AF_UNIX socket (v0.13 macOS helper transport)."""
+
+    def __init__(self, socket_path: str, timeout: float):
+        super().__init__("localhost", timeout=timeout)
+        self._socket_path = socket_path
+
+    def connect(self) -> None:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self._socket_path)
+        self.sock = sock
+
+
 class FileIngressClient:
     """Fetch ChatGPT-provided file bytes through the fixed internal ingress service."""
 
-    def __init__(self, *, timeout_seconds: float = 30.0):
+    def __init__(self, *, timeout_seconds: float = 30.0, socket_path: Path | None = None):
         self._timeout_seconds = timeout_seconds
+        self._socket_path = str(socket_path) if socket_path is not None else None
 
     def fetch(self, download_url: str, *, max_bytes: int) -> bytes:
         """Return raw bytes, enforcing the workdir byte ceiling again client-side."""
@@ -25,11 +42,17 @@ class FileIngressClient:
             {"download_url": download_url, "max_bytes": max_bytes},
             separators=(",", ":"),
         ).encode("utf-8")
-        connection = http.client.HTTPConnection(
-            _INGRESS_HOST,
-            _INGRESS_PORT,
-            timeout=self._timeout_seconds,
-        )
+        if self._socket_path is not None:
+            connection: http.client.HTTPConnection = _UnixHTTPConnection(
+                self._socket_path,
+                timeout=self._timeout_seconds,
+            )
+        else:
+            connection = http.client.HTTPConnection(
+                _INGRESS_HOST,
+                _INGRESS_PORT,
+                timeout=self._timeout_seconds,
+            )
         try:
             connection.request(
                 "POST",
