@@ -24,6 +24,21 @@ from serverfs_agent_bridge.service import BridgeService
 from serverfs_agent_bridge.store import TaskStore
 
 
+def _clear_standard_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make exact proxy-overlay assertions independent of the test host environment."""
+    for name in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 @dataclass
 class FakeTextBlock:
     text: str
@@ -788,6 +803,7 @@ async def test_claude_never_passes_env_none_to_the_sdk(
     parameter entirely -- which is also the honest shape, since absence is exactly what pure
     inheritance means. The proxy arm must pass a real mapping, never ``None``.
     """
+    _clear_standard_proxy_env(monkeypatch)
     captured: list[dict] = []
 
     class _RecordingOptions(claude_module.ClaudeAgentOptions):
@@ -832,6 +848,7 @@ async def test_claude_never_passes_env_none_to_the_sdk(
 async def test_claude_proxy_true_injects_only_https_proxy_and_merged_no_proxy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _clear_standard_proxy_env(monkeypatch)
     endpoint = "http://203.0.113.7:3128"  # TEST-NET-3: documentation-only, never a real host
     service, factory = make_service(
         tmp_path,
@@ -891,6 +908,7 @@ async def test_claude_proxy_true_without_endpoint_fails_closed_before_any_client
 async def test_claude_proxy_overlay_never_carries_trust_domain_or_provider_native_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _clear_standard_proxy_env(monkeypatch)
     # Names planted in the Bridge environment the way a polluted deployment would carry them.
     # The tunnel / control-plane / Agent-namespace material must never appear in the overlay;
     # the provider-native ANTHROPIC_* configuration must not either -- not because it would be

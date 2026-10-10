@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import sys
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,12 @@ from serverfs_agent_bridge.adapters.codex_transport import UnixSocketEndpoint
 from serverfs_agent_bridge.bootstrap import RuntimeProxy
 from serverfs_agent_bridge.config import CodexSettings
 from serverfs_agent_bridge.errors import BridgeError
+
+
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Bridge-owned Codex app-server and Unix socket lifecycle are Linux-only",
+)
 
 
 class FakeProcess:

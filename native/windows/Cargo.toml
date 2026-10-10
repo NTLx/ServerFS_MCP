@@ -1,6 +1,6 @@
 [package]
 name = "serverfs-windows-native"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2021"
 rust-version = "1.85"
 description = "ServerFS Windows native filesystem kernel (handle-capable read/mutation engine)"
