@@ -329,7 +329,7 @@ def replace_binary_file(
     expected_revision: str,
     *,
     max_binary_bytes: int,
-    preserve_metadata: Callable[[int, int, os.stat_result], None] = _preserve_metadata,
+    preserve_metadata: Callable[[int, int, os.stat_result], None] | None = None,
 ) -> UploadBinaryFileResult:
     """Atomically replace one regular file after an exact revision check."""
     if len(data) > max_binary_bytes:
@@ -397,15 +397,19 @@ def _replace_at(
     original: os.stat_result,
     expected_revision: str,
     *,
-    preserve_metadata: Callable[[int, int, os.stat_result], None] = _preserve_metadata,
+    preserve_metadata: Callable[[int, int, os.stat_result], None] | None = None,
 ) -> str:
     """Atomically replace ``name`` with ``payload``, preserving metadata.
 
     ``preserve_metadata`` is the platform strategy for carrying the
     original inode's mode/ownership/xattrs (and on Darwin ACLs) onto the
     replacement inode; it must fail before the rename if anything cannot
-    be preserved. The default is the Linux strategy above.
+    be preserved. None resolves to the module-level Linux strategy AT
+    CALL TIME, so the test seam (monkeypatching ``_preserve_metadata``)
+    keeps working.
     """
+    if preserve_metadata is None:
+        preserve_metadata = _preserve_metadata
     temp_name, temp_fd = fdio.create_temp_at(parent_fd)
     try:
         _write_all(temp_fd, payload)
@@ -433,7 +437,7 @@ def edit_text_file(
     *,
     max_write_bytes: int,
     max_edits_per_call: int,
-    preserve_metadata: Callable[[int, int, os.stat_result], None] = _preserve_metadata,
+    preserve_metadata: Callable[[int, int, os.stat_result], None] | None = None,
 ) -> EditTextFileResult:
     """Replace exact text in an existing UTF-8 file; never creates one."""
     _validate_edits(
