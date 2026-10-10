@@ -1,9 +1,9 @@
 # ServerFS v0.12.0 Development Plan — Linux network reachability, real interactive approval, and live result spooling
 
-Status: **planned / not implemented**  
-Target: **v0.12.0**  
-Primary platform: **Linux deployment**  
-Baseline analyzed: `main` = `origin/main` = `a89df78744798ec6563c4df8b48364be359d20ec` (v0.11.0 released).  
+Status: **Linux implementation + live acceptance complete; release closure in progress**
+Target: **v0.12.0**
+Primary platform: **Linux deployment**
+Baseline analyzed: `main` = `origin/main` = `a89df78744798ec6563c4df8b48364be359d20ec` (v0.11.0 released).
 Windows v0.11 behavior is a non-regression boundary for this release; v0.12 work is Linux-first unless a shared provider-neutral fix necessarily touches common Bridge code.
 
 ## 1. Objectives
