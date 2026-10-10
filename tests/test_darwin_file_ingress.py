@@ -125,3 +125,32 @@ class TestUnixHelperTransport:
         with pytest.raises(BinaryTransferError) as failed:
             client.fetch("https://files.example.test/x", max_bytes=1024)
         assert failed.value.code == "FILE_INGRESS_UNAVAILABLE"
+
+
+class TestServeEnvOverlay:
+    """cmd_serve overlays file-ingress env fields onto directly-built Settings."""
+
+    def test_agent_enabled_settings_get_ingress_env(self, monkeypatch) -> None:
+        from serverfs_mcp.cli import _overlay_ingress_env
+        from serverfs_mcp.config import Settings
+
+        monkeypatch.setenv("SERVERFS_FILE_INGRESS_ENABLED", "true")
+        monkeypatch.setenv("SERVERFS_FILE_INGRESS_TIMEOUT_SECONDS", "45.0")
+        settings = Settings(log_level="INFO", agent_bridge_enabled=True)
+        assert settings.file_ingress_enabled is False  # direct construction ignores env
+
+        overlaid = _overlay_ingress_env(settings)
+        assert overlaid.file_ingress_enabled is True
+        assert overlaid.file_ingress_timeout_seconds == 45.0
+        # agent domain untouched
+        assert overlaid.agent_bridge_enabled is True
+        assert overlaid.log_level == "INFO"
+
+    def test_env_off_keeps_disabled(self, monkeypatch) -> None:
+        from serverfs_mcp.cli import _overlay_ingress_env
+        from serverfs_mcp.config import Settings
+
+        monkeypatch.delenv("SERVERFS_FILE_INGRESS_ENABLED", raising=False)
+        settings = Settings(log_level="INFO")
+        overlaid = _overlay_ingress_env(settings)
+        assert overlaid.file_ingress_enabled is False
