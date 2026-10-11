@@ -23,3 +23,8 @@ scratchpad/
 # 本机启动脚本与 Bridge 配置（含机器路径）
 run-serverfs.sh
 agent-bridge.config.json
+
+# 本地 AI Agent / 调试辅助文件
+.claude/
+.workbuddy/memory/
+debug.log
