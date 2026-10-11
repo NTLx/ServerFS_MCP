@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -912,6 +913,31 @@ class TestMutationsE2E:
             },
         )
         assert error_code(msg) == "REVISION_CONFLICT"
+
+    def test_same_size_content_replace_updates_modified_at(self, rw_server) -> None:
+        created = call_success(
+            rw_server,
+            "create_text_file",
+            {"workdir": "rw", "path": "mtime.py", "content": "alpha\n"},
+        )
+        before = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "mtime.py"})
+        # The public timestamp is second-granularity. Keep the replacement
+        # outside that display tick so restoring the old LastWriteTime cannot
+        # hide behind formatting precision.
+        time.sleep(1.1)
+        call_success(
+            rw_server,
+            "edit_text_file",
+            {
+                "workdir": "rw",
+                "path": "mtime.py",
+                "expected_revision": created["revision"],
+                "edits": [{"old_text": "alpha", "new_text": "bravo"}],
+            },
+        )
+        after = call_success(rw_server, "stat_file", {"workdir": "rw", "path": "mtime.py"})
+        assert after["size"] == before["size"]
+        assert after["modified_at"] != before["modified_at"]
 
     def test_returned_revision_survives_the_immediate_next_call(self, rw_server, rw_root) -> None:
         # Live E2E regression: an agent uses the revision a mutation just

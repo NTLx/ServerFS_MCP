@@ -27,7 +27,11 @@ from pipe_support import (
 from platform_contract import require_windows_kernel
 from serverfs_agent_bridge.protocol import MAX_REQUEST_BYTES, PIPE_IDLE_TIMEOUT_SECONDS
 from serverfs_agent_bridge.windows_pipe import (
+    ERROR_BROKEN_PIPE,
     ERROR_IO_PENDING,
+    ERROR_NO_DATA,
+    ERROR_PIPE_BUSY,
+    ERROR_PIPE_NOT_CONNECTED,
     ServerInstance,
     close_handle,
     open_client,
@@ -39,6 +43,14 @@ require_windows_kernel("the local-IPC seam is a Named Pipe and peer identity is 
 FOREIGN_SID = "S-1-5-21-1-1-1-4242"
 
 
+def test_named_pipe_error_constants_match_winerror_h() -> None:
+    """Keep retry/EOF classification tied to the Win32 ABI instead of copied aliases."""
+    assert ERROR_BROKEN_PIPE == 109
+    assert ERROR_PIPE_BUSY == 231
+    assert ERROR_NO_DATA == 232
+    assert ERROR_PIPE_NOT_CONNECTED == 233
+
+
 def bridge(tmp_path: Path, **kwargs: object) -> RunningBridge:
     return RunningBridge(make_service(tmp_path), **kwargs)
 
@@ -48,6 +60,17 @@ def test_single_request_round_trip(tmp_path: Path) -> None:
         response = client.request("runtime.list", {})
     assert response["ok"] is True
     assert response["result"]["runtimes"][0]["name"] == "fake"
+
+
+def test_bridge_ping_round_trip_over_the_named_pipe(tmp_path: Path) -> None:
+    """The supervisor watchdog liveness RPC works over the real transport."""
+    with bridge(tmp_path) as server, PipeClient(server.pipe_name) as client:
+        response = client.request("bridge.ping", {})
+        assert response["ok"] is True
+        assert response["result"] == {"status": "ok"}
+        invalid = client.request("bridge.ping", {"unexpected": True})
+    assert invalid["ok"] is False
+    assert invalid["error"]["code"] == "INVALID_REQUEST"
 
 
 def test_sequential_clients_reuse_the_pool(tmp_path: Path) -> None:
@@ -85,7 +108,7 @@ def test_pool_size_bounds_simultaneous_connections(tmp_path: Path, monkeypatch) 
         started = time.monotonic()
         with pytest.raises(ConnectionError) as raised:
             saturated.connect()
-        assert "231" in str(raised.value) or "109" in str(raised.value)
+        assert str(ERROR_PIPE_BUSY) in str(raised.value)
         assert time.monotonic() - started < 5.0, "the connect retry loop is not bounded"
         held[0].close()
         assert wait_until(lambda: server.server._pipe.live_connections <= 1)

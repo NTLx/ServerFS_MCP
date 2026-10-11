@@ -490,3 +490,98 @@ class TestLauncherReportsRedactedFailures:
 
         monkeypatch.setattr(supervisor, "run_with_agent", _explode)
         assert supervisor.main(["--config", str(config)]) == 0
+
+
+class _SleepingChild:
+    """A real stdio-shaped child that only ever blocks, so teardown is observable."""
+
+    def __enter__(self) -> subprocess.Popen[bytes]:
+        self.process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            stdin=subprocess.PIPE,
+        )
+        return self.process
+
+    def __exit__(self, *exc_info: object) -> None:
+        supervisor.terminate_quietly(self.process)
+
+
+def _wait_until(condition, *, timeout: float = 15.0) -> bool:
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+class TestBridgeWatchdog:
+    """v0.13.1: the watcher must see an alive-but-unresponsive Bridge, not just a dead one."""
+
+    @pytest.fixture(autouse=True)
+    def fast_watch(self, monkeypatch):
+        monkeypatch.setattr(supervisor, "BRIDGE_WATCH_INTERVAL_SECONDS", 0.05)
+
+    def _start_watcher(self, bridge, stdio_child, socket_path):
+        return supervisor._watch_bridge(bridge, stdio_child, socket_path)
+
+    def test_an_exited_bridge_terminates_the_stdio_child_without_a_probe(
+        self, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            supervisor,
+            "_bridge_is_responsive",
+            lambda endpoint: pytest.fail("a dead Bridge must be seen by poll(), not by IPC"),
+        )
+        bridge = subprocess.Popen([sys.executable, "-c", "pass"])
+        bridge.wait(timeout=30)
+        with _SleepingChild() as stdio_child:
+            stop = self._start_watcher(bridge, stdio_child, tmp_path / "unused.pipe")
+            assert _wait_until(lambda: stdio_child.poll() is not None), (
+                "an exited Bridge did not terminate the stdio child"
+            )
+            stop.set()
+
+    def test_a_transient_health_failure_does_not_kill_the_chain(self, tmp_path: Path, monkeypatch):
+        """One missed ping (or two) must reset once the Bridge answers again."""
+        # Never three in a row: the pattern walks the counter up and resets it repeatedly.
+        responses = iter([False, True, False, False, True, False, True, True, False, True] * 20)
+        monkeypatch.setattr(supervisor, "_bridge_is_responsive", lambda endpoint: next(responses))
+        bridge = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            with _SleepingChild() as stdio_child:
+                stop = self._start_watcher(bridge, stdio_child, tmp_path / "unused.pipe")
+                import time
+
+                time.sleep(2.0)  # dozens of watch cycles at the accelerated interval
+                assert stdio_child.poll() is None, (
+                    "a transient health failure tore down a responsive chain"
+                )
+                stop.set()
+        finally:
+            bridge.kill()
+            bridge.wait(timeout=15)
+
+    def test_consecutive_health_failures_terminate_the_stdio_child(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """An alive-but-wedged Bridge must reach the same teardown a dead Bridge gets."""
+        monkeypatch.setattr(supervisor, "_bridge_is_responsive", lambda endpoint: False)
+        bridge = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            with _SleepingChild() as stdio_child:
+                stop = self._start_watcher(bridge, stdio_child, tmp_path / "unused.pipe")
+                assert _wait_until(lambda: stdio_child.poll() is not None), (
+                    "consecutive bridge.ping failures did not terminate the stdio child"
+                )
+                stop.set()
+        finally:
+            bridge.kill()
+            bridge.wait(timeout=15)
+
+    def test_the_health_probe_uses_the_real_endpoint_contract(self, tmp_path: Path):
+        """A nonexistent endpoint is simply "not responsive" -- no exception escapes."""
+        absent = Path(r"\\.\pipe") / "serverfs-absent-watchdog-test"
+        assert supervisor._bridge_is_responsive(absent) is False

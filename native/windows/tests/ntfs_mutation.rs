@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use serverfs_windows_native::{error::NativeError, ffi, metadata, mutation, traversal};
 
@@ -237,6 +238,9 @@ fn plain_ntfs_file_and_ordinary_security_metadata_are_preserved() {
     let original_security = ffi::security_descriptor(&original).unwrap();
     let original_sids = original_security.owner_group().unwrap();
     let original_basic = ffi::basic_info(&original).unwrap();
+    // Keep the write outside the accepted same-timestamp-tick boundary so
+    // this test can assert the externally visible content timestamp moves.
+    std::thread::sleep(Duration::from_millis(20));
     mutation::replace_bytes(&root, &["plain"], b"after", &revision).unwrap();
     let replaced = traversal::resolve(&root, &["plain"], ffi::OpenKind::File).unwrap();
     let replaced_security = ffi::security_descriptor(&replaced).unwrap();
@@ -248,7 +252,10 @@ fn plain_ntfs_file_and_ordinary_security_metadata_are_preserved() {
     let replaced_basic = ffi::basic_info(&replaced).unwrap();
     assert_eq!(replaced_basic.CreationTime, original_basic.CreationTime);
     assert_eq!(replaced_basic.LastAccessTime, original_basic.LastAccessTime);
-    assert_eq!(replaced_basic.LastWriteTime, original_basic.LastWriteTime);
+    assert_ne!(
+        replaced_basic.LastWriteTime, original_basic.LastWriteTime,
+        "content replacement must not restore the old LastWriteTime"
+    );
     assert_eq!(replaced_basic.FileAttributes, original_basic.FileAttributes);
     assert_eq!(std::fs::read(sandbox.root.join("plain")).unwrap(), b"after");
 }

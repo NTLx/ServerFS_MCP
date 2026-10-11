@@ -388,6 +388,12 @@ class BridgeProtocolServer:
             return _error_response(request_id, "BRIDGE_PROTOCOL_ERROR", "protocol failure")
 
     async def _dispatch(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        if method == "bridge.ping":
+            # Internal liveness RPC for the supervisor watchdog. Handled here, never in
+            # BridgeService: a wedged event loop answers nothing, which is exactly the
+            # signal the watchdog needs. No runtime, provider, discovery or network work.
+            _require_keys(params, set())
+            return {"status": "ok"}
         if method == "runtime.list":
             _require_keys(params, set())
             return await self.service.list_runtimes()

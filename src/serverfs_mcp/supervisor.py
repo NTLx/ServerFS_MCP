@@ -249,7 +249,7 @@ def run_with_agent(config_path: str, base_env: dict[str, str]) -> int:
             # lifecycle lease held by a chain that serves nothing. Ending the forwarding loop is
             # what runs the shutdown path below: Job close -- the kill for the provider tree -- and
             # then lifecycle release.
-            bridge_watcher = _watch_bridge(bridge, stdio_child)
+            bridge_watcher = _watch_bridge(bridge, stdio_child, rendered.socket_path)
             try:
                 return forward_stdio_child(stdio_child)
             finally:
@@ -291,23 +291,75 @@ def run_with_agent(config_path: str, base_env: dict[str, str]) -> int:
 #: How often the supervisor checks whether its Bridge is still alive.
 BRIDGE_WATCH_INTERVAL_SECONDS = 0.5
 
+#: v0.13.1: a live Bridge process is not the same as a serving Bridge. The watchdog
+#: therefore also pings the Bridge's own IPC endpoint and tears the chain down only
+#: after *consecutive* failures — one transient miss must never kill the chain.
+BRIDGE_HEALTH_TIMEOUT_SECONDS = 1.0
+BRIDGE_HEALTH_FAILURE_THRESHOLD = 3
+
+
+def _bridge_is_responsive(socket_path: Path) -> bool:
+    """One bounded ``bridge.ping`` over the existing local IPC transport.
+
+    Deliberately reuses ``AgentBridgeClient`` — there is no second Named Pipe
+    implementation to keep alive. Runs on the watcher daemon thread, so its own
+    short-lived event loop is created and closed here. Every failure mode
+    (connect, timeout, protocol, unreadable payload) is simply "not responsive";
+    deciding how much unresponsiveness matters belongs to the threshold counter.
+    """
+    import asyncio
+
+    from .agent_client import AgentBridgeClient
+
+    async def _ping() -> bool:
+        client = AgentBridgeClient(socket_path, timeout_seconds=BRIDGE_HEALTH_TIMEOUT_SECONDS)
+        result = await client.call("bridge.ping", {})
+        return isinstance(result, dict) and result.get("status") == "ok"
+
+    try:
+        return asyncio.run(_ping())
+    except Exception:  # noqa: BLE001 - unresponsiveness is the signal, not the failure class
+        return False
+
 
 def _watch_bridge(
-    bridge: subprocess.Popen[bytes], stdio_child: subprocess.Popen[bytes]
+    bridge: subprocess.Popen[bytes],
+    stdio_child: subprocess.Popen[bytes],
+    socket_path: Path,
 ) -> threading.Event:
-    """Terminate the stdio child when the Bridge exits, so a chain cannot outlive its Bridge.
+    """Terminate the stdio child when the Bridge stops serving.
 
-    Phase F measured this gap: nothing monitored the Bridge, so a Bridge that died while the
+    A chain cannot outlive its Bridge.
+
+    Phase F measured the first gap: nothing monitored the Bridge, so a Bridge that died while the
     supervisor lived left the supervisor holding the Job Object and the lifecycle lease with a dead
     Bridge behind it -- a chain that serves nothing and blocks every later start. Ending the
     forwarding loop is what makes the ordinary shutdown path run: Job close, which is the kill for
     the provider tree, and then lifecycle release.
+
+    v0.13.1 closes the second gap: a Bridge process whose event loop or Named Pipe wedges keeps
+    ``poll() is None`` forever while serving nothing. Each cycle therefore also probes
+    ``bridge.ping`` through the real endpoint; only after consecutive failures past the threshold
+    does the watchdog end the forwarding loop, so one missed ping during a provider burst cannot
+    tear down a healthy chain.
     """
     stop = threading.Event()
 
     def watch() -> None:
+        consecutive_failures = 0
         while not stop.wait(BRIDGE_WATCH_INTERVAL_SECONDS):
+            # First priority stays the process itself: a dead Bridge is unambiguous and needs no
+            # IPC probe.
             if bridge.poll() is not None:
+                terminate_quietly(stdio_child)
+                return
+            if _bridge_is_responsive(socket_path):
+                consecutive_failures = 0
+                continue
+            consecutive_failures += 1
+            if consecutive_failures >= BRIDGE_HEALTH_FAILURE_THRESHOLD:
+                # Alive but unresponsive: the same teardown a dead Bridge gets, so the ordinary
+                # finally path in run_with_agent reclaims the Job Object and the lifecycle lease.
                 terminate_quietly(stdio_child)
                 return
 

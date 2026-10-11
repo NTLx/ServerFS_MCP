@@ -31,10 +31,10 @@ ERROR_INVALID_FUNCTION = 1
 ERROR_FILE_NOT_FOUND = 2
 ERROR_ACCESS_DENIED = 5
 ERROR_BROKEN_PIPE = 109
-ERROR_PIPE_BUSY = 109
-ERROR_MORE_DATA = 232
+ERROR_PIPE_BUSY = 231
 ERROR_NO_DATA = 232
-ERROR_PIPE_NOT_CONNECTED = 231
+ERROR_PIPE_NOT_CONNECTED = 233
+ERROR_MORE_DATA = 234
 ERROR_IO_PENDING = 997
 ERROR_OPERATION_ABORTED = 995
 
@@ -372,14 +372,21 @@ class BridgePipe:
         while True:
             newline = self._buffer.find(b"\n")
             if newline >= 0:
-                line = bytes(self._buffer[: newline + 1])
-                del self._buffer[: newline + 1]
+                line_end = newline + 1
+                if line_end > limit:
+                    self._buffer.clear()
+                    raise ValueError("agent bridge response exceeds configured limit")
+                line = bytes(self._buffer[:line_end])
+                del self._buffer[:line_end]
                 return line
             if len(self._buffer) > limit:
                 self._buffer.clear()
                 raise ValueError("agent bridge response exceeds configured limit")
             data = self._read_once(deadline=deadline)
             if data is None:
+                if len(self._buffer) > limit:
+                    self._buffer.clear()
+                    raise ValueError("agent bridge response exceeds configured limit")
                 return bytes(self._buffer)
             self._buffer.extend(data)
 

@@ -125,12 +125,17 @@ async def _serve(
     )
     await service.start()
 
+    endpoint = (
+        {"pipe_name": str(config.socket_path)}
+        if sys.platform == "win32"
+        else {"socket_path": config.socket_path}
+    )
     server = BridgeProtocolServer(
         service=service,
-        socket_path=config.socket_path,
         allowed_peer_uid=config.allowed_peer_uid,
         allowed_peer_gid=config.allowed_peer_gid,
         allowed_peer_sid=config.allowed_peer_sid,
+        **endpoint,
     )
     await server.start()
 

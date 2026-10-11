@@ -17,6 +17,7 @@ is the regression guard for exactly this.
 
 from __future__ import annotations
 
+import secrets
 import subprocess
 import sys
 import time
@@ -84,6 +85,14 @@ def _finish(process: subprocess.Popen[bytes]) -> tuple[int | None, str]:
     return code, stderr
 
 
+@pytest.fixture(autouse=True)
+def isolated_pipe_name(monkeypatch) -> str:
+    """Keep real-pipe lifecycle tests independent of a developer's live Bridge."""
+    name = f"\\\\.\\pipe\\serverfs-agent-bridge-v1-test-{secrets.token_hex(8)}"
+    monkeypatch.setattr("serverfs_agent_bridge.render_config.derive_pipe_name", lambda _sid: name)
+    return name
+
+
 @pytest.fixture()
 def workdir(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
@@ -133,8 +142,8 @@ class TestSupervisedLifecycle:
             while time.monotonic() < deadline and process.poll() is not None:
                 time.sleep(0.05)
             assert process.poll() is None
-            # The rendered socket_path is the deterministic SID-derived pipe name; the Bridge is
-            # configured to bind it, and an unserved endpoint would fail the readiness probe.
+            # This module isolates the real pipe from a developer's live Bridge. The child still
+            # binds the exact endpoint rendered into its config, so readiness remains observable.
             assert str(rendered.socket_path).startswith("\\\\.\\pipe\\serverfs-agent-bridge-v1-")
             process.stdin.close()
             code, stderr = _finish(process)

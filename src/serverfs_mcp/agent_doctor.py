@@ -130,8 +130,12 @@ def _probe_agent_proxy(report, settings, env: Mapping[str, str] | None = None) -
     report.status("agent proxy", OK, "enabled")
     report.note(PROXY_SOURCE, proxy_settings.source)
 
+    # ``env`` is a narrowing override throughout doctor, not a replacement
+    # process environment. Merge it before handing it to agent_proxy, whose
+    # public parser intentionally treats an explicit mapping as complete.
+    merged_env = None if env is None else {**os.environ, **env}
     try:
-        parsed = parse_agent_proxy(proxy_settings, env)
+        parsed = parse_agent_proxy(proxy_settings, merged_env)
     except AgentProxyError as exc:
         # AgentProxyError messages are redacted by construction: they name the failure class.
         # The authentication line is deliberately *not* printed before this point -- claiming

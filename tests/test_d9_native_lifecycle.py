@@ -72,6 +72,7 @@ _lifecycle_module = _load("d9_lifecycle")
 
 ENV_CAPTURE_FILE = _bootstrap.ENV_CAPTURE_FILE
 PROVIDER_CHILD_FILE = _bootstrap.PROVIDER_CHILD_FILE
+STALL_FILE = _bootstrap.STALL_FILE
 WAIT_FILE = _bootstrap.WAIT_FILE
 WORKSPACE_WRITE_BYTES = _bootstrap.WORKSPACE_WRITE_BYTES
 WORKSPACE_WRITE_FILE = _bootstrap.WORKSPACE_WRITE_FILE
@@ -717,6 +718,54 @@ class TestAbnormalTerminationIsContained:
         assert _lifecycle_lease_is_free(timeout=30), (
             "the per-user lifecycle ownership was not released, so every later start would be "
             "refused by a chain that no longer serves anything"
+        )
+
+
+class TestAliveButWedgedBridgeIsRecovered:
+    """v0.13.1: the watchdog must see a Bridge that is alive but no longer serving.
+
+    Killing the Bridge (the case above) is visible to ``poll()``. The defect this test pins is the
+    harder half: a Bridge process whose event loop stops answering while the process lives. The
+    pipe stays bound, every health probe times out, the writer lease is never released, and the
+    chain serves nothing while appearing healthy. Only a real IPC probe through the endpoint can
+    distinguish this from a working Bridge, so the regression runs the full real chain with the
+    fake provider adapter blocking the Bridge's event loop synchronously mid-turn.
+    """
+
+    def test_the_watchdog_tears_down_an_alive_but_unresponsive_bridge(self, tmp_path) -> None:
+        lifecycle = Lifecycle(tmp_path, agent_enabled=True, bridge_mode="stall")
+        lifecycle.launch()
+        try:
+            client = Client(lifecycle)
+            client.initialize()
+            _submit(client, "phase-d-wedged-bridge")
+
+            # The marker is the deterministic proof that the provider turn started: from here the
+            # Bridge process is alive and its event loop is synchronously blocked.
+            marker = lifecycle.workdir / STALL_FILE
+            assert wait_until(marker.exists, timeout=60), "the provider turn never started"
+
+            bridge_pids = lifecycle.bridge_pids()
+            assert bridge_pids and all(_alive(pid) for pid in bridge_pids), (
+                "the wedged state was not reached with a live Bridge process"
+            )
+
+            # The watchdog cannot see this through poll(): the process is alive. It must come
+            # from consecutive bridge.ping failures. Three cycles of interval + bounded probe
+            # timeout bound the detection well under a minute; the generous ceiling exists for
+            # process-teardown jitter, not for the detection itself.
+            assert wait_until(lambda: not lifecycle.supervisor_pids(), timeout=120), (
+                "the supervisor never tore the chain down after the Bridge stopped answering"
+            )
+            assert wait_until(lambda: not any(_alive(pid) for pid in bridge_pids), timeout=60), (
+                "the wedged Bridge process survived the teardown; the Job Object did not reclaim it"
+            )
+        finally:
+            lifecycle.kill()
+
+        assert _lifecycle_lease_is_free(timeout=30), (
+            "the per-user lifecycle ownership was not released after the watchdog teardown, so "
+            "every later chain start would be refused"
         )
 
 

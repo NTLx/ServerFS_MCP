@@ -19,6 +19,7 @@ Readiness is reported, never triggered: a stopped Bridge is described, not start
 
 from __future__ import annotations
 
+import ast
 import json
 import sys
 from pathlib import Path
@@ -140,22 +141,14 @@ def _python_process_count() -> int:
     return len([line for line in listing.splitlines() if line.strip()])
 
 
-def _python_process_count() -> int:
-    """How many python.exe processes exist, so a started Bridge would be visible."""
-    import subprocess
-
-    listing = subprocess.run(
-        ["tasklist", "/FI", "IMAGENAME eq python.exe", "/FO", "CSV", "/NH"],
-        capture_output=True,
-        text=True,
-    ).stdout
-    return len([line for line in listing.splitlines() if line.strip()])
-
-
 @pytest.fixture()
 def data_home(tmp_path: Path, monkeypatch) -> Path:
     home = tmp_path / "data-home"
     monkeypatch.setenv("SERVERFS_DATA_HOME", str(home))
+    # AGENT_CONFIG enables the dedicated proxy. Give tests a deterministic
+    # credentialless endpoint unless the individual case deliberately
+    # overrides or removes it.
+    monkeypatch.setenv("SERVERFS_AGENT_PROXY_URL", "http://127.0.0.1:1")
     return home
 
 
@@ -217,8 +210,12 @@ class TestAgentEnabledStaticChecks:
         assert "agent workdir repo: mode=workspace-write runtimes=codex" in text
 
     def test_a_stopped_bridge_is_reported_not_started(
-        self, tmp_path: Path, workdir: Path, data_home: Path
+        self, tmp_path: Path, workdir: Path, data_home: Path, monkeypatch
     ):
+        # A developer may be running the real per-user Bridge while executing
+        # this unit test. Isolate the intended stopped-endpoint state instead
+        # of making the result depend on the host's live service.
+        monkeypatch.setattr("serverfs_mcp.agent_doctor._pipe_is_served", lambda _endpoint: False)
         config = _write(tmp_path, AGENT_CONFIG, workdir)
         workdirs, settings = _settings(config)
         report = _Report()
@@ -250,6 +247,18 @@ class TestProxyRedaction:
         report = _Report()
         report_agent(report, workdirs, settings, env=env)
         return report
+
+    def test_narrow_env_override_keeps_process_proxy_configuration(
+        self, tmp_path: Path, workdir: Path, data_home: Path, monkeypatch
+    ):
+        monkeypatch.setenv("SERVERFS_AGENT_PROXY_URL", "http://127.0.0.1:1")
+        report = self._report(
+            tmp_path,
+            workdir,
+            {"SERVERFS_DATA_HOME": str(data_home)},
+        )
+        assert "agent proxy: OK" in report.text
+        assert "AGENT_PROXY_URL is required" not in report.text
 
     def test_a_configured_proxy_reports_only_the_permitted_vocabulary(
         self, tmp_path: Path, workdir: Path, data_home: Path
@@ -305,13 +314,15 @@ class TestProxyRedaction:
         assert "user:" not in text and "user@" not in text
 
     def test_a_configured_proxy_without_an_endpoint_is_refused_without_echoing(
-        self, tmp_path: Path, workdir: Path, data_home: Path
+        self, tmp_path: Path, workdir: Path, data_home: Path, monkeypatch
     ):
-        """``env={}`` means an empty environment, so the endpoint is genuinely absent.
+        """A narrowing override still sees process state, so remove the endpoint explicitly.
 
         The refusal is correct here and is exactly what startup would do. What matters is that the
         message names the missing variable and carries no endpoint material.
         """
+        monkeypatch.delenv("SERVERFS_AGENT_PROXY_URL", raising=False)
+        monkeypatch.delenv("SERVERFS_AGENT_NO_PROXY", raising=False)
         report = self._report(tmp_path, workdir, env={})
         text = report.text
         assert "mandatory local bypass: FAIL" in text
@@ -423,12 +434,23 @@ class TestJevStaysDirect:
         assert dict(os.environ) == before, "doctor mutated the process environment"
 
     def test_agent_doctor_does_not_import_jev(self):
-        """Jev stays direct and fail-open; nothing here proxies it."""
-        from pathlib import Path as P
+        """Jev stays direct and fail-open; nothing here imports its implementation."""
+        source = Path("src/serverfs_mcp/agent_doctor.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        imported_modules = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        imported_modules.update(
+            node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+        )
 
-        source = P("src/serverfs_mcp/agent_doctor.py").read_text(encoding="utf-8")
-        assert "typesafe" not in source
-        assert "jev" not in source.lower()
+        assert not any(
+            module == "typesafe" or module.startswith("typesafe.") for module in imported_modules
+        )
+        assert not any("jev" in module.lower() for module in imported_modules)
 
 
 class TestReportIsJsonFree:

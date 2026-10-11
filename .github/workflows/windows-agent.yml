@@ -31,6 +31,9 @@ on:
       - "src/serverfs_mcp/agent_lifecycle.py"
       - "src/serverfs_mcp/agent_proxy.py"
       - "src/serverfs_mcp/agent_tools.py"
+      - "src/serverfs_mcp/windows_agent_pipe.py"
+      - "src/serverfs_mcp/windows_job.py"
+      - "src/serverfs_mcp/windows_lease.py"
       - "src/serverfs_mcp/config.py"
       - "src/serverfs_mcp/doctor.py"
       - "src/serverfs_mcp/main.py"
@@ -53,6 +56,11 @@ on:
       - "tests/test_native_tunnel.py"
       - "tests/test_tunnel_bootstrap.py"
       - "tests/test_wheel_release.py"
+      - "tests/test_windows_agent_lease.py"
+      - "tests/test_windows_agent_pipe.py"
+      - "tests/test_windows_job.py"
+      - "tests/test_windows_job_cleanup.py"
+      - "tests/test_windows_mcp_agent_e2e.py"
       - "tests/e2e/**"
       - "deployment/native/wheel_release.py"
       - "pyproject.toml"
@@ -70,6 +78,9 @@ on:
       - "src/serverfs_mcp/agent_lifecycle.py"
       - "src/serverfs_mcp/agent_proxy.py"
       - "src/serverfs_mcp/agent_tools.py"
+      - "src/serverfs_mcp/windows_agent_pipe.py"
+      - "src/serverfs_mcp/windows_job.py"
+      - "src/serverfs_mcp/windows_lease.py"
       - "src/serverfs_mcp/config.py"
       - "src/serverfs_mcp/doctor.py"
       - "src/serverfs_mcp/main.py"
@@ -92,6 +103,11 @@ on:
       - "tests/test_native_tunnel.py"
       - "tests/test_tunnel_bootstrap.py"
       - "tests/test_wheel_release.py"
+      - "tests/test_windows_agent_lease.py"
+      - "tests/test_windows_agent_pipe.py"
+      - "tests/test_windows_job.py"
+      - "tests/test_windows_job_cleanup.py"
+      - "tests/test_windows_mcp_agent_e2e.py"
       - "tests/e2e/**"
       - "deployment/native/wheel_release.py"
       - "pyproject.toml"
@@ -311,13 +327,18 @@ jobs:
             tests/test_import_safety.py `
             tests/test_native_tunnel.py `
             tests/test_tunnel_bootstrap.py `
-            tests/test_wheel_release.py -q
+            tests/test_wheel_release.py `
+            tests/test_windows_agent_lease.py `
+            tests/test_windows_agent_pipe.py `
+            tests/test_windows_job.py `
+            tests/test_windows_job_cleanup.py `
+            tests/test_windows_mcp_agent_e2e.py -q
         shell: pwsh
 
       - name: upload the three wheels as PR artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: v011-agent-wheels
+          name: windows-agent-wheels
           path: |
             native/windows/target/wheels/*.whl
             dist/serverfs_mcp-*.whl

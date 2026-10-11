@@ -41,6 +41,10 @@ three different observations and none of them belongs in production:
     process, so it cannot be satisfied by a helper returning the right value without anything
         calling
     it.
+``stall``
+    Write a marker file, then block the Bridge's event loop with a *synchronous* sleep. The
+    process stays alive while every RPC stops answering -- the alive-but-wedged state the
+    v0.13.1 supervisor watchdog must detect through ``bridge.ping``.
 """
 
 from __future__ import annotations
@@ -50,6 +54,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +68,10 @@ ENV_CAPTURE_FILE = "phase-d-native-lifecycle-env.json"
 #: fake runtime otherwise runs in-process, so without it the chain has no provider-shaped process
 #: and a containment assertion about one would be about nothing.
 PROVIDER_CHILD_FILE = "phase-d-provider-child.json"
+#: Written only in the `stall` mode, right before the Bridge's event loop is blocked
+#: synchronously. It is the deterministic proof that the provider turn really started, so a
+#: watchdog test can assert "alive but unresponsive" rather than guessing.
+STALL_FILE = "phase-d-native-lifecycle-stall.txt"
 
 
 def _install() -> None:
@@ -150,6 +159,21 @@ def _install() -> None:
                 )
                 await context.emit_event("turn.completed", {"runtime": self.name})
                 return AdapterResult(final_response=f"captured: {detail}")
+
+            if mode == "stall":
+                # The v0.13.1 defect under test: a Bridge *process* that stays alive while its
+                # event loop stops serving IPC. The supervisor's watchdog can only see this
+                # through ``bridge.ping``, never through ``poll()``.
+                #
+                # Two details make the wedge deterministic rather than accidental. The marker is
+                # written before the block, so "the turn started" is observable. And a short
+                # healthy window precedes the block, so the ``task.submit`` response the handler
+                # is still flushing reaches the client: without it, blocking here would swallow
+                # that response into the transport buffer and the test would hang on submit
+                # instead of measuring the watchdog.
+                (Path(context.cwd) / STALL_FILE).write_bytes(b"stalled\n")
+                await asyncio.sleep(0.25)
+                time.sleep(300)
 
             if mode == "child":
                 # A Bridge-owned descendant that outlives the turn, so the chain has something a Job

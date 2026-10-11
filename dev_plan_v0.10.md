@@ -845,9 +845,10 @@ conflicts even though it does not change the public revision. The final gate nar
 race but is not an atomic compare-and-swap: a non-cooperating writer can still race
 between the gate and the relative rename.
 
-The initial D1 preservation matrix is deliberately explicit: copy handle-readable basic
-timestamps and supported DOS attributes plus DACL; require temporary-file owner/group
-to already match the original and refuse otherwise. Do not request or claim audit-SACL
+The initial D1 preservation matrix is deliberately explicit: copy handle-readable creation/access
+timestamps and supported DOS attributes plus DACL; the replacement's `LastWriteTime` must reflect
+the newly written data stream rather than restoring the target's old content timestamp. Require
+temporary-file owner/group to already match the original and refuse otherwise. Do not request or claim audit-SACL
 preservation. Refuse named streams, EAs, object IDs, multiple hard links, reparses,
 sparse/compressed/encrypted/integrity/offline/cloud and unknown attribute state when
 their loss is detectable. A failed or unavailable handle-only query is also a refusal,

@@ -1,8 +1,9 @@
 //! Handle-relative Windows mutation primitives.
 //!
 //! Replacement policy is intentionally narrow. Ordinary DOS attributes and
-//! basic timestamps plus the DACL are copied; owner/group must naturally
-//! match on the temporary file. Named streams, EAs,
+//! creation/access timestamps, DOS attributes and the DACL are copied;
+//! LastWriteTime is deliberately left as the replacement data-stream write
+//! time, and owner/group must naturally match on the temporary file. Named streams, EAs,
 //! object IDs, multiple hard links, reparses, sparse/compressed/encrypted,
 //! offline/cloud, integrity and unknown attribute state are refused. Audit
 //! SACLs are outside the v0.10 preservation set; no SACL privilege is asked
@@ -294,7 +295,12 @@ fn apply_snapshot(temp: &Handle, snapshot: &PreservationSnapshot) -> Result<(), 
     let info = FILE_BASIC_INFO {
         CreationTime: snapshot.basic.CreationTime,
         LastAccessTime: snapshot.basic.LastAccessTime,
-        LastWriteTime: snapshot.basic.LastWriteTime,
+        // Zero means "do not change" for FILE_BASIC_INFO time fields. The
+        // replacement has just been written, so its own LastWriteTime is the
+        // truthful content-modification time. Restoring the target's old
+        // value makes same-size source edits invisible to timestamp+size
+        // consumers such as Python's default .pyc validation.
+        LastWriteTime: 0,
         // NTFS owns ChangeTime and may update it as metadata is applied.
         ChangeTime: 0,
         FileAttributes: snapshot.basic.FileAttributes,
