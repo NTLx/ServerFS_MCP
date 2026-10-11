@@ -36,10 +36,21 @@ def sanitized_environment(source: dict[str, str] | None = None) -> dict[str, str
     }
 
 
-def _copy(source: BinaryIO, destination: BinaryIO, *, close_destination: bool = False) -> None:
+def _copy(
+    source: BinaryIO,
+    destination: BinaryIO,
+    *,
+    close_destination: bool = False,
+    eof_event: threading.Event | None = None,
+) -> None:
     try:
         read = getattr(source, "read1", source.read)
-        while chunk := read(64 * 1024):
+        while True:
+            chunk = read(64 * 1024)
+            if not chunk:
+                if eof_event is not None:
+                    eof_event.set()
+                break
             destination.write(chunk)
             destination.flush()
     except (BrokenPipeError, OSError):
@@ -50,6 +61,80 @@ def _copy(source: BinaryIO, destination: BinaryIO, *, close_destination: bool = 
                 destination.close()
             except OSError:
                 pass
+
+
+def _copy_fd(source_fd: int, destination: BinaryIO, eof: threading.Event) -> None:
+    """Forward one raw descriptor without touching Python's buffered stdin object."""
+    try:
+        while True:
+            chunk = os.read(source_fd, 64 * 1024)
+            if not chunk:
+                eof.set()
+                break
+            destination.write(chunk)
+            destination.flush()
+    except (BrokenPipeError, OSError):
+        pass
+    finally:
+        try:
+            os.close(source_fd)
+        except OSError:
+            pass
+        try:
+            destination.close()
+        except OSError:
+            pass
+
+
+def _start_stdin_forwarder(destination: BinaryIO) -> threading.Event:
+    """Start the daemon stdin pump without letting it own ``sys.stdin.buffer``.
+
+    The tunnel keeps the supervisor's stdin open for the lifetime of the MCP connection. If the
+    child exits first, a daemon thread blocked in ``sys.stdin.buffer.read()`` can still hold the
+    BufferedReader lock while CPython finalizes that object, which is fatal at interpreter shutdown.
+    A duplicated raw descriptor has the same byte stream but no Python buffered-object lock, so the
+    thread may remain blocked until process exit without racing interpreter finalization.
+    """
+    eof = threading.Event()
+
+    def start_buffered() -> threading.Event:
+        source = getattr(sys.stdin, "buffer", sys.stdin)
+        threading.Thread(
+            target=_copy,
+            args=(source, destination),
+            kwargs={"close_destination": True, "eof_event": eof},
+            daemon=True,
+            name="stdin-forward-buffered",
+        ).start()
+        return eof
+
+    # The measured shutdown crash is Windows-specific. Keep Linux/macOS on the pre-v0.13.1
+    # buffered path rather than widening this lifecycle change beyond the platform with evidence.
+    if os.name != "nt":
+        return start_buffered()
+    try:
+        source_fd = os.dup(sys.stdin.fileno())
+    except (AttributeError, OSError, ValueError):
+        # Unit tests and embedded hosts may replace stdin with an in-memory stream that has no file
+        # descriptor. Preserve the existing contract there; the real Windows tunnel stdio path has
+        # a descriptor and therefore takes the raw-fd branch that avoids the shutdown race.
+        return start_buffered()
+
+    import msvcrt
+
+    msvcrt.setmode(source_fd, os.O_BINARY)
+    threading.Thread(
+        target=_copy_fd,
+        args=(source_fd, destination, eof),
+        daemon=True,
+        name="stdin-forward",
+    ).start()
+    return eof
+
+
+def _diagnostic(message: str) -> None:
+    sys.stderr.write(f"serverfs-supervisor: {message}\n")
+    sys.stderr.flush()
 
 
 def forward_stdio(command: Sequence[str], env: dict[str, str] | None = None) -> int:
@@ -63,13 +148,7 @@ def forward_stdio(command: Sequence[str], env: dict[str, str] | None = None) -> 
         bufsize=0,
     )
     assert child.stdin is not None and child.stdout is not None
-    input_thread = threading.Thread(
-        target=_copy,
-        args=(sys.stdin.buffer, child.stdin),
-        kwargs={"close_destination": True},
-        daemon=True,
-    )
-    input_thread.start()
+    _start_stdin_forwarder(child.stdin)
     try:
         _copy(child.stdout, sys.stdout.buffer)
         return child.wait()
@@ -350,7 +429,9 @@ def _watch_bridge(
         while not stop.wait(BRIDGE_WATCH_INTERVAL_SECONDS):
             # First priority stays the process itself: a dead Bridge is unambiguous and needs no
             # IPC probe.
-            if bridge.poll() is not None:
+            bridge_exit = bridge.poll()
+            if bridge_exit is not None:
+                _diagnostic(f"bridge exited (code={bridge_exit}); stopping stdio child")
                 terminate_quietly(stdio_child)
                 return
             if _bridge_is_responsive(socket_path):
@@ -360,6 +441,10 @@ def _watch_bridge(
             if consecutive_failures >= BRIDGE_HEALTH_FAILURE_THRESHOLD:
                 # Alive but unresponsive: the same teardown a dead Bridge gets, so the ordinary
                 # finally path in run_with_agent reclaims the Job Object and the lifecycle lease.
+                _diagnostic(
+                    "bridge health failed "
+                    f"{consecutive_failures} consecutive times; stopping stdio child"
+                )
                 terminate_quietly(stdio_child)
                 return
 
@@ -498,16 +583,15 @@ def _start_stdio_child(
 def forward_stdio_child(child: subprocess.Popen[bytes]) -> int:
     """Forward MCP frames to an already-started child (the Agent path's stdio shape)."""
     assert child.stdin is not None and child.stdout is not None
-    input_thread = threading.Thread(
-        target=_copy,
-        args=(sys.stdin.buffer, child.stdin),
-        kwargs={"close_destination": True},
-        daemon=True,
-    )
-    input_thread.start()
+    parent_stdin_eof = _start_stdin_forwarder(child.stdin)
     try:
         _copy(child.stdout, sys.stdout.buffer)
-        return child.wait()
+        exit_code = child.wait()
+        _diagnostic(
+            "stdio child exited "
+            f"(code={exit_code}, parent_stdin_eof={str(parent_stdin_eof.is_set()).lower()})"
+        )
+        return exit_code
     except BaseException:
         terminate_quietly(child)
         raise

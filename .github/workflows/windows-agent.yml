@@ -54,6 +54,7 @@ on:
       - "tests/test_doctor_agent_followup.py"
       - "tests/test_import_safety.py"
       - "tests/test_native_tunnel.py"
+      - "tests/test_supervisor_agent.py"
       - "tests/test_tunnel_bootstrap.py"
       - "tests/test_wheel_release.py"
       - "tests/test_windows_agent_lease.py"
@@ -101,6 +102,7 @@ on:
       - "tests/test_doctor_agent_followup.py"
       - "tests/test_import_safety.py"
       - "tests/test_native_tunnel.py"
+      - "tests/test_supervisor_agent.py"
       - "tests/test_tunnel_bootstrap.py"
       - "tests/test_wheel_release.py"
       - "tests/test_windows_agent_lease.py"
@@ -326,6 +328,7 @@ jobs:
             tests/test_d9_native_lifecycle.py `
             tests/test_import_safety.py `
             tests/test_native_tunnel.py `
+            tests/test_supervisor_agent.py `
             tests/test_tunnel_bootstrap.py `
             tests/test_wheel_release.py `
             tests/test_windows_agent_lease.py `

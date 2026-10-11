@@ -492,6 +492,39 @@ class TestLauncherReportsRedactedFailures:
         assert supervisor.main(["--config", str(config)]) == 0
 
 
+class TestStdioShutdown:
+    """Regression for CPython buffered-stdin finalization on early child exit."""
+
+    def test_agent_stdio_child_exit_does_not_race_buffered_stdin_finalization(self) -> None:
+        """Keep parent stdin open while the child exits; the supervisor must still exit cleanly."""
+        script = (
+            "import subprocess,sys;"
+            "from serverfs_mcp.supervisor import forward_stdio_child;"
+            "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(0.4)'],"
+            "stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=None,bufsize=0);"
+            "raise SystemExit(forward_stdio_child(child))"
+        )
+        process = subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert process.stdin is not None and process.stderr is not None
+        try:
+            returncode = process.wait(timeout=15)
+            stderr = process.stderr.read().decode("utf-8", errors="replace")
+            assert returncode == 0, stderr
+            assert "Fatal Python error" not in stderr, stderr
+            assert "_enter_buffered_busy" not in stderr, stderr
+            assert "stdio child exited (code=0, parent_stdin_eof=false)" in stderr, stderr
+        finally:
+            process.stdin.close()
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=15)
+
+
 class _SleepingChild:
     """A real stdio-shaped child that only ever blocks, so teardown is observable."""
 
@@ -528,7 +561,7 @@ class TestBridgeWatchdog:
         return supervisor._watch_bridge(bridge, stdio_child, socket_path)
 
     def test_an_exited_bridge_terminates_the_stdio_child_without_a_probe(
-        self, tmp_path: Path, monkeypatch
+        self, tmp_path: Path, monkeypatch, capsys
     ):
         monkeypatch.setattr(
             supervisor,
@@ -542,6 +575,7 @@ class TestBridgeWatchdog:
             assert _wait_until(lambda: stdio_child.poll() is not None), (
                 "an exited Bridge did not terminate the stdio child"
             )
+            assert "bridge exited (code=0); stopping stdio child" in capsys.readouterr().err
             stop.set()
 
     def test_a_transient_health_failure_does_not_kill_the_chain(self, tmp_path: Path, monkeypatch):
@@ -565,7 +599,7 @@ class TestBridgeWatchdog:
             bridge.wait(timeout=15)
 
     def test_consecutive_health_failures_terminate_the_stdio_child(
-        self, tmp_path: Path, monkeypatch
+        self, tmp_path: Path, monkeypatch, capsys
     ):
         """An alive-but-wedged Bridge must reach the same teardown a dead Bridge gets."""
         monkeypatch.setattr(supervisor, "_bridge_is_responsive", lambda endpoint: False)
@@ -575,6 +609,10 @@ class TestBridgeWatchdog:
                 stop = self._start_watcher(bridge, stdio_child, tmp_path / "unused.pipe")
                 assert _wait_until(lambda: stdio_child.poll() is not None), (
                     "consecutive bridge.ping failures did not terminate the stdio child"
+                )
+                assert (
+                    "bridge health failed 3 consecutive times; stopping stdio child"
+                    in capsys.readouterr().err
                 )
                 stop.set()
         finally:
