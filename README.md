@@ -10,7 +10,7 @@
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured Codex / Claude Code / Qoder delegation only where you need them.
 
-**Current stable release: v0.13.0**
+**Current stable release: v0.13.1**
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -196,10 +196,10 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-The current stable release is **v0.13.0**.
+The current stable release is **v0.13.1**.
 
 - Linux images: `ghcr.io/ntlx/serverfs_mcp`
-- Stable release tag: `v0.13.0`
+- Stable release tag: `v0.13.1`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel.

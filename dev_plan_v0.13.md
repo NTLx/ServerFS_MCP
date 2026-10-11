@@ -1841,7 +1841,7 @@ git diff --check clean
 
 ```text
 package versions aligned to 0.13.0
-docs describe v0.13.0 as current
+release-time docs described v0.13.0 as current (historical checkpoint)
 acceptance evidence committed
 main clean
 all required CI green

@@ -4,7 +4,7 @@
 
 ## Current release
 
-- **v0.13.0 is released and is the current stable release.**
+- **v0.13.1 is released and is the current stable release.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
 - macOS v0.13 support is intentionally narrow: Apple M-series, native arm64, macOS 27 Golden Gate; no Intel, Rosetta, macOS 26/28 or `darwin-amd64` tunnel asset is claimed.

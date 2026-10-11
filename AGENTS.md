@@ -11,7 +11,7 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 
 ## Current baseline
 
-- **Current stable release: v0.13.0 (released).**
+- **Current stable release: v0.13.1 (released).**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to each platform/runtime gate.
 - macOS v0.13 support is intentionally narrow: Apple M-series, native arm64, macOS 27 Golden Gate. Do not claim Intel, Rosetta, macOS 26/28 or `darwin-amd64` support without new measured evidence.

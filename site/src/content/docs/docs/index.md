@@ -5,7 +5,7 @@ description: Secure, scoped filesystem access on Linux, Windows and macOS for Ch
 
 ServerFS MCP exposes explicitly configured directories — Linux containers, native Windows since v0.10.0, native macOS since v0.13.0 — as **controlled workdirs** through the Model Context Protocol.
 
-Current stable release: **v0.13.0**. This release adds the native macOS deployment — **Apple M-series Macs running macOS 27 Golden Gate, native arm64, no Docker and no Rosetta** — with the Darwin FD filesystem backend (`fcopyfile` metadata preservation, FD-secure search), `getpeereid`-authenticated AF_UNIX Agent Bridge under a user launchd agent, and a native AF_UNIX file-ingress helper, while preserving the existing Linux and Windows native deployments and public tool surfaces.
+Current stable release: **v0.13.1**. This stabilization release hardens Windows Agent Bridge Named Pipe and lifecycle supervision, plus Windows native replacement timestamp correctness, while retaining the native macOS deployment introduced in v0.13.0 and preserving the existing Linux, Windows, and macOS public tool surfaces.
 
 It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations, bounded whole-file binary transfer, and an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge remains optional; Codex, Claude and Qoder keep provider-neutral model discovery and request-scoped overrides, with advisory-only TypeSafe Jev support. v0.10.0 adds the native Windows deployment: an MCP stdio service over a prebuilt Rust/NTFS kernel wheel, with no Docker, WSL or MSVC.
 
