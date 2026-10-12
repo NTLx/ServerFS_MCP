@@ -9,6 +9,7 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 COPY src/ src/
+COPY native/macos/service_manager/ native/macos/service_manager/
 COPY README.md ./
 
 # locked, no dev deps, into a plain venv we can copy
