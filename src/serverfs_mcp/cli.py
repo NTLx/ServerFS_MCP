@@ -19,6 +19,7 @@ reserved for protocol use even in diagnostic runs.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -146,9 +147,45 @@ def build_parser() -> argparse.ArgumentParser:
     async_parser.add_argument(
         "--config", required=True, type=Path, help="native serverfs.toml path"
     )
-    agent_sub.add_parser("stop", help="Boot the LaunchAgent out")
-    agent_sub.add_parser("status", help="Read-only launchctl print summary")
-    agent_sub.add_parser("uninstall", help="Boot the LaunchAgent out and remove the plist")
+    agent_sub.add_parser("stop", help="Stop the persistent Agent Bridge service")
+    agent_sub.add_parser("status", help="Read the persistent Agent Bridge service status")
+    agent_sub.add_parser("uninstall", help="Unregister the persistent Agent Bridge service")
+
+    service = sub.add_parser(
+        "service",
+        help="Manage the Apple-native persistent macOS ServerFS services (v0.13.2)",
+    )
+    service_sub = service.add_subparsers(dest="service_command", required=True)
+    service_install = service_sub.add_parser(
+        "install",
+        help="Build/install the native Service Manager and register Tunnel/Agent Bridge",
+    )
+    service_install.add_argument(
+        "--config", required=True, type=Path, help="native serverfs.toml path"
+    )
+    service_install.add_argument(
+        "--env-file",
+        type=Path,
+        help="private service settings (default: sibling .env)",
+    )
+    service_install.add_argument(
+        "--_handover-child",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    service_install.add_argument(
+        "--_handover-roots",
+        help=argparse.SUPPRESS,
+    )
+    service_sub.add_parser("status", help="Report registration and process health")
+    service_sub.add_parser("start", help="Register configured persistent services")
+    service_sub.add_parser("restart", help="Unregister then register configured services")
+    service_sub.add_parser("stop", help="Unregister configured persistent services")
+    service_sub.add_parser(
+        "uninstall",
+        help="Unregister services and remove v0.13.2-owned artifacts",
+    )
+    service_sub.add_parser("open-settings", help="Open System Settings > Login Items")
     return parser
 
 
@@ -414,50 +451,43 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
         return _fail("agent-bridge lifecycle management is macOS-only in v0.13")
     if _platform.machine() != "arm64":
         return _fail("the macOS Agent Bridge runs on Apple Silicon only")
-    from . import darwin_lifecycle as lifecycle
-    from .native_endpoint import bridge_home
+
+    from . import darwin_service
+    from .darwin_service import DarwinServiceError
 
     command = args.agent_command
+    if command == "install":
+        return _fail(
+            "v0.13.2 no longer installs a standalone ~/Library/LaunchAgents plist; use "
+            "'serverfs service install --config <serverfs.toml> --env-file <.env>'"
+        )
+    if command == "configure":
+        from .darwin_bridge_policy import DarwinBridgePolicyError, configure_policy
+
+        workdirs, native_settings = _load(args.config)
+        if not native_settings.agent_enabled:
+            return _fail("the native configuration does not enable Agent delegation")
+        try:
+            configure_policy(workdirs, native_settings, env_file=args.env_file)
+        except DarwinBridgePolicyError as exc:
+            return _fail(f"Agent Bridge configuration failed: {exc}")
+        sys.stderr.write("Agent Bridge private configuration published\n")
+        return 0
+    if command == "sync":
+        from .darwin_bridge_policy import DarwinBridgePolicyError, sync_policy
+
+        workdirs, native_settings = _load(args.config)
+        if not native_settings.agent_enabled:
+            return _fail("the native configuration does not enable Agent delegation")
+        try:
+            sync_policy(workdirs, native_settings)
+        except DarwinBridgePolicyError as exc:
+            return _fail(f"Agent Bridge policy sync failed: {exc}")
+        sys.stderr.write("Agent Bridge policy synchronized\n")
+        return 0
     try:
-        if command == "install":
-            plan = lifecycle.LaunchAgentPlan(
-                bridge_executable=(
-                    args.bridge_executable
-                    if args.bridge_executable is not None
-                    else lifecycle.default_bridge_executable()
-                ),
-                bridge_config_path=args.bridge_config,
-                log_dir=args.log_dir if args.log_dir is not None else bridge_home() / "logs",
-            )
-            path = lifecycle.install(plan, force=args.force)
-            sys.stderr.write(f"LaunchAgent installed and bootstrapped: {path}\n")
-            return 0
-        if command == "configure":
-            from .darwin_bridge_policy import DarwinBridgePolicyError, configure_policy
-
-            workdirs, native_settings = _load(args.config)
-            if not native_settings.agent_enabled:
-                return _fail("the native configuration does not enable Agent delegation")
-            try:
-                configure_policy(workdirs, native_settings, env_file=args.env_file)
-            except DarwinBridgePolicyError as exc:
-                return _fail(f"Agent Bridge configuration failed: {exc}")
-            sys.stderr.write("Agent Bridge private configuration published\n")
-            return 0
         if command == "start":
-            lifecycle.start()
-            return 0
-        if command == "sync":
-            from .darwin_bridge_policy import DarwinBridgePolicyError, sync_policy
-
-            workdirs, native_settings = _load(args.config)
-            if not native_settings.agent_enabled:
-                return _fail("the native configuration does not enable Agent delegation")
-            try:
-                sync_policy(workdirs, native_settings)
-            except DarwinBridgePolicyError as exc:
-                return _fail(f"Agent Bridge policy sync failed: {exc}")
-            sys.stderr.write("Agent Bridge policy synchronized\n")
+            darwin_service.register_service(darwin_service.BRIDGE_SERVICE)
             return 0
         if command == "restart":
             if args.env_file is not None and args.config is None:
@@ -479,22 +509,133 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
                         configure_policy(workdirs, native_settings, env_file=args.env_file)
                 except DarwinBridgePolicyError as exc:
                     return _fail(f"Agent Bridge policy sync failed: {exc}")
-            lifecycle.restart()
+            darwin_service.restart_service(darwin_service.BRIDGE_SERVICE)
             return 0
         if command == "stop":
-            lifecycle.stop()
+            darwin_service.unregister_service(darwin_service.BRIDGE_SERVICE)
             return 0
         if command == "status":
-            for key, value in lifecycle.status().items():
-                sys.stderr.write(f"{key}: {value}\n")
+            service_status = darwin_service.status()
+            states = service_status.get("services", {})
+            processes = service_status.get("processes", {})
+            sys.stderr.write(f"state: {states.get(darwin_service.BRIDGE_SERVICE, 'unknown')}\n")
+            if isinstance(processes, dict):
+                bridge = processes.get(darwin_service.BRIDGE_SERVICE, {})
+                if isinstance(bridge, dict):
+                    sys.stderr.write(f"pid: {bridge.get('pid') or ''}\n")
             return 0
         if command == "uninstall":
-            lifecycle.uninstall()
-            sys.stderr.write("LaunchAgent removed\n")
+            darwin_service.unregister_service(darwin_service.BRIDGE_SERVICE)
+            sys.stderr.write("Agent Bridge service unregistered\n")
             return 0
-    except lifecycle.LaunchAgentError as exc:
+    except DarwinServiceError as exc:
         return _fail(str(exc))
     return _fail(f"unknown agent-bridge command {command!r}")
+
+
+def cmd_service(args: argparse.Namespace) -> int:
+    if sys.platform != "darwin":
+        return _fail("persistent service management is macOS-only")
+
+    from . import darwin_service
+    from .darwin_service import DarwinServiceError
+
+    command = args.service_command
+    try:
+        if command == "install":
+            config_path = args.config.resolve()
+            env_file = args.env_file
+            if env_file is None:
+                candidate = config_path.parent / ".env"
+                env_file = candidate if candidate.is_file() else None
+            if env_file is None:
+                return _fail("service install requires --env-file or a sibling .env")
+            env_file = env_file.resolve()
+            handover_child = bool(getattr(args, "_handover_child", False))
+            expected_roots: list[int] | None = None
+            if handover_child:
+                raw_roots = (getattr(args, "_handover_roots", None) or "").strip()
+                try:
+                    expected_roots = sorted(
+                        {int(value) for value in raw_roots.split(",") if value.strip()}
+                    )
+                except ValueError:
+                    darwin_service.write_handover_result(
+                        ok=False, detail="invalid frozen Tunnel root PID list"
+                    )
+                    return _fail("invalid frozen Tunnel root PID list")
+                if any(pid <= 0 for pid in expected_roots):
+                    darwin_service.write_handover_result(
+                        ok=False, detail="invalid frozen Tunnel root PID list"
+                    )
+                    return _fail("invalid frozen Tunnel root PID list")
+            else:
+                unmanaged_roots = darwin_service.find_unmanaged_tunnel_roots()
+                legacy_bridge = darwin_service.legacy_bridge_plist_path().is_file()
+                if unmanaged_roots or legacy_bridge:
+                    darwin_service.schedule_handover_install(
+                        config_path, env_file, unmanaged_roots
+                    )
+                    sys.stderr.write(
+                        "controlled v0.13.2 lifecycle hand-over scheduled via launchd\n"
+                    )
+                    return 0
+
+            workdirs, native_settings = _load(config_path)
+            if native_settings.agent_enabled:
+                from .darwin_bridge_policy import DarwinBridgePolicyError, configure_policy
+
+                try:
+                    configure_policy(workdirs, native_settings, env_file=env_file)
+                except DarwinBridgePolicyError as exc:
+                    if handover_child:
+                        darwin_service.write_handover_result(ok=False, detail=str(exc))
+                    return _fail(f"Agent Bridge configuration failed: {exc}")
+            states = darwin_service.install(
+                config_path,
+                env_file,
+                bridge_enabled=native_settings.agent_enabled,
+                expected_unmanaged_roots=expected_roots,
+            )
+            for service, state in sorted(states.items()):
+                sys.stderr.write(f"{service}: {state}\n")
+            if handover_child:
+                darwin_service.write_handover_result(ok=True, detail="installed")
+            return 0
+        if command == "status":
+            snapshot = darwin_service.status()
+            sys.stderr.write(json.dumps(snapshot, sort_keys=True) + "\n")
+            return 0
+        if command == "start":
+            states = darwin_service.start()
+            for service, state in sorted(states.items()):
+                sys.stderr.write(f"{service}: {state}\n")
+            return 0
+        if command == "restart":
+            states = darwin_service.restart()
+            for service, state in sorted(states.items()):
+                sys.stderr.write(f"{service}: {state}\n")
+            return 0
+        if command == "stop":
+            states = darwin_service.stop()
+            for service, state in sorted(states.items()):
+                sys.stderr.write(f"{service}: {state}\n")
+            return 0
+        if command == "uninstall":
+            darwin_service.uninstall()
+            sys.stderr.write("persistent services uninstalled\n")
+            return 0
+        if command == "open-settings":
+            darwin_service.open_settings()
+            return 0
+    except DarwinServiceError as exc:
+        if command == "install" and bool(getattr(args, "_handover_child", False)):
+            try:
+                darwin_service.write_handover_result(ok=False, detail=str(exc))
+            except DarwinServiceError:
+                pass
+        return _fail(str(exc))
+    return _fail(f"unknown service command {command!r}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -510,6 +651,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_bootstrap(args)
     if args.command == "agent-bridge":
         return cmd_agent_bridge(args)
+    if args.command == "service":
+        return cmd_service(args)
     parser.error(f"unknown command {args.command!r}")
 
 

@@ -217,12 +217,12 @@ def test_tunnel_gets_proxy_only_in_internal_env_not_argv(tmp_path: Path, monkeyp
     )
     captured: dict[str, object] = {}
 
-    def fake_run(argv, *, env, check):
-        captured.update(argv=argv, env=env, check=check)
-        return subprocess.CompletedProcess(argv, 0)
+    def fake_run(argv, env):
+        captured.update(argv=argv, env=env)
+        return 0
 
     monkeypatch.setattr(native_tunnel.sys, "platform", "win32")
-    monkeypatch.setattr(native_tunnel.subprocess, "run", fake_run)
+    monkeypatch.setattr(native_tunnel, "_run_tunnel_client", fake_run)
     monkeypatch.setenv("CONTROL_PLANE_HTTP_PROXY", "old-control-proxy")
     monkeypatch.setenv("TUNNEL_CLIENT_HTTP_PROXY", "old-global-proxy")
     monkeypatch.setenv("http_proxy", "old-lower-http-proxy")
@@ -290,6 +290,50 @@ def test_tunnel_gets_proxy_only_in_internal_env_not_argv(tmp_path: Path, monkeyp
         assert name not in env or name == "CONTROL_PLANE_HTTP_PROXY"
     assert f"file:{key.resolve()}" in argv
     assert "key-sentinel" not in " ".join(argv)
+
+
+def test_darwin_tunnel_client_forwards_sigterm_and_restores_handlers(monkeypatch) -> None:
+    installed: dict[int, object] = {}
+    restored: list[tuple[int, object]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.signals: list[int] = []
+            self.triggered = False
+
+        def poll(self):
+            return None
+
+        def send_signal(self, signum: int) -> None:
+            self.signals.append(signum)
+
+        def wait(self) -> int:
+            if not self.triggered:
+                self.triggered = True
+                handler = installed[native_tunnel.signal.SIGTERM]
+                assert callable(handler)
+                handler(native_tunnel.signal.SIGTERM, None)
+            return 0
+
+    process = FakeProcess()
+    monkeypatch.setattr(native_tunnel.sys, "platform", "darwin")
+    monkeypatch.setattr(native_tunnel.subprocess, "Popen", lambda argv, env: process)
+    monkeypatch.setattr(native_tunnel.signal, "getsignal", lambda signum: f"old-{signum}")
+
+    def fake_signal(signum: int, handler):
+        if isinstance(handler, str):
+            restored.append((signum, handler))
+        else:
+            installed[signum] = handler
+
+    monkeypatch.setattr(native_tunnel.signal, "signal", fake_signal)
+
+    assert native_tunnel._run_tunnel_client(["client"], {}) == 0
+    assert process.signals == [native_tunnel.signal.SIGTERM]
+    assert restored == [
+        (native_tunnel.signal.SIGTERM, f"old-{native_tunnel.signal.SIGTERM}"),
+        (native_tunnel.signal.SIGINT, f"old-{native_tunnel.signal.SIGINT}"),
+    ]
 
 
 def test_api_key_file_inside_workdir_is_refused(tmp_path: Path, monkeypatch) -> None:
@@ -444,12 +488,12 @@ def _launcher_capture(tmp_path, monkeypatch, **kwargs):
     client.touch()
     captured: dict[str, object] = {}
 
-    def fake_run(argv, *, env, check):
-        captured.update(argv=argv, env=env, check=check)
-        return subprocess.CompletedProcess(argv, 0)
+    def fake_run(argv, env):
+        captured.update(argv=argv, env=env)
+        return 0
 
     monkeypatch.setattr(native_tunnel.sys, "platform", "win32")
-    monkeypatch.setattr(native_tunnel.subprocess, "run", fake_run)
+    monkeypatch.setattr(native_tunnel, "_run_tunnel_client", fake_run)
     monkeypatch.setenv("CONTROL_PLANE_BASE_URL", "https://inherited.example")
     monkeypatch.setenv("HEALTH_LISTEN_ADDR", "127.0.0.1:9999")
     code = run_native_tunnel(
@@ -550,13 +594,16 @@ class TestDarwinTunnel:
         from serverfs_mcp.native_tunnel import run_native_tunnel
 
         config, client = self._setup(tmp_path)
+        monkeypatch.setattr(
+            "serverfs_mcp.darwin_service.service_home", lambda: tmp_path / "service-home"
+        )
         captured: dict[str, object] = {}
 
-        def fake_run(argv, *, env, check):
+        def fake_run(argv, env):
             captured.update(argv=argv)
-            return subprocess.CompletedProcess(argv, 0)
+            return 0
 
-        monkeypatch.setattr(native_tunnel.subprocess, "run", fake_run)
+        monkeypatch.setattr(native_tunnel, "_run_tunnel_client", fake_run)
         result = run_native_tunnel(
             config_path=config,
             env_file=None,

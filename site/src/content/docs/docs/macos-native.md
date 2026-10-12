@@ -1,59 +1,98 @@
 ---
 title: macOS Native
-description: The native macOS deployment — Apple M-series only, native arm64, macOS 27 Golden Gate; Darwin FD backend, getpeereid AF_UNIX Bridge, launchd lifecycle, no Docker or Rosetta.
+description: ServerFS v0.13.2 native macOS deployment — Apple M-series, macOS 27, Darwin FD safety and Apple SMAppService persistence for Tunnel and Agent Bridge.
 ---
 
-Since v0.13.0 ServerFS runs natively on **Apple M-series Macs running macOS 27 Golden Gate** as an MCP **stdio** service. The platform boundary is exact: native **arm64** execution only (no Rosetta, no x86_64), macOS 27.x only, **local APFS** workdirs. Intel Macs, Hackintosh, macOS 26 or older and macOS 28 or newer are refused by the measured runtime gate with `NATIVE_PLATFORM_UNSUPPORTED` — never silently executed.
+**v0.13.2 is the current published stable release.** ServerFS runs natively on **Apple M-series Macs running macOS 27 Golden Gate**. The supported boundary remains exact: native **arm64** only, no Rosetta/x86_64, macOS 27.x only, and **local APFS** workdirs. Intel Macs, Hackintosh, macOS 26 or older and macOS 28 or newer fail closed with `NATIVE_PLATFORM_UNSUPPORTED`.
 
-The runtime chain:
+v0.13.2 keeps the Darwin filesystem and Agent protocol implementation in Python, but replaces the old hand-installed LaunchAgent lifecycle with Apple's current **ServiceManagement / `SMAppService`** model. A small headless `ServerFSServiceManager.app` owns registration and status for two per-user LaunchAgents:
 
 ```text
-serverfs tunnel
-  -> official pinned tunnel-client            (darwin-arm64 asset only)
-       -> sanitizer supervisor
-            -> serverfs serve                 (MCP stdio child, measured darwin gate)
-                 -> Darwin FD backend         (pure Python over descriptor-relative POSIX)
-            -> file-ingress helper            (separate process, private AF_UNIX socket)
-       -> Agent Bridge (launchd user agent)   (com.ntlx.serverfs.agent-bridge)
-            -> AF_UNIX + getpeereid           (0700 runtime dir, no peer PID fabrication)
-            -> real provider CLI              (codex / claude / qoder; native arm64 only)
+SMAppService / launchd
+  +-- com.ntlx.serverfs.tunnel
+  |    -> serverfs tunnel
+  |         -> pinned tunnel-client (darwin-arm64)
+  |              -> sanitizer supervisor
+  |                   -> serverfs serve
+  |                        -> Darwin FD backend
+  |                        -> optional file-ingress helper
+  |
+  +-- com.ntlx.serverfs.bridge
+       -> Agent Bridge
+            -> private AF_UNIX + getpeereid
+            -> codex / claude / qoder
 ```
 
-There is no Docker, VM, Rosetta requirement or compiled macOS kernel package: the Darwin backend is pure Python over descriptor-relative POSIX primitives plus three narrow libc bindings (`fcopyfile`, `getpeereid`, `confstr`). There is no `serverfs-macos-native` wheel.
+Both services survive terminal/Agent-session exit. `SMAppService` owns user-login persistence; live reboot/re-login recovery validation is deferred beyond v0.13.2. ServerFS does **not** install a LaunchDaemon or run before login.
+
+There is no Docker, VM, Rosetta requirement or compiled macOS filesystem kernel package. The Darwin backend remains pure Python over descriptor-relative POSIX primitives plus narrow libc bindings (`fcopyfile`, `getpeereid`, `confstr`). There is no `serverfs-macos-native` wheel.
 
 ## Filesystem semantics
 
-- Descriptor-relative traversal with `O_NOFOLLOW` everywhere; symlinks fail closed exactly as on Linux.
-- Atomic publication (same-directory temp → fsync → `renameat`) with revision/CAS and hard-link protection identical to the Linux contract.
-- Replacing a file carries the original mode, user xattrs and extended ACLs onto the new inode via `fcopyfile(COPYFILE_METADATA)`, failing before publication on any loss.
-- `search_text` never uses ripgrep or `/proc`: FD-secure walk → bounded read → literal UTF-8 scan, contract-identical to the Linux and Windows searchers.
+- Descriptor-relative traversal with `O_NOFOLLOW`; symlinks fail closed.
+- Atomic publication (same-directory temp → fsync → `renameat`) with revision/CAS and hard-link protection.
+- Replacement writes preserve mode, user xattrs and extended ACLs with `fcopyfile(COPYFILE_METADATA)` or fail before publication.
+- `search_text` uses an FD-secure walk, bounded reads and literal UTF-8 scanning rather than `/proc` or an ambient shell tool.
 
-## Agent Bridge on launchd
+## Install persistent services
 
-The Bridge runs as a per-user LaunchAgent (`com.ntlx.serverfs.agent-bridge`) managed with modern `launchctl bootstrap/kickstart/bootout`:
+Install the normal Python environments and pinned tunnel client first:
+
+```bash
+uv sync --frozen
+uv sync --project agent_bridge --frozen
+serverfs bootstrap tunnel-client
+serverfs doctor --config serverfs.toml
+```
+
+Then install the persistent user services:
+
+```bash
+serverfs service install --config serverfs.toml --env-file .env
+serverfs service status
+```
+
+The installer builds the small Swift companion locally with the Apple command-line toolchain, validates its code signature and embedded LaunchAgent plists, installs it under ServerFS's private Application Support tree, materializes 0600 lifecycle state, and registers the services through `SMAppService`.
+
+The normal lifecycle surface is:
+
+```bash
+serverfs service status
+serverfs service start
+serverfs service restart
+serverfs service stop
+serverfs service uninstall
+```
+
+If macOS reports `requires-approval`, ServerFS respects that user decision. Open the exact settings pane with:
+
+```bash
+serverfs service open-settings
+```
+
+Approve the ServerFS background item under **System Settings > General > Login Items**. ServerFS does not bypass or simulate approval.
+
+## Agent Bridge policy
+
+`serverfs.toml` remains the operator source of Agent workdir/runtime policy. The private `bridge.json` outside every exposed workdir remains derived state and may contain the narrow Jev/proxy material needed by the Bridge.
 
 ```bash
 serverfs agent-bridge configure --config serverfs.toml --env-file .env
-serverfs agent-bridge install --bridge-config "$HOME/Library/Application Support/ServerFS/agent-bridge/bridge.json"
-serverfs agent-bridge start | stop | status | uninstall
+serverfs agent-bridge restart --config serverfs.toml
+# refresh private Jev/proxy values as well:
+serverfs agent-bridge restart --config serverfs.toml --env-file .env
 ```
 
-The private `bridge.json` lives outside every exposed workdir and may contain Jev/proxy material; it is **derived/private state, not a second operator config**. Workdir, runtime and lifecycle policy remains owned by `serverfs.toml`. `configure` creates or refreshes the private 0600 document from that policy plus the narrow Agent/Jev/proxy values in `.env`. For a TOML-only change, `serverfs agent-bridge restart --config serverfs.toml` preserves private material; if private Jev/proxy values also changed, add `--env-file .env`. `serverfs doctor --config serverfs.toml` reports a FAIL on drift, and a newly started native `serve`/tunnel refuses to run until the policy is synchronized.
+`serverfs agent-bridge install` is retired in v0.13.2. Upgrades from v0.13.0/v0.13.1 detect the legacy `~/Library/LaunchAgents/com.ntlx.serverfs.agent-bridge.plist`, stop the old job only at hand-over, register the app-associated replacement, health-check it, and remove the old plist only after success. Registration failures retain a rollback path. An unmanaged legacy tunnel is detected before installation so ServerFS never silently starts a second control-plane client.
 
-The generated plist carries paths only — never secrets. launchd is a service manager, not a containment kernel: no Job-Object equivalence is claimed, the recovery guard is retained, and workspace-write fails closed when provider state is unknown.
+The managed tunnel also holds a per-user instance lock and forwards launchd termination to tunnel-client, preventing orphaned supervisor/serve/file-ingress descendants.
 
-## Install
+## Data and security boundaries
 
-```bash
-uv sync
-uv sync --project agent_bridge
-serverfs bootstrap tunnel-client        # darwin-arm64 asset only
-serverfs doctor --config serverfs.toml
-serverfs serve --config serverfs.toml   # or through the tunnel chain
-```
+Data lives in `~/Library/Application Support/ServerFS` by default; sockets live in the OS-provided per-user runtime directory (`_CS_DARWIN_USER_TEMP_DIR`). Service manifests, private environment maps and logs are outside exposed workdirs with private permissions. LaunchAgent plists contain no provider or tunnel credentials.
 
-Data lives in `~/Library/Application Support/ServerFS` (override: `SERVERFS_DATA_HOME`); sockets live in the OS-provided per-user runtime directory (`_CS_DARWIN_USER_TEMP_DIR`, validated — an inherited `$TMPDIR` is never trusted). ServerFS never bypasses macOS TCC privacy controls: protected paths fail cleanly and `serverfs doctor` identifies the likely denial.
+ServerFS never bypasses macOS TCC privacy controls. Protected paths fail cleanly, and `serverfs doctor` reports platform, policy, Service Manager validity, registration/approval state, process health, legacy artifacts and unmanaged tunnel detection.
 
 ## Acceptance evidence
 
-`docs/phase-0-macos27-arm64-capability-probe-2026-10.md`, `docs/phase-macos-native-acceptance-2026-10.md`, `docs/phase-macos-agent-acceptance-2026-10.md`, `docs/phase-macos-live-chatgpt-e2e-2026-10.md`.
+See `docs/phase-0-macos27-arm64-capability-probe-2026-10.md`, `docs/phase-v0.13.2-servicemanagement-probe-2026-10.md`, the v0.13 macOS acceptance records, and the v0.13.2 development/acceptance record.

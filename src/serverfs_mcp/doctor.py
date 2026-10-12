@@ -376,6 +376,88 @@ def _darwin_platform_note(report: _Report) -> None:
     )
 
 
+def _darwin_service_probe(report: _Report) -> None:
+    """Read-only v0.13.2 ServiceManagement registration and process diagnostics."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from .darwin_service import DarwinServiceError, status
+
+        snapshot = status()
+    except (OSError, DarwinServiceError) as exc:
+        report.status(
+            "persistent services",
+            WARN,
+            f"status unavailable ({type(exc).__name__})",
+        )
+        return
+
+    build_tools = snapshot.get("build_tools", {})
+    if isinstance(build_tools, dict):
+        missing = sorted(name for name, available in build_tools.items() if not available)
+        report.status(
+            "service manager tools",
+            WARN if missing else OK,
+            f"missing: {', '.join(missing)}" if missing else "xcrun/codesign/plutil available",
+        )
+
+    if not snapshot.get("app_installed"):
+        report.note(
+            "persistent services",
+            "not installed; run 'serverfs service install --config <serverfs.toml> "
+            "--env-file <.env>'",
+        )
+        return
+
+    if snapshot.get("bundle_valid") is not True:
+        report.status(
+            "service manager",
+            FAIL,
+            str(snapshot.get("bundle_error") or "bundle validation failed"),
+        )
+        return
+
+    version = snapshot.get("bundle_version") or "unknown"
+    report.status("service manager", OK, f"valid signed bundle {version}")
+    services = snapshot.get("services", {})
+    processes = snapshot.get("processes", {})
+    if isinstance(services, dict):
+        for name in ("tunnel", "agent-bridge"):
+            state = services.get(name, "unknown")
+            process = processes.get(name, {}) if isinstance(processes, dict) else {}
+            pid = process.get("pid") if isinstance(process, dict) else None
+            if state == "enabled":
+                detail = f"enabled; pid={pid}" if pid else "enabled; process not currently running"
+                report.status(f"service {name}", OK if pid else WARN, detail)
+            elif state == "requires-approval":
+                report.status(
+                    f"service {name}",
+                    FAIL,
+                    "requires approval in System Settings > General > Login Items",
+                )
+            elif state in {"not-registered", "not-found"}:
+                report.status(f"service {name}", WARN, state)
+            else:
+                report.status(f"service {name}", WARN, str(state))
+
+    if snapshot.get("legacy_bridge_plist"):
+        report.status(
+            "legacy LaunchAgent",
+            WARN,
+            "v0.13.0/v0.13.1 Agent Bridge plist is still present",
+        )
+    unmanaged = snapshot.get("unmanaged_tunnel_pids", [])
+    if isinstance(unmanaged, list) and unmanaged:
+        report.status(
+            "unmanaged tunnel",
+            WARN,
+            "legacy/manual tunnel process detected outside the managed launchd job",
+        )
+    log_dir = snapshot.get("log_dir")
+    if isinstance(log_dir, str) and log_dir:
+        report.note("persistent service logs", log_dir)
+
+
 def _distribution_version(package: str) -> str:
     from importlib import metadata
 
@@ -568,6 +650,7 @@ def run_doctor(
     from .agent_doctor import report_agent
 
     report_agent(report, workdirs, settings)
+    _darwin_service_probe(report)
 
     _tunnel_probe(report, tunnel_client)
     _proxy_probe(report, _resolve_env_file(env_file, config_path))

@@ -1,6 +1,6 @@
 # Jev Agent Task Preflight experiment
 
-Status: opt-in experimental capability introduced before v0.8.0 and included in the current **v0.13.1 stable release** (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
+Status: opt-in experimental capability introduced before v0.8.0 and included in the current **v0.13.2 stable release** (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
 
 This experiment evaluates whether TypeSafe Jev can improve the quality and routing signal of
 ServerFS Agent delegation without becoming part of the authorization or safety boundary.

@@ -10,7 +10,7 @@
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured Codex / Claude Code / Qoder delegation only where you need them.
 
-**Current stable release: v0.13.1**
+**Current stable release: v0.13.2**
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -42,7 +42,7 @@ ServerFS is built around that narrower boundary:
 | **Windows** | Windows 11 x64, local NTFS | Native HANDLE-relative Rust kernel over MCP stdio | Codex, Claude Code, Qoder |
 | **macOS** | Apple M-series, native arm64, macOS 27 Golden Gate | Native descriptor-relative Darwin backend over MCP stdio | Codex, Claude Code, Qoder |
 
-The macOS v0.13 support boundary is intentionally strict: Intel Macs, Rosetta/x86_64 execution, macOS 26 or older, and macOS 28+ are not claimed as supported.
+The macOS v0.13 support boundary is intentionally strict: Intel Macs, Rosetta/x86_64 execution, macOS 26 or older, and macOS 28+ are not claimed as supported. **v0.13.2** adds Apple-native `SMAppService` persistence for the Tunnel and Agent Bridge, so the managed stack no longer depends on terminal/session lifetime. `SMAppService` owns user-login persistence; live reboot/re-login recovery validation is deferred beyond v0.13.2.
 
 For native setup, use the dedicated guides:
 
@@ -112,7 +112,7 @@ ChatGPT / MCP client
                                          +--> Qoder
 ```
 
-On Linux, the MCP service stays inside internal Docker networks with no published port or general Internet egress; the tunnel and optional file-ingress sidecar have separate network responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary.
+On Linux, the MCP service stays inside internal Docker networks with no published port or general Internet egress; the tunnel and optional file-ingress sidecar have separate network responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. On macOS v0.13.2, a small headless ServiceManagement companion registers the persistent per-user Tunnel and Agent Bridge through `SMAppService`; no root LaunchDaemon or hand-installed LaunchAgent is required.
 
 See [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) for the complete deployment and trust-boundary model.
 
@@ -196,13 +196,13 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-The current stable release is **v0.13.1**.
+The current stable release is **v0.13.2**.
 
 - Linux images: `ghcr.io/ntlx/serverfs_mcp`
-- Stable release tag: `v0.13.1`
+- Stable release tag: `v0.13.2`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
-- macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel.
+- macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel. v0.13.2 locally builds the small bundled ServiceManagement companion used for persistent per-user services.
 
 See the [latest release](https://github.com/NTLx/ServerFS_MCP/releases/latest) for artifacts, checksums, and version-specific notes.
 
@@ -216,6 +216,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run pytest
 docker compose config
+SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 ```
 
 Platform-native development has additional gates in the Windows and macOS workflows. Maintainer invariants, validation rules, and release discipline live in [AGENTS.md](AGENTS.md) and [docs/maintainers/](docs/maintainers/).

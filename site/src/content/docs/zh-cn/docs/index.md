@@ -5,7 +5,7 @@ description: 让 ChatGPT 与 AI Agent 在 Linux、Windows 与 macOS 上安全、
 
 ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux 容器为既有形态，v0.10.0 起支持 Windows 原生，v0.13.0 起支持 macOS 原生）暴露为**受控 workdir**。
 
-当前稳定版本：**v0.13.1**。这是 v0.13 系列的稳定性修订，重点强化 Windows Agent Bridge 的 Named Pipe 与生命周期监督，以及 Windows 原生替换写入的时间戳正确性；同时保留 v0.13.0 引入的 macOS 原生部署，并保持 Linux、Windows 与 macOS 的公开工具面不变。
+当前稳定版本：**v0.13.2**。本版本为 macOS Tunnel 与 Agent Bridge 增加 Apple 原生 `SMAppService` 持久化，包括 v0.13.0/v0.13.1 legacy 迁移与重复 tunnel 防护，同时保留 v0.13.1 的 Windows 加固，并保持 Linux、Windows 与 macOS 的公开工具面不变。
 
 它**默认只读**。管理员可以按 workdir 显式启用受控文件写入、有界整文件二进制传输，以及隔离且独立门控的 ChatGPT 文件参数入口。宿主机 Agent Bridge 仍然是可选能力；v0.9.0 支持 Codex、Claude 和 Qoder，并在原生 runtime 支持时提供 provider-neutral 模型发现与单次任务模型覆盖，同时可按需启用 advisory-only 的 TypeSafe Jev 支持。v0.10.0 新增 Windows 原生部署：预构建 Rust/NTFS 内核 wheel 之上的 MCP stdio 服务，无需 Docker、WSL 或 MSVC。
 

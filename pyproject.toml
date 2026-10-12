@@ -1,6 +1,6 @@
 [project]
 name = "serverfs-mcp"
-version = "0.13.1"
+version = "0.13.2"
 description = "A secure MCP server that exposes explicitly configured directories as controlled workdirs to AI agents, read-only by default with opt-in per-workdir file mutation."
 readme = "README.md"
 license = "MIT"
@@ -29,6 +29,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/serverfs_mcp"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"native/macos/service_manager/Sources/ServiceManager" = "serverfs_mcp/_darwin_service_manager/Sources/ServiceManager"
+"native/macos/service_manager/Sources/ServiceLauncher" = "serverfs_mcp/_darwin_service_manager/Sources/ServiceLauncher"
+"native/macos/service_manager/LaunchAgents" = "serverfs_mcp/_darwin_service_manager/LaunchAgents"
+"native/macos/service_manager/Info.plist" = "serverfs_mcp/_darwin_service_manager/Info.plist"
+"native/macos/service_manager/build.sh" = "serverfs_mcp/_darwin_service_manager/build.sh"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

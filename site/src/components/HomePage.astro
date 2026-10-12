@@ -18,7 +18,7 @@ const copy = {
     nav: { docs: 'Docs', architecture: 'Architecture', security: 'Security' },
     languageSwitch: '简中',
     languageLabel: '切换到简体中文',
-    release: 'v0.13.1',
+    release: 'v0.13.2',
     heroEyebrow: 'SECURE MCP FOR LINUX · WINDOWS · MACOS WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
@@ -84,7 +84,7 @@ const copy = {
     agentEyebrow: 'OPTIONAL AGENT BRIDGE',
     agentTitle: 'Native agents stay on the host.',
     agentBody:
-      'The optional Agent Bridge delegates structured tasks to Codex, Claude and Qoder across supported deployments through platform-native local IPC and lifecycle integration. Provider defaults stay native; request-scoped model overrides remain explicit, while optional Jev advisors can add pre-submit advice without becoming execution authority.',
+      'The optional Agent Bridge delegates structured tasks to Codex, Claude and Qoder across supported deployments through platform-native local IPC and lifecycle integration. On macOS v0.13.2, Apple SMAppService keeps the Tunnel and Bridge persistent across terminal/session exit and user login. Provider defaults stay native; request-scoped model overrides remain explicit, while optional Jev advisors can add pre-submit advice without becoming execution authority.',
     exploreAgent: 'Explore Agent Bridge',
     exploreJev: 'Explore Jev Advisors',
     mcpContainer: 'MCP CONTAINER',
@@ -114,7 +114,7 @@ const copy = {
     nav: { docs: '文档', architecture: '架构', security: '安全' },
     languageSwitch: 'EN',
     languageLabel: 'Switch to English',
-    release: 'v0.13.1',
+    release: 'v0.13.2',
     heroEyebrow: '面向 Linux · Windows · macOS Workdir 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
@@ -179,7 +179,7 @@ const copy = {
     agentEyebrow: '可选 AGENT BRIDGE',
     agentTitle: '原生 Agent 留在宿主机。',
     agentBody:
-      '可选 Agent Bridge 在受支持的部署上通过平台原生本地 IPC 与生命周期集成，将结构化任务委托给 Codex、Claude 和 Qoder。Provider 默认配置保持原生；单次任务模型覆盖必须显式指定，可选 Jev Advisors 可在提交前提供建议，但不会获得执行权。',
+      '可选 Agent Bridge 在受支持的部署上通过平台原生本地 IPC 与生命周期集成，将结构化任务委托给 Codex、Claude 和 Qoder。macOS v0.13.2 使用 Apple SMAppService，让 Tunnel 与 Bridge 不再依赖终端/会话生命周期，并在用户登录后自动恢复。Provider 默认配置保持原生；单次任务模型覆盖必须显式指定，可选 Jev Advisors 可在提交前提供建议，但不会获得执行权。',
     exploreAgent: '了解 Agent Bridge',
     exploreJev: '了解 Jev Advisors',
     mcpContainer: 'MCP 容器',
@@ -265,7 +265,7 @@ const canonicalUrl = isZh
         <div class="hero-copy">
           <a
             class="release-pill"
-            href="https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.13.1"
+            href="https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.13.2"
             target="_blank"
             rel="noreferrer"
           >
@@ -326,7 +326,7 @@ const canonicalUrl = isZh
               <div class="server-head">
                 <span class="server-led"></span>
                 <strong>ServerFS MCP</strong>
-                <code>v0.13.1</code>
+                <code>v0.13.2</code>
               </div>
               {c.serverRows.map(([label, detail]) => (
                 <div class="server-row" data-policy-row><span>{label}</span><em>{detail}</em></div>

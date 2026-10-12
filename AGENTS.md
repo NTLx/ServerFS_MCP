@@ -11,10 +11,10 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 
 ## Current baseline
 
-- **Current stable release: v0.13.1 (released).**
+- **Current stable release: v0.13.2 (released).**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to each platform/runtime gate.
-- macOS v0.13 support is intentionally narrow: Apple M-series, native arm64, macOS 27 Golden Gate. Do not claim Intel, Rosetta, macOS 26/28 or `darwin-amd64` support without new measured evidence.
+- macOS v0.13 support is intentionally narrow: Apple M-series, native arm64, macOS 27 Golden Gate. v0.13.2 uses an app-associated `SMAppService`/LaunchAgent lifecycle for the persistent Tunnel and Agent Bridge; no root LaunchDaemon or legacy hand-installed plist belongs in the normal path. Do not claim Intel, Rosetta, macOS 26/28 or `darwin-amd64` support without new measured evidence.
 - Historical `dev_plan_v*.md`, acceptance reports and audits preserve the facts of the release/development stage they describe. Fix stale present-tense status, but do not mechanically rewrite history.
 
 ## Maintainer documentation

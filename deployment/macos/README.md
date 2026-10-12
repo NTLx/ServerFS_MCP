@@ -1,11 +1,10 @@
-# macOS Native Deployment (v0.13)
+# macOS Native Deployment (v0.13.2)
 
-ServerFS on macOS needs no package artifacts beyond the standard Python
-distributions: the Darwin backend is pure Python over POSIX/Darwin
-primitives (`fcopyfile`, `getpeereid`, `confstr` via minimal ctypes
-bindings) — there is no `serverfs-macos-native` wheel, DMG, .pkg,
-Homebrew formula, root helper or Xcode/Swift component, by design
-(dev_plan_v0.13.md §18/§19).
+ServerFS v0.13.2 is the current published stable macOS release. The filesystem backend remains
+pure Python over POSIX/Darwin primitives (`fcopyfile`, `getpeereid`, `confstr` via narrow ctypes
+bindings); v0.13.2 adds a small headless Swift ServiceManagement companion solely for persistent
+per-user service registration. There is still no `serverfs-macos-native` wheel, Docker/VM,
+LaunchDaemon, root helper or Rosetta requirement.
 
 ## Supported platform
 
@@ -13,53 +12,87 @@ Homebrew formula, root helper or Xcode/Swift component, by design
 Apple M-series Mac, native arm64 (no Rosetta), macOS 27 Golden Gate, local APFS
 ```
 
-## Install
+## Install dependencies
 
 ```bash
-uv sync                                   # ServerFS product environment
-uv sync --project agent_bridge            # Agent Bridge environment (separate venv)
-serverfs bootstrap tunnel-client          # pinned official darwin-arm64 asset
-serverfs doctor --config serverfs.toml    # platform/APFS/gate diagnostics
+uv sync --frozen                           # ServerFS product environment
+uv sync --project agent_bridge --frozen    # Agent Bridge environment
+serverfs bootstrap tunnel-client           # pinned official darwin-arm64 asset
+serverfs doctor --config serverfs.toml
 ```
 
-## Run
+The persistent-service installer builds `ServerFSServiceManager.app` locally with the Apple command
+line toolchain (`xcrun swiftc`, `codesign`, `plutil`), validates it, and installs it under the
+private per-user ServerFS Application Support tree. The app contains two app-associated
+LaunchAgents and uses Apple's `SMAppService` API; normal operation does not copy a plist into
+`~/Library/LaunchAgents` or ask the operator to run raw `launchctl` commands.
+
+## Persistent Tunnel + Agent Bridge
+
+With tunnel credentials and any Agent/Jev/proxy settings in the private `.env`:
 
 ```bash
-serverfs serve --config serverfs.toml     # plain stdio MCP service
-# or, for ChatGPT:
-serverfs tunnel --config serverfs.toml --tunnel-id tunnel_... --api-key-file KEY
+serverfs service install --config serverfs.toml --env-file .env
+serverfs service status
 ```
 
-When `SERVERFS_FILE_INGRESS_ENABLED=true`, `serve` spawns the native
-file-ingress helper as an owned child; the helper serves a private
-AF_UNIX HTTP socket in the per-user runtime directory (0700) and exits
-if its supervisor disappears.
+`install` materializes private 0600 lifecycle state, builds/validates the native companion, registers
+`com.ntlx.serverfs.tunnel` and (when Agent delegation is enabled) `com.ntlx.serverfs.bridge`,
+and verifies the managed processes. Both are current-user LaunchAgents with `RunAtLoad` and
+`KeepAlive`: they survive terminal/Agent-session exit. `SMAppService` owns user-login persistence;
+live reboot/re-login recovery validation is deferred beyond v0.13.2.
 
-## Agent Bridge (launchd)
+macOS may require explicit approval under **System Settings > General > Login Items**. ServerFS
+reports that condition as `requires-approval` and never bypasses the user's setting:
+
+```bash
+serverfs service open-settings
+```
+
+Lifecycle commands are:
+
+```bash
+serverfs service status
+serverfs service start
+serverfs service restart
+serverfs service stop
+serverfs service uninstall
+```
+
+`uninstall` removes only v0.13.2-owned registration/runtime artifacts; operator configuration and
+normal ServerFS data are preserved.
+
+## Agent policy updates
+
+The private `bridge.json` remains derived/private state outside every exposed workdir, not a second
+operator configuration. Workdir/runtime/lifecycle policy is owned by `serverfs.toml`:
 
 ```bash
 serverfs agent-bridge configure --config serverfs.toml --env-file .env
-serverfs agent-bridge install --bridge-config "$HOME/Library/Application Support/ServerFS/agent-bridge/bridge.json"
-serverfs agent-bridge start | stop | status | uninstall
+serverfs agent-bridge restart --config serverfs.toml
+# if private Jev/proxy values also changed:
+serverfs agent-bridge restart --config serverfs.toml --env-file .env
 ```
 
-The private `bridge.json` is derived/private state outside every exposed workdir, not a second
-operator configuration. Workdir/runtime/lifecycle policy is owned by `serverfs.toml`; `configure`
-creates or refreshes the private 0600 document from that policy plus the narrow Agent/Jev/proxy
-values in `.env`. For a TOML-only change, `serverfs agent-bridge restart --config serverfs.toml`
-synchronizes policy while preserving private material. If private Jev/proxy values also changed,
-use `serverfs agent-bridge restart --config serverfs.toml --env-file .env`.
-`serverfs doctor --config serverfs.toml` fails on policy drift, and a newly started native
-`serve`/tunnel refuses to run until the two policy views agree.
+The legacy `serverfs agent-bridge install` path is retired in v0.13.2. Upgrading from v0.13.0 or
+v0.13.1 detects the old `~/Library/LaunchAgents/com.ntlx.serverfs.agent-bridge.plist`, performs a
+bounded hand-over to the app-associated LaunchAgent, health-checks the new Bridge, and removes the
+legacy plist only after the replacement is healthy. An unmanaged v0.13.1 tunnel is detected and
+must be stopped before installation, preventing duplicate control-plane clients.
 
-The install command generates
-`~/Library/LaunchAgents/com.ntlx.serverfs.agent-bridge.plist` from the
-live environment (paths only — provider credentials and proxy secrets
-stay in the Bridge's private config/runtime material), bootstraps it
-into the user's gui domain with `launchctl bootstrap`, and enables
-`RunAtLoad` + `KeepAlive`. `status` is a read-only `launchctl print`.
+## Manual/debug operation
 
-No root, no LaunchDaemon, no shell-profile dependency. launchd is a
-service manager, not a containment kernel: no Job-Object equivalence is
-claimed, and the Bridge's recovery guard keeps workspace-write failed
-closed whenever provider state is unknown.
+Direct commands remain useful for diagnostics, but they are not the persistent production path:
+
+```bash
+serverfs serve --config serverfs.toml
+serverfs tunnel --config serverfs.toml --tunnel-id tunnel_... --api-key-file KEY
+```
+
+When `SERVERFS_FILE_INGRESS_ENABLED=true`, `serve` owns a native file-ingress helper over a private
+AF_UNIX socket. The v0.13.2 managed tunnel also forwards termination to tunnel-client so the
+supervisor/serve/helper tree shuts down coherently rather than becoming orphaned.
+
+No root, no LaunchDaemon and no shell-profile dependency are introduced. launchd remains a service
+manager rather than a containment kernel; the Agent Bridge recovery guard still keeps
+workspace-write failed closed whenever provider state is unknown.

@@ -79,14 +79,14 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](./binary-transfer/) and [Security Model](./security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
-## Current stable release: v0.13.1
+## Current stable release: v0.13.2
 
-The v0.13.1 release uses immutable tag `v0.13.1` and publishes these stable GHCR tags:
+The v0.13.2 release uses immutable tag `v0.13.2` and publishes these stable GHCR tags:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
 ghcr.io/ntlx/serverfs_mcp:0.13
-ghcr.io/ntlx/serverfs_mcp:0.13.1
+ghcr.io/ntlx/serverfs_mcp:0.13.2
 ```
 
-For production deployments, pin `0.13.1` rather than following `latest` or `edge`. The same tag continues to carry the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests; macOS uses the product and Bridge Python distributions directly and has no separate native wheel. See [Windows Native](./windows-native/) and [macOS Native](./macos-native/).
+For production deployments, pin `0.13.2` rather than following `latest` or `edge`. The same tag carries the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests. macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and v0.13.2 builds its small ServiceManagement companion locally for persistent Tunnel/Bridge services. See [Windows Native](./windows-native/) and [macOS Native](./macos-native/).

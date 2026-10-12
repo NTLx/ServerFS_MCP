@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from serverfs_mcp.darwin_bridge_policy import DarwinBridgePolicyError, _private_overlay
+from serverfs_mcp.darwin_bridge_policy import (
+    DarwinBridgePolicyError,
+    _bridge_python,
+    _private_overlay,
+    _read_private_env_file,
+)
 from serverfs_mcp.native_config import load_native_config
 
 
@@ -65,3 +70,47 @@ def test_private_overlay_clears_jev_and_proxy_when_disabled(tmp_path: Path) -> N
 
     assert "proxy" not in private
     assert private["jev"] == {"api_key": None, "use_proxy": False}
+
+
+def test_bridge_python_uses_env_file_selector_without_persisting_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bridge_python = tmp_path / "bridge-python"
+    bridge_python.write_text("", encoding="utf-8")
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        f"SERVERFS_BRIDGE_PYTHON={bridge_python}\nSERVERFS_JEV_API_KEY=secret\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "serverfs_mcp.darwin_bridge_policy._installed_bridge_python", lambda: None
+    )
+    monkeypatch.setenv("SERVERFS_BRIDGE_PYTHON", str(tmp_path / "wrong-python"))
+
+    assert _bridge_python(env_file=env_file) == bridge_python
+    assert _read_private_env_file(env_file) == {"SERVERFS_JEV_API_KEY": "secret"}
+
+
+def test_bridge_python_recovers_interpreter_from_installed_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bridge_python = tmp_path / "bridge-env" / "bin" / "python"
+    bridge_python.parent.mkdir(parents=True)
+    bridge_python.write_text("", encoding="utf-8")
+    bridge_executable = bridge_python.parent / "serverfs-agent-bridge"
+    bridge_executable.write_text(f"#!{bridge_python}\n", encoding="utf-8")
+    manifest = tmp_path / "services.json"
+    manifest.write_text(
+        '{"schema_version":1,"services":{"agent-bridge":{"executable":"'
+        + str(bridge_executable)
+        + '"}}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("serverfs_mcp.darwin_service.manifest_path", lambda: manifest)
+    monkeypatch.setattr(
+        "serverfs_mcp.darwin_lifecycle.launch_agent_plist_path",
+        lambda: tmp_path / "missing.plist",
+    )
+    monkeypatch.setenv("SERVERFS_BRIDGE_PYTHON", str(tmp_path / "wrong-python"))
+
+    assert _bridge_python() == bridge_python

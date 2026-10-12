@@ -30,9 +30,9 @@ Use the root Development gate documented in `README.md`:
 
 ```bash
 uv sync --frozen
-ruff check
-ruff format --check
-pytest
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest
 docker compose config
 SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 ```
@@ -59,6 +59,15 @@ bash -n deployment/agent-bridge/*.sh
 ```
 
 Platform-native Windows/macOS changes must also run their platform-specific tests/acceptance path; a green Linux root suite is not a substitute.
+
+For v0.13.2+ macOS lifecycle changes, additionally build and validate the ServiceManagement companion on the supported Mac and verify the wheel carries its build sources:
+
+```bash
+bash native/macos/service_manager/build.sh /tmp/serverfs-service-manager-check
+uv build --wheel --out-dir /tmp/serverfs-wheel-check
+```
+
+Real `SMAppService` registration, Login Items approval and reboot/login recovery are local operator acceptance steps; hosted CI must not mutate a runner's Login Items.
 
 ### Website / docs-only changes
 
@@ -138,6 +147,7 @@ Do **not** commit, push, create/move tags or publish a release unless the user e
 - Restart/re-establish the Tunnel when the documented deployment procedure requires it after ServerFS recreation; readiness alone may not prove the active MCP session points at the new container.
 - Use user-scoped service lifecycle for the established Linux Agent deployment; do not introduce root/system-wide service requirements as a shortcut.
 - Windows development/deployment work belongs on the Windows-native workflow; macOS work belongs on the macOS-native workflow. Do not use one host to infer another host's live state.
+- macOS v0.13.2 persistent deployment uses `serverfs service ...`/`SMAppService`; raw `launchctl` mutation is limited to the bounded v0.13.0/v0.13.1 migration helper, not normal operations.
 
 ## 8. Reporting completion
 

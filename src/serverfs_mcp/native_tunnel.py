@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import re
+import signal
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 from .shared_proxy import PROXY_KEYS, parse_shared_proxy
@@ -15,6 +17,35 @@ _TUNNEL_ID = re.compile(r"^tunnel_[a-z0-9]{32}$")
 
 class NativeTunnelError(ValueError):
     """Redacted, operator-safe tunnel configuration error."""
+
+
+@contextmanager
+def _darwin_tunnel_instance_lock():
+    """Hold one per-user lock for the lifetime of a native macOS tunnel process."""
+    if sys.platform != "darwin":
+        yield
+        return
+
+    import fcntl
+
+    from .darwin_service import service_home
+
+    directory = service_home()
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(directory, 0o700)
+    path = directory / "tunnel.lock"
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        os.chmod(path, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise NativeTunnelError(
+                "another native macOS tunnel instance is already running"
+            ) from exc
+        yield
+    finally:
+        os.close(fd)
 
 
 def parse_proxy_env_file(path: Path | None) -> dict[str, str]:
@@ -139,6 +170,35 @@ def _materialize_key_file(api_key: str) -> Path:
     return key_path
 
 
+def _run_tunnel_client(argv: list[str], env: dict[str, str]) -> int:
+    """Wait for tunnel-client and forward launchd termination on macOS.
+
+    v0.13.1 used ``subprocess.run`` directly. A SIGTERM delivered to the Python
+    parent could therefore leave tunnel-client/supervisor descendants orphaned.
+    Under the v0.13.2 LaunchAgent the Python process is the job launchd owns, so
+    it must explicitly forward termination to tunnel-client and wait for the
+    existing tunnel-client shutdown path to finish.
+    """
+    process = subprocess.Popen(argv, env=env)
+    if sys.platform != "darwin":
+        return process.wait()
+
+    previous_handlers: dict[int, object] = {}
+
+    def forward(signum, _frame) -> None:
+        if process.poll() is None:
+            process.send_signal(signum)
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        previous_handlers[signum] = signal.getsignal(signum)
+        signal.signal(signum, forward)
+    try:
+        return process.wait()
+    finally:
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
+
+
 def run_native_tunnel(
     *,
     config_path: Path,
@@ -246,7 +306,8 @@ def run_native_tunnel(
     # launcher owns this connectivity infrastructure, so it requests an
     # ephemeral loopback port unless the operator overrides it.
     tunnel_env["HEALTH_LISTEN_ADDR"] = health_listen_addr or "127.0.0.1:0"
-    return subprocess.run(tunnel_argv, env=tunnel_env, check=False).returncode
+    with _darwin_tunnel_instance_lock():
+        return _run_tunnel_client(tunnel_argv, tunnel_env)
 
 
 def _validated_health_addr(raw: str) -> str:

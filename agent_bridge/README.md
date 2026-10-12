@@ -1,12 +1,13 @@
-# ServerFS Agent Bridge — v0.13.1 stable
+# ServerFS Agent Bridge — v0.13.2 stable
 
-This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.13.1 release. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite; v0.7–v0.7.3 added runtime reliability, recovery evidence, immutable manifests, bounded large-result retrieval, retry-safe submission and bounded task/interaction lifetimes; v0.8.0 added Qoder; and v0.9.0 added provider-neutral model discovery, advisory-only Jev model advice and request-scoped model overrides. v0.11 brought native Windows Agent delegation, v0.12 added independent Linux Agent/Jev proxy controls, v0.13.0 added native macOS Agent delegation, and v0.13.1 hardens Windows Named Pipe and lifecycle behavior while keeping Codex, Claude and Qoder behind the same provider-neutral contract.
+This directory contains the **host-side** Agent Bridge included in the current stable ServerFS v0.13.2 release. The provider-neutral execution/approval contract originated in v0.3 and remains compatible. v0.6.0 added the optional Jev advisory suite; v0.7–v0.7.3 added runtime reliability, recovery evidence, immutable manifests, bounded large-result retrieval, retry-safe submission and bounded task/interaction lifetimes; v0.8.0 added Qoder; and v0.9.0 added provider-neutral model discovery, advisory-only Jev model advice and request-scoped model overrides. v0.11 brought native Windows Agent delegation, v0.12 added independent Linux Agent/Jev proxy controls, v0.13.0 added native macOS Agent delegation, v0.13.1 hardened Windows Named Pipe/lifecycle behavior, and v0.13.2 moves macOS persistent Tunnel/Bridge lifecycle to Apple `SMAppService` while keeping Codex, Claude and Qoder behind the same provider-neutral contract.
 
 The Bridge remains a separate host process from the `serverfs-mcp` package. Production
 Agent delegation is opt-in. On Linux, `compose.agent.yml` wires the MCP container to the host
 Bridge while the base `compose.yml` intentionally preserves the 11-tool filesystem-only
 surface. Windows and macOS use their native platform lifecycle/integration paths rather than
-the Linux Compose/systemd deployment shape.
+the Linux Compose/systemd deployment shape. On macOS v0.13.2 the Bridge is an app-associated,
+per-user LaunchAgent registered through ServerFS's small `SMAppService` companion.
 
 > The Jev-backed Preflight, Runtime Router, Model Advisor, and Approval Advisor
 > remain optional and advisory-only. The v0.7 release line does not turn Jev into a runtime,

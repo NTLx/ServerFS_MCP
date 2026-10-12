@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -41,9 +42,34 @@ class DarwinBridgePolicyError(Exception):
 
 
 def bridge_config_path() -> Path:
-    """Return launchd's private config path, or the v0.13 default before install."""
-    from .darwin_lifecycle import installed_bridge_config_path
+    """Return the persistent Bridge config path across legacy and v0.13.2 service layouts."""
     from .native_endpoint import bridge_home
+
+    # v0.13.2: the bundle-owned launcher records the active absolute Bridge config path in the
+    # private service manifest.  Reading it preserves non-default deployments after the legacy
+    # ~/Library/LaunchAgents plist has been removed.
+    try:
+        from .darwin_service import manifest_path
+
+        service_manifest = manifest_path()
+        if service_manifest.is_file():
+            document = json.loads(service_manifest.read_text(encoding="utf-8"))
+            bridge = document.get("services", {}).get("agent-bridge", {})
+            argv = bridge.get("arguments")
+            if (
+                isinstance(argv, list)
+                and len(argv) >= 2
+                and argv[0] == "--config"
+                and isinstance(argv[1], str)
+            ):
+                candidate = Path(argv[1]).expanduser()
+                if candidate.is_absolute():
+                    return candidate
+    except (OSError, TypeError, ValueError):
+        pass
+
+    # v0.13.0/v0.13.1 migration source.
+    from .darwin_lifecycle import installed_bridge_config_path
 
     installed = installed_bridge_config_path()
     if installed is not None:
@@ -51,15 +77,105 @@ def bridge_config_path() -> Path:
     return bridge_home() / "bridge.json"
 
 
-def _bridge_python() -> Path:
-    override = os.environ.get("SERVERFS_BRIDGE_PYTHON", "").strip()
-    return Path(override) if override else Path(sys.executable)
+def _bridge_python_from_env_file(path: Path) -> Path | None:
+    """Read only the deployment-time Bridge interpreter selector from a dotenv file."""
+    if not path.is_file():
+        raise DarwinBridgePolicyError("the Agent Bridge env file does not exist")
+    try:
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise DarwinBridgePolicyError("the Agent Bridge env file cannot be read") from exc
+    selected: Path | None = None
+    seen = False
+    for line_number, line in enumerate(lines, 1):
+        candidate = line.strip()
+        if not candidate or candidate.startswith("#"):
+            continue
+        if candidate.startswith("export "):
+            candidate = candidate[7:].lstrip()
+        key, sep, raw = candidate.partition("=")
+        if key.strip() != "SERVERFS_BRIDGE_PYTHON":
+            continue
+        if seen:
+            raise DarwinBridgePolicyError(
+                f"duplicate SERVERFS_BRIDGE_PYTHON at line {line_number}"
+            )
+        seen = True
+        if not sep:
+            raise DarwinBridgePolicyError(
+                f"invalid SERVERFS_BRIDGE_PYTHON assignment at line {line_number}"
+            )
+        try:
+            value = parse_env_value(raw.strip(), "SERVERFS_BRIDGE_PYTHON", line_number).strip()
+        except ValueError as exc:
+            raise DarwinBridgePolicyError(str(exc)) from exc
+        if value:
+            selected = Path(value).expanduser()
+    return selected
 
 
-def _run_helper(payload: dict, *extra_args: str) -> bool:
-    candidate = _bridge_python()
-    if not candidate.is_file():
-        raise DarwinBridgePolicyError("the configured Agent Bridge interpreter is unavailable")
+def _python_from_console_script(executable: Path) -> Path | None:
+    """Recover the absolute interpreter from an installed console-script shebang."""
+    if not executable.is_absolute() or not executable.is_file():
+        return None
+    try:
+        first_line = executable.open("r", encoding="utf-8").readline(4096).strip()
+    except (OSError, UnicodeError):
+        return None
+    if not first_line.startswith("#!"):
+        return None
+    value = first_line[2:].strip()
+    if not value or any(character.isspace() for character in value):
+        return None
+    candidate = Path(value).expanduser()
+    return candidate if candidate.is_absolute() and candidate.is_file() else None
+
+
+def _installed_bridge_python() -> Path | None:
+    """Recover the Bridge interpreter from v0.13.2 manifest or v0.13.1 legacy plist."""
+    try:
+        from .darwin_service import manifest_path
+
+        path = manifest_path()
+        if path.is_file():
+            document = json.loads(path.read_text(encoding="utf-8"))
+            bridge = document.get("services", {}).get("agent-bridge", {})
+            executable = bridge.get("executable")
+            if isinstance(executable, str):
+                candidate = _python_from_console_script(Path(executable).expanduser())
+                if candidate is not None:
+                    return candidate
+    except (OSError, TypeError, ValueError):
+        pass
+
+    try:
+        from .darwin_lifecycle import launch_agent_plist_path
+
+        payload = plistlib.loads(launch_agent_plist_path().read_bytes())
+        argv = payload.get("ProgramArguments") if isinstance(payload, dict) else None
+        if isinstance(argv, list) and argv and isinstance(argv[0], str):
+            return _python_from_console_script(Path(argv[0]).expanduser())
+    except (OSError, TypeError, ValueError):
+        pass
+    return None
+
+
+def _bridge_python(*, env_file: Path | None = None) -> Path:
+    candidate = _bridge_python_from_env_file(env_file) if env_file is not None else None
+    if candidate is None:
+        candidate = _installed_bridge_python()
+    if candidate is None:
+        override = os.environ.get("SERVERFS_BRIDGE_PYTHON", "").strip()
+        candidate = Path(override).expanduser() if override else Path(sys.executable)
+    if not candidate.is_absolute() or not candidate.is_file():
+        raise DarwinBridgePolicyError(
+            "the configured Agent Bridge interpreter must be an available absolute path"
+        )
+    return candidate
+
+
+def _run_helper(payload: dict, *extra_args: str, env_file: Path | None = None) -> bool:
+    candidate = _bridge_python(env_file=env_file)
     config_path = bridge_config_path()
     command = [
         str(candidate),
@@ -218,7 +334,7 @@ def configure_policy(workdirs, settings, *, env_file: Path | None = None) -> Non
         "policy": render_request_from_config(workdirs, settings),
         "private": _private_overlay(settings, values),
     }
-    if not _run_helper(payload, "--configure"):  # pragma: no cover - helper promises True
+    if not _run_helper(payload, "--configure", env_file=env_file):  # pragma: no cover - helper promises True
         raise DarwinBridgePolicyError(
             "the Agent Bridge configure helper did not confirm publication"
         )

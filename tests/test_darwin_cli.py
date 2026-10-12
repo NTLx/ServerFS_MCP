@@ -180,3 +180,32 @@ class TestParityWithTheBridge:
         from serverfs_mcp.native_endpoint import data_home
 
         assert str(data_home()) == theirs
+
+
+def test_service_install_schedules_bridge_only_handover(monkeypatch, tmp_path, capsys) -> None:
+    from types import SimpleNamespace
+
+    from serverfs_mcp import darwin_service
+
+    config = tmp_path / "serverfs.toml"
+    env = tmp_path / ".env"
+    legacy = tmp_path / "com.ntlx.serverfs.agent-bridge.plist"
+    config.write_text("", encoding="utf-8")
+    env.write_text("", encoding="utf-8")
+    legacy.write_text("legacy", encoding="utf-8")
+    scheduled: list[tuple[object, object, list[int]]] = []
+    monkeypatch.setattr(darwin_service, "find_unmanaged_tunnel_roots", lambda: [])
+    monkeypatch.setattr(darwin_service, "legacy_bridge_plist_path", lambda: legacy)
+    monkeypatch.setattr(
+        darwin_service,
+        "schedule_handover_install",
+        lambda config_path, env_file, roots: scheduled.append((config_path, env_file, roots)),
+    )
+
+    result = cli.cmd_service(
+        SimpleNamespace(service_command="install", config=config, env_file=env)
+    )
+
+    assert result == 0
+    assert scheduled == [(config.resolve(), env.resolve(), [])]
+    assert "controlled v0.13.2 lifecycle hand-over scheduled via launchd" in capsys.readouterr().err
