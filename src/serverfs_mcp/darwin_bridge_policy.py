@@ -97,9 +97,7 @@ def _bridge_python_from_env_file(path: Path) -> Path | None:
         if key.strip() != "SERVERFS_BRIDGE_PYTHON":
             continue
         if seen:
-            raise DarwinBridgePolicyError(
-                f"duplicate SERVERFS_BRIDGE_PYTHON at line {line_number}"
-            )
+            raise DarwinBridgePolicyError(f"duplicate SERVERFS_BRIDGE_PYTHON at line {line_number}")
         seen = True
         if not sep:
             raise DarwinBridgePolicyError(

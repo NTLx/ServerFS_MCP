@@ -82,9 +82,7 @@ def test_bridge_python_uses_env_file_selector_without_persisting_it(
         f"SERVERFS_BRIDGE_PYTHON={bridge_python}\nSERVERFS_JEV_API_KEY=secret\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(
-        "serverfs_mcp.darwin_bridge_policy._installed_bridge_python", lambda: None
-    )
+    monkeypatch.setattr("serverfs_mcp.darwin_bridge_policy._installed_bridge_python", lambda: None)
     monkeypatch.setenv("SERVERFS_BRIDGE_PYTHON", str(tmp_path / "wrong-python"))
 
     assert _bridge_python(env_file=env_file) == bridge_python

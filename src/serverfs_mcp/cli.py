@@ -573,9 +573,7 @@ def cmd_service(args: argparse.Namespace) -> int:
                 unmanaged_roots = darwin_service.find_unmanaged_tunnel_roots()
                 legacy_bridge = darwin_service.legacy_bridge_plist_path().is_file()
                 if unmanaged_roots or legacy_bridge:
-                    darwin_service.schedule_handover_install(
-                        config_path, env_file, unmanaged_roots
-                    )
+                    darwin_service.schedule_handover_install(config_path, env_file, unmanaged_roots)
                     sys.stderr.write(
                         "controlled v0.13.2 lifecycle hand-over scheduled via launchd\n"
                     )

@@ -14,8 +14,7 @@ def test_bundled_bridge_label_is_distinct_from_legacy_identity() -> None:
     assert darwin_service.LEGACY_BRIDGE_LABEL == "com.ntlx.serverfs.agent-bridge"
     assert darwin_service.BRIDGE_LABEL != darwin_service.LEGACY_BRIDGE_LABEL
     assert (
-        darwin_service._SERVICE_LABELS[darwin_service.BRIDGE_SERVICE]
-        == darwin_service.BRIDGE_LABEL
+        darwin_service._SERVICE_LABELS[darwin_service.BRIDGE_SERVICE] == darwin_service.BRIDGE_LABEL
     )
 
 

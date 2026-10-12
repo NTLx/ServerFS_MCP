@@ -419,9 +419,7 @@ def _run_manager(*args: str) -> dict:
         if not details and completed.stderr.strip():
             details.append(completed.stderr.strip().splitlines()[0])
         suffix = f" ({'; '.join(details)})" if details else ""
-        raise DarwinServiceError(
-            f"macOS Service Manager refused the lifecycle operation{suffix}"
-        )
+        raise DarwinServiceError(f"macOS Service Manager refused the lifecycle operation{suffix}")
     return payload
 
 
@@ -551,9 +549,7 @@ def _rollback_legacy_bridge() -> None:
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
         suffix = f": {detail}" if detail else ""
-        raise DarwinServiceError(
-            "legacy Agent Bridge rollback bootstrap failed" + suffix
-        )
+        raise DarwinServiceError("legacy Agent Bridge rollback bootstrap failed" + suffix)
 
 
 def _migrate_legacy_bridge(*, bridge_enabled: bool) -> None:
