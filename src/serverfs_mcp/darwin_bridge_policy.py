@@ -334,7 +334,9 @@ def configure_policy(workdirs, settings, *, env_file: Path | None = None) -> Non
         "policy": render_request_from_config(workdirs, settings),
         "private": _private_overlay(settings, values),
     }
-    if not _run_helper(payload, "--configure", env_file=env_file):  # pragma: no cover - helper promises True
+    if not _run_helper(
+        payload, "--configure", env_file=env_file
+    ):  # pragma: no cover - helper promises True
         raise DarwinBridgePolicyError(
             "the Agent Bridge configure helper did not confirm publication"
         )

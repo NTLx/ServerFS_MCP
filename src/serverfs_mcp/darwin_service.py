@@ -512,7 +512,9 @@ def _stage_legacy_bridge_plist() -> None:
         os.replace(path, backup)
         os.chmod(backup, 0o600)
     except OSError as exc:
-        raise DarwinServiceError("legacy Agent Bridge plist could not be staged for hand-over") from exc
+        raise DarwinServiceError(
+            "legacy Agent Bridge plist could not be staged for hand-over"
+        ) from exc
 
 
 def _restore_legacy_bridge_plist() -> None:
@@ -524,7 +526,9 @@ def _restore_legacy_bridge_plist() -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         os.replace(backup, path)
     except OSError as exc:
-        raise DarwinServiceError("legacy Agent Bridge rollback plist could not be restored") from exc
+        raise DarwinServiceError(
+            "legacy Agent Bridge rollback plist could not be restored"
+        ) from exc
 
 
 def _rollback_legacy_bridge() -> None:
