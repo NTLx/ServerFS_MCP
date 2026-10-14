@@ -1,13 +1,13 @@
 ---
 title: Windows Native
-description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, Codex/Claude/Qoder delegation, and the in-development v0.14 current-user Task Scheduler lifecycle.
+description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, Codex/Claude/Qoder delegation, and the v0.14 current-user Task Scheduler lifecycle.
 ---
 
 Since v0.10.0 ServerFS runs natively on **Windows 11 x64 over local NTFS** as an MCP **stdio** service. Nothing listens on a port: the official OpenAI `tunnel-client` connects out to the control plane and speaks MCP through the child process's stdin/stdout, so the default native profile has no localhost listener. Linux Docker deployments are unchanged and remain the supported Linux shape.
 
 v0.11 adds **Agent delegation** to this deployment for Codex, Claude Code and Qoder through the same ten Agent tools over a Named-Pipe Bridge, accepted through the live ChatGPT tunnel E2E.
 
-The in-development v0.14.0 work adds the persistent outer lifecycle without changing that MCP/Agent surface. Its intended owner is a **current-user, least-privilege Task Scheduler 2.0 task** — not an SCM/LocalSystem Windows Service. Normal install, runtime, recovery, maintenance and removal remain non-elevated and store no account password.
+v0.14.0 adds the persistent outer lifecycle without changing that MCP/Agent surface. Its owner is a **current-user, least-privilege Task Scheduler 2.0 task** — not an SCM/LocalSystem Windows Service. Normal install, runtime, recovery, maintenance and removal remain non-elevated and store no account password.
 
 The runtime chain:
 
@@ -56,7 +56,7 @@ $serverfs = "$env:LOCALAPPDATA\ServerFS\connector-env\Scripts\serverfs.exe"
 
 With `[agent]` enabled, doctor additionally reports — read-only, never starting a Bridge or a provider — the per-workdir Agent policy, each runtime's enabled state and proxy routing, the Agent data home, the private-state safety of whatever exists, the Agent proxy endpoint wiring and reachability (the endpoint itself is never displayed), the user identity derivation, and that the Bridge package is importable by the configured `SERVERFS_BRIDGE_PYTHON` interpreter.
 
-## Persistent current-user lifecycle (v0.14.0 development target)
+## Persistent current-user lifecycle (v0.14.0+)
 
 After `doctor` passes, install and start the managed lifecycle from the stable ServerFS `connector-env`:
 
@@ -102,7 +102,7 @@ The Agent egress proxy is a **credentialless HTTP proxy** supplied by the operat
 
 The bootstrap stores the client under the user-owned ServerFS data directory and never modifies the machine PATH; its verification chain pins the official `SHA256SUMS.txt` digest and re-hashes the downloaded archive against it. The v0.14 managed runner auto-discovers the bootstrapped client, binds tunnel-client's health server to an ephemeral loopback port, passes the control-plane key only as a `file:` reference (the key file must live outside every workdir), and strips all `CONTROL_PLANE_*`, `TUNNEL_CLIENT_*`, `OPENAI_*`, `MCP_*`, `SERVERFS_PROXY_*` and proxy variables before spawning the ServerFS child. Proxy configuration uses the same four `SERVERFS_PROXY_*` fields in `.env` as Linux (HTTP only; SOCKS is not supported and not claimed).
 
-Direct `serverfs tunnel` remains useful for bounded diagnostics and compatibility work, but it is not the intended normal v0.14 persistent deployment path. Multiple active tunnel-client instances sharing one tunnel ID are unsupported upstream, and the current-user ownership guard refuses a managed/direct double-owner shape.
+Direct `serverfs tunnel` remains useful for bounded diagnostics and compatibility work, but it is not the intended normal v0.14+ persistent deployment path. Multiple active tunnel-client instances sharing one tunnel ID are unsupported upstream, and the current-user ownership guard refuses a managed/direct double-owner shape.
 
 ## What stays true on Windows
 

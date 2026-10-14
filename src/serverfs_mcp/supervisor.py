@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import BinaryIO
@@ -375,6 +376,11 @@ BRIDGE_WATCH_INTERVAL_SECONDS = 0.5
 #: after *consecutive* failures — one transient miss must never kill the chain.
 BRIDGE_HEALTH_TIMEOUT_SECONDS = 1.0
 BRIDGE_HEALTH_FAILURE_THRESHOLD = 3
+#: A failure count alone is too sensitive to short Windows scheduler/pipe stalls. Require a
+#: continuous unhealthy window as well as the minimum probe count; one successful ping resets both
+#: signals. A genuinely wedged event loop still tears down well inside the outer lifecycle recovery
+#: bound.
+BRIDGE_HEALTH_FAILURE_WINDOW_SECONDS = 10.0
 
 
 def _bridge_is_responsive(socket_path: Path) -> bool:
@@ -418,14 +424,15 @@ def _watch_bridge(
 
     v0.13.1 closes the second gap: a Bridge process whose event loop or Named Pipe wedges keeps
     ``poll() is None`` forever while serving nothing. Each cycle therefore also probes
-    ``bridge.ping`` through the real endpoint; only after consecutive failures past the threshold
-    does the watchdog end the forwarding loop, so one missed ping during a provider burst cannot
-    tear down a healthy chain.
+    ``bridge.ping`` through the real endpoint; only after consecutive failures satisfy both the
+    minimum probe count and continuous-unhealthy-time window does the watchdog end the forwarding
+    loop, so short probe stalls cannot tear down a healthy chain.
     """
     stop = threading.Event()
 
     def watch() -> None:
         consecutive_failures = 0
+        first_failure_at: float | None = None
         while not stop.wait(BRIDGE_WATCH_INTERVAL_SECONDS):
             # First priority stays the process itself: a dead Bridge is unambiguous and needs no
             # IPC probe.
@@ -436,14 +443,25 @@ def _watch_bridge(
                 return
             if _bridge_is_responsive(socket_path):
                 consecutive_failures = 0
+                first_failure_at = None
                 continue
+            now = time.monotonic()
             consecutive_failures += 1
-            if consecutive_failures >= BRIDGE_HEALTH_FAILURE_THRESHOLD:
-                # Alive but unresponsive: the same teardown a dead Bridge gets, so the ordinary
-                # finally path in run_with_agent reclaims the Job Object and the lifecycle lease.
+            if first_failure_at is None:
+                first_failure_at = now
+            unhealthy_seconds = now - first_failure_at
+            if (
+                consecutive_failures >= BRIDGE_HEALTH_FAILURE_THRESHOLD
+                and unhealthy_seconds >= BRIDGE_HEALTH_FAILURE_WINDOW_SECONDS
+            ):
+                # Alive but continuously unresponsive: the same teardown a dead Bridge gets, so
+                # the ordinary finally path in run_with_agent reclaims the Job Object and the
+                # lifecycle lease. The elapsed-time gate prevents a short scheduling/pipe stall
+                # from turning a healthy Bridge into a full-chain restart.
                 _diagnostic(
-                    "bridge health failed "
-                    f"{consecutive_failures} consecutive times; stopping stdio child"
+                    "bridge health failed continuously for "
+                    f"{unhealthy_seconds:.1f}s across {consecutive_failures} probes; "
+                    "stopping stdio child"
                 )
                 terminate_quietly(stdio_child)
                 return

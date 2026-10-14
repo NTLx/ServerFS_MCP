@@ -153,7 +153,7 @@ Agent-enabled Linux deployment must use the measured peer identity and the same 
 
 Native Windows filesystem service and native Agent delegation are supported through the Windows-specific backend/product boundary. Do not route Windows work through Docker/WSL merely to reuse Linux code, and do not describe the Windows revision token as stronger than its accepted NTFS semantics.
 
-The v0.14.0 development target makes the normal Windows outer lifecycle a **current-user Task Scheduler 2.0 task**; this is not part of the current stable v0.13.2 release yet. Preserve all of these properties together:
+Since v0.14.0, the normal Windows outer lifecycle is a **current-user Task Scheduler 2.0 task**. Preserve all of these properties together:
 
 - no administrator/UAC requirement for install, runtime, maintenance or removal;
 - current-user `InteractiveToken` identity and `LeastPrivilege` run level; never SCM/LocalSystem, HKLM service registration, stored passwords or another machine-wide owner;
@@ -163,7 +163,7 @@ The v0.14.0 development target makes the normal Windows outer lifecycle a **curr
 - install/update preserves enabled/disabled operator intent; a fresh install is registered disabled, `service start` enables and starts it, and `service stop` disables before ending it so the heartbeat cannot resurrect an intentional stop;
 - v0.13.x manual-launcher migration uses the frozen process-identity hand-over path. Never identify/kill a legacy tree by name alone or by an unverified PID.
 
-For the v0.14.0 development target, `deployment/windows/start-native.ps1` is compatibility/emergency material rather than the intended persistent operator path. Public lifecycle operations are `serverfs service install/start/stop/restart/status/uninstall`.
+For v0.14.0+, `deployment/windows/start-native.ps1` is compatibility/emergency material rather than the intended persistent operator path. Public lifecycle operations are `serverfs service install/start/stop/restart/status/uninstall`.
 
 ### macOS
 

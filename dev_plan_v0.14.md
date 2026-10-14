@@ -1,6 +1,6 @@
 # ServerFS v0.14.0 Development Plan
 
-Status: implementation and Windows acceptance in progress; v0.14.0 is not yet released.
+Status: implementation and Windows release acceptance complete; release closeout approved.
 
 ## Goal
 
@@ -174,7 +174,7 @@ On the WorkPC Windows 11 native environment, verify without elevation:
 
 Earlier development evidence recorded Tunnel recovery ≈5.20s, runner recovery ≈3.09s, outer Task Action recovery ≈52.39s, and explicit start recovery ≈1.04s. The WorkPC service state was later disturbed during development, so those historical timings are not treated as fresh release evidence.
 
-Fresh WorkPC acceptance on 2026-10-14 established the stable-runtime handover path without elevation: the existing `%LOCALAPPDATA%\ServerFS\connector-env` was upgraded in place to matching `serverfs-mcp 0.14.0` / `serverfs-windows-native 0.14.0`; persistent install from that interpreter succeeded after the product-level stable-runtime preflight was added; the registered task remained enabled/current-user/interactive/limited; and intentionally ending the live Task Scheduler action caused the active Agent task to terminate with `BRIDGE_RESTARTED`, after which the WorkPC MCP connection and Agent delegation recovered automatically. Post-recovery status reported `registered=true`, `enabled=true`, `runner_alive=true`, `tunnel_alive=true`, no handover error, and fresh runner/Tunnel start timestamps. This revalidates the outer Task Scheduler heartbeat recovery and managed-runtime migration to the stable connector environment. The lower-level Tunnel-generation and runner-crash timing probes were not repeated in this acceptance pass; their regression behavior remains covered by the v0.14 automated lifecycle tests and earlier development evidence. A full physical reboot/login test has not been executed.
+Final WorkPC release acceptance on 2026-10-14 ran from an observer outside the managed ServerFS tree under the non-elevated current user and revalidated every layered recovery boundary. Tunnel-generation recovery completed in about 6.4s while watchdog/runner identities remained stable; runner recovery completed in about 2.73s while the watchdog stayed stable; terminating the outer watchdog was recovered by the Task Scheduler heartbeat in about 18.5s; intentional `service stop` remained stopped after a 70s observation window; explicit `service start` restored the managed tree in about 1.1s; Agent Bridge/MCP recovered with Claude/Codex/Qoder available; a fresh workspace-write probe completed and released its writer lease/guard; the final tree was windowless, exactly-one, current-user and least-privilege. No repository/config/package/runtime-environment mutation or administrator path was used during acceptance. A physical reboot/logout-login cycle was not executed, so only the presence of the configured LogonTrigger is claimed, not measured reboot/re-login recovery. Full release evidence is recorded in `docs/v0.14.0-windows-live-acceptance-2026-10-14.md`.
 
 ## Release closeout
 

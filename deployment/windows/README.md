@@ -1,7 +1,7 @@
 # Windows native deployment
 
-Long-term deployment layout for the native Windows stack. The **v0.14.0 development/release target**
-makes the normal outer lifecycle persistent, current-user and non-elevated: Windows Task Scheduler 2.0
+Long-term deployment layout for the native Windows stack. Since **v0.14.0**, the normal outer
+lifecycle is persistent, current-user and non-elevated: Windows Task Scheduler 2.0
 owns a windowless ServerFS watchdog, the watchdog owns a managed runner, and the runner
 owns one Tunnel generation at a time. No Windows Service/SCM, LocalSystem account, HKLM
 registration, stored password or administrator/UAC step is part of the intended supported path.

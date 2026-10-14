@@ -580,6 +580,7 @@ class TestBridgeWatchdog:
     @pytest.fixture(autouse=True)
     def fast_watch(self, monkeypatch):
         monkeypatch.setattr(supervisor, "BRIDGE_WATCH_INTERVAL_SECONDS", 0.05)
+        monkeypatch.setattr(supervisor, "BRIDGE_HEALTH_FAILURE_WINDOW_SECONDS", 0.2)
 
     def _start_watcher(self, bridge, stdio_child, socket_path):
         return supervisor._watch_bridge(bridge, stdio_child, socket_path)
@@ -622,6 +623,27 @@ class TestBridgeWatchdog:
             bridge.kill()
             bridge.wait(timeout=15)
 
+    def test_three_quick_failures_inside_the_unhealthy_window_do_not_kill_the_chain(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The minimum probe count alone must not turn a brief Windows stall into a restart."""
+        responses = iter([False, False, False, True] * 20)
+        monkeypatch.setattr(supervisor, "_bridge_is_responsive", lambda endpoint: next(responses))
+        bridge = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            with _SleepingChild() as stdio_child:
+                stop = self._start_watcher(bridge, stdio_child, tmp_path / "unused.pipe")
+                import time
+
+                time.sleep(1.0)
+                assert stdio_child.poll() is None, (
+                    "three quick health misses inside the grace window tore down a healthy chain"
+                )
+                stop.set()
+        finally:
+            bridge.kill()
+            bridge.wait(timeout=15)
+
     def test_consecutive_health_failures_terminate_the_stdio_child(
         self, tmp_path: Path, monkeypatch, capsys
     ):
@@ -634,10 +656,9 @@ class TestBridgeWatchdog:
                 assert _wait_until(lambda: stdio_child.poll() is not None), (
                     "consecutive bridge.ping failures did not terminate the stdio child"
                 )
-                assert (
-                    "bridge health failed 3 consecutive times; stopping stdio child"
-                    in capsys.readouterr().err
-                )
+                diagnostic = capsys.readouterr().err
+                assert "bridge health failed continuously for" in diagnostic
+                assert "stopping stdio child" in diagnostic
                 stop.set()
         finally:
             bridge.kill()

@@ -3,6 +3,8 @@
 serverfs.toml
 .venv/
 .venv-wheel/
+.uv-tmp/
+.npm-cache/
 __pycache__/
 .pytest_cache/
 .coverage

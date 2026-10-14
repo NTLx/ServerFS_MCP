@@ -1,13 +1,13 @@
 ---
 title: Windows 原生部署
-description: Windows 11 x64 + 本地 NTFS 原生部署——预构建 Rust 内核、Codex/Claude/Qoder 委派，以及开发中的 v0.14.0 当前用户 Task Scheduler 持久生命周期。
+description: Windows 11 x64 + 本地 NTFS 原生部署——预构建 Rust 内核、Codex/Claude/Qoder 委派，以及 v0.14.0 当前用户 Task Scheduler 持久生命周期。
 ---
 
 自 v0.10.0 起，ServerFS 可以在 **Windows 11 x64 + 本地 NTFS** 上以 MCP **stdio** 服务原生运行。没有任何端口监听：官方 OpenAI `tunnel-client` 主动连出到控制面，并通过子进程的 stdin/stdout 传输 MCP 帧，因此默认原生 profile 不存在 localhost 监听器。Linux Docker 部署保持不变，仍是 Linux 的受支持形态。
 
 v0.11 为该部署加入 **Agent 委派**：通过同一组十个 Agent 工具与 Named-Pipe Bridge 驱动 Codex、Claude Code 与 Qoder 三个运行时，并已通过真实 ChatGPT 隧道 E2E 验收。
 
-开发中的 **v0.14.0** 正在加入持久的当前用户生命周期，同时不引入管理员要求。其目标形态由 Windows Task Scheduler 2.0 以交互用户的最低权限令牌持有一个无窗口 watchdog；watchdog 负责重启 managed runner，runner 再负责重启 Tunnel generation。
+**v0.14.0** 已加入持久的当前用户生命周期，同时不引入管理员要求。Windows Task Scheduler 2.0 以交互用户的最低权限令牌持有一个无窗口 watchdog；watchdog 负责重启 managed runner，runner 再负责重启 Tunnel generation。
 
 运行时链路：
 
@@ -61,7 +61,7 @@ $serverfs = "$env:LOCALAPPDATA\ServerFS\connector-env\Scripts\serverfs.exe"
 
 启用 `[agent]` 后，doctor 还会以只读方式（绝不启动 Bridge 或 provider）额外报告：每个 workdir 的 Agent 策略、各 runtime 的启用状态与 proxy 路由、Agent data home、已存在对象的 private-state 安全性、Agent proxy endpoint 的接线与可达性（endpoint 本身永不显示）、用户身份推导，以及 Bridge 包可被配置的 `SERVERFS_BRIDGE_PYTHON` 解释器导入。
 
-## 持久的当前用户生命周期（v0.14.0 开发目标）
+## 持久的当前用户生命周期（v0.14.0+）
 
 `doctor` 通过后，只从稳定的 ServerFS `connector-env` 注册任务，再显式启动：
 
@@ -111,7 +111,7 @@ Agent 出站 proxy 是运营者通过 `SERVERFS_AGENT_PROXY_URL` 提供的**无�
 
 bootstrap 把 client 存到用户所有的 ServerFS 数据目录下，绝不修改机器 PATH；其验证链先锚定官方 `SHA256SUMS.txt` 摘要，再把下载的档案重新哈希比对。v0.14 managed runner 自动发现已引导的 client，把 tunnel-client 的健康服务绑定到临时 loopback 端口，只以 `file:` 引用传递控制面密钥（密钥文件必须位于所有 workdir 之外），并在 spawn ServerFS 子进程前剥离全部 `CONTROL_PLANE_*`、`TUNNEL_CLIENT_*`、`OPENAI_*`、`MCP_*`、`SERVERFS_PROXY_*` 与 proxy 变量。proxy 配置与 Linux 共用 `.env` 中同样的四个 `SERVERFS_PROXY_*` 字段（仅 HTTP；不支持也不宣称 SOCKS）。
 
-直接 `serverfs tunnel` 仍可用于有界诊断和兼容恢复，但不是 v0.14.0 开发目标中的正常持久部署路径。当前用户 ownership guard 会拒绝 managed lifecycle 与 manual lifecycle 双重占用。
+直接 `serverfs tunnel` 仍可用于有界诊断和兼容恢复，但不是 v0.14.0+ 的正常持久部署路径。当前用户 ownership guard 会拒绝 managed lifecycle 与 manual lifecycle 双重占用。
 
 ## Windows 上保持不变的契约
 

@@ -10,7 +10,7 @@
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured Codex / Claude Code / Qoder delegation only where you need them.
 
-**Current stable release: v0.13.2**
+**Current stable release: v0.14.0**
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -39,12 +39,12 @@ ServerFS is built around that narrower boundary:
 | Platform | Supported shape | Filesystem boundary | Agent delegation |
 | --- | --- | --- | --- |
 | **Linux** | Docker Compose, `linux/amd64` and `linux/arm64` | Bind-mounted workdirs; container read-only by default | Optional host Agent Bridge |
-| **Windows** | Windows 11 x64, local NTFS, native stdio; v0.14 Task Scheduler persistence in development | Native HANDLE-relative Rust kernel over MCP stdio | Codex, Claude Code, Qoder |
+| **Windows** | Windows 11 x64, local NTFS, native stdio; current-user Task Scheduler persistence since v0.14.0 | Native HANDLE-relative Rust kernel over MCP stdio | Codex, Claude Code, Qoder |
 | **macOS** | Apple M-series, native arm64, macOS 27 Golden Gate | Native descriptor-relative Darwin backend over MCP stdio | Codex, Claude Code, Qoder |
 
 The macOS v0.13 support boundary is intentionally strict: Intel Macs, Rosetta/x86_64 execution, macOS 26 or older, and macOS 28+ are not claimed as supported. **v0.13.2** adds Apple-native `SMAppService` persistence for the Tunnel and Agent Bridge, so the managed stack no longer depends on terminal/session lifetime. `SMAppService` owns user-login persistence; live reboot/re-login recovery validation is deferred beyond v0.13.2.
 
-The in-development **v0.14.0** work brings persistent outer-lifecycle reliability to Windows without introducing administrator requirements. Windows Native now uses a current-user, least-privilege Task Scheduler 2.0 task that owns a windowless watchdog; the watchdog restarts the managed runner, and the runner restarts Tunnel generations. A logon trigger plus an indefinite one-minute time-trigger heartbeat re-establishes the outer owner while `IgnoreNew` preserves one healthy instance. `serverfs service install/start/stop/restart/status/uninstall` is the supported operator surface; installation, runtime, recovery and maintenance remain non-elevated and current-user scoped.
+**v0.14.0** brings persistent outer-lifecycle reliability to Windows without introducing administrator requirements. Windows Native uses a current-user, least-privilege Task Scheduler 2.0 task that owns a windowless watchdog; the watchdog restarts the managed runner, and the runner restarts Tunnel generations. A logon trigger plus an indefinite one-minute time-trigger heartbeat re-establishes the outer owner while `IgnoreNew` preserves one healthy instance. `serverfs service install/start/stop/restart/status/uninstall` is the supported operator surface; installation, runtime, recovery and maintenance remain non-elevated and current-user scoped. Release acceptance verified Tunnel-, runner- and Task-Scheduler-level recovery, intentional stop semantics, explicit start recovery, Agent Bridge recovery, windowless operation and exactly-one Tunnel ownership; a physical reboot/re-login cycle was not part of that acceptance.
 
 For native setup, use the dedicated guides:
 
@@ -114,7 +114,7 @@ ChatGPT / MCP client
                                          +--> Qoder
 ```
 
-On Linux, the MCP service stays inside internal Docker networks with no published port or general Internet egress; the tunnel and optional file-ingress sidecar have separate network responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. The v0.14.0 Windows development work uses the current user's Task Scheduler as the persistent OS owner and keeps the managed process tree windowless; no SCM/LocalSystem service or UAC elevation is required. On macOS v0.13.2, a small headless ServiceManagement companion registers the persistent per-user Tunnel and Agent Bridge through `SMAppService`; no root LaunchDaemon or hand-installed LaunchAgent is required.
+On Linux, the MCP service stays inside internal Docker networks with no published port or general Internet egress; the tunnel and optional file-ingress sidecar have separate network responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. Since v0.14.0, Windows uses the current user's Task Scheduler as the persistent OS owner and keeps the managed process tree windowless; no SCM/LocalSystem service or UAC elevation is required. On macOS v0.13.2+, a small headless ServiceManagement companion registers the persistent per-user Tunnel and Agent Bridge through `SMAppService`; no root LaunchDaemon or hand-installed LaunchAgent is required.
 
 See [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) for the complete deployment and trust-boundary model.
 
@@ -198,10 +198,10 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-The current stable release is **v0.13.2**.
+The current stable release is **v0.14.0**.
 
 - Linux images: `ghcr.io/ntlx/serverfs_mcp`
-- Stable release tag: `v0.13.2`
+- Stable release tag: `v0.14.0`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel. v0.13.2 locally builds the small bundled ServiceManagement companion used for persistent per-user services.
