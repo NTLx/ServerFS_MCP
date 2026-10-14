@@ -375,7 +375,7 @@ def test_windows_managed_tunnel_assigns_child_to_outer_job(monkeypatch) -> None:
 
     assert native_tunnel._run_tunnel_client(["client"], {}, job=job) == 7
     assert job.assigned is process
-    assert captured["creationflags"] == subprocess.CREATE_NO_WINDOW
+    assert captured["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def test_windows_managed_tunnel_kills_child_if_job_assignment_fails(monkeypatch) -> None:

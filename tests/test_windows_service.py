@@ -492,8 +492,10 @@ def test_install_restores_previous_files_and_registration_on_failed_update(
 def test_find_legacy_tunnel_roots_accepts_nested_tunnel_descendant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    serverfs = Path("C:/Users/lx/AppData/Local/ServerFS/connector-env/Scripts/serverfs.exe")
-    tunnel = Path("C:/Users/lx/AppData/Local/ServerFS/bin/tunnel-client.exe")
+    serverfs = Path(
+        "C:/Users/lx/AppData/Local/ServerFS/connector-env/Scripts/serverfs.exe"
+    ).resolve()
+    tunnel = Path("C:/Users/lx/AppData/Local/ServerFS/bin/tunnel-client.exe").resolve()
     entries = (
         ProcessEntry(10, 1, "serverfs.exe"),
         ProcessEntry(11, 10, "python.exe"),
