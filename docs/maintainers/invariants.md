@@ -153,6 +153,18 @@ Agent-enabled Linux deployment must use the measured peer identity and the same 
 
 Native Windows filesystem service and native Agent delegation are supported through the Windows-specific backend/product boundary. Do not route Windows work through Docker/WSL merely to reuse Linux code, and do not describe the Windows revision token as stronger than its accepted NTFS semantics.
 
+The v0.14.0 development target makes the normal Windows outer lifecycle a **current-user Task Scheduler 2.0 task**; this is not part of the current stable v0.13.2 release yet. Preserve all of these properties together:
+
+- no administrator/UAC requirement for install, runtime, maintenance or removal;
+- current-user `InteractiveToken` identity and `LeastPrivilege` run level; never SCM/LocalSystem, HKLM service registration, stored passwords or another machine-wide owner;
+- a logon trigger for session startup plus an indefinite one-minute time-trigger heartbeat; `MultipleInstancesPolicy=IgnoreNew` keeps exactly one Task action while allowing the OS to recreate a missing watchdog;
+- Task Scheduler owns a windowless watchdog, the watchdog owns one runner in a kill-on-close Job Object and restarts it with bounded short backoff, and the runner owns/restarts one Tunnel generation at a time with its own bounded backoff;
+- the native Tunnel ownership mutex prevents a managed tree and a direct/manual `serverfs tunnel` tree from coexisting for the same current-user lifecycle;
+- install/update preserves enabled/disabled operator intent; a fresh install is registered disabled, `service start` enables and starts it, and `service stop` disables before ending it so the heartbeat cannot resurrect an intentional stop;
+- v0.13.x manual-launcher migration uses the frozen process-identity hand-over path. Never identify/kill a legacy tree by name alone or by an unverified PID.
+
+For the v0.14.0 development target, `deployment/windows/start-native.ps1` is compatibility/emergency material rather than the intended persistent operator path. Public lifecycle operations are `serverfs service install/start/stop/restart/status/uninstall`.
+
 ### macOS
 
 v0.13 supports Apple M-series only, native arm64, macOS 27 Golden Gate. Preserve the measured runtime gate and fail closed outside that boundary. Darwin uses POSIX-generic filesystem/Agent seams where proven, Darwin-specific peer/runtime primitives where required, the macOS application-data home, native arm64 Tunnel asset and private AF_UNIX file ingress. **Since v0.13.2, persistent lifecycle is app-associated `SMAppService` + per-user LaunchAgents for both Tunnel and Agent Bridge.** Normal operation must not recreate a hand-installed `~/Library/LaunchAgents` plist, root LaunchDaemon, shell-profile bootstrap or `nohup` persistence. Registration/approval state belongs to ServiceManagement/Login Items and user denial must be respected. The bundled launcher contains no secrets, reads only private 0600 lifecycle state, uses absolute executable/config paths, and preserves exactly-one managed Tunnel/Bridge semantics. Do not claim Intel, Rosetta, macOS 26/28 or a `darwin-amd64` asset without new measured support.

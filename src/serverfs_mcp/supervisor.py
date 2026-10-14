@@ -475,6 +475,7 @@ def _render_bridge_config(request: dict) -> _RenderedPaths:
             input=json.dumps(request).encode("utf-8"),
             capture_output=True,
             env=_bridge_render_env(),
+            creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0),
         )
     except OSError as exc:
         raise AgentLifecycleError(

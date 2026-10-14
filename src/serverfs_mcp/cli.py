@@ -153,7 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     service = sub.add_parser(
         "service",
-        help="Manage the Apple-native persistent macOS ServerFS services (v0.13.2)",
+        help="Manage platform-native persistent ServerFS services (macOS / Windows)",
     )
     service_sub = service.add_subparsers(dest="service_command", required=True)
     service_install = service_sub.add_parser(
@@ -183,9 +183,15 @@ def build_parser() -> argparse.ArgumentParser:
     service_sub.add_parser("stop", help="Unregister configured persistent services")
     service_sub.add_parser(
         "uninstall",
-        help="Unregister services and remove v0.13.2-owned artifacts",
+        help="Unregister services and remove platform-owned persistent lifecycle artifacts",
     )
-    service_sub.add_parser("open-settings", help="Open System Settings > Login Items")
+    service_sub.add_parser("open-settings", help="Open System Settings > Login Items (macOS)")
+    service_watchdog = service_sub.add_parser("_watchdog", help=argparse.SUPPRESS)
+    service_watchdog.add_argument("--config", required=True, type=Path, help=argparse.SUPPRESS)
+    service_watchdog.add_argument("--env-file", required=True, type=Path, help=argparse.SUPPRESS)
+    service_run = service_sub.add_parser("_run", help=argparse.SUPPRESS)
+    service_run.add_argument("--config", required=True, type=Path, help=argparse.SUPPRESS)
+    service_run.add_argument("--env-file", required=True, type=Path, help=argparse.SUPPRESS)
     return parser
 
 
@@ -534,13 +540,55 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
 
 
 def cmd_service(args: argparse.Namespace) -> int:
+    command = args.service_command
+    if sys.platform == "win32":
+        from . import windows_service
+        from .windows_service import WindowsServiceError
+
+        try:
+            if command == "_watchdog":
+                return windows_service.run_watchdog(args.config, args.env_file)
+            if command == "_run":
+                return windows_service.run_managed(args.config, args.env_file)
+            if command == "install":
+                config_path = args.config.resolve()
+                env_file = args.env_file
+                if env_file is None:
+                    candidate = config_path.parent / ".env"
+                    env_file = candidate if candidate.is_file() else None
+                if env_file is None:
+                    return _fail("service install requires --env-file or a sibling .env")
+                snapshot = windows_service.install(config_path, env_file.resolve())
+                sys.stderr.write(json.dumps(snapshot, sort_keys=True) + "\n")
+                return 0
+            if command == "status":
+                sys.stderr.write(json.dumps(windows_service.status(), sort_keys=True) + "\n")
+                return 0
+            if command == "start":
+                sys.stderr.write(json.dumps(windows_service.start(), sort_keys=True) + "\n")
+                return 0
+            if command == "restart":
+                sys.stderr.write(json.dumps(windows_service.restart(), sort_keys=True) + "\n")
+                return 0
+            if command == "stop":
+                sys.stderr.write(json.dumps(windows_service.stop(), sort_keys=True) + "\n")
+                return 0
+            if command == "uninstall":
+                windows_service.uninstall()
+                sys.stderr.write("persistent Windows service uninstalled\n")
+                return 0
+            if command == "open-settings":
+                return _fail("open-settings is macOS-only")
+        except WindowsServiceError as exc:
+            return _fail(str(exc))
+        return _fail(f"unknown service command {command!r}")
+
     if sys.platform != "darwin":
-        return _fail("persistent service management is macOS-only")
+        return _fail("persistent service management is supported on macOS and Windows only")
 
     from . import darwin_service
     from .darwin_service import DarwinServiceError
 
-    command = args.service_command
     try:
         if command == "install":
             config_path = args.config.resolve()

@@ -428,6 +428,30 @@ class TestSpawnUnderContainment:
         finally:
             job.close()
 
+    def test_spawn_bridge_is_windowless_on_windows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import serverfs_mcp.agent_lifecycle as lifecycle
+
+        captured: dict[str, object] = {}
+        sentinel = object()
+
+        def fake_popen(command, **kwargs):
+            captured.update(command=command, **kwargs)
+            return sentinel
+
+        monkeypatch.setattr(lifecycle.subprocess, "Popen", fake_popen)
+
+        assert (
+            spawn_bridge(
+                config_path=tmp_path / "bridge.json",
+                child_env={"PATH": os.environ.get("PATH", "")},
+                argv=["bridge.exe"],
+            )
+            is sentinel
+        )
+        assert captured["creationflags"] == subprocess.CREATE_NO_WINDOW
+
     def test_unstartable_command_fails_closed(self, tmp_path: Path) -> None:
         with pytest.raises(AgentLifecycleError, match="could not be started"):
             spawn_bridge(

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 import sys
 import time
 from dataclasses import dataclass
@@ -778,27 +777,20 @@ async def test_claude_probe_runs_a_real_version_child_without_the_runtime_proxy(
 
 @pytest.mark.asyncio
 async def test_claude_probe_resolves_a_bare_binary_name_through_path_lookup(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The deployment shape on Windows: a bare `claude_bin` resolved through PATH/PATHEXT rather
-    # than an absolute path. A copy of a standalone interpreter named like an executable makes
-    # `shutil.which` do the real lookup. copyfile copies contents but not the mode, so the copy
-    # needs the execute bit back or the POSIX lookup refuses it.
-    binary_name = "claude-fake.exe" if sys.platform == "win32" else "claude-fake"
-    copied = tmp_path / binary_name
-    if sys.platform == "darwin":
-        # macOS uv CPython links libpython through @executable_path/../lib
-        # (measured: a copied base interpreter dies in dyld with
-        # "Library not loaded"), so a relocated interpreter copy cannot run
-        # here. The intent under test is the PATH lookup -> probe flow, so
-        # a shebang shim standing in for the CLI keeps that intent intact.
-        copied.write_text(f'#!/bin/sh\necho "Python {_version_tuple()}"\n')
-    else:
-        shutil.copyfile(_standalone_python(), copied)
-    copied.chmod(copied.stat().st_mode | 0o111)
-    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}")
+    # Exercise the deployment shape directly: a bare `claude_bin` resolved through PATH rather
+    # than an absolute path. Keep the real interpreter in its installed directory so its runtime
+    # libraries remain resolvable on Windows/macOS. On Windows omit `.exe` deliberately so
+    # `shutil.which` must also exercise PATHEXT resolution.
+    interpreter = _standalone_python()
+    binary_name = interpreter.stem if sys.platform == "win32" else interpreter.name
+    monkeypatch.setenv(
+        "PATH",
+        f"{interpreter.parent}{os.pathsep}{os.environ.get('PATH', '')}",
+    )
 
-    adapter = ClaudeAdapter(ClaudeSettings(enabled=True, claude_bin="claude-fake"))
+    adapter = ClaudeAdapter(ClaudeSettings(enabled=True, claude_bin=binary_name))
     info = await adapter.probe()
     assert info.available is True
     assert info.version is not None and info.version.startswith("Python")

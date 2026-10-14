@@ -74,6 +74,31 @@ Advisory result only
 
 Jev runs from the host Bridge, not the MCP container. Task Preflight and Runtime Router share one task-submission request; Model Advisor can run before submission only after native model discovery; Approval Advisor runs only after a provider creates an approval request. These outputs never become authorization, runtime-selection, or model-selection authority.
 
+## Native persistent lifecycle
+
+Native deployments keep persistence outside the MCP protocol surface and within the current user's OS lifecycle:
+
+```text
+Windows v0.14.0 development target
+Task Scheduler 2.0 (InteractiveToken · LeastPrivilege)
+   │  logon trigger + 1-minute time-trigger heartbeat
+   ▼
+windowless watchdog
+   │  Job Object containment + bounded restart
+   ▼
+managed runner
+   │  bounded Tunnel-generation restart
+   ▼
+tunnel-client -> supervisor -> ServerFS / Agent Bridge
+
+macOS v0.13.2
+SMAppService + per-user LaunchAgents
+   ▼
+persistent Tunnel / Agent Bridge
+```
+
+The Windows v0.14 development design is deliberately **not** an SCM/LocalSystem service: install, runtime, maintenance and removal stay current-user and non-elevated. A fresh task is registered disabled; `service start` enables it, while `service stop` disables it before ending the current action so the heartbeat cannot undo an intentional stop. `IgnoreNew` plus the native ownership mutex preserve exactly one managed Windows Tunnel lifecycle.
+
 ## Capability boundaries
 
 ServerFS exposes narrow operations rather than a generic execution primitive:
@@ -85,4 +110,4 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - structured Agent task RPC, model discovery and request-scoped model override
 - optional host-side Jev advisory decisions
 
-In the current v0.13.2 stable release, the supported MCP surfaces remain 11 / 13 / 21 / 23 tools. Every optional capability is separately gated; v0.12's independent Tunnel/Agent/Jev proxy switches and v0.13's native macOS deployment do not change the public tool counts. v0.13.2 changes only the macOS persistence boundary to app-associated `SMAppService` LaunchAgents; Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.
+In the current **v0.13.2** stable release, the supported MCP surfaces remain 11 / 13 / 21 / 23 tools. Every optional capability is separately gated; v0.12's independent Tunnel/Agent/Jev proxy switches and v0.13's native macOS deployment do not change the public tool counts. The in-development v0.14 Windows persistent lifecycle likewise does not change that capability surface. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.

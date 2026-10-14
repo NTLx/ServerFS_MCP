@@ -15,6 +15,8 @@ on:
       - "src/serverfs_mcp/backends.py"
       - "src/serverfs_mcp/linux_backend.py"
       - "src/serverfs_mcp/windows_backend.py"
+      - "src/serverfs_mcp/windows_*.py"
+      - "src/serverfs_mcp/agent_lifecycle.py"
       - "src/serverfs_mcp/paths.py"
       - "src/serverfs_mcp/tools.py"
       - "src/serverfs_mcp/cli.py"
@@ -46,6 +48,8 @@ on:
       - "src/serverfs_mcp/backends.py"
       - "src/serverfs_mcp/linux_backend.py"
       - "src/serverfs_mcp/windows_backend.py"
+      - "src/serverfs_mcp/windows_*.py"
+      - "src/serverfs_mcp/agent_lifecycle.py"
       - "src/serverfs_mcp/paths.py"
       - "src/serverfs_mcp/tools.py"
       - "src/serverfs_mcp/cli.py"
@@ -159,6 +163,7 @@ jobs:
           tests/test_windows_path_acceptance.py
           tests/test_cli.py
           tests/test_native_tunnel.py
+          tests/test_windows_service.py
           tests/test_doctor.py
           tests/test_tunnel_bootstrap.py
           tests/test_paths.py
@@ -183,7 +188,7 @@ jobs:
           uv pip install --python .venv-wheel/Scripts/python.exe $wheel pytest
           uv pip install --python .venv-wheel/Scripts/python.exe -e .
           Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
-          .venv-wheel/Scripts/python.exe -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py -q
+          .venv-wheel/Scripts/python.exe -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py tests/test_windows_service.py -q
         shell: pwsh
 
       - name: upload native wheel

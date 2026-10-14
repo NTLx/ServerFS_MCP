@@ -74,6 +74,31 @@ TypeSafe Jev API
 
 Jev 从宿主机 Bridge 发起调用，不运行在 MCP 容器中。Task Preflight 与 Runtime Router 共用一次任务提交请求；Model Advisor 仅在原生模型发现之后、任务提交之前按需运行；Approval Advisor 只在 provider 真正创建 approval request 后运行。这些输出不会获得授权权力，也不会自动选择 runtime 或模型。
 
+## 原生持久生命周期
+
+原生部署把持久化放在 MCP 协议面之外，并严格限定在当前用户的操作系统生命周期中：
+
+```text
+Windows v0.14.0 开发目标
+Task Scheduler 2.0（InteractiveToken · LeastPrivilege）
+   │  登录触发 + 1 分钟 TimeTrigger heartbeat
+   ▼
+无窗口 watchdog
+   │  Job Object containment + 有界重启
+   ▼
+managed runner
+   │  有界 Tunnel generation 重启
+   ▼
+tunnel-client -> supervisor -> ServerFS / Agent Bridge
+
+macOS v0.13.2
+SMAppService + 当前用户 LaunchAgent
+   ▼
+持久 Tunnel / Agent Bridge
+```
+
+Windows v0.14 开发方案刻意**不使用** SCM/LocalSystem Windows Service：安装、运行、维护与卸载全过程都保持当前用户、无需提权。全新任务注册后默认 disabled；`service start` 才启用，`service stop` 会先禁用任务再结束当前 Action，因此 heartbeat 不会把主动停止误认为故障并重新拉起。`IgnoreNew` 与原生 ownership mutex 共同保证只有一个受管 Windows Tunnel 生命周期。
+
 ## 能力边界
 
 ServerFS 提供窄能力操作，而不是通用执行原语：
@@ -85,4 +110,4 @@ ServerFS 提供窄能力操作，而不是通用执行原语：
 - 结构化 Agent task RPC、模型发现与单次任务模型覆盖
 - 可选的宿主机 Jev advisory decision
 
-当前 v0.13.2 稳定版仍支持 11 / 13 / 21 / 23 个工具的四种 MCP 能力面。每种可选能力都有独立门控；v0.12 的 Tunnel / Agent / Jev 独立代理开关与 v0.13 的 macOS 原生部署都不会改变公开工具数量。v0.13.2 只将 macOS 持久服务边界迁移到 app-associated `SMAppService` LaunchAgent；Jev 仍是 Agent Bridge 内部 advisor，而不是新的 MCP capability surface。
+当前 **v0.13.2** 稳定版仍支持 11 / 13 / 21 / 23 个工具的四种 MCP 能力面。每种可选能力都有独立门控；v0.12 的 Tunnel / Agent / Jev 独立代理开关与 v0.13 的 macOS 原生部署都不会改变公开工具数量。开发中的 v0.14 Windows 持久生命周期同样不会改变这组能力面。Jev 仍是 Agent Bridge 内部 advisor，而不是新的 MCP capability surface。

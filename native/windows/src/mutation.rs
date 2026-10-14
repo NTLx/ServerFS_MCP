@@ -657,7 +657,14 @@ pub fn delete_directory(
     if final_md.id != initial.id || final_md.revision() != expected_revision {
         return Err(NativeError::RevisionConflict);
     }
-    if !is_empty(&final_target).map_err(|_| NativeError::RevisionConflict)? {
+    // The name-relative handle above is only the final identity/revision
+    // gate.  Keep the second emptiness check on the already-held mutation
+    // target: it has the directory-enumeration access this check requires,
+    // and it is the same verified object that will receive disposition.
+    // If a child appears after this check, mark_delete still returns
+    // DirectoryNotEmpty, so the race remains closed without broadening the
+    // final gate handle's rights.
+    if !is_empty(&original)? {
         return Err(NativeError::DirectoryNotEmpty);
     }
     ffi::mark_delete(&original).map_err(|error| {

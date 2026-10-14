@@ -4,9 +4,10 @@
 
 ## Current release
 
-- **v0.13.2 is released and is the current stable release.**
+- **v0.13.2 is the current stable release. v0.14.0 is under active development and is not yet released.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
+- Windows v0.14.0 development replaces the manual outer launcher with a current-user, least-privilege Task Scheduler 2.0 lifecycle: logon + repeating time triggers own a windowless watchdog, the watchdog restarts the managed runner, and the runner restarts Tunnel generations. Installation, runtime, maintenance and removal remain non-elevated.
 - macOS v0.13 support is intentionally narrow: Apple M-series, native arm64, macOS 27 Golden Gate; no Intel, Rosetta, macOS 26/28 or `darwin-amd64` tunnel asset is claimed. v0.13.2 moves persistent Tunnel/Bridge lifecycle to app-associated `SMAppService` LaunchAgents.
 - `dev_plan_v*.md`, acceptance reports and audits are historical records. Update a stale present-tense status when it becomes false, but do not mechanically rewrite historical evidence or milestone facts.
 
@@ -43,6 +44,7 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.11** — native Windows Agent delegation for Codex, Claude and Qoder.
 - **v0.12** — independent Linux proxy controls for Tunnel, Agent runtimes and Jev, plus related restricted-network reliability work.
 - **v0.13** — native macOS filesystem + Agent deployment, POSIX-generic Codex seam and Darwin acceptance; v0.13.2 adds Apple-native ServiceManagement persistence for the Tunnel and Agent Bridge.
+- **v0.14** — Windows current-user persistent lifecycle through Task Scheduler 2.0, a windowless watchdog, controlled legacy hand-over, exactly-one native Tunnel ownership and layered Tunnel/runner/watchdog recovery without administrator requirements.
 
 ## Keep this index small
 

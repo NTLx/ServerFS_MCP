@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import signal
@@ -9,6 +10,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, BinaryIO
 
 from .shared_proxy import PROXY_KEYS, parse_shared_proxy
 
@@ -46,6 +48,51 @@ def _darwin_tunnel_instance_lock():
         yield
     finally:
         os.close(fd)
+
+
+@contextmanager
+def _windows_tunnel_instance_lock():
+    """Hold one current-user/session Mutex for a native Windows Tunnel owner."""
+    if os.name != "nt":
+        yield
+        return
+
+    import ctypes
+
+    from .native_endpoint import current_user_sid
+
+    digest = hashlib.sha256(current_user_sid().encode("utf-8")).hexdigest()[:32]
+    name = f"Local\\serverfs-native-tunnel-v1-{digest}"
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+    kernel32.CloseHandle.restype = ctypes.c_int
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    ctypes.set_last_error(0)
+    handle = kernel32.CreateMutexW(None, False, name)
+    if not handle:
+        raise NativeTunnelError("the native Windows Tunnel ownership mutex is unavailable")
+    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+        kernel32.CloseHandle(handle)
+        raise NativeTunnelError("another native Windows tunnel instance is already running")
+    try:
+        yield
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+@contextmanager
+def native_tunnel_instance_lock(*, already_held: bool = False):
+    """Hold the platform-native single-owner guard for the Tunnel lifecycle."""
+    if already_held:
+        yield
+        return
+    if os.name == "nt":
+        with _windows_tunnel_instance_lock():
+            yield
+        return
+    with _darwin_tunnel_instance_lock():
+        yield
 
 
 def parse_proxy_env_file(path: Path | None) -> dict[str, str]:
@@ -170,7 +217,14 @@ def _materialize_key_file(api_key: str) -> Path:
     return key_path
 
 
-def _run_tunnel_client(argv: list[str], env: dict[str, str]) -> int:
+def _run_tunnel_client(
+    argv: list[str],
+    env: dict[str, str],
+    *,
+    job: Any | None = None,
+    stdout: BinaryIO | None = None,
+    stderr: BinaryIO | None = None,
+) -> int:
     """Wait for tunnel-client and forward launchd termination on macOS.
 
     v0.13.1 used ``subprocess.run`` directly. A SIGTERM delivered to the Python
@@ -179,7 +233,37 @@ def _run_tunnel_client(argv: list[str], env: dict[str, str]) -> int:
     it must explicitly forward termination to tunnel-client and wait for the
     existing tunnel-client shutdown path to finish.
     """
-    process = subprocess.Popen(argv, env=env)
+    popen_kwargs: dict[str, Any] = {"env": env}
+    if os.name == "nt" and job is not None:
+        # The persistent Windows service is a background task. tunnel-client
+        # is a console-subsystem executable; without CREATE_NO_WINDOW Windows
+        # creates a visible conhost window even though the Task action itself
+        # is pythonw.exe.
+        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    if stdout is not None:
+        popen_kwargs["stdout"] = stdout
+    if stderr is not None:
+        popen_kwargs["stderr"] = stderr
+    process = subprocess.Popen(argv, **popen_kwargs)
+    try:
+        if job is not None:
+            # v0.14 Windows persistence owns the whole Tunnel generation with
+            # a kill-on-close Job Object.  Assignment happens immediately so
+            # terminating the lifecycle runner cannot strand descendants.
+            job.assign(process)
+    except BaseException:
+        if process.poll() is None:
+            try:
+                process.terminate()
+                process.wait(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    process.kill()
+                    process.wait(timeout=5)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+        raise
+
     if sys.platform != "darwin":
         return process.wait()
 
@@ -209,6 +293,10 @@ def run_native_tunnel(
     api_key: str | None = None,
     base_url: str | None = None,
     health_listen_addr: str | None = None,
+    job: Any | None = None,
+    stdout: BinaryIO | None = None,
+    stderr: BinaryIO | None = None,
+    instance_lock_held: bool = False,
 ) -> int:
     """Run tunnel-client, whose stdio child is the minimal sanitizer supervisor.
 
@@ -306,8 +394,17 @@ def run_native_tunnel(
     # launcher owns this connectivity infrastructure, so it requests an
     # ephemeral loopback port unless the operator overrides it.
     tunnel_env["HEALTH_LISTEN_ADDR"] = health_listen_addr or "127.0.0.1:0"
-    with _darwin_tunnel_instance_lock():
-        return _run_tunnel_client(tunnel_argv, tunnel_env)
+    with native_tunnel_instance_lock(already_held=instance_lock_held):
+        if job is None and stdout is None and stderr is None:
+            # Preserve the direct-launch call shape used before v0.14.
+            return _run_tunnel_client(tunnel_argv, tunnel_env)
+        return _run_tunnel_client(
+            tunnel_argv,
+            tunnel_env,
+            job=job,
+            stdout=stdout,
+            stderr=stderr,
+        )
 
 
 def _validated_health_addr(raw: str) -> str:

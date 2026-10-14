@@ -145,7 +145,7 @@ impl SecurityDescriptor {
 }
 
 /// Access masks used by the traversal kernel.
-pub const DIR_TRAVERSE_ACCESS: u32 = 0x0000_00A1; // FILE_LIST_DIRECTORY|FILE_TRAVERSE|FILE_READ_ATTRIBUTES
+pub const DIR_TRAVERSE_ACCESS: u32 = 0x0010_00A1; // FILE_LIST_DIRECTORY|FILE_TRAVERSE|FILE_READ_ATTRIBUTES|SYNCHRONIZE
 pub const FILE_READ_ACCESS: u32 = 0x0012_0089; // FILE_GENERIC_READ (includes READ_ATTRIBUTES)
 pub const READ_ATTRIBUTES_ONLY: u32 = 0x0000_0080;
 
@@ -238,6 +238,18 @@ pub fn open_relative_with_share(
     };
 
     let mut handle: HANDLE = std::ptr::null_mut();
+    // Directory traversal handles that request SYNCHRONIZE should use the
+    // synchronous NT I/O mode as well. This matches the normal CreateFileW
+    // directory-handle shape used for the workdir root and makes directory
+    // enumeration reliable for relative opens. Keep custom narrow directory
+    // opens asynchronous unless they explicitly request SYNCHRONIZE: NT
+    // requires that access bit whenever FILE_SYNCHRONOUS_IO_NONALERT is set.
+    let options = create_options_for(kind)
+        | if kind == OpenKind::Directory && access & SYNCHRONIZE_ACCESS != 0 {
+            FILE_SYNCHRONOUS_IO_NONALERT
+        } else {
+            0
+        };
     let status = unsafe {
         NtCreateFile(
             &mut handle,
@@ -248,7 +260,7 @@ pub fn open_relative_with_share(
             0,                // FileAttributes
             share_mode,
             FILE_OPEN,
-            create_options_for(kind),
+            options,
             std::ptr::null(), // EaBuffer
             0,                // EaLength
         )

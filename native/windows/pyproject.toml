@@ -9,6 +9,7 @@ build-backend = "maturin"
 
 [project]
 name = "serverfs-windows-native"
+dynamic = ["version"]
 description = "ServerFS Windows native filesystem kernel (handle-capable read/mutation engine)"
 requires-python = ">=3.12"
 license = "MIT"
@@ -18,11 +19,10 @@ classifiers = [
     "Private :: Do Not Upload",
 ]
 
-# The version is owned by Cargo.toml; maturity, not duplication, keeps the
-# release metadata in step.
+# The version is owned by Cargo.toml; declaring it dynamic lets Maturin
+# source it from Cargo metadata without duplicating release state.
 
 [tool.maturin]
 features = ["pyo3"]
 module-name = "serverfs_windows_native"
-python-source = ""
 strip = true

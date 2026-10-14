@@ -219,6 +219,7 @@ def spawn_bridge(
             command,
             stdin=subprocess.PIPE,
             env=dict(child_env),
+            creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0),
         )
     except OSError as exc:
         # The message names the failure class only; the environment is never echoed.

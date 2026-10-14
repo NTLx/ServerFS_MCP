@@ -5,9 +5,9 @@ description: Secure, scoped filesystem access on Linux, Windows and macOS for Ch
 
 ServerFS MCP exposes explicitly configured directories — Linux containers, native Windows since v0.10.0, native macOS since v0.13.0 — as **controlled workdirs** through the Model Context Protocol.
 
-Current stable release: **v0.13.2**. This release adds Apple-native `SMAppService` persistence for the macOS Tunnel and Agent Bridge, including legacy v0.13.0/v0.13.1 hand-over and duplicate-tunnel protection, while preserving the v0.13.1 Windows hardening and the existing Linux, Windows, and macOS public tool surfaces.
+Current stable release: **v0.13.2**. The in-development v0.14.0 work adds a persistent, current-user Windows lifecycle through Task Scheduler 2.0: a least-privilege scheduled task owns a windowless watchdog, the watchdog restarts the managed runner, and the runner restarts Tunnel generations. The design requires no administrator/UAC path and preserves the existing Linux, Windows, and macOS public tool surfaces.
 
-It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations, bounded whole-file binary transfer, and an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge remains optional; Codex, Claude and Qoder keep provider-neutral model discovery and request-scoped overrides, with advisory-only TypeSafe Jev support. v0.10.0 adds the native Windows deployment: an MCP stdio service over a prebuilt Rust/NTFS kernel wheel, with no Docker, WSL or MSVC.
+It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations, bounded whole-file binary transfer, and an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge remains optional; Codex, Claude and Qoder keep provider-neutral model discovery and request-scoped overrides, with advisory-only TypeSafe Jev support. Windows stays native: MCP stdio over a prebuilt Rust/NTFS kernel wheel, with no Docker, WSL or MSVC; the v0.14.0 development work also removes terminal/session lifetime from the normal Windows lifecycle.
 
 ## Capability surfaces
 
@@ -28,7 +28,7 @@ There is no shell, generic command executor, recursive delete, or unguarded over
 - [Security Model](./security/) — review the defense-in-depth model.
 - [Binary Transfer](./binary-transfer/) — enable bounded download/upload, including optional ChatGPT file-parameter ingress.
 - [Agent Bridge](./agent-bridge/) — opt into structured Codex/Claude/Qoder delegation.
-- [Windows Native](./windows-native/) — native Windows 11 x64 + local NTFS deployment, including installation, health checks, tunnel bootstrap, and Agent delegation.
+- [Windows Native](./windows-native/) — native Windows 11 x64 + local NTFS deployment, including current-user persistent service lifecycle, health checks, Tunnel bootstrap, and Agent delegation.
 - [macOS Native](./macos-native/) — native Apple M-series + macOS 27 deployment, including the Darwin filesystem boundary, launchd Agent Bridge, and platform gate.
 - [Jev Advisors](./jev-advisors/) — optional experimental task preflight, five-way runtime routing, pre-submit model advice, and approval advice; v0.12 adds independent explicit Jev proxy routing.
 

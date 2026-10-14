@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -333,6 +334,79 @@ def test_darwin_tunnel_client_forwards_sigterm_and_restores_handlers(monkeypatch
         (native_tunnel.signal.SIGTERM, f"old-{native_tunnel.signal.SIGTERM}"),
         (native_tunnel.signal.SIGINT, f"old-{native_tunnel.signal.SIGINT}"),
     ]
+
+
+def test_windows_managed_tunnel_assigns_child_to_outer_job(monkeypatch) -> None:
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.terminated = False
+
+        def poll(self):
+            return None if not self.terminated else 2
+
+        def wait(self, timeout=None):
+            del timeout
+            return 7
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            self.terminated = True
+
+    class FakeJob:
+        def __init__(self) -> None:
+            self.assigned = None
+
+        def assign(self, process) -> None:
+            self.assigned = process
+
+    process = FakeProcess()
+    job = FakeJob()
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(native_tunnel.sys, "platform", "win32")
+    monkeypatch.setattr(native_tunnel.os, "name", "nt")
+
+    def fake_popen(argv, **kwargs):
+        captured.update(argv=argv, **kwargs)
+        return process
+
+    monkeypatch.setattr(native_tunnel.subprocess, "Popen", fake_popen)
+
+    assert native_tunnel._run_tunnel_client(["client"], {}, job=job) == 7
+    assert job.assigned is process
+    assert captured["creationflags"] == subprocess.CREATE_NO_WINDOW
+
+
+def test_windows_managed_tunnel_kills_child_if_job_assignment_fails(monkeypatch) -> None:
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.terminated = False
+
+        def poll(self):
+            return None if not self.terminated else 1
+
+        def wait(self, timeout=None):
+            del timeout
+            return 1
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            self.terminated = True
+
+    class FailingJob:
+        def assign(self, _process) -> None:
+            raise RuntimeError("assignment failed")
+
+    process = FakeProcess()
+    monkeypatch.setattr(native_tunnel.sys, "platform", "win32")
+    monkeypatch.setattr(native_tunnel.subprocess, "Popen", lambda argv, **kwargs: process)
+
+    with pytest.raises(RuntimeError, match="assignment failed"):
+        native_tunnel._run_tunnel_client(["client"], {}, job=FailingJob())
+    assert process.terminated is True
 
 
 def test_api_key_file_inside_workdir_is_refused(tmp_path: Path, monkeypatch) -> None:
