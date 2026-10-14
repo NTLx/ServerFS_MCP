@@ -17,7 +17,7 @@ Apple M-series Mac, native arm64 (no Rosetta), macOS 27 Golden Gate, local APFS
 ```bash
 uv sync --frozen                           # ServerFS product environment
 uv sync --project agent_bridge --frozen    # Agent Bridge environment
-serverfs bootstrap tunnel-client           # pinned official darwin-arm64 asset
+serverfs bootstrap tunnel-client           # defaults to the ServerFS-tested official release
 serverfs doctor --config serverfs.toml
 ```
 

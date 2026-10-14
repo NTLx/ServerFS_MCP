@@ -15,7 +15,7 @@ registration, stored password or administrator/UAC step is part of the intended 
 | Local environment config + proxy settings | repo root `.env` | no |
 | Ops / compatibility scripts | `deployment\windows\` | yes |
 | Python env with the installed abi3 wheel | `%LOCALAPPDATA%\ServerFS\connector-env` | never |
-| Pinned tunnel-client binary | `%LOCALAPPDATA%\ServerFS\bin\tunnel-client-v<ver>-windows-amd64\` | never |
+| Versioned tunnel-client binary | `%LOCALAPPDATA%\ServerFS\bin\tunnel-client-v<ver>-windows-amd64\` | never |
 | Verified native wheels | `%LOCALAPPDATA%\ServerFS\wheels` | never |
 | v0.14 lifecycle manifest/state/logs | `%LOCALAPPDATA%\ServerFS\service-manager\windows\` | never |
 | Control Plane API key | `%USERPROFILE%\.config\serverfs\api-key` | never — product-enforced: it must live outside every configured workdir (`native_tunnel.py` refuses otherwise) |
@@ -89,7 +89,7 @@ with a managed `serverfs service` instance.
 
 1. `connector-env` venv with the published `serverfs-windows-native` wheel
    (`serverfs bootstrap native-wheel --url ... --sha256 ...`, then `pip install`).
-2. Pinned tunnel-client into the default data home:
+2. Official tunnel-client into the default data home. The command defaults to the ServerFS-tested release; another explicit release may be selected with `--version` plus its manifest SHA-256:
    `serverfs bootstrap tunnel-client`
 3. `%USERPROFILE%\.config\serverfs\api-key` holding the Control Plane key
    (a scoped `rtk_` Runtime key is preferred over a full `sk-` key).

@@ -15,7 +15,7 @@ The runtime chain:
 Task Scheduler 2.0                    (InteractiveToken · LeastPrivilege)
   -> windowless watchdog              (logon + 1-minute heartbeat owner)
        -> managed runner              (kill-on-close Job Object; bounded restart)
-            -> official pinned tunnel-client
+            -> official tunnel-client (ServerFS-tested release by default)
                  -> sanitizer supervisor
                       -> Agent Bridge (optional, separate venv + lifecycle lease)
                            -> provider CLI (codex / claude / qodercli)
@@ -97,10 +97,10 @@ The Agent egress proxy is a **credentialless HTTP proxy** supplied by the operat
 ## Tunnel bootstrap and connectivity
 
 ```powershell
-& $serverfs bootstrap tunnel-client   # pinned official release, SHA-256 double-anchored
+& $serverfs bootstrap tunnel-client   # defaults to the ServerFS-tested official release
 ```
 
-The bootstrap stores the client under the user-owned ServerFS data directory and never modifies the machine PATH; its verification chain pins the official `SHA256SUMS.txt` digest and re-hashes the downloaded archive against it. The v0.14 managed runner auto-discovers the bootstrapped client, binds tunnel-client's health server to an ephemeral loopback port, passes the control-plane key only as a `file:` reference (the key file must live outside every workdir), and strips all `CONTROL_PLANE_*`, `TUNNEL_CLIENT_*`, `OPENAI_*`, `MCP_*`, `SERVERFS_PROXY_*` and proxy variables before spawning the ServerFS child. Proxy configuration uses the same four `SERVERFS_PROXY_*` fields in `.env` as Linux (HTTP only; SOCKS is not supported and not claimed).
+The bootstrap stores the client under the user-owned ServerFS data directory and never modifies the machine PATH. The current ServerFS-tested baseline is `v0.0.16`; it is a tested default, not a hard compatibility lock. Another official release can be selected with `--version`, and non-default versions must also provide `--manifest-sha256` for that release's official `SHA256SUMS.txt`, preserving the same double-anchor verification chain before the downloaded archive is accepted. The v0.14 managed runner auto-discovers the bootstrapped client, binds tunnel-client's health server to an ephemeral loopback port, passes the control-plane key only as a `file:` reference (the key file must live outside every workdir), and strips all `CONTROL_PLANE_*`, `TUNNEL_CLIENT_*`, `OPENAI_*`, `MCP_*`, `SERVERFS_PROXY_*` and proxy variables before spawning the ServerFS child. Proxy configuration uses the same four `SERVERFS_PROXY_*` fields in `.env` as Linux (HTTP only; SOCKS is not supported and not claimed).
 
 Direct `serverfs tunnel` remains useful for bounded diagnostics and compatibility work, but it is not the intended normal v0.14+ persistent deployment path. Multiple active tunnel-client instances sharing one tunnel ID are unsupported upstream, and the current-user ownership guard refuses a managed/direct double-owner shape.
 

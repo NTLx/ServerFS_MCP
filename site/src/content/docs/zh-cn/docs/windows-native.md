@@ -18,7 +18,7 @@ Windows Task Scheduler 2.0
   MultipleInstancesPolicy = IgnoreNew
        -> 无窗口 ServerFS watchdog
             -> managed runner
-                 -> 官方 pinned tunnel-client
+                 -> 官方 tunnel-client（默认使用 ServerFS 实测版本）
                       -> 净化 supervisor
                            -> serverfs serve
                                 -> serverfs-windows-native wheel
@@ -101,15 +101,15 @@ Agent 出站 proxy 是运营者通过 `SERVERFS_AGENT_PROXY_URL` 提供的**无�
 
 ## Tunnel 引导与连接
 
-先一次性引导官方 pinned client，之后让持久 service 持有连接：
+先一次性引导官方 tunnel-client，之后让持久 service 持有连接：
 
 ```powershell
-& $serverfs bootstrap tunnel-client   # 官方 pinned 版本，SHA-256 双重锚定
+& $serverfs bootstrap tunnel-client   # 默认使用 ServerFS 实测的官方版本
 & $serverfs service install --config serverfs.toml --env-file .env
 & $serverfs service start
 ```
 
-bootstrap 把 client 存到用户所有的 ServerFS 数据目录下，绝不修改机器 PATH；其验证链先锚定官方 `SHA256SUMS.txt` 摘要，再把下载的档案重新哈希比对。v0.14 managed runner 自动发现已引导的 client，把 tunnel-client 的健康服务绑定到临时 loopback 端口，只以 `file:` 引用传递控制面密钥（密钥文件必须位于所有 workdir 之外），并在 spawn ServerFS 子进程前剥离全部 `CONTROL_PLANE_*`、`TUNNEL_CLIENT_*`、`OPENAI_*`、`MCP_*`、`SERVERFS_PROXY_*` 与 proxy 变量。proxy 配置与 Linux 共用 `.env` 中同样的四个 `SERVERFS_PROXY_*` 字段（仅 HTTP；不支持也不宣称 SOCKS）。
+bootstrap 把 client 存到用户所有的 ServerFS 数据目录下，绝不修改机器 PATH。当前 ServerFS 实测基线为 `v0.0.16`；它只是默认测试版本，不是兼容性锁定。可通过 `--version` 选择其他官方版本；选择非默认版本时还必须通过 `--manifest-sha256` 提供该版本官方 `SHA256SUMS.txt` 的 SHA-256，以保留同样的双重锚定校验链，再对下载档案重新哈希比对。v0.14 managed runner 自动发现已引导的 client，把 tunnel-client 的健康服务绑定到临时 loopback 端口，只以 `file:` 引用传递控制面密钥（密钥文件必须位于所有 workdir 之外），并在 spawn ServerFS 子进程前剥离全部 `CONTROL_PLANE_*`、`TUNNEL_CLIENT_*`、`OPENAI_*`、`MCP_*`、`SERVERFS_PROXY_*` 与 proxy 变量。proxy 配置与 Linux 共用 `.env` 中同样的四个 `SERVERFS_PROXY_*` 字段（仅 HTTP；不支持也不宣称 SOCKS）。
 
 直接 `serverfs tunnel` 仍可用于有界诊断和兼容恢复，但不是 v0.14.0+ 的正常持久部署路径。当前用户 ownership guard 会拒绝 managed lifecycle 与 manual lifecycle 双重占用。
 

@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from platform_contract import linux_only
+from serverfs_mcp.tunnel_bootstrap import TESTED_TUNNEL_CLIENT_VERSION
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _LAUNCHER = _REPO_ROOT / "deployment" / "tunnel" / "tunnel-launcher.sh"
@@ -207,6 +208,15 @@ def test_compose_scopes_proxy_environment_to_openai_tunnel() -> None:
     assert re.search(r"https?://[^/\s]+@[^/\s]+", compose) is None
     assert "tunnel-launcher.sh:ro" in tunnel
     assert 'entrypoint: ["/bin/sh", "/opt/serverfs/tunnel-launcher.sh"]' in tunnel
+
+
+def test_tunnel_image_examples_track_tested_native_version() -> None:
+    compose = (_REPO_ROOT / "compose.yml").read_text(encoding="utf-8")
+    env_example = (_REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    image = f"ghcr.io/openai/tunnel-client:{TESTED_TUNNEL_CLIENT_VERSION}"
+
+    assert f"${{OPENAI_TUNNEL_IMAGE:-{image}}}" in compose
+    assert f"OPENAI_TUNNEL_IMAGE={image}" in env_example
 
 
 def test_env_example_documents_only_project_proxy_inputs() -> None:

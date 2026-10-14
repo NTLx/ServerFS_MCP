@@ -11,7 +11,7 @@ v0.13.2 keeps the Darwin filesystem and Agent protocol implementation in Python,
 SMAppService / launchd
   +-- com.ntlx.serverfs.tunnel
   |    -> serverfs tunnel
-  |         -> pinned tunnel-client (darwin-arm64)
+  |         -> official tunnel-client (tested release by default, darwin-arm64)
   |              -> sanitizer supervisor
   |                   -> serverfs serve
   |                        -> Darwin FD backend
@@ -36,13 +36,17 @@ There is no Docker, VM, Rosetta requirement or compiled macOS filesystem kernel 
 
 ## Install persistent services
 
-Install the normal Python environments and pinned tunnel client first:
+Install the normal Python environments and official tunnel client first:
 
 ```bash
 uv sync --frozen
 uv sync --project agent_bridge --frozen
-serverfs bootstrap tunnel-client
+serverfs bootstrap tunnel-client   # defaults to the ServerFS-tested v0.0.16 release
 serverfs doctor --config serverfs.toml
+
+# To use another official release, provide both its tag and the SHA-256 of
+# that release's official SHA256SUMS.txt:
+# serverfs bootstrap tunnel-client --version vX.Y.Z --manifest-sha256 <sha256>
 ```
 
 Then install the persistent user services:

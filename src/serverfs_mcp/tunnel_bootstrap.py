@@ -1,4 +1,4 @@
-"""Pinned project-local bootstrap for official OpenAI tunnel-client and the
+"""Project-local bootstrap for official OpenAI tunnel-client and the
 Windows native wheel (v0.10 Phase E2, §25).
 
 The filesystem service must stay fully runnable without anything in this
@@ -8,8 +8,9 @@ filesystem security kernel.
 Verification chain (deliberately double-anchor):
 
 1. the release manifest ``SHA256SUMS.txt`` is downloaded and its own
-   SHA-256 is compared against the digest pinned in this module — the
-   manifest is only trusted after that check;
+   SHA-256 is compared against an independently supplied expected digest
+   (the tested baseline is bundled; custom versions require one explicitly) —
+   the manifest is only trusted after that check;
 2. the platform archive's digest is taken from the trusted manifest;
 3. the downloaded archive is re-hashed and must match before anything is
    extracted;
@@ -36,14 +37,27 @@ import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
-TUNNEL_CLIENT_VERSION = "v0.0.15"
-RELEASE_BASE_URL = (
-    "https://github.com/openai/tunnel-client/releases/download/" + TUNNEL_CLIENT_VERSION + "/"
-)
+TESTED_TUNNEL_CLIENT_VERSION = "v0.0.16"
 MANIFEST_NAME = "SHA256SUMS.txt"
-# sha256sum of the upstream v0.0.15 SHA256SUMS.txt (measured on the official
-# release; also identical to the asset digest GitHub computes).
-PINNED_MANIFEST_SHA256 = "8a32bbcd724468f1874f12d5b0dedb6e6b07dfe5aa323cf5b4c070a5a81b0b4e"
+# ServerFS' currently tested baseline. Operators may select another official
+# release, but must provide that release manifest's SHA-256 explicitly so the
+# double-anchor verification chain is preserved.
+TESTED_MANIFEST_SHA256 = "fcce864a5935655534cc3d981257509579dbb5c71dbaec64c17a157ca9d65e56"
+
+
+def normalize_tunnel_client_version(version: str) -> str:
+    value = version.strip()
+    if not value.startswith("v"):
+        value = "v" + value
+    if not re.fullmatch(r"v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", value):
+        raise BootstrapError("tunnel-client version must be an official vX.Y.Z release tag")
+    return value
+
+
+def release_base_url(version: str) -> str:
+    value = normalize_tunnel_client_version(version)
+    return f"https://github.com/openai/tunnel-client/releases/download/{value}/"
+
 
 # The official zips ship the client plus its cloudflared runtime; extracting
 # "only the client exe" would break the launcher, so the whole top-level
@@ -194,17 +208,32 @@ def _extract_runtime_members(archive: Path, target: Path) -> list[str]:
 def bootstrap_tunnel_client(
     *,
     dest_parent: Path | None = None,
-    version: str = TUNNEL_CLIENT_VERSION,
+    version: str = TESTED_TUNNEL_CLIENT_VERSION,
     platform_tag: str | None = None,
     force: bool = False,
-    base_url: str = RELEASE_BASE_URL,
+    base_url: str | None = None,
     download: Callable[[str, Path], None] = default_download,
-    pinned_manifest_sha256: str = PINNED_MANIFEST_SHA256,
+    pinned_manifest_sha256: str | None = None,
 ) -> Path:
-    """Download, verify and install the pinned tunnel-client release.
+    """Download, verify and install an official tunnel-client release.
 
-    Returns the path of the installed client executable.
+    The tested ServerFS baseline is used by default. Selecting another release
+    requires the operator to provide the SHA-256 of that release's official
+    ``SHA256SUMS.txt`` so the manifest remains independently anchored.
     """
+    version = normalize_tunnel_client_version(version)
+    if base_url is None:
+        base_url = release_base_url(version)
+    if pinned_manifest_sha256 is None:
+        if version != TESTED_TUNNEL_CLIENT_VERSION:
+            raise BootstrapError(
+                "custom tunnel-client versions require the SHA-256 of the official "
+                "SHA256SUMS.txt manifest"
+            )
+        pinned_manifest_sha256 = TESTED_MANIFEST_SHA256
+    pinned_manifest_sha256 = pinned_manifest_sha256.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", pinned_manifest_sha256):
+        raise BootstrapError("manifest SHA-256 must be 64 hex characters")
     tag = platform_tag or detect_platform_tag()
     install_dir = tunnel_client_install_dir(version, tag, dest_parent)
     executable = install_dir / tunnel_client_executable_name()
@@ -276,14 +305,15 @@ def bootstrap_native_wheel(
 
 __all__ = [
     "BootstrapError",
-    "PINNED_MANIFEST_SHA256",
-    "RELEASE_BASE_URL",
-    "TUNNEL_CLIENT_VERSION",
+    "TESTED_MANIFEST_SHA256",
+    "TESTED_TUNNEL_CLIENT_VERSION",
     "bootstrap_native_wheel",
     "bootstrap_tunnel_client",
     "default_tunnel_client_path",
     "detect_platform_tag",
+    "normalize_tunnel_client_version",
     "parse_manifest",
+    "release_base_url",
     "serverfs_data_dir",
     "sha256_of_file",
     "tunnel_client_install_dir",

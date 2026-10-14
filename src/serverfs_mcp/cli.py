@@ -87,12 +87,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     bootstrap = sub.add_parser(
-        "bootstrap", help="Download/verify pinned connectivity artifacts (never touches PATH)"
+        "bootstrap", help="Download/verify connectivity artifacts (never touches PATH)"
     )
     bootstrap_sub = bootstrap.add_subparsers(dest="bootstrap_target", required=True)
     bt = bootstrap_sub.add_parser(
         "tunnel-client",
-        help="Install the pinned official tunnel-client under the ServerFS data dir",
+        help="Install an official tunnel-client under the ServerFS data dir",
+    )
+    bt.add_argument(
+        "--version",
+        help="Official release tag; defaults to the ServerFS-tested version",
+    )
+    bt.add_argument(
+        "--manifest-sha256",
+        help=(
+            "SHA-256 of that release's official SHA256SUMS.txt; required when --version "
+            "differs from the ServerFS-tested version"
+        ),
     )
     bt.add_argument("--force", action="store_true", help="Reinstall over an existing bootstrap")
     bw = bootstrap_sub.add_parser(
@@ -411,7 +422,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_bootstrap(args: argparse.Namespace) -> int:
-    from .tunnel_bootstrap import BootstrapError, bootstrap_native_wheel, bootstrap_tunnel_client
+    from .tunnel_bootstrap import (
+        TESTED_TUNNEL_CLIENT_VERSION,
+        BootstrapError,
+        bootstrap_native_wheel,
+        bootstrap_tunnel_client,
+    )
 
     try:
         if args.bootstrap_target == "tunnel-client":
@@ -426,7 +442,11 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
                         f"{UNSUPPORTED_CODE}: tunnel-client bootstrap requires native arm64 "
                         f"macOS 27 ({status.reason})"
                     )
-            path = bootstrap_tunnel_client(force=args.force)
+            path = bootstrap_tunnel_client(
+                force=args.force,
+                version=args.version or TESTED_TUNNEL_CLIENT_VERSION,
+                pinned_manifest_sha256=args.manifest_sha256,
+            )
             sys.stderr.write(f"tunnel-client installed: {path}\n")
             return 0
         if args.bootstrap_target == "native-wheel":

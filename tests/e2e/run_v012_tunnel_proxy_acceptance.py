@@ -25,7 +25,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from v012_connect_forwarder import ConnectForwarder  # noqa: E402
 
-DEFAULT_IMAGE = "ghcr.io/openai/tunnel-client:v0.0.14"
+from serverfs_mcp.tunnel_bootstrap import TESTED_TUNNEL_CLIENT_VERSION  # noqa: E402
+
+DEFAULT_IMAGE = f"ghcr.io/openai/tunnel-client:{TESTED_TUNNEL_CLIENT_VERSION}"
 _LAUNCHER = REPO_ROOT / "deployment" / "tunnel" / "tunnel-launcher.sh"
 
 

@@ -36,13 +36,16 @@ SMAppService / launchd
 
 ## 安装持久服务
 
-先安装标准 Python 环境和固定版本 tunnel client：
+先安装标准 Python 环境和官方 tunnel-client：
 
 ```bash
 uv sync --frozen
 uv sync --project agent_bridge --frozen
-serverfs bootstrap tunnel-client
+serverfs bootstrap tunnel-client   # 默认使用 ServerFS 实测的 v0.0.16
 serverfs doctor --config serverfs.toml
+
+# 如需使用其他官方版本，需同时提供版本号和该版本官方 SHA256SUMS.txt 的 SHA-256：
+# serverfs bootstrap tunnel-client --version vX.Y.Z --manifest-sha256 <sha256>
 ```
 
 然后安装持久化的用户服务：

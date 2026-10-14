@@ -1,7 +1,7 @@
-"""Tests for the pinned tunnel-client / native-wheel bootstrap chain.
+"""Tests for the tunnel-client / native-wheel bootstrap chain.
 
 The verification chain is exercised fully offline with fixture downloads:
-manifest digest pin -> manifest entry -> archive re-hash -> top-level-only
+manifest digest anchor -> manifest entry -> archive re-hash -> top-level-only
 extraction. Host allow-listing and digest arithmetic are pure unit checks;
 the real upstream download is a recorded manual step (Phase F evidence).
 """
@@ -24,7 +24,7 @@ CLIENT = "tunnel-client.exe" if sys.platform == "win32" else "tunnel-client"
 
 
 def make_release_bundle() -> tuple[bytes, dict[str, bytes]]:
-    """(manifest bytes, url-suffix -> payload) for a synthetic pinned release."""
+    """(manifest bytes, url-suffix -> payload) for a synthetic tested release."""
     inner = io.BytesIO()
     with zipfile.ZipFile(inner, "w") as bundle:
         bundle.writestr(CLIENT, b"client-payload")
@@ -32,11 +32,11 @@ def make_release_bundle() -> tuple[bytes, dict[str, bytes]]:
         bundle.writestr("cloudflared-manifest.json", b"{}")
         bundle.writestr("LICENSE", b"mit")
         bundle.writestr("NOTICE", b"notice")
-        bundle.writestr("tunnel-client-v0.0.15-windows-amd64-licenses.txt", b"provenance")
-        bundle.writestr("tunnel-client-v0.0.15-windows-amd64.spdx.json", b"{}")
+        bundle.writestr("tunnel-client-v0.0.16-windows-amd64-licenses.txt", b"provenance")
+        bundle.writestr("tunnel-client-v0.0.16-windows-amd64.spdx.json", b"{}")
     archive = inner.getvalue()
     tag = tb.detect_platform_tag()
-    asset = f"tunnel-client-{tb.TUNNEL_CLIENT_VERSION}-{tag}.zip"
+    asset = f"tunnel-client-{tb.TESTED_TUNNEL_CLIENT_VERSION}-{tag}.zip"
     manifest = (
         f"{hashlib.sha256(archive).hexdigest()}  {asset}\n"
         f"{hashlib.sha256(b'other').hexdigest()}  unrelated-asset.zip\n"
@@ -66,9 +66,20 @@ def data_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 class TestManifest:
-    def test_pinned_constants_are_wellformed(self) -> None:
-        assert re.fullmatch(r"[0-9a-f]{64}", tb.PINNED_MANIFEST_SHA256)
-        assert tb.RELEASE_BASE_URL.startswith("https://github.com/openai/tunnel-client/")
+    def test_tested_release_constants_are_wellformed(self) -> None:
+        assert tb.TESTED_TUNNEL_CLIENT_VERSION == "v0.0.16"
+        assert re.fullmatch(r"[0-9a-f]{64}", tb.TESTED_MANIFEST_SHA256)
+        assert tb.release_base_url(tb.TESTED_TUNNEL_CLIENT_VERSION).startswith(
+            "https://github.com/openai/tunnel-client/"
+        )
+
+    @pytest.mark.parametrize(("raw", "normalized"), [("0.0.16", "v0.0.16"), ("v1.2.3", "v1.2.3")])
+    def test_version_normalization(self, raw: str, normalized: str) -> None:
+        assert tb.normalize_tunnel_client_version(raw) == normalized
+
+    def test_invalid_version_is_refused(self) -> None:
+        with pytest.raises(tb.BootstrapError, match="official vX.Y.Z"):
+            tb.normalize_tunnel_client_version("../../evil")
 
     def test_parse_manifest_accepts_both_digest_styles(self) -> None:
         entries = tb.parse_manifest("a" * 64 + "  asset.zip\n" + "b" * 64 + " *binary-asset.zip\n")
@@ -112,7 +123,7 @@ class TestBootstrapTunnelClient:
         installed = {p.name for p in exe.parent.iterdir()}
         assert "LICENSE" in installed and "NOTICE" in installed
         assert not any(name.endswith((".spdx.json", "-licenses.txt")) for name in installed)
-        assert exe.parent.name.startswith(f"tunnel-client-{tb.TUNNEL_CLIENT_VERSION}-")
+        assert exe.parent.name.startswith(f"tunnel-client-{tb.TESTED_TUNNEL_CLIENT_VERSION}-")
 
     def test_second_run_without_force_refuses(self, data_home: Path) -> None:
         _manifest, files = make_release_bundle()
@@ -127,6 +138,10 @@ class TestBootstrapTunnelClient:
             tb.bootstrap_tunnel_client(**kwargs)
         tb.bootstrap_tunnel_client(force=True, **kwargs)
 
+    def test_custom_version_requires_manifest_anchor(self, data_home: Path) -> None:
+        with pytest.raises(tb.BootstrapError, match="custom tunnel-client versions require"):
+            tb.bootstrap_tunnel_client(version="v9.9.9", download=lambda url, dest: None)
+
     def test_manifest_digest_mismatch_is_refused_before_trust(self, data_home: Path) -> None:
         _manifest, files = make_release_bundle()
         with pytest.raises(tb.BootstrapError, match="manifest digest"):
@@ -139,7 +154,7 @@ class TestBootstrapTunnelClient:
     def test_archive_digest_mismatch_is_refused(self, data_home: Path) -> None:
         manifest_bytes, files = make_release_bundle()
         tag = tb.detect_platform_tag()
-        asset = f"tunnel-client-{tb.TUNNEL_CLIENT_VERSION}-{tag}.zip"
+        asset = f"tunnel-client-{tb.TESTED_TUNNEL_CLIENT_VERSION}-{tag}.zip"
         files[asset] = b"tampered-bytes"
         with pytest.raises(tb.BootstrapError, match="digest does not match the release manifest"):
             tb.bootstrap_tunnel_client(
@@ -166,7 +181,7 @@ class TestBootstrapTunnelClient:
             bundle.writestr(member, b"payload")
         archive = inner.getvalue()
         tag = tb.detect_platform_tag()
-        asset = f"tunnel-client-{tb.TUNNEL_CLIENT_VERSION}-{tag}.zip"
+        asset = f"tunnel-client-{tb.TESTED_TUNNEL_CLIENT_VERSION}-{tag}.zip"
         manifest = f"{hashlib.sha256(archive).hexdigest()}  {asset}\n".encode()
         files = {
             tb.MANIFEST_NAME: manifest,
@@ -185,7 +200,7 @@ class TestBootstrapTunnelClient:
             bundle.writestr("LICENSE", b"mit")
         archive = inner.getvalue()
         tag = tb.detect_platform_tag()
-        asset = f"tunnel-client-{tb.TUNNEL_CLIENT_VERSION}-{tag}.zip"
+        asset = f"tunnel-client-{tb.TESTED_TUNNEL_CLIENT_VERSION}-{tag}.zip"
         manifest = f"{hashlib.sha256(archive).hexdigest()}  {asset}\n".encode()
         files = {tb.MANIFEST_NAME: manifest, asset: archive}
         with pytest.raises(tb.BootstrapError, match="client executable"):
@@ -202,13 +217,13 @@ class TestDefaultPathDiscovery:
 
     def test_highest_semver_wins(self, data_home: Path) -> None:
         tag = tb.detect_platform_tag()
-        for version in ("v0.0.9", "v0.0.15"):
+        for version in ("v0.0.9", "v0.0.16"):
             install = data_home / "bin" / f"tunnel-client-{version}-{tag}"
             install.mkdir(parents=True)
             (install / CLIENT).write_bytes(b"x")
         found = tb.default_tunnel_client_path()
         assert found is not None
-        assert "v0.0.15" in found.parent.name
+        assert "v0.0.16" in found.parent.name
 
     def test_partial_install_without_executable_ignored(self, data_home: Path) -> None:
         install = data_home / "bin" / "tunnel-client-v9.9.9-linux-amd64"
