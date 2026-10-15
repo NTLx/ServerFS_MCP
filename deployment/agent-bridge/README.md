@@ -1,6 +1,6 @@
 # Phase E — user-scoped Agent Bridge deployment
 
-Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.13.2 is the current published stable release.** v0.12 kept the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling.
+Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.14.1 is the current published stable release.** v0.12 kept the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling.
 
 The deployment has one non-negotiable rule:
 

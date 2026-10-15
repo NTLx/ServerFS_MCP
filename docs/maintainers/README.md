@@ -4,7 +4,7 @@
 
 ## Current release
 
-- **v0.14.0 is the current stable release.**
+- **v0.14.1 is the current stable release.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
 - Windows v0.14.0 replaces the manual outer launcher with a current-user, least-privilege Task Scheduler 2.0 lifecycle: logon + repeating time triggers own a windowless watchdog, the watchdog restarts the managed runner, and the runner restarts Tunnel generations. Installation, runtime, maintenance and removal remain non-elevated.

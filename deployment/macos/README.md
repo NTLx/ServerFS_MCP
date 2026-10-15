@@ -1,8 +1,8 @@
-# macOS Native Deployment (v0.13.2)
+# macOS Native Deployment (v0.14.1)
 
-ServerFS v0.13.2 is the current published stable macOS release. The filesystem backend remains
-pure Python over POSIX/Darwin primitives (`fcopyfile`, `getpeereid`, `confstr` via narrow ctypes
-bindings); v0.13.2 adds a small headless Swift ServiceManagement companion solely for persistent
+ServerFS v0.14.1 is the current published stable release. The macOS deployment shape introduced
+in v0.13.2 remains pure Python over POSIX/Darwin primitives (`fcopyfile`, `getpeereid`, `confstr`
+via narrow ctypes bindings); v0.13.2 adds a small headless Swift ServiceManagement companion solely for persistent
 per-user service registration. There is still no `serverfs-macos-native` wheel, Docker/VM,
 LaunchDaemon, root helper or Rosetta requirement.
 

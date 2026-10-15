@@ -5,7 +5,7 @@ description: 让 ChatGPT 与 AI Agent 在 Linux、Windows 与 macOS 上安全、
 
 ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux 容器为既有形态，v0.10.0 起支持 Windows 原生，v0.13.0 起支持 macOS 原生）暴露为**受控 workdir**。
 
-当前稳定版本：**v0.14.0**。Windows 现已具备完全当前用户、无需管理员权限的持久生命周期：Task Scheduler 2.0 以最低权限持有无窗口 watchdog，watchdog 负责恢复 managed runner，runner 再负责恢复 Tunnel generation。Linux、Windows 与 macOS 的公开工具面保持不变。
+当前稳定版本：**v0.14.1**。Windows 现已具备完全当前用户、无需管理员权限的持久生命周期：Task Scheduler 2.0 以最低权限持有无窗口 watchdog，watchdog 负责恢复 managed runner，runner 再负责恢复 Tunnel generation。Linux、Windows 与 macOS 的公开工具面保持不变。
 
 它**默认只读**。管理员可以按 workdir 显式启用受控文件写入、有界整文件二进制传输，以及隔离且独立门控的 ChatGPT 文件参数入口。宿主机 Agent Bridge 仍然是可选能力；Codex、Claude 和 Qoder 在原生 runtime 支持时提供 provider-neutral 模型发现与单次任务模型覆盖，同时可按需启用 advisory-only 的 TypeSafe Jev 支持。Windows 始终保持原生形态：预构建 Rust/NTFS 内核 wheel 之上的 MCP stdio 服务，无需 Docker、WSL 或 MSVC；v0.14.0 进一步让正常 Windows 生命周期不再依赖终端/会话存活。
 
