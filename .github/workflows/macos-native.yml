@@ -148,6 +148,7 @@ jobs:
     steps:
       - name: Assert the platform again inside the job
         shell: bash
+        working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
           test "$(uname -m)" = "arm64"
