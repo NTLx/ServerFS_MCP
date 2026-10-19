@@ -68,12 +68,18 @@ The public file parameter schema remains explicit and must stay synchronized wit
 
 ## 5. Streamable HTTP and MCP protocol safety
 
-The v0.4 transport-security fix is a security invariant for the Linux Streamable HTTP deployment:
+The v0.4 transport-security fix remains a security invariant for every Linux Streamable HTTP ingress, including the v0.15 generic MCP path:
 
-- DNS-rebinding protection stays enabled;
-- production host/origin policy remains explicit and narrow for the deployed topology;
-- do not broaden it to wildcard configuration merely to accommodate an unmeasured development topology;
-- keep real Host/Origin regression tests and startup-wiring tests.
+- DNS-rebinding protection stays enabled; v0.15 deliberately provides no casual disable switch;
+- production Host/Origin policy remains explicit and narrow for the deployed topology;
+- the compatibility default remains the Docker-internal OpenAI Tunnel authority, while generic HTTP deployments explicitly add the Host values they actually serve;
+- the base Compose shape keeps the MCP listener unpublished; the generic HTTP override binds loopback by default and wider publication is an explicit operator decision;
+- Internet-facing generic MCP endpoints terminate TLS and authentication at an explicit upstream gateway boundary unless a later ServerFS release adds an equally narrow built-in resource-server verifier;
+- adding generic MCP connectivity must not grant the main Linux MCP process general Internet egress;
+- do not broaden Host/Origin policy to wildcard configuration merely to accommodate an unmeasured development topology;
+- keep real Host/Origin regression tests, startup-wiring tests, and both modern/legacy MCP-client compatibility tests.
+
+ServerFS formally targets stdio and Streamable HTTP. Do not add WebSocket or a new legacy SSE deployment surface merely because a client happens to support them.
 
 MCP/JSON-RPC protocol stdout must stay protocol-clean. Logs/diagnostics go to their intended logging channel, never into a stdio protocol stream.
 
@@ -145,7 +151,7 @@ Platform support is implemented behind explicit platform seams, not by weakening
 
 ### Linux
 
-The established Linux deployment remains containerized ServerFS MCP plus outbound Tunnel, with optional host-side Agent Bridge through the Linux deployment overlay. User-scoped Agent deployment is non-root; do not require system users, `/etc`/`/opt`/`/var/lib` writes or automatic login lingering.
+The established Linux deployment remains containerized ServerFS MCP with two supported ingress shapes: the existing outbound OpenAI Secure MCP Tunnel and the v0.15 opt-in generic Streamable HTTP publication override. The base Compose shape does not publish the MCP port. Optional host-side Agent Bridge remains behind the Linux deployment overlay. User-scoped Agent deployment is non-root; do not require system users, `/etc`/`/opt`/`/var/lib` writes or automatic login lingering.
 
 Agent-enabled Linux deployment must use the measured peer identity and the same user/group contract documented by Phase E. Do not synthesize peer UID/GID as a substitute for kernel measurement. Base `compose.yml` remains Agent-unaware; the opt-in overlay owns the socket/lock mounts.
 

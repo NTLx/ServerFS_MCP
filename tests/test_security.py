@@ -20,7 +20,7 @@ from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from helpers import make_server
 from platform_contract import linux_only
 from serverfs_mcp.config import Settings
-from serverfs_mcp.main import STREAMABLE_HTTP_TRANSPORT_SECURITY, create_server
+from serverfs_mcp.main import create_server, streamable_http_transport_security
 from serverfs_mcp.workdirs import EffectiveWorkdirPolicy, Workdir, WorkdirRegistry
 
 
@@ -92,7 +92,7 @@ def _streamable_http_request(server, headers: list[tuple[bytes, bytes]]) -> int:
             streamable_http_path="/mcp",
             json_response=True,
             stateless_http=True,
-            transport_security=STREAMABLE_HTTP_TRANSPORT_SECURITY,
+            transport_security=streamable_http_transport_security(Settings()),
             host="0.0.0.0",
         )
         body = json.dumps(

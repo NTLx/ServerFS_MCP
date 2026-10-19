@@ -43,18 +43,16 @@ native Codex, Claude or Qoder runtimes through the local Agent Bridge. Delegatio
 is separately authorized per workdir and is disabled by default.\
 """
 
-# The OpenAI tunnel reaches this service only through the fixed Compose-internal
-# authority below. Keep this narrow: widening it to user-controlled Host/Origin
-# values would weaken the DNS-rebinding boundary that protects the HTTP transport.
-# No Origin is required on the tunnel-to-MCP hop; mcp==2.2.0 accepts an absent
-# Origin while rejecting every non-empty Origin when allowed_origins is empty.
-STREAMABLE_HTTP_TRANSPORT_SECURITY = TransportSecuritySettings(
-    enable_dns_rebinding_protection=True,
-    allowed_hosts=["serverfs-mcp:8000"],
-    allowed_origins=[],
-)
-
 _MCP_REQUEST_JSON_OVERHEAD = 64 * 1024
+
+
+def streamable_http_transport_security(settings: Settings) -> TransportSecuritySettings:
+    """Build the HTTP Host/Origin gate without disabling DNS-rebinding protection."""
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=list(settings.http_allowed_hosts),
+        allowed_origins=list(settings.http_allowed_origins),
+    )
 
 
 def streamable_http_max_request_body_size(registry) -> int:
@@ -83,6 +81,7 @@ def create_server(
         "ServerFS",
         instructions=INSTRUCTIONS,
         version=SERVER_VERSION,
+        subscriptions=False,
     )
     register_tools(mcp, registry, settings, file_ingress_client)
     agent_tools_enabled = settings.agent_bridge_enabled and any(
@@ -170,11 +169,11 @@ def main() -> int:
     mcp = create_server(settings, registry, agent_client, file_ingress_client)
     mcp.run(
         "streamable-http",
-        host="0.0.0.0",
-        port=8000,
-        streamable_http_path="/mcp",
+        host=settings.http_host,
+        port=settings.http_port,
+        streamable_http_path=settings.http_path,
         max_request_body_size=streamable_http_max_request_body_size(registry),
-        transport_security=STREAMABLE_HTTP_TRANSPORT_SECURITY,
+        transport_security=streamable_http_transport_security(settings),
     )
     return 0
 
@@ -205,6 +204,11 @@ def log_startup(settings: Settings, registry) -> None:
         workdirs=len(workdirs),
         read_write_workdirs=sum(1 for w in workdirs if w.access == ACCESS_READ_WRITE),
         log_level=settings.log_level,
+        http_host=settings.http_host,
+        http_port=settings.http_port,
+        http_path=settings.http_path,
+        http_allowed_host_count=len(settings.http_allowed_hosts),
+        http_allowed_origin_count=len(settings.http_allowed_origins),
         global_allow_hidden=settings.allow_hidden,
         global_default_deny_enabled=not settings.disable_default_deny,
         global_extra_deny_rule_count=len(settings.extra_deny_globs),

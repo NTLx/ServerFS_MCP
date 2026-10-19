@@ -1,7 +1,7 @@
 """Runtime settings parsed from environment variables.
 
-Only agent-facing knobs live here. Host paths never enter this container's
-environment — Compose maps them to /workdirs/XX bind mounts instead.
+Protocol, policy and optional-capability knobs live here. Host paths never enter
+this container's environment — Compose maps them to /workdirs/XX bind mounts instead.
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,11 @@ class Settings:
     """Tunable limits for reads, listings, searches and mutations."""
 
     log_level: str = "INFO"
+    http_host: str = "0.0.0.0"
+    http_port: int = 8000
+    http_path: str = "/mcp"
+    http_allowed_hosts: tuple[str, ...] = ("serverfs-mcp:8000",)
+    http_allowed_origins: tuple[str, ...] = ()
     max_read_bytes: int = 524_288
     max_read_lines: int = 500
     default_list_limit: int = 100
@@ -107,6 +113,80 @@ def _get_log_level(env: Mapping[str, str]) -> str:
     return raw if raw in {"DEBUG", "INFO", "WARNING", "ERROR"} else "INFO"
 
 
+def _get_http_host(env: Mapping[str, str]) -> str:
+    raw = env.get("SERVERFS_HTTP_HOST", "").strip()
+    value = raw or "0.0.0.0"
+    if any(char.isspace() for char in value) or "://" in value or "/" in value:
+        raise ValueError(f"invalid SERVERFS_HTTP_HOST value {env.get('SERVERFS_HTTP_HOST', '')!r}")
+    return value
+
+
+def _get_http_port(env: Mapping[str, str]) -> int:
+    raw = env.get("SERVERFS_HTTP_PORT", "").strip()
+    if not raw:
+        return 8000
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raw_value = env.get("SERVERFS_HTTP_PORT", "")
+        raise ValueError(f"invalid SERVERFS_HTTP_PORT value {raw_value!r}") from exc
+    if value < 1 or value > 65535:
+        raw_value = env.get("SERVERFS_HTTP_PORT", "")
+        raise ValueError(f"invalid SERVERFS_HTTP_PORT value {raw_value!r}")
+    return value
+
+
+def _get_http_path(env: Mapping[str, str]) -> str:
+    raw = env.get("SERVERFS_HTTP_PATH", "").strip()
+    value = raw or "/mcp"
+    if (
+        not value.startswith("/")
+        or value.startswith("//")
+        or any(char.isspace() for char in value)
+        or "?" in value
+        or "#" in value
+    ):
+        raise ValueError(f"invalid SERVERFS_HTTP_PATH value {env.get('SERVERFS_HTTP_PATH', '')!r}")
+    return value
+
+
+def _get_http_allowed_hosts(env: Mapping[str, str], port: int) -> tuple[str, ...]:
+    raw = env.get("SERVERFS_HTTP_ALLOWED_HOSTS")
+    if raw is None or not raw.strip():
+        return (f"serverfs-mcp:{port}",)
+    values = tuple(item for item in (part.strip() for part in raw.split(",")) if item)
+    if not values:
+        raise ValueError(f"invalid SERVERFS_HTTP_ALLOWED_HOSTS value {raw!r}")
+    for item in values:
+        invalid_wildcard = "*" in item and not (item.endswith(":*") and item.count("*") == 1)
+        if any(char.isspace() for char in item) or "://" in item or "/" in item or invalid_wildcard:
+            raise ValueError(f"invalid SERVERFS_HTTP_ALLOWED_HOSTS value {raw!r}")
+    return values
+
+
+def _get_http_allowed_origins(env: Mapping[str, str]) -> tuple[str, ...]:
+    raw = env.get("SERVERFS_HTTP_ALLOWED_ORIGINS", "")
+    values = tuple(item for item in (part.strip() for part in raw.split(",")) if item)
+    for item in values:
+        try:
+            parsed = urlsplit(item)
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError(f"invalid SERVERFS_HTTP_ALLOWED_ORIGINS value {raw!r}") from exc
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or any(char.isspace() for char in item)
+        ):
+            raise ValueError(f"invalid SERVERFS_HTTP_ALLOWED_ORIGINS value {raw!r}")
+    return values
+
+
 def _get_deny_globs(env: Mapping[str, str]) -> tuple[str, ...]:
     """Parse a comma-separated glob list; empty/whitespace entries dropped."""
     raw = env.get("SERVERFS_EXTRA_DENY_GLOBS", "")
@@ -136,6 +216,7 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
     """Build Settings from an environment mapping (defaults: os.environ)."""
     if env is None:
         env = os.environ
+    http_port = _get_http_port(env)
     agent_mode = _get_agent_mode(env)
     agent_runtimes = _get_agent_runtimes(env)
     if agent_mode == "disabled" and agent_runtimes:
@@ -144,6 +225,11 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         raise ValueError("enabled SERVERFS_AGENT_MODE requires Agent runtimes")
     return Settings(
         log_level=_get_log_level(env),
+        http_host=_get_http_host(env),
+        http_port=http_port,
+        http_path=_get_http_path(env),
+        http_allowed_hosts=_get_http_allowed_hosts(env, http_port),
+        http_allowed_origins=_get_http_allowed_origins(env),
         max_read_bytes=_get_positive_int_strict(env, "SERVERFS_MAX_READ_BYTES", 524_288),
         max_read_lines=_get_positive_int_strict(env, "SERVERFS_MAX_READ_LINES", 500),
         default_list_limit=_get_int(env, "SERVERFS_DEFAULT_LIST_LIMIT", 100),

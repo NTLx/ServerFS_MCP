@@ -57,6 +57,22 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
+      - name: Validate Compose shapes
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose config --quiet
+          docker compose -f compose.yml -f compose.http.yml config --quiet
+
+          base_services="$(docker compose config --services | sort)"
+          test "$base_services" = $'openai-tunnel\nserverfs-mcp'
+
+          generic_services="$(docker compose -f compose.yml -f compose.http.yml config --services | sort)"
+          test "$generic_services" = 'serverfs-mcp'
+
+          dual_services="$(docker compose -f compose.yml -f compose.http.yml --profile openai-tunnel config --services | sort)"
+          test "$dual_services" = $'openai-tunnel\nserverfs-mcp'
+
       - name: Ruff lint
         run: uv run ruff check .
 

@@ -45,7 +45,8 @@ def test_main_wires_streamable_http_transport_security(monkeypatch) -> None:
             captured.update(kwargs)
 
     registry = Registry()
-    monkeypatch.setattr(main_module, "settings_from_env", lambda _env: Settings())
+    settings = Settings()
+    monkeypatch.setattr(main_module, "settings_from_env", lambda _env: settings)
     monkeypatch.setattr(main_module, "build_registry_from_env", lambda _env, _settings: registry)
     monkeypatch.setattr(main_module, "log_startup", lambda _settings, _registry: None)
     monkeypatch.setattr(
@@ -60,11 +61,50 @@ def test_main_wires_streamable_http_transport_security(monkeypatch) -> None:
     assert captured["port"] == 8000
     assert captured["streamable_http_path"] == "/mcp"
     assert captured["max_request_body_size"] == main_module.DEFAULT_MAX_REQUEST_BODY_SIZE
-    assert captured["transport_security"] is main_module.STREAMABLE_HTTP_TRANSPORT_SECURITY
-    security = main_module.STREAMABLE_HTTP_TRANSPORT_SECURITY
+    security = captured["transport_security"]
     assert security.enable_dns_rebinding_protection is True
     assert security.allowed_hosts == ["serverfs-mcp:8000"]
     assert security.allowed_origins == []
+
+
+def test_main_wires_configured_streamable_http_listener(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class Registry:
+        def all_workdirs(self):
+            return []
+
+    class Server:
+        def run(self, transport: str, **kwargs) -> None:
+            captured["transport"] = transport
+            captured.update(kwargs)
+
+    registry = Registry()
+    settings = Settings(
+        http_host="127.0.0.1",
+        http_port=9000,
+        http_path="/serverfs",
+        http_allowed_hosts=("mcp.example.com", "mcp.example.com:*"),
+        http_allowed_origins=("https://app.example.com",),
+    )
+    monkeypatch.setattr(main_module, "settings_from_env", lambda _env: settings)
+    monkeypatch.setattr(main_module, "build_registry_from_env", lambda _env, _settings: registry)
+    monkeypatch.setattr(main_module, "log_startup", lambda _settings, _registry: None)
+    monkeypatch.setattr(
+        main_module,
+        "create_server",
+        lambda _settings, _registry, _agent_client, _file_ingress_client: Server(),
+    )
+
+    assert main_module.main() == 0
+    assert captured["transport"] == "streamable-http"
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 9000
+    assert captured["streamable_http_path"] == "/serverfs"
+    security = captured["transport_security"]
+    assert security.enable_dns_rebinding_protection is True
+    assert security.allowed_hosts == ["mcp.example.com", "mcp.example.com:*"]
+    assert security.allowed_origins == ["https://app.example.com"]
 
 
 def test_streamable_http_body_limit_covers_largest_base64_workdir() -> None:

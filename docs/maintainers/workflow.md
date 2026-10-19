@@ -34,10 +34,11 @@ uv run ruff check .
 uv run ruff format --check .
 uv run pytest
 docker compose config
+docker compose -f compose.yml -f compose.http.yml config
 SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 ```
 
-Run all six when the change crosses that boundary. The scratch image tag is mandatory: Compose builds to the image name it is given, so building under a published production tag can shadow that release locally.
+Run all applicable gates when the change crosses that boundary. The generic HTTP Compose render is mandatory for v0.15+ ingress/deployment changes; use `--quiet` when only validity is required so expanded secrets are never printed. The scratch image tag is mandatory: Compose builds to the image name it is given, so building under a published production tag can shadow that release locally.
 
 ### Agent Bridge
 

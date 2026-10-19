@@ -153,7 +153,7 @@ def register_agent_tools(
         """Discover provider-native models and optionally return pre-submit Jev advice.
 
         Discovery never submits an Agent task. A model recommendation is advisory only;
-        ChatGPT decides whether to pass it later as submit_agent_task.model.
+        the MCP caller decides whether to pass it later as submit_agent_task.model.
         """
         t0 = time.monotonic()
         try:

@@ -44,6 +44,72 @@ class TestRobustParsing:
         assert settings_from_env({"SERVERFS_LOG_LEVEL": "bogus"}).log_level == "INFO"
 
 
+class TestHttpConfig:
+    def test_defaults_preserve_openai_tunnel_internal_authority(self) -> None:
+        s = settings_from_env({})
+        assert s.http_host == "0.0.0.0"
+        assert s.http_port == 8000
+        assert s.http_path == "/mcp"
+        assert s.http_allowed_hosts == ("serverfs-mcp:8000",)
+        assert s.http_allowed_origins == ()
+
+    def test_explicit_generic_http_settings(self) -> None:
+        s = settings_from_env(
+            {
+                "SERVERFS_HTTP_HOST": "127.0.0.1",
+                "SERVERFS_HTTP_PORT": "9000",
+                "SERVERFS_HTTP_PATH": "/serverfs",
+                "SERVERFS_HTTP_ALLOWED_HOSTS": "mcp.example.com, mcp.example.com:*",
+                "SERVERFS_HTTP_ALLOWED_ORIGINS": "https://app.example.com,http://localhost:3000",
+            }
+        )
+        assert s.http_host == "127.0.0.1"
+        assert s.http_port == 9000
+        assert s.http_path == "/serverfs"
+        assert s.http_allowed_hosts == ("mcp.example.com", "mcp.example.com:*")
+        assert s.http_allowed_origins == (
+            "https://app.example.com",
+            "http://localhost:3000",
+        )
+
+    def test_default_allowed_host_follows_configured_port(self) -> None:
+        assert settings_from_env({"SERVERFS_HTTP_PORT": "9000"}).http_allowed_hosts == (
+            "serverfs-mcp:9000",
+        )
+
+    @pytest.mark.parametrize("value", ["0", "65536", "not-a-port"])
+    def test_invalid_port_fails_closed(self, value: str) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env({"SERVERFS_HTTP_PORT": value})
+
+    @pytest.mark.parametrize("value", ["mcp", "//mcp", "/mcp?x=1", "/mcp#fragment"])
+    def test_invalid_path_fails_closed(self, value: str) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env({"SERVERFS_HTTP_PATH": value})
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "https://mcp.example.com",
+            "mcp.example.com/path",
+            "mcp example.com",
+            "*.example.com",
+            "mcp.*.example.com",
+        ],
+    )
+    def test_invalid_allowed_host_fails_closed(self, value: str) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env({"SERVERFS_HTTP_ALLOWED_HOSTS": value})
+
+    @pytest.mark.parametrize(
+        "value",
+        ["mcp.example.com", "https://app.example.com/path", "https://user@app.example.com"],
+    )
+    def test_invalid_allowed_origin_fails_closed(self, value: str) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env({"SERVERFS_HTTP_ALLOWED_ORIGINS": value})
+
+
 class TestFileIngressConfig:
     def test_defaults_are_disabled(self) -> None:
         s = settings_from_env({})
