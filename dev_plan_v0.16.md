@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase D complete.
+Status: in progress — Phase 0 through Phase E complete.
 
 Plan frozen: 2026-10-19.
 
@@ -36,9 +36,14 @@ Completed and verified so far:
 - the CIMD fetcher does not use proxies or redirects, resolves DNS before connecting, rejects the entire answer set if any address is non-global/special-use, and pins the TLS TCP connection to a previously checked IP while keeping certificate/SNI verification on the original hostname;
 - successful CIMD metadata is held only in a bounded in-memory cache; fetch errors and invalid documents are never cached or persisted to SQLite;
 - pre-registered and DCR clients are intentionally public PKCE clients in v0.16, avoiding persistent client-secret material; unsupported confidential/shared-secret client registrations fail closed;
-- Phase D focused validation is green: 77 client-registration/auth tests, Ruff lint/format and `git diff --check`.
+- Phase D focused validation is green: 77 client-registration/auth tests, Ruff lint/format and `git diff --check`;
+- Phase E adds one canonical `(provider, subject)` principal representation and a default-deny exact-match `AdmissionPolicy`; wildcard admission remains unsupported;
+- routine admission audit events contain only the provider plus a stable 16-hex SHA-256-derived principal identifier, never the upstream subject itself;
+- admission is now enforced after deterministic identity proof and before ServerFS authorization-code issuance, so an authenticated but unlisted identity receives `access_denied` and cannot obtain ServerFS credentials;
+- the empty allowlist remains a valid fail-closed configuration rather than an implicit allow-all mode;
+- Phase E focused validation is green: 56 policy/config/auth-server tests, Ruff lint/format and `git diff --check`.
 
-Phase E is the next implementation target. No upstream provider adapter has been added yet.
+Phase F1 is the next implementation target. No real upstream provider adapter has been added yet.
 
 ## Goal
 

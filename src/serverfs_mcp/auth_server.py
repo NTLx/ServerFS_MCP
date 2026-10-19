@@ -22,6 +22,7 @@ from starlette.routing import Route
 from . import logging as jsonlog
 from .auth_clients import ClientMetadataResolver, load_pre_registered_clients
 from .auth_config import AuthServiceSettings, auth_settings_from_env
+from .auth_policy import AdmissionPolicy, parse_principal
 from .auth_provider import ServerFSOAuthProvider
 from .auth_store import OAuthStateStore
 
@@ -61,16 +62,32 @@ def create_auth_app(
     for client in load_pre_registered_clients(settings.clients_file):
         oauth_provider.pre_register_client(client)
     client_authenticator = ClientAuthenticator(oauth_provider)
+    admission_policy = AdmissionPolicy(settings.allowed_principals)
+    test_principal = parse_principal(test_identity) if test_identity is not None else None
 
     async def login(request: Request) -> Response:
         transaction = request.query_params.get("transaction", "")
         if not transaction:
             return JSONResponse({"error": "invalid_request"}, status_code=400)
-        if test_identity is None:
+        if test_principal is None:
             # Real provider selection/callbacks are added in Phase F. Never
             # silently treat a missing provider as an authenticated identity.
             return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
-        completed = oauth_provider.complete_authorization(transaction, subject=test_identity)
+        if not admission_policy.allows(test_principal):
+            jsonlog.warning(
+                "auth_admission_denied",
+                provider=test_principal.provider,
+                principal_id=test_principal.audit_id,
+            )
+            return JSONResponse({"error": "access_denied"}, status_code=403)
+        jsonlog.info(
+            "auth_admission_allowed",
+            provider=test_principal.provider,
+            principal_id=test_principal.audit_id,
+        )
+        completed = oauth_provider.complete_authorization(
+            transaction, subject=test_principal.canonical
+        )
         if completed is None:
             return JSONResponse({"error": "invalid_or_expired_transaction"}, status_code=400)
         redirect = construct_redirect_uri(
@@ -188,6 +205,7 @@ def create_auth_app(
     app = Starlette(routes=routes)
     app.state.oauth_store = store
     app.state.oauth_provider = oauth_provider
+    app.state.admission_policy = admission_policy
     return app
 
 

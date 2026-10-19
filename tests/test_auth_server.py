@@ -34,6 +34,7 @@ def settings(tmp_path, **overrides) -> AuthServiceSettings:
         "public_url": ISSUER,
         "resource_url": RESOURCE,
         "state_dir": str(tmp_path),
+        "allowed_principals": ("github:123",),
         "introspection_secret": INTROSPECTION_SECRET,
     }
     values.update(overrides)
@@ -244,6 +245,36 @@ class TestAuthorizationCore:
         assert response.status_code == 302
         params = parse_qs(urlparse(response.headers["location"]).query)
         assert params["error"] == ["invalid_target"]
+
+    def test_authenticated_but_unlisted_identity_is_denied_before_code_issuance(
+        self, tmp_path
+    ) -> None:
+        app = create_auth_app(
+            settings(tmp_path, allowed_principals=()),
+            test_identity="github:123",
+        )
+        register_client(app)
+        with TestClient(app) as client:
+            response = client.get(
+                "/authorize",
+                params={
+                    "client_id": CLIENT_ID,
+                    "redirect_uri": REDIRECT,
+                    "response_type": "code",
+                    "code_challenge": CODE_CHALLENGE,
+                    "code_challenge_method": "S256",
+                    "scope": "serverfs:access",
+                    "resource": RESOURCE,
+                },
+                follow_redirects=False,
+            )
+            denied = client.get(response.headers["location"], follow_redirects=False)
+        assert denied.status_code == 403
+        assert denied.json()["error"] == "access_denied"
+        with TestClient(app) as client:
+            denied_again = client.get(response.headers["location"], follow_redirects=False)
+        assert denied_again.status_code == 403
+        assert denied_again.json()["error"] == "access_denied"
 
     def test_without_test_identity_login_fails_closed(self, tmp_path) -> None:
         app = create_auth_app(settings(tmp_path))
