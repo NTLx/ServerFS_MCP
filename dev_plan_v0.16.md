@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 and Phase A complete.
+Status: in progress — Phase 0 through Phase B complete.
 
 Plan frozen: 2026-10-19.
 
@@ -16,9 +16,14 @@ Completed and verified so far:
 - GitHub, DingTalk, Feishu and WeChat provider switches are independently opt-in and strict;
 - `serverfs-auth` configuration is default-deny, validates public HTTPS URLs outside loopback, exact provider-qualified principals, token TTLs, state path and shared proxy reuse;
 - `.env.example` now documents the optional OAuth configuration surface while keeping `SERVERFS_OAUTH_ENABLED=false` by default;
-- Phase A focused validation is green: `git diff --check`, 89 config/main tests, Ruff lint and Ruff format checks.
+- Phase A focused validation is green: `git diff --check`, 89 config/main tests, Ruff lint and Ruff format checks;
+- Phase B adds an OAuth-only MCP Resource Server boundary using the installed `mcp==2.3.0` `AuthSettings` / `TokenVerifier` APIs rather than reimplementing protocol middleware;
+- `OAuthIntrospectionVerifier` performs bounded private opaque-token introspection with process proxy bypass, strict issuer/resource/subject/client/scope/expiry checks, and sanitized failure logging;
+- OAuth-enabled Streamable HTTP publishes RFC 9728 Protected Resource Metadata and challenges unauthenticated clients while `validate_token_resource=True` enforces the configured MCP resource;
+- OAuth-disabled `create_server()` still constructs no auth settings/verifier and preserves the v0.15 path;
+- Phase B focused validation is green: 124 OAuth/config/main/security tests, Ruff lint/format and `git diff --check`.
 
-Phase B is the next implementation target. No OAuth network verifier or provider/database service has been added yet.
+Phase C is the next implementation target. No upstream provider adapter or OAuth persistence/Authorization Server has been added yet.
 
 ## Goal
 

@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 
 from mcp.server import MCPServer
+from mcp.server.auth.provider import TokenVerifier
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from mcp.server.transport_security import DEFAULT_MAX_REQUEST_BODY_SIZE, TransportSecuritySettings
 
@@ -15,6 +17,7 @@ from . import logging as jsonlog
 from .agent_client import AgentBridgeClient
 from .config import Settings, settings_from_env
 from .file_ingress_client import FileIngressClient
+from .oauth_resource import OAuthIntrospectionVerifier
 from .tools import READ_IMPL, register_tools
 from .workdirs import (
     ACCESS_READ_WRITE,
@@ -76,12 +79,35 @@ def create_server(
     registry,
     agent_client: AgentBridgeClient | None = None,
     file_ingress_client: FileIngressClient | None = None,
+    token_verifier: TokenVerifier | None = None,
 ) -> MCPServer:
+    if settings.oauth_enabled:
+        verifier = token_verifier or OAuthIntrospectionVerifier(
+            introspection_url=settings.oauth_introspection_url,
+            introspection_secret=settings.oauth_introspection_secret,
+            timeout_seconds=settings.oauth_introspection_timeout_seconds,
+            expected_resource=settings.oauth_resource_url,
+            expected_issuer=settings.oauth_issuer_url,
+        )
+        auth = AuthSettings(
+            issuer_url=settings.oauth_issuer_url,
+            resource_server_url=settings.oauth_resource_url,
+            required_scopes=list(settings.oauth_required_scopes),
+            validate_token_resource=True,
+        )
+    else:
+        if token_verifier is not None:
+            raise ValueError("token verifier cannot be configured when OAuth is disabled")
+        verifier = None
+        auth = None
+
     mcp = MCPServer(
         "ServerFS",
         instructions=INSTRUCTIONS,
         version=SERVER_VERSION,
         subscriptions=False,
+        auth=auth,
+        token_verifier=verifier,
     )
     register_tools(mcp, registry, settings, file_ingress_client)
     agent_tools_enabled = settings.agent_bridge_enabled and any(
