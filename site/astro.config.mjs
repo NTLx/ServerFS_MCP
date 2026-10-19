@@ -52,6 +52,11 @@ export default defineConfig({
               slug: 'docs/configuration',
             },
             {
+              label: 'Static API Key',
+              translations: { 'zh-CN': '静态 API Key' },
+              slug: 'docs/api-key',
+            },
+            {
               label: 'Windows Native',
               translations: { 'zh-CN': 'Windows 原生部署' },
               slug: 'docs/windows-native',

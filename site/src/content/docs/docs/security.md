@@ -34,6 +34,10 @@ v0.4.0 introduced MCP Streamable HTTP DNS-rebinding protection; v0.5.0 retains t
 
 The transport accepts only the fixed internal authority `serverfs-mcp:8000`, rejects unexpected or missing Host values, and rejects non-empty unapproved Origin values before MCP dispatch.
 
+## Static API Key boundary
+
+v0.17 can protect remote Streamable HTTP with one optional shared API Key. The key is checked before MCP dispatch, compared with a constant-time comparison, and does not create a user identity or alter workdir authorization. Header authentication (`Authorization: Bearer <key>`) is preferred. The compatibility `?key=` form is accepted for one-line MCP URLs, but ServerFS disables its own default Uvicorn access log in this mode because query credentials are more likely to leak through URL logs. Upstream proxies remain the operator's responsibility. Static API Key and built-in OAuth are mutually exclusive. See [Static API Key](./api-key/).
+
 ## OAuth boundary
 
 v0.16 can protect remote Streamable HTTP with an isolated `serverfs-auth` authorization server. OAuth is default-off. The auth service alone receives provider credentials and provider/CIMD Internet egress; `serverfs-mcp` receives neither and validates only ServerFS-issued opaque resource-bound tokens through a private introspection link.
@@ -56,4 +60,4 @@ The TypeSafe API key is rendered only into the user-owned Bridge config and is n
 
 See [Jev Advisors](./jev-advisors/) for the complete advisory contract.
 
-For adjacent trust-boundary detail, see [Architecture](./architecture/), [Configuration](./configuration/) and [OAuth 2.1](./oauth/). Version-specific implementation evidence remains in the repository's phase acceptance records rather than the project README.
+For adjacent trust-boundary detail, see [Architecture](./architecture/), [Configuration](./configuration/), [Static API Key](./api-key/) and [OAuth 2.1](./oauth/). Version-specific implementation evidence remains in the repository's phase acceptance records rather than the project README.

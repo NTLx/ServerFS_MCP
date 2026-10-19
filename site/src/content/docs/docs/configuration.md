@@ -15,11 +15,16 @@ SERVERFS_HTTP_PORT=8000
 SERVERFS_HTTP_PATH=/mcp
 SERVERFS_HTTP_ALLOWED_HOSTS=
 SERVERFS_HTTP_ALLOWED_ORIGINS=
+SERVERFS_HTTP_API_KEY=
 ```
 
-The listener address is independent from publication. `compose.http.yml` publishes it on `127.0.0.1:8000` by default. DNS-rebinding protection stays enabled: when a deployment is reached through another hostname or reverse proxy, add only the exact Host authorities that should be accepted through `SERVERFS_HTTP_ALLOWED_HOSTS`. `SERVERFS_HTTP_ALLOWED_ORIGINS` provides the corresponding explicit browser Origin allowlist where an Origin header is expected. Do not disable Host protection to make a proxy work. Public/non-loopback exposure should terminate TLS and authentication at a separately configured ingress boundary.
+The listener address is independent from publication. `compose.http.yml` publishes it on `127.0.0.1:8000` by default. DNS-rebinding protection stays enabled: when a deployment is reached through another hostname or reverse proxy, add only the exact Host authorities that should be accepted through `SERVERFS_HTTP_ALLOWED_HOSTS`. `SERVERFS_HTTP_ALLOWED_ORIGINS` provides the corresponding explicit browser Origin allowlist where an Origin header is expected. Do not disable Host protection to make a proxy work. Public/non-loopback exposure should terminate TLS at a separately configured ingress boundary.
 
 The default host/port/path continue to match the existing OpenAI Tunnel's Docker-internal path, so Tunnel deployments do not require a migration merely because generic MCP HTTP is now supported.
+
+### Optional static API Key
+
+v0.17 adds one shared HTTP bearer secret through `SERVERFS_HTTP_API_KEY`. Leave it empty to disable. Clients should prefer `Authorization: Bearer <key>`; `?key=<key>` is also supported for one-line MCP URL compatibility but may be captured by upstream URL logs. API Key mode is mutually exclusive with built-in OAuth and does not apply to native stdio. See [Static API Key](./api-key/).
 
 ### Optional OAuth 2.1
 
@@ -66,6 +71,7 @@ Extra deny globs are stricter: global and workdir rules are **unioned**, so a wo
 - Binary transfer is disabled by default. `SERVERFS_MAX_BINARY_TRANSFER_BYTES` is the single public global size setting for native binary transfer and optional file ingress; workdir overrides can only further constrain their own publication path.
 - ChatGPT file ingress is disabled by default and requires both `SERVERFS_FILE_INGRESS_ENABLED=true` and the `file-ingress` Compose profile.
 - The constrained OpenAI Blob host-family policy is separately disabled by default; enable it with `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` only when ChatGPT file parameters are required. Exact additional hosts belong in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
+- Static API Key authentication is disabled by default. A non-empty `SERVERFS_HTTP_API_KEY` protects Streamable HTTP with one shared secret and cannot be combined with built-in OAuth.
 - OAuth is disabled by default. Enabling it requires the OAuth Compose overlay, an HTTPS resource/auth URL pair outside loopback, a non-empty introspection secret, at least one configured identity provider, and an exact default-deny principal allowlist.
 - Agent policy is disabled unless explicitly configured.
 - v0.12.0 keeps Tunnel, Agent runtime and Jev proxy decisions independent: `SERVERFS_OPENAI_TUNNEL_USE_PROXY`, `SERVERFS_AGENT_USE_PROXY`, and `SERVERFS_JEV_USE_PROXY` each reuse the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields but never implicitly enable one another.

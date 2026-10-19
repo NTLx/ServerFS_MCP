@@ -22,6 +22,7 @@ on:
       - "src/serverfs_mcp/cli.py"
       - "src/serverfs_mcp/config.py"
       - "src/serverfs_mcp/main.py"
+      - "src/serverfs_mcp/http_auth.py"
       - "src/serverfs_mcp/auth_config.py"
       - "src/serverfs_mcp/file_ingress.py"
       - "src/serverfs_mcp/native_config.py"
@@ -43,6 +44,8 @@ on:
       - "tests/test_import_safety.py"
       - "tests/test_auth_config.py"
       - "tests/test_file_ingress.py"
+      - "tests/test_http_auth.py"
+      - "tests/test_api_key_e2e.py"
       - "tests/test_oauth_e2e.py"
       - "tests/test_darwin_backend.py"
       - "tests/test_darwin_service.py"
@@ -63,6 +66,7 @@ on:
       - "src/serverfs_mcp/cli.py"
       - "src/serverfs_mcp/config.py"
       - "src/serverfs_mcp/main.py"
+      - "src/serverfs_mcp/http_auth.py"
       - "src/serverfs_mcp/auth_config.py"
       - "src/serverfs_mcp/file_ingress.py"
       - "src/serverfs_mcp/native_config.py"
@@ -84,6 +88,8 @@ on:
       - "tests/test_import_safety.py"
       - "tests/test_auth_config.py"
       - "tests/test_file_ingress.py"
+      - "tests/test_http_auth.py"
+      - "tests/test_api_key_e2e.py"
       - "tests/test_oauth_e2e.py"
       - "tests/test_darwin_backend.py"
       - "tests/test_darwin_service.py"
@@ -179,6 +185,8 @@ jobs:
           tests/test_import_safety.py
           tests/test_auth_config.py
           tests/test_file_ingress.py
+          tests/test_http_auth.py
+          tests/test_api_key_e2e.py
           tests/test_oauth_e2e.py
           tests/test_native_windows.py
           tests/test_windows_backend.py

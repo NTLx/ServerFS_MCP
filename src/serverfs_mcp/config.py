@@ -22,6 +22,7 @@ class Settings:
     http_path: str = "/mcp"
     http_allowed_hosts: tuple[str, ...] = ("serverfs-mcp:8000",)
     http_allowed_origins: tuple[str, ...] = ()
+    http_api_key: str = ""
     oauth_enabled: bool = False
     oauth_resource_url: str = ""
     oauth_issuer_url: str = ""
@@ -286,7 +287,12 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
     http_port = _get_http_port(env)
     agent_mode = _get_agent_mode(env)
     agent_runtimes = _get_agent_runtimes(env)
+    http_api_key = env.get("SERVERFS_HTTP_API_KEY", "").strip()
     oauth_enabled = _get_strict_bool(env, "SERVERFS_OAUTH_ENABLED", False)
+    if http_api_key and oauth_enabled:
+        raise ValueError(
+            "SERVERFS_HTTP_API_KEY cannot be combined with SERVERFS_OAUTH_ENABLED=true"
+        )
     oauth_resource_url = _get_oauth_url(
         env,
         "SERVERFS_OAUTH_RESOURCE_URL",
@@ -323,6 +329,7 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         http_path=_get_http_path(env),
         http_allowed_hosts=_get_http_allowed_hosts(env, http_port),
         http_allowed_origins=_get_http_allowed_origins(env),
+        http_api_key=http_api_key,
         oauth_enabled=oauth_enabled,
         oauth_resource_url=oauth_resource_url,
         oauth_issuer_url=oauth_issuer_url,

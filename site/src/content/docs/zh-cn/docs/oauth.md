@@ -3,7 +3,7 @@ title: OAuth 2.1
 description: 使用可选 OAuth 2.1 与身份联合保护远程 Streamable HTTP。
 ---
 
-ServerFS v0.16.0 为**远程 Streamable HTTP** 新增可选 OAuth 2.1 认证。OAuth 默认关闭，也不适用于 Windows/macOS 原生 stdio。
+ServerFS v0.16.0 为**远程 Streamable HTTP** 新增可选 OAuth 2.1 认证。OAuth 默认关闭，也不适用于 Windows/macOS 原生 stdio。v0.17+ 中，内置 OAuth 与 `SERVERFS_HTTP_API_KEY` 互斥；每个实例应只选择一种 ServerFS 自己负责的 HTTP 认证模式。
 
 OAuth 解决的是**谁可以进入这个 ServerFS 实例**；现有 workdir 策略仍决定**已准入调用方具体能做什么**。
 

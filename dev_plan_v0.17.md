@@ -1,6 +1,32 @@
 # ServerFS v0.17.0 Development Plan
 
-Status: frozen for implementation — 2026-10-19.
+Status: implementation in progress — shared Linux/core checkpoint validated; Windows/macOS regression and release closeout pending.
+
+Plan frozen: 2026-10-19. Plan-only checkpoint: `8cb15bcbcc8d0adb4836e9e215a8139ce374da57`.
+
+## Implementation checkpoint — 2026-10-19
+
+Completed and verified so far:
+
+- Linux, Windows and macOS development workdirs were synchronized to the v0.16.0 release commit before v0.17 work began; the known unrelated Mac `.workbuddy/memory/2026-10-10.md` modification was byte-preserved;
+- pre-change focused config/HTTP/OAuth baseline was green at 77 tests with Ruff and generic HTTP/OAuth Compose rendering clean;
+- `SERVERFS_HTTP_API_KEY` is optional/default-empty and is passed into the Linux MCP container without adding a service, network, database or state directory;
+- static API Key and built-in OAuth are mutually exclusive and fail closed during settings parsing;
+- `create_server()` retains the v0.16 OAuth `AuthSettings` / `TokenVerifier` path unchanged; static API Key is a separate pure-ASGI HTTP boundary rather than a fake OAuth verifier;
+- API Key mode accepts exactly one `Authorization: Bearer <key>` or exactly one `?key=<key>` credential, rejects missing/wrong/empty/duplicate/ambiguous credentials, and uses `hmac.compare_digest`;
+- API Key failures are generic HTTP 401 responses with `Cache-Control: no-store` and no OAuth Protected Resource Metadata / `WWW-Authenticate` discovery contract;
+- API Key mode obtains the supported MCP SDK `streamable_http_app()` with the existing path/body-size/Host/Origin security settings, wraps it in the static-key middleware, and serves it with Uvicorn access logging disabled so ServerFS itself does not emit a secret-bearing query URL;
+- startup logging exposes only the non-secret `http_auth_mode` and a regression asserts the configured key is absent from the structured startup event;
+- real loopback Streamable HTTP acceptance covers unauthenticated rejection, wrong-key rejection, correct Bearer initialize + `tools/list`, and DingTalk-style query-key initialize;
+- focused API Key/config/main tests are green at 78 tests; the combined API Key/OAuth focused gate reached 101 passing tests before the dedicated real-loopback API Key E2E was added;
+- `.env.example`, README, canonical `docs/api-key.md`, OAuth cross-reference and English/Simplified-Chinese site pages now document the three HTTP security choices, Bearer preference, query-log risk, HTTPS boundary, rotation and OAuth mutual exclusion;
+- Linux/shared full regression is green at **1586 passed / 316 skipped / 0 failed** with `uv lock --check`, full Ruff lint/format and `git diff --check` clean;
+- the focused API Key/OAuth security matrix is green at **40 passed**;
+- base, generic HTTP, OAuth, OAuth+Agent and OAuth+file-ingress Compose render gates all pass; a scratch `serverfs-mcp:dev` image build succeeds;
+- the Astro/Starlight production site builds **27 pages** successfully; `npm ci` reports 10 pre-existing moderate dependency advisories, which are not changed opportunistically in this authentication release;
+- Windows Native CI trigger/test coverage has been extended to include the new shared `http_auth.py`, `test_http_auth.py` and `test_api_key_e2e.py` boundaries so future auth-only regressions cannot silently bypass the Windows gate.
+
+Next checkpoint: commit/push the accepted shared implementation, then fast-forward and verify the Windows and macOS development environments independently before version/release convergence.
 
 ## Goal
 

@@ -34,6 +34,10 @@ v0.4.0 引入了 MCP Streamable HTTP DNS-rebinding protection；v0.5.0 保持这
 
 传输层只接受固定内部 authority `serverfs-mcp:8000`；异常或缺失 Host 会被拒绝，非空且未允许的 Origin 也会在进入 MCP dispatch 前被拒绝。
 
+## 静态 API Key 边界
+
+v0.17 可以使用一个可选的共享 API Key 保护远程 Streamable HTTP。Key 会在进入 MCP dispatch 前校验，并采用 constant-time comparison；它不会创建用户身份，也不会改变 workdir 授权。优先使用 Header 认证（`Authorization: Bearer <key>`）。为了兼容一行 MCP URL，也支持 `?key=`，但 query credential 更容易出现在 URL 日志中，因此 API Key 模式会关闭 ServerFS 自身默认的 Uvicorn access log；上游代理日志仍由操作者负责。静态 API Key 与内置 OAuth 互斥。详见[静态 API Key](./api-key/)。
+
 ## OAuth 边界
 
 v0.16 可通过隔离的 `serverfs-auth` Authorization Server 保护远程 Streamable HTTP。OAuth 默认关闭。只有 auth 服务接收 provider 凭据与 provider/CIMD Internet egress；`serverfs-mcp` 不接收这些信息，只通过私有 introspection 校验 ServerFS 自己签发、绑定 resource 的不透明 Token。
@@ -56,4 +60,4 @@ TypeSafe API Key 只会渲染到用户自有的 Bridge 配置，不会进入 MCP
 
 完整 advisory 契约详见 [Jev Advisors](./jev-advisors/)。
 
-相邻的信任边界细节请继续查看 [架构](./architecture/)、[配置](./configuration/) 与 [OAuth 2.1](./oauth/)。版本特定的实现与验收证据保留在仓库 phase acceptance 记录中，而不再堆叠到项目 README。
+相邻的信任边界细节请继续查看 [架构](./architecture/)、[配置](./configuration/)、[静态 API Key](./api-key/) 与 [OAuth 2.1](./oauth/)。版本特定的实现与验收证据保留在仓库 phase acceptance 记录中，而不再堆叠到项目 README。

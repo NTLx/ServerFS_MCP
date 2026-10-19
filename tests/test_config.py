@@ -52,6 +52,7 @@ class TestHttpConfig:
         assert s.http_path == "/mcp"
         assert s.http_allowed_hosts == ("serverfs-mcp:8000",)
         assert s.http_allowed_origins == ()
+        assert s.http_api_key == ""
 
     def test_explicit_generic_http_settings(self) -> None:
         s = settings_from_env(
@@ -76,6 +77,21 @@ class TestHttpConfig:
         assert settings_from_env({"SERVERFS_HTTP_PORT": "9000"}).http_allowed_hosts == (
             "serverfs-mcp:9000",
         )
+
+    def test_static_api_key_is_optional_and_strips_operator_whitespace(self) -> None:
+        assert settings_from_env({"SERVERFS_HTTP_API_KEY": "  test-secret  "}).http_api_key == (
+            "test-secret"
+        )
+        assert settings_from_env({"SERVERFS_HTTP_API_KEY": "   "}).http_api_key == ""
+
+    def test_static_api_key_and_oauth_are_mutually_exclusive(self) -> None:
+        with pytest.raises(ValueError, match="SERVERFS_HTTP_API_KEY"):
+            settings_from_env(
+                {
+                    "SERVERFS_HTTP_API_KEY": "test-secret",
+                    "SERVERFS_OAUTH_ENABLED": "true",
+                }
+            )
 
     @pytest.mark.parametrize("value", ["0", "65536", "not-a-port"])
     def test_invalid_port_fails_closed(self, value: str) -> None:

@@ -29,7 +29,17 @@ docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
 docker compose -f compose.yml -f compose.http.yml ps
 ```
 
-The HTTP override publishes `127.0.0.1:8000/mcp` by default and keeps the OpenAI Tunnel disabled. The 11-tool filesystem surface remains read-only unless a workdir explicitly sets `WORKDIR_XX_READ_ONLY=false`. Before exposing ServerFS beyond loopback, configure the Host allowlist and terminate TLS/authentication at an explicit ingress boundary.
+The HTTP override publishes `127.0.0.1:8000/mcp` by default and keeps the OpenAI Tunnel disabled. The 11-tool filesystem surface remains read-only unless a workdir explicitly sets `WORKDIR_XX_READ_ONLY=false`. Before exposing ServerFS beyond loopback, configure the Host allowlist and terminate TLS at an explicit ingress boundary.
+
+## Optional static API Key for remote HTTP
+
+For a simple built-in shared-secret boundary, set:
+
+```text
+SERVERFS_HTTP_API_KEY=<long-random-secret>
+```
+
+Keep the same `compose.yml` + `compose.http.yml` deployment. Clients should prefer `Authorization: Bearer <key>`. ServerFS also accepts a DingTalk-style `https://mcp.example.com/mcp?key=<key>` URL for clients that only support a complete URL, but query credentials may be captured by upstream access logs. API Key mode is mutually exclusive with built-in OAuth. See [Static API Key](./api-key/).
 
 ## Optional OAuth 2.1 for remote HTTP
 

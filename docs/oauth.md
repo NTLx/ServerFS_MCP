@@ -1,6 +1,6 @@
 # OAuth 2.1 for remote MCP
 
-ServerFS v0.16 adds optional OAuth 2.1 authentication for **remote Streamable HTTP** deployments. OAuth is disabled by default and is not used by native Windows/macOS stdio.
+ServerFS v0.16 adds optional OAuth 2.1 authentication for **remote Streamable HTTP** deployments. OAuth is disabled by default and is not used by native Windows/macOS stdio. In v0.17+, built-in OAuth is mutually exclusive with `SERVERFS_HTTP_API_KEY`; choose one ServerFS-owned HTTP authentication mode per instance.
 
 This is the canonical operator guide for the v0.16 OAuth deployment model. The website pages summarize this contract; when they disagree, this file and the versioned `.env.example` are authoritative.
 

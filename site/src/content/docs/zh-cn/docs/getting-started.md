@@ -29,7 +29,17 @@ docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
 docker compose -f compose.yml -f compose.http.yml ps
 ```
 
-HTTP override 默认仅发布 `127.0.0.1:8000/mcp`，并保持 OpenAI Tunnel 不启动。11 个文件系统工具仍默认只读；除非某个 workdir 显式设置 `WORKDIR_XX_READ_ONLY=false`。如需超出 loopback 暴露 ServerFS，应配置 Host allowlist，并在明确的入口边界终止 TLS 与认证。
+HTTP override 默认仅发布 `127.0.0.1:8000/mcp`，并保持 OpenAI Tunnel 不启动。11 个文件系统工具仍默认只读；除非某个 workdir 显式设置 `WORKDIR_XX_READ_ONLY=false`。如需超出 loopback 暴露 ServerFS，应配置 Host allowlist，并在明确的入口边界终止 TLS。
+
+## 远程 HTTP 可选静态 API Key
+
+如果只需要简单的内置共享密钥边界，在 `.env` 中设置：
+
+```text
+SERVERFS_HTTP_API_KEY=<long-random-secret>
+```
+
+仍然使用同一套 `compose.yml` + `compose.http.yml` 部署。客户端优先发送 `Authorization: Bearer <key>`。对于只接受完整 URL 的客户端，也支持 DingTalk 风格的 `https://mcp.example.com/mcp?key=<key>`，但 query credential 可能被上游 access log 记录。API Key 与内置 OAuth 互斥。详见[静态 API Key](./api-key/)。
 
 ## 远程 HTTP 可选 OAuth 2.1
 

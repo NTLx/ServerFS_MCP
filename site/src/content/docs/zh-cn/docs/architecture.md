@@ -39,6 +39,22 @@ serverfs-file-ingress
 
 该 sidecar 为显式可选能力。它不挂载 workdir、不持有 OpenAI/Tunnel 凭据，也不发布端口。MCP 主容器始终不获得互联网出口，只把临时 URL 和字节上限发送给 sidecar。主机授权可以来自管理员配置的精确主机名，也可以来自单独开启、根据真实 ChatGPT 文件参数实测得到的受限 OpenAI Azure Blob 账户家族；通用通配符会被拒绝。随后 Sidecar 继续校验 DNS 结果必须全部可公网路由，将连接固定到已验证 IP 并按原始主机名校验 TLS，对每次重定向重新校验，并执行超时和字节上限后才返回原始字节。
 
+## 可选静态 API Key 路径
+
+```text
+MCP client
+   │ Authorization: Bearer <key>
+   │ 或 /mcp?key=<key>
+   ▼
+ServerFS 静态 API Key ASGI 边界
+   ▼
+Streamable HTTP MCP app
+   ▼
+现有 ServerFS workdir 策略
+```
+
+v0.17 的 API Key 路径只是 SDK Streamable HTTP app 外的一层小型 HTTP ingress wrapper，不引入 Authorization Server、数据库、用户身份、scope 模型或 provider egress。API Key 与内置 OAuth 互斥。为了兼容一行 MCP URL 支持 query key，但该模式会关闭 ServerFS 自身默认的 Uvicorn access log，避免由 ServerFS 自己打印带 secret 的 URL。详见[静态 API Key](./api-key/)。
+
 ## 可选 OAuth 路径
 
 ```text
@@ -126,6 +142,7 @@ ServerFS 提供窄能力操作，而不是通用执行原语：
 - 受保护的文件写入
 - 有界整文件二进制传输
 - 可选且隔离的 ChatGPT 文件入口
+- Linux remote HTTP 可选单一共享密钥静态 API Key 边界
 - Linux remote HTTP 可选 OAuth 2.1 Resource Server + 隔离身份 broker
 - 结构化 Agent task RPC、模型发现与单次任务模型覆盖
 - 可选的宿主机 Jev advisory decision

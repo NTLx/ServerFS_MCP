@@ -3,7 +3,7 @@ title: OAuth 2.1
 description: Protect remote Streamable HTTP with optional OAuth 2.1 and federated identity.
 ---
 
-ServerFS v0.16.0 adds **optional OAuth 2.1 authentication for remote Streamable HTTP**. It is disabled by default and does not apply to native Windows/macOS stdio.
+ServerFS v0.16.0 adds **optional OAuth 2.1 authentication for remote Streamable HTTP**. It is disabled by default and does not apply to native Windows/macOS stdio. In v0.17+, built-in OAuth is mutually exclusive with `SERVERFS_HTTP_API_KEY`; choose one ServerFS-owned HTTP authentication mode per instance.
 
 OAuth answers **who may enter this ServerFS instance**. Existing workdir policy still decides **what the admitted caller may do**.
 

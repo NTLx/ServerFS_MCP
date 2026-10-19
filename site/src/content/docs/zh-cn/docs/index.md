@@ -26,6 +26,7 @@ ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆�
 - [配置](./configuration/) — 定义 workdir 与每个 workdir 的最终生效策略。
 - [架构](./architecture/) — 理解 MCP Core、传输/入口适配器、部署边界与 Agent Bridge。
 - [安全模型](./security/) — 查看纵深防御模型。
+- [静态 API Key](./api-key/) — 使用一个可选共享 bearer secret 保护 Linux 远程 Streamable HTTP。
 - [OAuth 2.1](./oauth/) — 使用可选 OAuth、身份联合与精确稳定 principal 准入保护 Linux 远程 Streamable HTTP。
 - [二进制传输](./binary-transfer/) — 启用有界 download/upload，以及可选的 ChatGPT 文件参数入口。
 - [Agent Bridge](./agent-bridge/) — 按需启用结构化 Codex/Claude/Qoder 委派。

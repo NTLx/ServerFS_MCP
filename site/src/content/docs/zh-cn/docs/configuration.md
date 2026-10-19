@@ -15,11 +15,16 @@ SERVERFS_HTTP_PORT=8000
 SERVERFS_HTTP_PATH=/mcp
 SERVERFS_HTTP_ALLOWED_HOSTS=
 SERVERFS_HTTP_ALLOWED_ORIGINS=
+SERVERFS_HTTP_API_KEY=
 ```
 
-监听地址与对外发布彼此独立。`compose.http.yml` 默认只发布到 `127.0.0.1:8000`。DNS rebinding 防护始终保持启用：当部署通过其他主机名或反向代理访问时，只把确实允许的 Host authority 精确加入 `SERVERFS_HTTP_ALLOWED_HOSTS`。需要浏览器 Origin 时，通过 `SERVERFS_HTTP_ALLOWED_ORIGINS` 显式配置允许列表。不要为了让代理工作而关闭 Host 防护。任何公网或非 loopback 暴露都应在单独配置的入口边界终止 TLS 与认证。
+监听地址与对外发布彼此独立。`compose.http.yml` 默认只发布到 `127.0.0.1:8000`。DNS rebinding 防护始终保持启用：当部署通过其他主机名或反向代理访问时，只把确实允许的 Host authority 精确加入 `SERVERFS_HTTP_ALLOWED_HOSTS`。需要浏览器 Origin 时，通过 `SERVERFS_HTTP_ALLOWED_ORIGINS` 显式配置允许列表。不要为了让代理工作而关闭 Host 防护。任何公网或非 loopback 暴露都应在单独配置的入口边界终止 TLS。
 
 默认 host/port/path 继续与既有 OpenAI Tunnel 的 Docker 内部路径一致，因此新增通用 MCP HTTP 支持不会强迫现有 Tunnel 部署迁移。
+
+### 可选静态 API Key
+
+v0.17 通过 `SERVERFS_HTTP_API_KEY` 提供一个共享 HTTP bearer secret。留空即关闭。客户端优先使用 `Authorization: Bearer <key>`；也支持 `?key=<key>` 以兼容只接受一行 MCP URL 的产品，但 query secret 可能被上游 URL 日志记录。API Key 与内置 OAuth 互斥，并且不适用于原生 stdio。详见[静态 API Key](./api-key/)。
 
 ### 可选 OAuth 2.1
 
@@ -66,6 +71,7 @@ WORKDIR_02_READ_ONLY=false
 - 二进制传输默认关闭。`SERVERFS_MAX_BINARY_TRANSFER_BYTES` 是原生二进制传输与可选文件入口唯一公开的全局大小配置；workdir 覆盖值只能进一步收紧对应 workdir 的最终发布路径。
 - ChatGPT 文件入口默认关闭，并且需要同时设置 `SERVERFS_FILE_INGRESS_ENABLED=true` 与启用 `file-ingress` Compose profile。
 - 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
+- 静态 API Key 默认关闭。非空 `SERVERFS_HTTP_API_KEY` 会使用一个共享密钥保护 Streamable HTTP，并且不能与内置 OAuth 同时启用。
 - OAuth 默认关闭。启用时需要 OAuth Compose overlay；loopback 之外必须使用 HTTPS resource/auth URL；必须配置非空 introspection secret、至少一个身份 provider，以及精确的 default-deny principal allowlist。
 - Agent 策略只有在显式配置后才启用。
 - v0.12.0 把 Tunnel、Agent runtime 与 Jev 的代理选择保持独立：`SERVERFS_OPENAI_TUNNEL_USE_PROXY`、`SERVERFS_AGENT_USE_PROXY`、`SERVERFS_JEV_USE_PROXY` 复用同一组 `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` 端点字段，但不会互相隐式启用。

@@ -39,6 +39,22 @@ Temporary file host
 
 The sidecar is opt-in. It has no workdir mounts, OpenAI/tunnel credentials, or published port. The main MCP container never receives Internet egress; it sends only the temporary URL and byte ceiling to the sidecar. Host authorization is either an exact administrator-configured hostname or the separately enabled constrained OpenAI Azure Blob account family measured from real ChatGPT file parameters. Generic wildcards are rejected. The sidecar then validates globally routable DNS answers, pins the connection to a validated IP while verifying TLS for the original hostname, revalidates every redirect, and enforces timeout and byte ceilings before returning raw bytes.
 
+## Optional static API Key path
+
+```text
+MCP client
+   │ Authorization: Bearer <key>
+   │ or /mcp?key=<key>
+   ▼
+ServerFS static API Key ASGI boundary
+   ▼
+Streamable HTTP MCP app
+   ▼
+existing ServerFS workdir policy
+```
+
+The v0.17 API Key path is a small HTTP ingress wrapper around the SDK Streamable HTTP app. It creates no authorization service, database, user identity, scope model or provider egress. API Key and built-in OAuth are mutually exclusive. Query-key compatibility is supported, but the ServerFS runner disables its own default Uvicorn access log in this mode so a secret-bearing URL is not printed by ServerFS itself. See [Static API Key](./api-key/).
+
 ## Optional OAuth path
 
 ```text
@@ -126,6 +142,7 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - guarded file mutations
 - bounded whole-file binary transfer
 - optional isolated ChatGPT file ingress
+- optional one-secret static API Key boundary for Linux remote HTTP
 - optional OAuth 2.1 Resource Server + isolated identity broker for Linux remote HTTP
 - structured Agent task RPC, model discovery and request-scoped model override
 - optional host-side Jev advisory decisions

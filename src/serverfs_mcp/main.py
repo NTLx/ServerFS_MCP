@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ from . import logging as jsonlog
 from .agent_client import AgentBridgeClient
 from .config import Settings, settings_from_env
 from .file_ingress_client import FileIngressClient
+from .http_auth import StaticAPIKeyMiddleware
 from .oauth_resource import OAuthIntrospectionVerifier
 from .tools import READ_IMPL, register_tools
 from .workdirs import (
@@ -47,6 +49,15 @@ is separately authorized per workdir and is disabled by default.\
 """
 
 _MCP_REQUEST_JSON_OVERHEAD = 64 * 1024
+
+
+def http_auth_mode(settings: Settings) -> str:
+    """Return the non-secret effective authentication mode for remote HTTP."""
+    if settings.oauth_enabled:
+        return "oauth"
+    if settings.http_api_key:
+        return "api_key"
+    return "none"
 
 
 def streamable_http_transport_security(settings: Settings) -> TransportSecuritySettings:
@@ -160,6 +171,27 @@ def register_resource_template(mcp: MCPServer, registry, settings: Settings) -> 
         return result.content
 
 
+def run_api_key_streamable_http(mcp: MCPServer, settings: Settings, registry) -> None:
+    """Serve the SDK Streamable HTTP app behind the static API Key boundary."""
+    import uvicorn
+
+    app = mcp.streamable_http_app(
+        streamable_http_path=settings.http_path,
+        max_request_body_size=streamable_http_max_request_body_size(registry),
+        transport_security=streamable_http_transport_security(settings),
+        host=settings.http_host,
+    )
+    protected_app = StaticAPIKeyMiddleware(app, settings.http_api_key)
+    config = uvicorn.Config(
+        protected_app,
+        host=settings.http_host,
+        port=settings.http_port,
+        log_level=settings.log_level.lower(),
+        access_log=False,
+    )
+    asyncio.run(uvicorn.Server(config).serve())
+
+
 def main() -> int:
     try:
         settings = settings_from_env(os.environ)
@@ -193,14 +225,17 @@ def main() -> int:
 
     log_startup(settings, registry)
     mcp = create_server(settings, registry, agent_client, file_ingress_client)
-    mcp.run(
-        "streamable-http",
-        host=settings.http_host,
-        port=settings.http_port,
-        streamable_http_path=settings.http_path,
-        max_request_body_size=streamable_http_max_request_body_size(registry),
-        transport_security=streamable_http_transport_security(settings),
-    )
+    if settings.http_api_key:
+        run_api_key_streamable_http(mcp, settings, registry)
+    else:
+        mcp.run(
+            "streamable-http",
+            host=settings.http_host,
+            port=settings.http_port,
+            streamable_http_path=settings.http_path,
+            max_request_body_size=streamable_http_max_request_body_size(registry),
+            transport_security=streamable_http_transport_security(settings),
+        )
     return 0
 
 
@@ -235,6 +270,7 @@ def log_startup(settings: Settings, registry) -> None:
         http_path=settings.http_path,
         http_allowed_host_count=len(settings.http_allowed_hosts),
         http_allowed_origin_count=len(settings.http_allowed_origins),
+        http_auth_mode=http_auth_mode(settings),
         oauth_enabled=settings.oauth_enabled,
         oauth_required_scope_count=len(settings.oauth_required_scopes),
         oauth_resource_configured=bool(settings.oauth_resource_url),
