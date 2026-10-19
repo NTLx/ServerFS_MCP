@@ -63,6 +63,9 @@ jobs:
           set -euo pipefail
           docker compose config --quiet
           docker compose -f compose.yml -f compose.http.yml config --quiet
+          docker compose -f compose.yml -f compose.http.yml -f compose.oauth.yml config --quiet
+          docker compose -f compose.yml -f compose.http.yml -f compose.oauth.yml -f compose.agent.yml config --quiet
+          docker compose -f compose.yml -f compose.http.yml -f compose.oauth.yml --profile file-ingress config --quiet
 
           base_services="$(docker compose config --services | sort)"
           test "$base_services" = $'openai-tunnel\nserverfs-mcp'
@@ -72,6 +75,12 @@ jobs:
 
           dual_services="$(docker compose -f compose.yml -f compose.http.yml --profile openai-tunnel config --services | sort)"
           test "$dual_services" = $'openai-tunnel\nserverfs-mcp'
+
+          oauth_services="$(docker compose -f compose.yml -f compose.http.yml -f compose.oauth.yml config --services | sort)"
+          test "$oauth_services" = $'serverfs-auth\nserverfs-mcp'
+
+          oauth_file_services="$(docker compose -f compose.yml -f compose.http.yml -f compose.oauth.yml --profile file-ingress config --services | sort)"
+          test "$oauth_file_services" = $'serverfs-auth\nserverfs-file-ingress\nserverfs-mcp'
 
       - name: Ruff lint
         run: uv run ruff check .

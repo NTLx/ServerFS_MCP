@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase F4 complete.
+Status: in progress — Phase 0 through Phase G complete.
 
 Plan frozen: 2026-10-19.
 
@@ -70,9 +70,18 @@ Completed and verified so far:
 - WeChat provider access/refresh tokens remain ephemeral and are never persisted or accepted by the MCP Resource Server; only ServerFS opaque resource-bound credentials are issued after admission;
 - WeChat state is single-use and provider-bound, and its callback has a dedicated path just like GitHub, Feishu and DingTalk;
 - automated access to the current official WeChat Open Platform guide remains unreliable, so the wire contract was cross-checked against preserved official documentation mirrors and current Tencent material; the real Open Platform application/dashboard response is an explicit live-acceptance gate before release rather than a fabricated pass;
-- Phase F4 focused validation is green: 66 four-provider/broker/admission tests, Ruff lint/format and `git diff --check`.
+- Phase F4 focused validation is green: 66 four-provider/broker/admission tests, Ruff lint/format and `git diff --check`;
+- Phase G adds an explicit `compose.oauth.yml` overlay; the base `compose.yml` remains unchanged, so existing deployments do not gain an auth service or Internet-capable network merely by updating the repository;
+- `serverfs-mcp` receives only Resource Server settings plus the private introspection endpoint and joins one additional internal `serverfs_auth_internal` network; no upstream provider credential keys enter the MCP container;
+- `serverfs-auth` runs from the same ServerFS image as the same configured non-root UID/GID, with a read-only root filesystem, `/tmp` tmpfs, `cap_drop: ALL`, `no-new-privileges:true`, one explicit writable SQLite bind and loopback-only host publication by default;
+- the auth state host directory must already exist and be writable by `SERVERFS_UID/GID`; Compose deliberately uses `create_host_path:false` rather than silently creating a root-owned or overly permissive state directory;
+- only `serverfs-auth` joins `oauth_egress`; `serverfs-mcp` retains only internal networks (`serverfs_internal`, `serverfs_file_ingress`, `serverfs_auth_internal`), preserving the invariant that identity federation has Internet egress while the MCP core does not;
+- static Compose gates are green for base, generic HTTP, OAuth, OAuth+Agent and OAuth+file-ingress shapes, and the Container CI now keeps those render/service-shape combinations under regression coverage;
+- live isolated Docker acceptance with a disposable image/project is green after correcting one real overlay wiring defect (`SERVERFS_OAUTH_ISSUER_URL` was initially not passed into `serverfs-auth`): both services become healthy, `auth.sqlite3` is created as the current UID/GID with mode `0600`, an unauthenticated MCP initialize request returns `401` with `resource_metadata`, auth can reach external TCP while MCP cannot, and only auth is attached to `oauth_egress`;
+- a separate create-spec diagnostic confirms Docker receives the intended loopback port bindings in `HostConfig.PortBindings` for both MCP and auth; the earlier host-loopback refusal observed in one disposable live run was therefore not a missing Compose publication rule and is not treated as an OAuth configuration defect;
+- all disposable containers, networks, state directories and test images used for the Phase G acceptance were removed, and the real ServerFS deployment was never modified.
 
-Phase G is the next implementation target. Real GitHub, Feishu, DingTalk and WeChat browser login still require operator-provided provider applications/credentials and remain later live-acceptance gates rather than fabricated passes.
+Phase H is the next implementation target. Real GitHub, Feishu, DingTalk and WeChat browser login still require operator-provided provider applications/credentials and remain later live-acceptance gates rather than fabricated passes.
 
 ## Goal
 

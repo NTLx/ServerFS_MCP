@@ -1,0 +1,126 @@
+# Optional OAuth 2.1 overlay for remote Streamable HTTP deployments.
+#
+# OAuth remains disabled by default. Enable it explicitly in .env, prepare the
+# state directory for the configured ServerFS UID/GID, then include this file:
+#
+#   mkdir -p "${SERVERFS_AUTH_STATE_HOST_DIR:-./.serverfs-auth-state}"
+#   docker compose --env-file .env \
+#     -f compose.yml -f compose.http.yml -f compose.oauth.yml up -d
+#
+# A reverse proxy should terminate public HTTPS for both the MCP resource URL
+# and SERVERFS_AUTH_PUBLIC_URL. The default host publications remain loopback.
+
+services:
+  serverfs-mcp:
+    depends_on:
+      serverfs-auth:
+        condition: service_healthy
+
+    environment:
+      SERVERFS_OAUTH_ENABLED: ${SERVERFS_OAUTH_ENABLED:-false}
+      SERVERFS_OAUTH_RESOURCE_URL: ${SERVERFS_OAUTH_RESOURCE_URL:-}
+      SERVERFS_OAUTH_ISSUER_URL: ${SERVERFS_OAUTH_ISSUER_URL:-}
+      SERVERFS_OAUTH_REQUIRED_SCOPES: ${SERVERFS_OAUTH_REQUIRED_SCOPES:-serverfs:access}
+      SERVERFS_OAUTH_INTROSPECTION_URL: http://serverfs-auth:${SERVERFS_AUTH_PORT:-8082}/internal/introspect
+      SERVERFS_OAUTH_INTROSPECTION_SECRET: ${SERVERFS_OAUTH_INTROSPECTION_SECRET:-}
+      SERVERFS_OAUTH_INTROSPECTION_TIMEOUT_SECONDS: ${SERVERFS_OAUTH_INTROSPECTION_TIMEOUT_SECONDS:-2}
+
+    networks:
+      - serverfs_auth_internal
+
+  serverfs-auth:
+    image: ${SERVERFS_IMAGE:-ghcr.io/ntlx/serverfs_mcp:latest}
+    command: ["serverfs-auth"]
+
+    restart: unless-stopped
+
+    user: "${SERVERFS_UID:-10001}:${SERVERFS_GID:-10001}"
+
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      SERVERFS_LOG_LEVEL: ${SERVERFS_LOG_LEVEL:-INFO}
+
+      SERVERFS_OAUTH_ENABLED: ${SERVERFS_OAUTH_ENABLED:-false}
+      SERVERFS_OAUTH_RESOURCE_URL: ${SERVERFS_OAUTH_RESOURCE_URL:-}
+      SERVERFS_OAUTH_ISSUER_URL: ${SERVERFS_OAUTH_ISSUER_URL:-}
+      SERVERFS_OAUTH_INTROSPECTION_SECRET: ${SERVERFS_OAUTH_INTROSPECTION_SECRET:-}
+
+      SERVERFS_AUTH_HOST: 0.0.0.0
+      SERVERFS_AUTH_PORT: ${SERVERFS_AUTH_PORT:-8082}
+      SERVERFS_AUTH_PUBLIC_URL: ${SERVERFS_AUTH_PUBLIC_URL:-}
+      SERVERFS_AUTH_STATE_DIR: /var/lib/serverfs-auth
+      SERVERFS_AUTH_CLIENTS_FILE: ${SERVERFS_AUTH_CLIENTS_FILE:-}
+      SERVERFS_AUTH_ALLOWED_PRINCIPALS: ${SERVERFS_AUTH_ALLOWED_PRINCIPALS:-}
+      SERVERFS_AUTH_ACCESS_TOKEN_TTL_SECONDS: ${SERVERFS_AUTH_ACCESS_TOKEN_TTL_SECONDS:-3600}
+      SERVERFS_AUTH_REFRESH_TOKEN_TTL_SECONDS: ${SERVERFS_AUTH_REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      SERVERFS_AUTH_DCR_ENABLED: ${SERVERFS_AUTH_DCR_ENABLED:-false}
+      SERVERFS_AUTH_USE_PROXY: ${SERVERFS_AUTH_USE_PROXY:-false}
+
+      SERVERFS_PROXY_HOST: ${SERVERFS_PROXY_HOST:-}
+      SERVERFS_PROXY_PORT: ${SERVERFS_PROXY_PORT:-}
+      SERVERFS_PROXY_USERNAME: ${SERVERFS_PROXY_USERNAME:-}
+      SERVERFS_PROXY_PASSWORD: ${SERVERFS_PROXY_PASSWORD:-}
+
+      SERVERFS_OAUTH_GITHUB_ENABLED: ${SERVERFS_OAUTH_GITHUB_ENABLED:-false}
+      SERVERFS_OAUTH_GITHUB_CLIENT_ID: ${SERVERFS_OAUTH_GITHUB_CLIENT_ID:-}
+      SERVERFS_OAUTH_GITHUB_CLIENT_SECRET: ${SERVERFS_OAUTH_GITHUB_CLIENT_SECRET:-}
+
+      SERVERFS_OAUTH_DINGTALK_ENABLED: ${SERVERFS_OAUTH_DINGTALK_ENABLED:-false}
+      SERVERFS_OAUTH_DINGTALK_CLIENT_ID: ${SERVERFS_OAUTH_DINGTALK_CLIENT_ID:-}
+      SERVERFS_OAUTH_DINGTALK_CLIENT_SECRET: ${SERVERFS_OAUTH_DINGTALK_CLIENT_SECRET:-}
+
+      SERVERFS_OAUTH_FEISHU_ENABLED: ${SERVERFS_OAUTH_FEISHU_ENABLED:-false}
+      SERVERFS_OAUTH_FEISHU_CLIENT_ID: ${SERVERFS_OAUTH_FEISHU_CLIENT_ID:-}
+      SERVERFS_OAUTH_FEISHU_CLIENT_SECRET: ${SERVERFS_OAUTH_FEISHU_CLIENT_SECRET:-}
+
+      SERVERFS_OAUTH_WECHAT_ENABLED: ${SERVERFS_OAUTH_WECHAT_ENABLED:-false}
+      SERVERFS_OAUTH_WECHAT_CLIENT_ID: ${SERVERFS_OAUTH_WECHAT_CLIENT_ID:-}
+      SERVERFS_OAUTH_WECHAT_CLIENT_SECRET: ${SERVERFS_OAUTH_WECHAT_CLIENT_SECRET:-}
+
+    volumes:
+      - type: bind
+        source: ${SERVERFS_AUTH_STATE_HOST_DIR:-./.serverfs-auth-state}
+        target: /var/lib/serverfs-auth
+        read_only: false
+        bind:
+          create_host_path: false
+
+    expose:
+      - "${SERVERFS_AUTH_PORT:-8082}"
+
+    ports:
+      - "${SERVERFS_AUTH_PUBLISH_HOST:-127.0.0.1}:${SERVERFS_AUTH_PUBLISH_PORT:-8082}:${SERVERFS_AUTH_PORT:-8082}"
+
+    networks:
+      - serverfs_auth_internal
+      - oauth_egress
+
+    read_only: true
+
+    tmpfs:
+      - /tmp
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          ".venv/bin/python",
+          "-c",
+          "import os,urllib.request; p=os.environ.get('SERVERFS_AUTH_PORT','8082'); urllib.request.urlopen(f'http://127.0.0.1:{p}/healthz', timeout=2).read()",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+networks:
+  serverfs_auth_internal:
+    internal: true
+
+  oauth_egress:
