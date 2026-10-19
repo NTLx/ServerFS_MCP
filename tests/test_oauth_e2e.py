@@ -203,7 +203,7 @@ def test_direct_oauth_http_flow_reaches_real_mcp_surface(tmp_path, workdir) -> N
 
     writable = read_write(workdir)
     sample = writable.container_path / "sample.txt"
-    sample.write_text("content\n", encoding="utf-8")
+    sample.write_bytes(b"content\n")
     resource_settings = Settings(
         http_host="127.0.0.1",
         http_port=resource_port,

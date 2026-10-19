@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from serverfs_mcp import darwin_service
+
+pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="Darwin service manager contract")
 
 
 def test_bundled_bridge_label_is_distinct_from_legacy_identity() -> None:

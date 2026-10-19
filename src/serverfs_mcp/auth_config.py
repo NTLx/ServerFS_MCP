@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import PurePath
+from pathlib import PurePosixPath
 from urllib.parse import urlsplit
 
 from .shared_proxy import SharedProxyConfig, parse_shared_proxy
@@ -128,14 +128,14 @@ def _get_external_url(env: Mapping[str, str], key: str, *, required: bool) -> st
 
 def _get_state_dir(env: Mapping[str, str]) -> str:
     value = env.get("SERVERFS_AUTH_STATE_DIR", "").strip() or "/var/lib/serverfs-auth"
-    if not PurePath(value).is_absolute():
+    if not PurePosixPath(value).is_absolute():
         raise ValueError("SERVERFS_AUTH_STATE_DIR must be absolute")
     return value
 
 
 def _get_clients_file(env: Mapping[str, str]) -> str:
     value = env.get("SERVERFS_AUTH_CLIENTS_FILE", "").strip()
-    if value and not PurePath(value).is_absolute():
+    if value and not PurePosixPath(value).is_absolute():
         raise ValueError("SERVERFS_AUTH_CLIENTS_FILE must be absolute")
     return value
 

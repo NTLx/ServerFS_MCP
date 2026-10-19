@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,8 @@ from serverfs_mcp.darwin_bridge_policy import (
     _read_private_env_file,
 )
 from serverfs_mcp.native_config import load_native_config
+
+pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="Darwin bridge policy contract")
 
 
 def _settings(tmp_path: Path, *, codex_proxy: bool = True):

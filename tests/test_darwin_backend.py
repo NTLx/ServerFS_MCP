@@ -10,11 +10,16 @@ from __future__ import annotations
 
 import base64  # noqa: F401  (kept for symmetry with future payload fixtures)
 import os
-import pwd
 import stat as stat_module
 import subprocess
+import sys
 
 import pytest
+
+if sys.platform != "darwin":
+    pytest.skip("Darwin arm64 kernel contract", allow_module_level=True)
+
+import pwd
 
 from serverfs_mcp.backends import BackendError, get_backend
 from serverfs_mcp.darwin_platform import (

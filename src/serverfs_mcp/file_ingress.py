@@ -392,28 +392,30 @@ def _orphan_guard() -> None:
     del original_ppid
 
 
-class _UnixThreadingHTTPServer(ThreadingHTTPServer):
-    """The same HTTP handler over a private AF_UNIX socket (v0.13 Phase H).
+if hasattr(socket, "AF_UNIX"):
 
-    macOS native deployments bind the helper to a 0700-runtime-dir socket
-    instead of a TCP listener, so nothing outside the local user can even
-    reach the fetch endpoint. The request contract is unchanged.
-    """
+    class _UnixThreadingHTTPServer(ThreadingHTTPServer):
+        """The same HTTP handler over a private AF_UNIX socket (v0.13 Phase H).
 
-    address_family = socket.AF_UNIX
+        macOS native deployments bind the helper to a 0700-runtime-dir socket
+        instead of a TCP listener, so nothing outside the local user can even
+        reach the fetch endpoint. The request contract is unchanged.
+        """
 
-    def server_bind(self) -> None:
-        # a stale socket file from a crashed helper must not block the bind
-        try:
-            st = os.lstat(self.server_address)  # type: ignore[arg-type]
-        except OSError:
-            pass
-        else:
-            import stat as _stat
+        address_family = socket.AF_UNIX
 
-            if _stat.S_ISSOCK(st.st_mode):
-                os.unlink(self.server_address)  # type: ignore[arg-type]
-        super().server_bind()
+        def server_bind(self) -> None:
+            # a stale socket file from a crashed helper must not block the bind
+            try:
+                st = os.lstat(self.server_address)  # type: ignore[arg-type]
+            except OSError:
+                pass
+            else:
+                import stat as _stat
+
+                if _stat.S_ISSOCK(st.st_mode):
+                    os.unlink(self.server_address)  # type: ignore[arg-type]
+            super().server_bind()
 
 
 def main() -> int:
@@ -424,6 +426,8 @@ def main() -> int:
         raise SystemExit(f"ServerFS file ingress: configuration error: {exc}") from exc
     socket_path = os.environ.get("SERVERFS_FILE_INGRESS_SOCKET", "").strip()
     if socket_path:
+        if not hasattr(socket, "AF_UNIX"):
+            raise SystemExit("ServerFS file ingress: Unix sockets are unsupported on this platform")
         if len(socket_path.encode("utf-8", "surrogateescape")) >= 104:
             raise SystemExit("ServerFS file ingress: socket path exceeds the sun_path limit")
         Path(socket_path).parent.mkdir(parents=True, exist_ok=True)

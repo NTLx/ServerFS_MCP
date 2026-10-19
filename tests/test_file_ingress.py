@@ -302,3 +302,12 @@ def test_exact_byte_limit_succeeds(monkeypatch) -> None:
     assert status == 200
     assert location is None
     assert data == b"12345678"
+
+
+@pytest.mark.skipif(hasattr(socket, "AF_UNIX"), reason="AF_UNIX is available on this platform")
+def test_main_rejects_socket_transport_without_af_unix(monkeypatch) -> None:
+    monkeypatch.setenv("SERVERFS_FILE_INGRESS_ALLOWED_HOSTS", "files.example.com")
+    monkeypatch.setenv("SERVERFS_FILE_INGRESS_SOCKET", "serverfs-test.sock")
+    with pytest.raises(SystemExit) as exc:
+        ingress.main()
+    assert "Unix sockets are unsupported on this platform" in str(exc.value)
