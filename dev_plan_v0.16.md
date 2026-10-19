@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase F3 complete.
+Status: in progress — Phase 0 through Phase F4 complete.
 
 Plan frozen: 2026-10-19.
 
@@ -63,9 +63,16 @@ Completed and verified so far:
 - DingTalk user lookup uses the provider-specific `x-acs-dingtalk-access-token` request header and admission keys use the Open Platform-account-scoped `unionId` (`dingtalk:<unionId>`), not mutable nick/mobile/email fields or single-enterprise `UserId` values;
 - DingTalk `accessToken` and any returned provider `refreshToken` remain ephemeral provider material: ServerFS persists neither and issues only its own opaque resource-bound tokens after admission;
 - upstream state remains single-use and provider-bound to `dingtalk`; replay, wrong callback field and unlisted identities fail closed before ServerFS authorization-code issuance;
-- Phase F3 focused validation is green: 55 cross-provider/broker/admission tests plus a 27-test short recheck after formatting, Ruff lint/format and `git diff --check`.
+- Phase F3 focused validation is green: 55 cross-provider/broker/admission tests plus a 27-test short recheck after formatting, Ruff lint/format and `git diff --check`;
+- Phase F4 adds WeChat Open Platform Website Application QR login using `open.weixin.qq.com/connect/qrconnect`, fixed `snsapi_login` scope and the required `#wechat_redirect` fragment;
+- WeChat exchanges the callback code through `api.weixin.qq.com/sns/oauth2/access_token`, then performs a bounded `/sns/userinfo` lookup; the userinfo `openid` must exactly match the token subject before any identity is admitted;
+- WeChat admission uses Open Platform `unionid` (`wechat:<unionid>`) rather than the app-local `openid`; mutable nickname/profile fields are ignored;
+- WeChat provider access/refresh tokens remain ephemeral and are never persisted or accepted by the MCP Resource Server; only ServerFS opaque resource-bound credentials are issued after admission;
+- WeChat state is single-use and provider-bound, and its callback has a dedicated path just like GitHub, Feishu and DingTalk;
+- automated access to the current official WeChat Open Platform guide remains unreliable, so the wire contract was cross-checked against preserved official documentation mirrors and current Tencent material; the real Open Platform application/dashboard response is an explicit live-acceptance gate before release rather than a fabricated pass;
+- Phase F4 focused validation is green: 66 four-provider/broker/admission tests, Ruff lint/format and `git diff --check`.
 
-Phase F4 is the next implementation target. Real GitHub, Feishu and DingTalk browser login still require operator-provided provider applications/credentials and remain later live-acceptance gates rather than fabricated passes.
+Phase G is the next implementation target. Real GitHub, Feishu, DingTalk and WeChat browser login still require operator-provided provider applications/credentials and remain later live-acceptance gates rather than fabricated passes.
 
 ## Goal
 

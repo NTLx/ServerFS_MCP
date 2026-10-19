@@ -32,6 +32,7 @@ from .auth_store import OAuthStateStore
 from .oauth_providers.dingtalk import DingTalkOAuthError, DingTalkOAuthProvider
 from .oauth_providers.feishu import FeishuOAuthError, FeishuOAuthProvider
 from .oauth_providers.github import GitHubOAuthError, GitHubOAuthProvider
+from .oauth_providers.wechat import WeChatOAuthError, WeChatOAuthProvider
 
 _MAX_INTROSPECTION_BODY_BYTES = 4096
 
@@ -44,6 +45,7 @@ def create_auth_app(
     github_provider: GitHubOAuthProvider | None = None,
     feishu_provider: FeishuOAuthProvider | None = None,
     dingtalk_provider: DingTalkOAuthProvider | None = None,
+    wechat_provider: WeChatOAuthProvider | None = None,
     test_identity: str | None = None,
 ) -> Starlette:
     """Build the isolated authorization service.
@@ -95,9 +97,17 @@ def create_auth_app(
             client_secret=settings.dingtalk_client_secret,
             proxy=settings.proxy if settings.use_proxy else None,
         )
+    effective_wechat_provider = wechat_provider
+    if effective_wechat_provider is None and settings.wechat_enabled:
+        effective_wechat_provider = WeChatOAuthProvider(
+            client_id=settings.wechat_client_id,
+            client_secret=settings.wechat_client_secret,
+            proxy=settings.proxy if settings.use_proxy else None,
+        )
     github_callback_url = f"{settings.public_url}/oauth/provider/github/callback"
     feishu_callback_url = f"{settings.public_url}/oauth/provider/feishu/callback"
     dingtalk_callback_url = f"{settings.public_url}/oauth/provider/dingtalk/callback"
+    wechat_callback_url = f"{settings.public_url}/oauth/provider/wechat/callback"
 
     def admit(principal: Principal) -> bool:
         allowed = admission_policy.allows(principal)
@@ -154,6 +164,8 @@ def create_auth_app(
             providers.append(("Feishu", "feishu"))
         if effective_dingtalk_provider is not None:
             providers.append(("DingTalk", "dingtalk"))
+        if effective_wechat_provider is not None:
+            providers.append(("WeChat", "wechat"))
         if not providers:
             return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
         query = urllib.parse.urlencode({"transaction": transaction})
@@ -305,6 +317,46 @@ def create_auth_app(
             return JSONResponse({"error": "identity_provider_failed"}, status_code=502)
         return complete_upstream_identity(upstream, principal)
 
+    async def wechat_start(request: Request) -> Response:
+        if effective_wechat_provider is None:
+            return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
+        transaction = request.query_params.get("transaction", "")
+        if not transaction:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        state = store.create_upstream_login(
+            transaction,
+            provider="wechat",
+            code_verifier="",
+        )
+        if state is None:
+            return JSONResponse({"error": "invalid_or_expired_transaction"}, status_code=400)
+        redirect = effective_wechat_provider.authorization_url(
+            callback_url=wechat_callback_url,
+            state=state,
+        )
+        return RedirectResponse(redirect, status_code=302, headers={"Cache-Control": "no-store"})
+
+    async def wechat_callback(request: Request) -> Response:
+        if effective_wechat_provider is None:
+            return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
+        state = request.query_params.get("state", "")
+        if not state:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        upstream = store.consume_upstream_login(state, provider="wechat")
+        if upstream is None:
+            return JSONResponse({"error": "invalid_or_expired_state"}, status_code=400)
+        if request.query_params.get("error"):
+            return JSONResponse({"error": "access_denied"}, status_code=400)
+        code = request.query_params.get("code", "")
+        if not code:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            principal = await effective_wechat_provider.authenticate(code=code)
+        except WeChatOAuthError:
+            jsonlog.warning("auth_provider_failed", provider="wechat")
+            return JSONResponse({"error": "identity_provider_failed"}, status_code=502)
+        return complete_upstream_identity(upstream, principal)
+
     async def introspect(request: Request) -> Response:
         authorization = request.headers.get("Authorization", "")
         if not authorization.startswith("Bearer "):
@@ -401,6 +453,8 @@ def create_auth_app(
         Route("/oauth/provider/feishu/callback", feishu_callback, methods=["GET"]),
         Route("/oauth/provider/dingtalk/start", dingtalk_start, methods=["GET"]),
         Route("/oauth/provider/dingtalk/callback", dingtalk_callback, methods=["GET"]),
+        Route("/oauth/provider/wechat/start", wechat_start, methods=["GET"]),
+        Route("/oauth/provider/wechat/callback", wechat_callback, methods=["GET"]),
         Route("/internal/introspect", introspect, methods=["POST"]),
         Route("/revoke", revoke, methods=["POST"]),
         Route("/healthz", healthz, methods=["GET"]),

@@ -191,6 +191,26 @@ class FakeDingTalkProvider:
         return principal_from_parts("dingtalk", self.subject)
 
 
+class FakeWeChatProvider:
+    def __init__(self, subject: str = "union-123") -> None:
+        self.subject = subject
+        self.authorization_calls: list[dict[str, str]] = []
+        self.authentication_calls: list[dict[str, str]] = []
+
+    def authorization_url(self, *, callback_url: str, state: str) -> str:
+        self.authorization_calls.append(
+            {
+                "callback_url": callback_url,
+                "state": state,
+            }
+        )
+        return f"https://wechat.example/authorize?state={state}"
+
+    async def authenticate(self, *, code: str):
+        self.authentication_calls.append({"code": code})
+        return principal_from_parts("wechat", self.subject)
+
+
 class TestAuthorizationCore:
     def test_metadata_exposes_pkce_and_revocation_without_dcr(self, tmp_path) -> None:
         app = create_auth_app(settings(tmp_path), test_identity="github:123")
@@ -805,6 +825,115 @@ class TestDingTalkBrokerFlow:
             denied = client.get(
                 "/oauth/provider/dingtalk/callback",
                 params={"authCode": "dingtalk-code", "state": provider_state},
+                follow_redirects=False,
+            )
+        assert denied.status_code == 403
+        assert denied.json()["error"] == "access_denied"
+
+
+class TestWeChatBrokerFlow:
+    def test_wechat_identity_completes_serverfs_code_flow_and_state_is_single_use(
+        self, tmp_path
+    ) -> None:
+        wechat = FakeWeChatProvider("union-123")
+        app = create_auth_app(
+            settings(
+                tmp_path,
+                wechat_enabled=True,
+                allowed_principals=("wechat:union-123",),
+            ),
+            wechat_provider=wechat,
+        )
+        register_client(app)
+        with TestClient(app) as client:
+            authorize_response = client.get(
+                "/authorize",
+                params={
+                    "client_id": CLIENT_ID,
+                    "redirect_uri": REDIRECT,
+                    "response_type": "code",
+                    "code_challenge": CODE_CHALLENGE,
+                    "code_challenge_method": "S256",
+                    "state": "state-123",
+                    "scope": "serverfs:access",
+                    "resource": RESOURCE,
+                },
+                follow_redirects=False,
+            )
+            login_response = client.get(
+                authorize_response.headers["location"], follow_redirects=False
+            )
+            assert login_response.status_code == 302
+            start_url = login_response.headers["location"]
+            assert start_url.startswith("/oauth/provider/wechat/start?transaction=")
+
+            start_response = client.get(start_url, follow_redirects=False)
+            assert start_response.status_code == 302
+            upstream_url = urlparse(start_response.headers["location"])
+            assert f"{upstream_url.scheme}://{upstream_url.netloc}{upstream_url.path}" == (
+                "https://wechat.example/authorize"
+            )
+            provider_state = parse_qs(upstream_url.query)["state"][0]
+            assert wechat.authorization_calls[0] == {
+                "callback_url": f"{ISSUER}/oauth/provider/wechat/callback",
+                "state": provider_state,
+            }
+
+            callback = client.get(
+                "/oauth/provider/wechat/callback",
+                params={"code": "wechat-code", "state": provider_state},
+                follow_redirects=False,
+            )
+            assert callback.status_code == 302
+            client_callback = urlparse(callback.headers["location"])
+            params = parse_qs(client_callback.query)
+            assert params["state"] == ["state-123"]
+            assert params["iss"] == [ISSUER]
+            token_response = exchange_code(client, params["code"][0])
+            assert token_response.status_code == 200, token_response.text
+            assert introspect(client, token_response.json()["access_token"]).json()["sub"] == (
+                "wechat:union-123"
+            )
+
+            replay = client.get(
+                "/oauth/provider/wechat/callback",
+                params={"code": "wechat-code", "state": provider_state},
+                follow_redirects=False,
+            )
+            assert replay.status_code == 400
+            assert replay.json()["error"] == "invalid_or_expired_state"
+
+        assert wechat.authentication_calls == [{"code": "wechat-code"}]
+
+    def test_wechat_authenticated_but_unlisted_identity_is_denied(self, tmp_path) -> None:
+        wechat = FakeWeChatProvider("union-denied")
+        app = create_auth_app(
+            settings(tmp_path, wechat_enabled=True, allowed_principals=()),
+            wechat_provider=wechat,
+        )
+        register_client(app)
+        with TestClient(app) as client:
+            authorize_response = client.get(
+                "/authorize",
+                params={
+                    "client_id": CLIENT_ID,
+                    "redirect_uri": REDIRECT,
+                    "response_type": "code",
+                    "code_challenge": CODE_CHALLENGE,
+                    "code_challenge_method": "S256",
+                    "scope": "serverfs:access",
+                    "resource": RESOURCE,
+                },
+                follow_redirects=False,
+            )
+            start_url = client.get(
+                authorize_response.headers["location"], follow_redirects=False
+            ).headers["location"]
+            upstream_url = client.get(start_url, follow_redirects=False).headers["location"]
+            provider_state = parse_qs(urlparse(upstream_url).query)["state"][0]
+            denied = client.get(
+                "/oauth/provider/wechat/callback",
+                params={"code": "wechat-code", "state": provider_state},
                 follow_redirects=False,
             )
         assert denied.status_code == 403
