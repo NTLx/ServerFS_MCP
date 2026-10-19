@@ -21,6 +21,12 @@ SERVERFS_HTTP_ALLOWED_ORIGINS=
 
 默认 host/port/path 继续与既有 OpenAI Tunnel 的 Docker 内部路径一致，因此新增通用 MCP HTTP 支持不会强迫现有 Tunnel 部署迁移。
 
+### 可选 OAuth 2.1
+
+远程 HTTP 可以在 v0.16 中通过 `SERVERFS_OAUTH_ENABLED=true` + `compose.oauth.yml` 增加隔离的 OAuth 层。OAuth 默认关闭；关闭时不要求任何 OAuth 配置，也不适用于 Windows/macOS 原生 stdio。Provider 凭据与 provider/CIMD egress 只进入 `serverfs-auth`；MCP 服务只接收 Resource Server 配置和私有 introspection 边界。
+
+公开 URL 模型、稳定 principal allowlist、provider callback、CIMD/DCR、代理与运维流程详见 [OAuth 2.1](./oauth/)。完整版本化变量面仍以 `.env.example` 为准。
+
 ## Workdir 槽位
 
 最多可配置 16 个 workdir：
@@ -60,6 +66,7 @@ WORKDIR_02_READ_ONLY=false
 - 二进制传输默认关闭。`SERVERFS_MAX_BINARY_TRANSFER_BYTES` 是原生二进制传输与可选文件入口唯一公开的全局大小配置；workdir 覆盖值只能进一步收紧对应 workdir 的最终发布路径。
 - ChatGPT 文件入口默认关闭，并且需要同时设置 `SERVERFS_FILE_INGRESS_ENABLED=true` 与启用 `file-ingress` Compose profile。
 - 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
+- OAuth 默认关闭。启用时需要 OAuth Compose overlay；loopback 之外必须使用 HTTPS resource/auth URL；必须配置非空 introspection secret、至少一个身份 provider，以及精确的 default-deny principal allowlist。
 - Agent 策略只有在显式配置后才启用。
 - v0.12.0 把 Tunnel、Agent runtime 与 Jev 的代理选择保持独立：`SERVERFS_OPENAI_TUNNEL_USE_PROXY`、`SERVERFS_AGENT_USE_PROXY`、`SERVERFS_JEV_USE_PROXY` 复用同一组 `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` 端点字段，但不会互相隐式启用。
 - v0.12 的 Linux Agent 代理仅支持无凭据代理；若启用 Agent 代理同时配置了共享代理用户名/密码，部署渲染会 fail closed。需要认证的上游应通过无凭据本地 broker 转接。

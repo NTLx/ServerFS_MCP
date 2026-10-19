@@ -21,6 +21,12 @@ The listener address is independent from publication. `compose.http.yml` publish
 
 The default host/port/path continue to match the existing OpenAI Tunnel's Docker-internal path, so Tunnel deployments do not require a migration merely because generic MCP HTTP is now supported.
 
+### Optional OAuth 2.1
+
+Remote HTTP can add the isolated v0.16 OAuth overlay with `SERVERFS_OAUTH_ENABLED=true` plus `compose.oauth.yml`. OAuth is default-off, requires no settings on the disabled path, and does not apply to native Windows/macOS stdio. Provider credentials and provider/CIMD egress live only in `serverfs-auth`; the MCP service receives only Resource Server settings and the private introspection boundary.
+
+Use [OAuth 2.1](./oauth/) for the exact public URL model, stable-principal allowlist, provider callbacks, CIMD/DCR behavior, proxy settings and operational procedures. Keep `.env.example` as the complete versioned variable reference.
+
 ## Workdir slots
 
 Up to 16 workdirs can be configured:
@@ -60,6 +66,7 @@ Extra deny globs are stricter: global and workdir rules are **unioned**, so a wo
 - Binary transfer is disabled by default. `SERVERFS_MAX_BINARY_TRANSFER_BYTES` is the single public global size setting for native binary transfer and optional file ingress; workdir overrides can only further constrain their own publication path.
 - ChatGPT file ingress is disabled by default and requires both `SERVERFS_FILE_INGRESS_ENABLED=true` and the `file-ingress` Compose profile.
 - The constrained OpenAI Blob host-family policy is separately disabled by default; enable it with `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` only when ChatGPT file parameters are required. Exact additional hosts belong in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
+- OAuth is disabled by default. Enabling it requires the OAuth Compose overlay, an HTTPS resource/auth URL pair outside loopback, a non-empty introspection secret, at least one configured identity provider, and an exact default-deny principal allowlist.
 - Agent policy is disabled unless explicitly configured.
 - v0.12.0 keeps Tunnel, Agent runtime and Jev proxy decisions independent: `SERVERFS_OPENAI_TUNNEL_USE_PROXY`, `SERVERFS_AGENT_USE_PROXY`, and `SERVERFS_JEV_USE_PROXY` each reuse the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields but never implicitly enable one another.
 - Linux Agent proxying in v0.12 is credentialless-only. If Agent proxying is enabled while shared proxy credentials are configured, deployment rendering fails closed; use a credentialless local broker for an authenticated upstream.

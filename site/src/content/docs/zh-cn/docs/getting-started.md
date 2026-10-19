@@ -31,6 +31,23 @@ docker compose -f compose.yml -f compose.http.yml ps
 
 HTTP override 默认仅发布 `127.0.0.1:8000/mcp`，并保持 OpenAI Tunnel 不启动。11 个文件系统工具仍默认只读；除非某个 workdir 显式设置 `WORKDIR_XX_READ_ONLY=false`。如需超出 loopback 暴露 ServerFS，应配置 Host allowlist，并在明确的入口边界终止 TLS 与认证。
 
+## 远程 HTTP 可选 OAuth 2.1
+
+v0.16.0 可以在不改变本地/原生 stdio 的前提下，为通用 Streamable HTTP 部署增加 OAuth：
+
+```bash
+mkdir -p .serverfs-auth-state
+chmod 700 .serverfs-auth-state
+
+docker compose --env-file .env \
+  -f compose.yml \
+  -f compose.http.yml \
+  -f compose.oauth.yml \
+  up -d
+```
+
+启动前需要设置 `SERVERFS_OAUTH_ENABLED=true`、canonical 公网 MCP resource URL、`serverfs-auth` public/issuer URL、introspection secret、至少一个 provider，以及精确的稳定 principal allowlist。公网部署应继续让 MCP/auth 容器只绑定 loopback，再通过 HTTPS 反向代理发布。Provider callback、CIMD/DCR、备份/撤销与 OpenAI Tunnel 兼容边界详见 [OAuth 2.1](./oauth/)。
+
 ## 可选 ChatGPT / OpenAI Tunnel 部署
 
 在 `.env` 中设置 `CONTROL_PLANE_TUNNEL_ID` 与 `CONTROL_PLANE_API_KEY`，然后使用既有基础 Compose 路径：

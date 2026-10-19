@@ -26,6 +26,7 @@ There is no shell, generic command executor, recursive delete, or unguarded over
 - [Configuration](./configuration/) — define workdirs and effective per-workdir policy.
 - [Architecture](./architecture/) — understand the MCP core, transport/ingress adapters, deployment and Agent Bridge boundaries.
 - [Security Model](./security/) — review the defense-in-depth model.
+- [OAuth 2.1](./oauth/) — protect Linux remote Streamable HTTP with optional OAuth, federated identity and exact stable-principal admission.
 - [Binary Transfer](./binary-transfer/) — enable bounded download/upload, including optional ChatGPT file-parameter ingress.
 - [Agent Bridge](./agent-bridge/) — opt into structured Codex/Claude/Qoder delegation.
 - [Windows Native](./windows-native/) — native Windows 11 x64 + local NTFS deployment, including current-user persistent service lifecycle, health checks, Tunnel bootstrap, and Agent delegation.

@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase J complete for ServerFS-owned behavior; external provider browser acceptance and cross-platform native regression remain pending.
+Status: in progress — Phase 0 through Phase L complete for ServerFS-owned, cross-platform and documentation/site behavior. Phase M release gates remain; external provider browser acceptance and the OpenAI Tunnel OAuth resource rewrite are explicit release prerequisites/limitations.
 
 Plan frozen: 2026-10-19.
 
@@ -90,9 +90,23 @@ Completed and verified so far:
 - OpenAI tunnel-client issue #78 remains open as of 2026-10-19: ChatGPT may replace the canonical RFC 9728 resource with its hosted tunnel resource in the actual authorization request. ServerFS therefore records this as an upstream live-acceptance blocker and does not weaken `resource`/audience validation, add wildcard audiences or hard-code OpenAI internal gateway hosts;
 - Phase J adds explicit concurrency and corruption regression coverage: a single authorization code has exactly one successful concurrent consumer, a refresh token has exactly one successful concurrent rotation, stale/replayed credentials fail closed, and unsupported/corrupted OAuth SQLite state fails closed rather than being silently repaired;
 - Phase J's focused cross-boundary security matrix is green at 335 tests across filesystem security, OAuth/resource-server/auth-server/client registration/admission/provider adapters, file-ingress and Agent lease/deployment behavior; the new Tunnel/OAuth-security deployment checks add another 22 green focused tests;
-- base, generic HTTP, OAuth and OAuth+Agent Compose rendering remain green after the Tunnel trusted-origin addition, with `git diff --check` and focused Ruff lint/format clean.
+- base, generic HTTP, OAuth and OAuth+Agent Compose rendering remain green after the Tunnel trusted-origin addition, with `git diff --check` and focused Ruff lint/format clean;
+- Phase K synchronized the shared checkpoint through GitHub into the real WorkPC and MacBook native development environments rather than treating Linux results as cross-platform evidence;
+- Windows regression found and fixed three genuine portability defects without weakening native security: `serverfs-auth` container paths now use fixed POSIX semantics instead of host `PurePath`, file-ingress no longer evaluates `socket.AF_UNIX` at import time on Windows and rejects unsupported Unix-socket configuration explicitly, and the OAuth E2E fixture writes canonical LF bytes rather than inheriting Windows newline translation;
+- Windows regression also exposed missing platform gates in Darwin-only backend/service/policy tests; those tests now skip before importing or exercising macOS-only APIs on non-Darwin hosts, while the production Darwin code remains unchanged;
+- WorkPC's remaining native Tunnel/Bridge/D9 failures were traced to the real production ServerFS service intentionally holding the single-instance Tunnel mutex and running the Agent Bridge. That production service was not stopped and the mutex/Bridge isolation was not weakened merely to make local tests pass;
+- Windows Native CI was expanded so shared `auth_config.py`/`file_ingress.py`, OAuth/auth/file-ingress tests and Darwin platform-gate tests trigger the workflow, with a full `pytest --collect-only` Windows gate to prevent future import-time platform failures;
+- GitHub Windows Native run `39258239080` is fully green on a clean Windows host, including the new cross-platform collection gate, expanded Python/native test set, Rust kernel checks and wheel acceptance;
+- the real MacBook fast-forward preserved an unrelated local `.workbuddy/memory/2026-10-10.md` modification byte-for-byte; macOS focused regression is green at 120 passed / 1 skipped / 0 failed, full Ruff/format/lock gates are clean, and the installed native service reports a valid bundle/manifest with managed Tunnel and Agent Bridge running;
+- GitHub macOS Native run `39258238947` is fully green across the platform assertion, MCP suite and Agent Bridge suite; Container run `39258239078` is also fully green across root tests, Agent Bridge, Compose validation and image build;
+- final Linux/shared regression after all Windows/macOS portability fixes is green at 1565 passed / 316 skipped / 0 failed, with `git diff --check`, lock, full Ruff lint/format, base Compose, HTTP Compose, OAuth Compose and OAuth+Agent Compose all green on commit `7d981c790963f5d89eb7fc54c8a05f9585f5956e`;
+- Phase L adds one canonical operator contract at `docs/oauth.md` covering the Linux OAuth deployment boundary, public TLS/reverse proxy shape, four provider callbacks, exact stable-principal admission, client pre-registration/CIMD/DCR, opaque token/resource semantics, Tunnel compatibility, proxying, backup/restore, revocation, secret rotation and troubleshooting;
+- README remains an entry-level document and now links to the OAuth guide plus a minimal opt-in Compose example rather than duplicating the full operator contract;
+- the documentation site now has dedicated English and Chinese OAuth pages, with Getting Started, Configuration, Security, Architecture and both documentation indexes linking the new boundary into the existing information architecture;
+- release-facing stable-version surfaces intentionally remain at v0.15.0 during Phase L, matching the plan requirement to update them only in the final release stage rather than falsely claiming v0.16.0 is already published;
+- Phase L validation is clean: full Ruff lint/format passes, `git diff --check` passes, Astro production build completes with zero warnings/errors, and both `/docs/oauth/` and `/zh-cn/docs/oauth/` are present in the generated site.
 
-Phase H–J are complete for ServerFS-owned behavior. Real GitHub, Feishu, DingTalk and WeChat browser login still require operator-provided provider applications/credentials and remain explicit external acceptance gates rather than fabricated passes. The next implementation checkpoint is Linux/shared full regression and synchronization, followed by WorkPC Windows-native and MacBook macOS-native regression in their own workdirs.
+Phase 0–L are complete for ServerFS-owned behavior, cross-platform compatibility and operator documentation. Real GitHub, Feishu, DingTalk and WeChat browser login still require operator-provided provider applications/credentials and remain explicit external acceptance gates rather than fabricated passes. OpenAI tunnel-client issue #78 remains an explicit upstream limitation for OAuth-through-Tunnel; ServerFS does not weaken resource/audience validation around it. Phase M now owns final release gating and release-facing version surfaces.
 
 ## Goal
 

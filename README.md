@@ -16,6 +16,7 @@ Expose only the directories you choose. Keep them read-only by default. Opt into
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
 [Getting started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) ·
 [Security model](https://ntlx.github.io/ServerFS_MCP/docs/security/) ·
+[OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/docs/oauth/) ·
 [Releases](https://github.com/NTLx/ServerFS_MCP/releases)
 
 ---
@@ -92,6 +93,23 @@ The generic HTTP override publishes ServerFS on `127.0.0.1:8000/mcp` by default 
 
 For ChatGPT through the existing OpenAI Secure MCP Tunnel, configure `CONTROL_PLANE_TUNNEL_ID` and `CONTROL_PLANE_API_KEY` and use the base Compose deployment. For Agent delegation, binary transfer, file ingress, proxy routing, or production hardening, continue with the [Getting Started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) and [Configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) guides.
 
+### Optional OAuth 2.1 for remote HTTP
+
+v0.16.0 adds an opt-in OAuth 2.1 deployment for generic remote Streamable HTTP. OAuth stays **disabled by default**, applies only when `SERVERFS_OAUTH_ENABLED=true` and `compose.oauth.yml` is included, and does not change native Windows/macOS stdio.
+
+```bash
+mkdir -p .serverfs-auth-state
+chmod 700 .serverfs-auth-state
+
+docker compose --env-file .env \
+  -f compose.yml \
+  -f compose.http.yml \
+  -f compose.oauth.yml \
+  up -d
+```
+
+The recommended public shape uses separate HTTPS MCP and authorization-server origins behind a reverse proxy; `serverfs-auth` alone owns provider/CIMD egress. Supported identity providers are GitHub, DingTalk, Feishu/Lark and WeChat Open Platform. See [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/docs/oauth/) for callbacks, stable-principal admission, CIMD/DCR, resource binding, backup/revocation, proxy configuration and the current OpenAI Tunnel OAuth limitation.
+
 ## How it works
 
 ```text
@@ -112,7 +130,7 @@ Claude Code / Codex / Qoder / MCP hosts
                   ChatGPT
 ```
 
-The MCP core is host-neutral. Standard clients use stdio or Streamable HTTP; the OpenAI Secure MCP Tunnel remains an optional authenticated ChatGPT ingress adapter. On Linux, generic HTTP is opt-in and loopback-only by default, while the historical Tunnel deployment remains supported. The optional file-ingress sidecar retains separate egress responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. Since v0.14.0, Windows uses the current user's Task Scheduler as the persistent OS owner and keeps the managed process tree windowless; no SCM/LocalSystem service or UAC elevation is required. On macOS v0.13.2+, a small headless ServiceManagement companion registers the persistent per-user Tunnel and Agent Bridge through `SMAppService`; no root LaunchDaemon or hand-installed LaunchAgent is required.
+The MCP core is host-neutral. Standard clients use stdio or Streamable HTTP; the OpenAI Secure MCP Tunnel remains an optional authenticated ChatGPT ingress adapter. On Linux, generic HTTP is opt-in and loopback-only by default, while the historical Tunnel deployment remains supported. v0.16 can add an isolated `serverfs-auth` OAuth 2.1 broker to remote HTTP without giving the MCP core provider credentials or general Internet egress. The optional file-ingress sidecar retains separate egress responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. Since v0.14.0, Windows uses the current user's Task Scheduler as the persistent OS owner and keeps the managed process tree windowless; no SCM/LocalSystem service or UAC elevation is required. On macOS v0.13.2+, a small headless ServiceManagement companion registers the persistent per-user Tunnel and Agent Bridge through `SMAppService`; no root LaunchDaemon or hand-installed LaunchAgent is required.
 
 See [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) for the complete deployment and trust-boundary model.
 
@@ -186,6 +204,7 @@ The documentation site is the authoritative user and operator reference. The REA
 | Workdirs and policy | [Configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) |
 | Architecture and trust boundaries | [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) |
 | Security contract | [Security Model](https://ntlx.github.io/ServerFS_MCP/docs/security/) |
+| OAuth 2.1 remote HTTP | [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/docs/oauth/) |
 | Binary transfer / file ingress | [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/docs/binary-transfer/) |
 | Agent delegation | [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/) |
 | Optional Jev advice | [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) |

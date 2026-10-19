@@ -34,6 +34,14 @@ v0.4.0 introduced MCP Streamable HTTP DNS-rebinding protection; v0.5.0 retains t
 
 The transport accepts only the fixed internal authority `serverfs-mcp:8000`, rejects unexpected or missing Host values, and rejects non-empty unapproved Origin values before MCP dispatch.
 
+## OAuth boundary
+
+v0.16 can protect remote Streamable HTTP with an isolated `serverfs-auth` authorization server. OAuth is default-off. The auth service alone receives provider credentials and provider/CIMD Internet egress; `serverfs-mcp` receives neither and validates only ServerFS-issued opaque resource-bound tokens through a private introspection link.
+
+Admission is default-deny and uses exact stable provider subjects. Provider-native tokens are never accepted at MCP. Authorization codes/provider state are single-use, refresh tokens rotate, raw bearer values are not persisted, and resource/audience validation remains strict. Existing workdir policy stays authoritative after identity admission; ServerFS does not duplicate workdir permissions into OAuth scopes.
+
+The OpenAI Tunnel OAuth path keeps the same validation. A known upstream resource-rewrite issue is documented rather than bypassed with wildcard audiences. See [OAuth 2.1](./oauth/) for deployment, revocation, backup and provider details.
+
 ## Agent boundary
 
 Agent support is opt-in and lives behind a host-side Unix socket. The MCP container receives structured Agent capabilities, not shell access to the host.
@@ -48,4 +56,4 @@ The TypeSafe API key is rendered only into the user-owned Bridge config and is n
 
 See [Jev Advisors](./jev-advisors/) for the complete advisory contract.
 
-For adjacent trust-boundary detail, see [Architecture](./architecture/) and [Configuration](./configuration/). Version-specific implementation evidence remains in the repository's phase acceptance records rather than the project README.
+For adjacent trust-boundary detail, see [Architecture](./architecture/), [Configuration](./configuration/) and [OAuth 2.1](./oauth/). Version-specific implementation evidence remains in the repository's phase acceptance records rather than the project README.

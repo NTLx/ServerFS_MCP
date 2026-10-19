@@ -39,6 +39,27 @@ Temporary file host
 
 The sidecar is opt-in. It has no workdir mounts, OpenAI/tunnel credentials, or published port. The main MCP container never receives Internet egress; it sends only the temporary URL and byte ceiling to the sidecar. Host authorization is either an exact administrator-configured hostname or the separately enabled constrained OpenAI Azure Blob account family measured from real ChatGPT file parameters. Generic wildcards are rejected. The sidecar then validates globally routable DNS answers, pins the connection to a validated IP while verifying TLS for the original hostname, revalidates every redirect, and enforces timeout and byte ceilings before returning raw bytes.
 
+## Optional OAuth path
+
+```text
+MCP client
+   │ OAuth bearer
+   ▼
+ServerFS MCP Resource Server
+   │ private introspection only
+   ▼
+serverfs-auth
+   │
+   ├── GitHub
+   ├── DingTalk
+   ├── Feishu / Lark
+   └── WeChat Open Platform
+```
+
+`serverfs-auth` is a separately deployed, non-root service with its own writable SQLite state and OAuth-only egress network. Provider credentials never enter `serverfs-mcp`; the MCP container does not join the OAuth egress network. The Resource Server accepts only ServerFS-issued opaque tokens bound to the configured MCP resource. Admission is exact and default-deny, then the existing workdir policy applies unchanged.
+
+OAuth is Linux remote-HTTP deployment state, not part of native Windows/macOS stdio. See [OAuth 2.1](./oauth/) for the public TLS/reverse-proxy shape, provider callbacks, client registration and Tunnel compatibility boundary.
+
 ## Optional Agent path
 
 ```text
@@ -105,6 +126,7 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - guarded file mutations
 - bounded whole-file binary transfer
 - optional isolated ChatGPT file ingress
+- optional OAuth 2.1 Resource Server + isolated identity broker for Linux remote HTTP
 - structured Agent task RPC, model discovery and request-scoped model override
 - optional host-side Jev advisory decisions
 

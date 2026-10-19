@@ -31,6 +31,23 @@ docker compose -f compose.yml -f compose.http.yml ps
 
 The HTTP override publishes `127.0.0.1:8000/mcp` by default and keeps the OpenAI Tunnel disabled. The 11-tool filesystem surface remains read-only unless a workdir explicitly sets `WORKDIR_XX_READ_ONLY=false`. Before exposing ServerFS beyond loopback, configure the Host allowlist and terminate TLS/authentication at an explicit ingress boundary.
 
+## Optional OAuth 2.1 for remote HTTP
+
+v0.16.0 can add OAuth to the generic Streamable HTTP deployment without changing local/native stdio:
+
+```bash
+mkdir -p .serverfs-auth-state
+chmod 700 .serverfs-auth-state
+
+docker compose --env-file .env \
+  -f compose.yml \
+  -f compose.http.yml \
+  -f compose.oauth.yml \
+  up -d
+```
+
+Before starting, set `SERVERFS_OAUTH_ENABLED=true`, the canonical public MCP resource URL, the `serverfs-auth` public/issuer URL, an introspection secret, at least one provider and the exact stable-principal allowlist. Public deployments should expose the MCP and authorization-server loopback ports only through an HTTPS reverse proxy. See [OAuth 2.1](./oauth/) for provider callbacks, CIMD/DCR, backup/revocation and the OpenAI Tunnel compatibility boundary.
+
 ## Optional ChatGPT / OpenAI Tunnel deployment
 
 Set `CONTROL_PLANE_TUNNEL_ID` and `CONTROL_PLANE_API_KEY` in `.env`, then use the historical base Compose path:

@@ -34,6 +34,14 @@ v0.4.0 引入了 MCP Streamable HTTP DNS-rebinding protection；v0.5.0 保持这
 
 传输层只接受固定内部 authority `serverfs-mcp:8000`；异常或缺失 Host 会被拒绝，非空且未允许的 Origin 也会在进入 MCP dispatch 前被拒绝。
 
+## OAuth 边界
+
+v0.16 可通过隔离的 `serverfs-auth` Authorization Server 保护远程 Streamable HTTP。OAuth 默认关闭。只有 auth 服务接收 provider 凭据与 provider/CIMD Internet egress；`serverfs-mcp` 不接收这些信息，只通过私有 introspection 校验 ServerFS 自己签发、绑定 resource 的不透明 Token。
+
+准入策略默认拒绝，只接受精确的稳定 provider subject。Provider-native token 不能直接访问 MCP。Authorization code/provider state 都是一次性的，refresh token 使用后轮换，原始 bearer 值不会持久化，resource/audience 校验保持严格。身份准入后仍由既有 workdir 策略决定权限；ServerFS 不把 workdir 权限复制成 OAuth scope。
+
+OpenAI Tunnel 的 OAuth 路径同样保持这些校验。已知上游 resource rewrite 问题会被明确记录，而不是通过 wildcard audience 绕过。部署、撤销、备份和 provider 细节见 [OAuth 2.1](./oauth/)。
+
 ## Agent 边界
 
 Agent 支持是 opt-in，并位于宿主机 Unix socket 之后。MCP 容器获得的是结构化 Agent 能力，而不是宿主机 Shell。
@@ -48,4 +56,4 @@ TypeSafe API Key 只会渲染到用户自有的 Bridge 配置，不会进入 MCP
 
 完整 advisory 契约详见 [Jev Advisors](./jev-advisors/)。
 
-相邻的信任边界细节请继续查看 [架构](./architecture/) 与 [配置](./configuration/)。版本特定的实现与验收证据保留在仓库 phase acceptance 记录中，而不再堆叠到项目 README。
+相邻的信任边界细节请继续查看 [架构](./architecture/)、[配置](./configuration/) 与 [OAuth 2.1](./oauth/)。版本特定的实现与验收证据保留在仓库 phase acceptance 记录中，而不再堆叠到项目 README。

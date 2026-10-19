@@ -39,6 +39,27 @@ serverfs-file-ingress
 
 该 sidecar 为显式可选能力。它不挂载 workdir、不持有 OpenAI/Tunnel 凭据，也不发布端口。MCP 主容器始终不获得互联网出口，只把临时 URL 和字节上限发送给 sidecar。主机授权可以来自管理员配置的精确主机名，也可以来自单独开启、根据真实 ChatGPT 文件参数实测得到的受限 OpenAI Azure Blob 账户家族；通用通配符会被拒绝。随后 Sidecar 继续校验 DNS 结果必须全部可公网路由，将连接固定到已验证 IP 并按原始主机名校验 TLS，对每次重定向重新校验，并执行超时和字节上限后才返回原始字节。
 
+## 可选 OAuth 路径
+
+```text
+MCP client
+   │ OAuth bearer
+   ▼
+ServerFS MCP Resource Server
+   │ 仅私有 introspection
+   ▼
+serverfs-auth
+   │
+   ├── GitHub
+   ├── 钉钉
+   ├── 飞书 / Lark
+   └── 微信开放平台
+```
+
+`serverfs-auth` 是独立部署的非 root 服务，拥有自己的可写 SQLite state 与 OAuth-only egress network。Provider 凭据不会进入 `serverfs-mcp`；MCP 容器也不会加入 OAuth 出站网络。Resource Server 只接受 ServerFS 自己签发、绑定到配置 MCP resource 的不透明 Token。准入策略精确且默认拒绝，身份准入后仍使用原有 workdir 策略。
+
+OAuth 属于 Linux remote-HTTP 部署形态，不属于 Windows/macOS 原生 stdio。公网 TLS/反向代理形态、provider callback、client 注册与 Tunnel 兼容边界详见 [OAuth 2.1](./oauth/)。
+
 ## 可选 Agent 路径
 
 ```text
@@ -105,6 +126,7 @@ ServerFS 提供窄能力操作，而不是通用执行原语：
 - 受保护的文件写入
 - 有界整文件二进制传输
 - 可选且隔离的 ChatGPT 文件入口
+- Linux remote HTTP 可选 OAuth 2.1 Resource Server + 隔离身份 broker
 - 结构化 Agent task RPC、模型发现与单次任务模型覆盖
 - 可选的宿主机 Jev advisory decision
 
