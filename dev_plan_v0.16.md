@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase F1 complete.
+Status: in progress — Phase 0 through Phase F2 complete.
 
 Plan frozen: 2026-10-19.
 
@@ -50,9 +50,16 @@ Completed and verified so far:
 - provider callback admission happens before ServerFS authorization-code issuance; denied identities close the pending ServerFS authorization;
 - provider HTTP traffic is owned only by `serverfs-auth`, uses the existing shared proxy configuration when explicitly enabled, and never enters `serverfs-mcp`;
 - deterministic GitHub broker E2E is green through browser-style redirects, callback, ServerFS authorization-code exchange, introspection and upstream-state replay rejection;
-- Phase F1 focused validation is green: 32 GitHub/broker/policy tests, Ruff lint/format and `git diff --check`.
+- Phase F1 focused validation is green: 32 GitHub/broker/policy tests, Ruff lint/format and `git diff --check`;
+- Phase F2 adds a Feishu OAuth adapter using the current `accounts.feishu.cn/open-apis/authen/v1/authorize` authorization endpoint, the OAuth v3 `accounts.feishu.cn/oauth/v3/token` token endpoint and the authenticated `open.feishu.cn/open-apis/authen/v1/user_info` identity endpoint;
+- Feishu requests only `contact:user.base:readonly` and deliberately omits `offline_access`, so ServerFS never requests or retains a Feishu refresh token;
+- Feishu admission keys use the documented app-scoped read-only `open_id` (`feishu:ou_...`), not mutable name/email fields or tenant-defined `user_id` values;
+- Feishu upstream state remains single-use through the same generic upstream-login transaction store; Feishu user access tokens stay request-local and are discarded immediately after identity lookup;
+- when exactly one real upstream provider is enabled, `/login` keeps the simple automatic redirect; when multiple providers are enabled, `serverfs-auth` renders one minimal no-store provider selection page rather than guessing a provider;
+- GitHub and Feishu remain isolated adapters with independent callbacks and provider-bound state, reducing OAuth mix-up risk;
+- Phase F2 focused validation is green: 45 Feishu/GitHub/broker/admission tests, Ruff lint/format and `git diff --check`.
 
-Phase F2 is the next implementation target. Real GitHub browser login still requires operator-provided OAuth App credentials and remains a later live-acceptance gate rather than a fabricated pass.
+Phase F3 is the next implementation target. Real GitHub and Feishu browser login still require operator-provided provider applications/credentials and remain later live-acceptance gates rather than fabricated passes.
 
 ## Goal
 

@@ -9,6 +9,7 @@ import json
 import os
 import secrets
 import sys
+import urllib.parse
 from typing import Any
 
 import uvicorn
@@ -19,7 +20,7 @@ from mcp.server.auth.routes import build_metadata, cors_middleware, create_auth_
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from . import logging as jsonlog
@@ -28,6 +29,7 @@ from .auth_config import AuthServiceSettings, auth_settings_from_env
 from .auth_policy import AdmissionPolicy, Principal, parse_principal
 from .auth_provider import ServerFSOAuthProvider
 from .auth_store import OAuthStateStore
+from .oauth_providers.feishu import FeishuOAuthError, FeishuOAuthProvider
 from .oauth_providers.github import GitHubOAuthError, GitHubOAuthProvider
 
 _MAX_INTROSPECTION_BODY_BYTES = 4096
@@ -39,6 +41,7 @@ def create_auth_app(
     provider: ServerFSOAuthProvider | None = None,
     client_resolver: ClientMetadataResolver | None = None,
     github_provider: GitHubOAuthProvider | None = None,
+    feishu_provider: FeishuOAuthProvider | None = None,
     test_identity: str | None = None,
 ) -> Starlette:
     """Build the isolated authorization service.
@@ -76,7 +79,15 @@ def create_auth_app(
             client_secret=settings.github_client_secret,
             proxy=settings.proxy if settings.use_proxy else None,
         )
+    effective_feishu_provider = feishu_provider
+    if effective_feishu_provider is None and settings.feishu_enabled:
+        effective_feishu_provider = FeishuOAuthProvider(
+            client_id=settings.feishu_client_id,
+            client_secret=settings.feishu_client_secret,
+            proxy=settings.proxy if settings.use_proxy else None,
+        )
     github_callback_url = f"{settings.public_url}/oauth/provider/github/callback"
+    feishu_callback_url = f"{settings.public_url}/oauth/provider/feishu/callback"
 
     def admit(principal: Principal) -> bool:
         allowed = admission_policy.allows(principal)
@@ -100,6 +111,18 @@ def create_auth_app(
             headers={"Cache-Control": "no-store"},
         )
 
+    def complete_upstream_identity(upstream, principal: Principal) -> Response:
+        if not admit(principal):
+            store.discard_pending_authorization_hash(upstream.pending_authorization_hash)
+            return JSONResponse({"error": "access_denied"}, status_code=403)
+        completed = store.complete_pending_authorization_hash(
+            upstream.pending_authorization_hash,
+            subject=principal.canonical,
+        )
+        if completed is None:
+            return JSONResponse({"error": "invalid_or_expired_transaction"}, status_code=400)
+        return client_redirect(completed)
+
     async def login(request: Request) -> Response:
         transaction = request.query_params.get("transaction", "")
         if not transaction:
@@ -113,10 +136,28 @@ def create_auth_app(
             if completed is None:
                 return JSONResponse({"error": "invalid_or_expired_transaction"}, status_code=400)
             return client_redirect(completed)
-        if effective_github_provider is None:
+
+        providers: list[tuple[str, str]] = []
+        if effective_github_provider is not None:
+            providers.append(("GitHub", "github"))
+        if effective_feishu_provider is not None:
+            providers.append(("Feishu", "feishu"))
+        if not providers:
             return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
-        start = f"/oauth/provider/github/start?transaction={transaction}"
-        return RedirectResponse(start, status_code=302, headers={"Cache-Control": "no-store"})
+        query = urllib.parse.urlencode({"transaction": transaction})
+        if len(providers) == 1:
+            start = f"/oauth/provider/{providers[0][1]}/start?{query}"
+            return RedirectResponse(start, status_code=302, headers={"Cache-Control": "no-store"})
+
+        links = "".join(
+            f'<li><a href="/oauth/provider/{slug}/start?{query}">{label}</a></li>'
+            for label, slug in providers
+        )
+        return HTMLResponse(
+            f"<!doctype html><html><head><title>Sign in to ServerFS</title></head>"
+            f"<body><main><h1>Sign in to ServerFS</h1><ul>{links}</ul></main></body></html>",
+            headers={"Cache-Control": "no-store"},
+        )
 
     async def github_start(request: Request) -> Response:
         if effective_github_provider is None:
@@ -167,16 +208,50 @@ def create_auth_app(
         except GitHubOAuthError:
             jsonlog.warning("auth_provider_failed", provider="github")
             return JSONResponse({"error": "identity_provider_failed"}, status_code=502)
-        if not admit(principal):
-            store.discard_pending_authorization_hash(upstream.pending_authorization_hash)
-            return JSONResponse({"error": "access_denied"}, status_code=403)
-        completed = store.complete_pending_authorization_hash(
-            upstream.pending_authorization_hash,
-            subject=principal.canonical,
+        return complete_upstream_identity(upstream, principal)
+
+    async def feishu_start(request: Request) -> Response:
+        if effective_feishu_provider is None:
+            return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
+        transaction = request.query_params.get("transaction", "")
+        if not transaction:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        state = store.create_upstream_login(
+            transaction,
+            provider="feishu",
+            code_verifier="",
         )
-        if completed is None:
+        if state is None:
             return JSONResponse({"error": "invalid_or_expired_transaction"}, status_code=400)
-        return client_redirect(completed)
+        redirect = effective_feishu_provider.authorization_url(
+            callback_url=feishu_callback_url,
+            state=state,
+        )
+        return RedirectResponse(redirect, status_code=302, headers={"Cache-Control": "no-store"})
+
+    async def feishu_callback(request: Request) -> Response:
+        if effective_feishu_provider is None:
+            return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
+        state = request.query_params.get("state", "")
+        if not state:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        upstream = store.consume_upstream_login(state, provider="feishu")
+        if upstream is None:
+            return JSONResponse({"error": "invalid_or_expired_state"}, status_code=400)
+        if request.query_params.get("error"):
+            return JSONResponse({"error": "access_denied"}, status_code=400)
+        code = request.query_params.get("code", "")
+        if not code:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            principal = await effective_feishu_provider.authenticate(
+                code=code,
+                callback_url=feishu_callback_url,
+            )
+        except FeishuOAuthError:
+            jsonlog.warning("auth_provider_failed", provider="feishu")
+            return JSONResponse({"error": "identity_provider_failed"}, status_code=502)
+        return complete_upstream_identity(upstream, principal)
 
     async def introspect(request: Request) -> Response:
         authorization = request.headers.get("Authorization", "")
@@ -270,6 +345,8 @@ def create_auth_app(
         Route("/login", login, methods=["GET"]),
         Route("/oauth/provider/github/start", github_start, methods=["GET"]),
         Route("/oauth/provider/github/callback", github_callback, methods=["GET"]),
+        Route("/oauth/provider/feishu/start", feishu_start, methods=["GET"]),
+        Route("/oauth/provider/feishu/callback", feishu_callback, methods=["GET"]),
         Route("/internal/introspect", introspect, methods=["POST"]),
         Route("/revoke", revoke, methods=["POST"]),
         Route("/healthz", healthz, methods=["GET"]),

@@ -146,6 +146,31 @@ class FakeGitHubProvider:
         return principal_from_parts("github", self.subject)
 
 
+class FakeFeishuProvider:
+    def __init__(self, subject: str = "ou_123") -> None:
+        self.subject = subject
+        self.authorization_calls: list[dict[str, str]] = []
+        self.authentication_calls: list[dict[str, str]] = []
+
+    def authorization_url(self, *, callback_url: str, state: str) -> str:
+        self.authorization_calls.append(
+            {
+                "callback_url": callback_url,
+                "state": state,
+            }
+        )
+        return f"https://feishu.example/authorize?state={state}"
+
+    async def authenticate(self, *, code: str, callback_url: str):
+        self.authentication_calls.append(
+            {
+                "code": code,
+                "callback_url": callback_url,
+            }
+        )
+        return principal_from_parts("feishu", self.subject)
+
+
 class TestAuthorizationCore:
     def test_metadata_exposes_pkce_and_revocation_without_dcr(self, tmp_path) -> None:
         app = create_auth_app(settings(tmp_path), test_identity="github:123")
@@ -463,6 +488,154 @@ class TestGitHubBrokerFlow:
             closed = client.get(start_url, follow_redirects=False)
             assert closed.status_code == 400
             assert closed.json()["error"] == "invalid_or_expired_transaction"
+
+
+class TestFeishuBrokerFlow:
+    def test_feishu_identity_completes_serverfs_code_flow_and_state_is_single_use(
+        self, tmp_path
+    ) -> None:
+        feishu = FakeFeishuProvider("ou_123")
+        app = create_auth_app(
+            settings(
+                tmp_path,
+                feishu_enabled=True,
+                allowed_principals=("feishu:ou_123",),
+            ),
+            feishu_provider=feishu,
+        )
+        register_client(app)
+        with TestClient(app) as client:
+            authorize_response = client.get(
+                "/authorize",
+                params={
+                    "client_id": CLIENT_ID,
+                    "redirect_uri": REDIRECT,
+                    "response_type": "code",
+                    "code_challenge": CODE_CHALLENGE,
+                    "code_challenge_method": "S256",
+                    "state": "state-123",
+                    "scope": "serverfs:access",
+                    "resource": RESOURCE,
+                },
+                follow_redirects=False,
+            )
+            login_url = authorize_response.headers["location"]
+            login_response = client.get(login_url, follow_redirects=False)
+            assert login_response.status_code == 302
+            start_url = login_response.headers["location"]
+            assert start_url.startswith("/oauth/provider/feishu/start?transaction=")
+
+            start_response = client.get(start_url, follow_redirects=False)
+            assert start_response.status_code == 302
+            upstream_url = urlparse(start_response.headers["location"])
+            assert f"{upstream_url.scheme}://{upstream_url.netloc}{upstream_url.path}" == (
+                "https://feishu.example/authorize"
+            )
+            provider_state = parse_qs(upstream_url.query)["state"][0]
+            assert feishu.authorization_calls[0]["state"] == provider_state
+
+            callback = client.get(
+                "/oauth/provider/feishu/callback",
+                params={"code": "feishu-code", "state": provider_state},
+                follow_redirects=False,
+            )
+            assert callback.status_code == 302
+            client_callback = urlparse(callback.headers["location"])
+            params = parse_qs(client_callback.query)
+            assert params["state"] == ["state-123"]
+            assert params["iss"] == [ISSUER]
+            serverfs_code = params["code"][0]
+
+            token_response = exchange_code(client, serverfs_code)
+            assert token_response.status_code == 200, token_response.text
+            assert introspect(client, token_response.json()["access_token"]).json()["sub"] == (
+                "feishu:ou_123"
+            )
+
+            replay = client.get(
+                "/oauth/provider/feishu/callback",
+                params={"code": "feishu-code", "state": provider_state},
+                follow_redirects=False,
+            )
+            assert replay.status_code == 400
+            assert replay.json()["error"] == "invalid_or_expired_state"
+
+        assert feishu.authentication_calls == [
+            {
+                "code": "feishu-code",
+                "callback_url": f"{ISSUER}/oauth/provider/feishu/callback",
+            }
+        ]
+
+    def test_feishu_authenticated_but_unlisted_identity_is_denied(self, tmp_path) -> None:
+        feishu = FakeFeishuProvider("ou_denied")
+        app = create_auth_app(
+            settings(
+                tmp_path,
+                feishu_enabled=True,
+                allowed_principals=(),
+            ),
+            feishu_provider=feishu,
+        )
+        register_client(app)
+        with TestClient(app) as client:
+            authorize_response = client.get(
+                "/authorize",
+                params={
+                    "client_id": CLIENT_ID,
+                    "redirect_uri": REDIRECT,
+                    "response_type": "code",
+                    "code_challenge": CODE_CHALLENGE,
+                    "code_challenge_method": "S256",
+                    "scope": "serverfs:access",
+                    "resource": RESOURCE,
+                },
+                follow_redirects=False,
+            )
+            login_url = authorize_response.headers["location"]
+            start_url = client.get(login_url, follow_redirects=False).headers["location"]
+            upstream_url = client.get(start_url, follow_redirects=False).headers["location"]
+            provider_state = parse_qs(urlparse(upstream_url).query)["state"][0]
+            denied = client.get(
+                "/oauth/provider/feishu/callback",
+                params={"code": "feishu-code", "state": provider_state},
+                follow_redirects=False,
+            )
+            assert denied.status_code == 403
+            assert denied.json()["error"] == "access_denied"
+
+    def test_multiple_enabled_providers_render_selection_page(self, tmp_path) -> None:
+        app = create_auth_app(
+            settings(
+                tmp_path,
+                github_enabled=True,
+                feishu_enabled=True,
+                allowed_principals=("github:123", "feishu:ou_123"),
+            ),
+            github_provider=FakeGitHubProvider("123"),
+            feishu_provider=FakeFeishuProvider("ou_123"),
+        )
+        register_client(app)
+        with TestClient(app) as client:
+            authorize_response = client.get(
+                "/authorize",
+                params={
+                    "client_id": CLIENT_ID,
+                    "redirect_uri": REDIRECT,
+                    "response_type": "code",
+                    "code_challenge": CODE_CHALLENGE,
+                    "code_challenge_method": "S256",
+                    "scope": "serverfs:access",
+                    "resource": RESOURCE,
+                },
+                follow_redirects=False,
+            )
+            login = client.get(authorize_response.headers["location"], follow_redirects=False)
+        assert login.status_code == 200
+        assert login.headers["cache-control"] == "no-store"
+        assert "Sign in to ServerFS" in login.text
+        assert "/oauth/provider/github/start?transaction=" in login.text
+        assert "/oauth/provider/feishu/start?transaction=" in login.text
 
 
 class StaticCimdFetcher:
