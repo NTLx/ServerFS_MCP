@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase E complete.
+Status: in progress — Phase 0 through Phase F1 complete.
 
 Plan frozen: 2026-10-19.
 
@@ -41,9 +41,18 @@ Completed and verified so far:
 - routine admission audit events contain only the provider plus a stable 16-hex SHA-256-derived principal identifier, never the upstream subject itself;
 - admission is now enforced after deterministic identity proof and before ServerFS authorization-code issuance, so an authenticated but unlisted identity receives `access_denied` and cannot obtain ServerFS credentials;
 - the empty allowlist remains a valid fail-closed configuration rather than an implicit allow-all mode;
-- Phase E focused validation is green: 56 policy/config/auth-server tests, Ruff lint/format and `git diff --check`.
+- Phase E focused validation is green: 56 policy/config/auth-server tests, Ruff lint/format and `git diff --check`;
+- Phase F1 adds the GitHub OAuth App reference adapter using the current official web authorization flow, PKCE S256, state, exact callback URL, token exchange and authenticated `/user` lookup;
+- the GitHub authorization request deliberately omits `scope`, because ServerFS needs only the public authenticated user identity and must not request repository or private-user permissions;
+- GitHub identity maps only from the immutable positive numeric `id` field to `github:<id>`; mutable login/email fields are not authorization keys;
+- upstream GitHub state is single-use and only its SHA-256 digest is persisted; the provider transaction stores the hash of the ServerFS pending authorization rather than the raw transaction value;
+- GitHub PKCE verifier is short-lived callback material; GitHub access tokens remain request-local, are used only for `/user`, are never written to the auth database and never become ServerFS bearer tokens;
+- provider callback admission happens before ServerFS authorization-code issuance; denied identities close the pending ServerFS authorization;
+- provider HTTP traffic is owned only by `serverfs-auth`, uses the existing shared proxy configuration when explicitly enabled, and never enters `serverfs-mcp`;
+- deterministic GitHub broker E2E is green through browser-style redirects, callback, ServerFS authorization-code exchange, introspection and upstream-state replay rejection;
+- Phase F1 focused validation is green: 32 GitHub/broker/policy tests, Ruff lint/format and `git diff --check`.
 
-Phase F1 is the next implementation target. No real upstream provider adapter has been added yet.
+Phase F2 is the next implementation target. Real GitHub browser login still requires operator-provided OAuth App credentials and remains a later live-acceptance gate rather than a fabricated pass.
 
 ## Goal
 

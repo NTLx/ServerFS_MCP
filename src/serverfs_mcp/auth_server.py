@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import hmac
 import json
 import os
+import secrets
 import sys
 from typing import Any
 
@@ -22,9 +25,10 @@ from starlette.routing import Route
 from . import logging as jsonlog
 from .auth_clients import ClientMetadataResolver, load_pre_registered_clients
 from .auth_config import AuthServiceSettings, auth_settings_from_env
-from .auth_policy import AdmissionPolicy, parse_principal
+from .auth_policy import AdmissionPolicy, Principal, parse_principal
 from .auth_provider import ServerFSOAuthProvider
 from .auth_store import OAuthStateStore
+from .oauth_providers.github import GitHubOAuthError, GitHubOAuthProvider
 
 _MAX_INTROSPECTION_BODY_BYTES = 4096
 
@@ -34,6 +38,7 @@ def create_auth_app(
     *,
     provider: ServerFSOAuthProvider | None = None,
     client_resolver: ClientMetadataResolver | None = None,
+    github_provider: GitHubOAuthProvider | None = None,
     test_identity: str | None = None,
 ) -> Starlette:
     """Build the isolated authorization service.
@@ -64,32 +69,25 @@ def create_auth_app(
     client_authenticator = ClientAuthenticator(oauth_provider)
     admission_policy = AdmissionPolicy(settings.allowed_principals)
     test_principal = parse_principal(test_identity) if test_identity is not None else None
+    effective_github_provider = github_provider
+    if effective_github_provider is None and settings.github_enabled:
+        effective_github_provider = GitHubOAuthProvider(
+            client_id=settings.github_client_id,
+            client_secret=settings.github_client_secret,
+            proxy=settings.proxy if settings.use_proxy else None,
+        )
+    github_callback_url = f"{settings.public_url}/oauth/provider/github/callback"
 
-    async def login(request: Request) -> Response:
-        transaction = request.query_params.get("transaction", "")
-        if not transaction:
-            return JSONResponse({"error": "invalid_request"}, status_code=400)
-        if test_principal is None:
-            # Real provider selection/callbacks are added in Phase F. Never
-            # silently treat a missing provider as an authenticated identity.
-            return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
-        if not admission_policy.allows(test_principal):
-            jsonlog.warning(
-                "auth_admission_denied",
-                provider=test_principal.provider,
-                principal_id=test_principal.audit_id,
-            )
-            return JSONResponse({"error": "access_denied"}, status_code=403)
+    def admit(principal: Principal) -> bool:
+        allowed = admission_policy.allows(principal)
         jsonlog.info(
-            "auth_admission_allowed",
-            provider=test_principal.provider,
-            principal_id=test_principal.audit_id,
+            "auth_admission_allowed" if allowed else "auth_admission_denied",
+            provider=principal.provider,
+            principal_id=principal.audit_id,
         )
-        completed = oauth_provider.complete_authorization(
-            transaction, subject=test_principal.canonical
-        )
-        if completed is None:
-            return JSONResponse({"error": "invalid_or_expired_transaction"}, status_code=400)
+        return allowed
+
+    def client_redirect(completed) -> Response:
         redirect = construct_redirect_uri(
             str(completed.code.redirect_uri),
             code=completed.code.code,
@@ -101,6 +99,84 @@ def create_auth_app(
             status_code=302,
             headers={"Cache-Control": "no-store"},
         )
+
+    async def login(request: Request) -> Response:
+        transaction = request.query_params.get("transaction", "")
+        if not transaction:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if test_principal is not None:
+            if not admit(test_principal):
+                return JSONResponse({"error": "access_denied"}, status_code=403)
+            completed = oauth_provider.complete_authorization(
+                transaction, subject=test_principal.canonical
+            )
+            if completed is None:
+                return JSONResponse({"error": "invalid_or_expired_transaction"}, status_code=400)
+            return client_redirect(completed)
+        if effective_github_provider is None:
+            return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
+        start = f"/oauth/provider/github/start?transaction={transaction}"
+        return RedirectResponse(start, status_code=302, headers={"Cache-Control": "no-store"})
+
+    async def github_start(request: Request) -> Response:
+        if effective_github_provider is None:
+            return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
+        transaction = request.query_params.get("transaction", "")
+        if not transaction:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        code_verifier = secrets.token_urlsafe(64)
+        code_challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode("ascii")).digest())
+            .decode("ascii")
+            .rstrip("=")
+        )
+        state = store.create_upstream_login(
+            transaction,
+            provider="github",
+            code_verifier=code_verifier,
+        )
+        if state is None:
+            return JSONResponse({"error": "invalid_or_expired_transaction"}, status_code=400)
+        redirect = effective_github_provider.authorization_url(
+            callback_url=github_callback_url,
+            state=state,
+            code_challenge=code_challenge,
+        )
+        return RedirectResponse(redirect, status_code=302, headers={"Cache-Control": "no-store"})
+
+    async def github_callback(request: Request) -> Response:
+        if effective_github_provider is None:
+            return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
+        state = request.query_params.get("state", "")
+        if not state:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        upstream = store.consume_upstream_login(state, provider="github")
+        if upstream is None:
+            return JSONResponse({"error": "invalid_or_expired_state"}, status_code=400)
+        if request.query_params.get("error"):
+            return JSONResponse({"error": "access_denied"}, status_code=400)
+        code = request.query_params.get("code", "")
+        if not code:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            principal = await effective_github_provider.authenticate(
+                code=code,
+                callback_url=github_callback_url,
+                code_verifier=upstream.code_verifier,
+            )
+        except GitHubOAuthError:
+            jsonlog.warning("auth_provider_failed", provider="github")
+            return JSONResponse({"error": "identity_provider_failed"}, status_code=502)
+        if not admit(principal):
+            store.discard_pending_authorization_hash(upstream.pending_authorization_hash)
+            return JSONResponse({"error": "access_denied"}, status_code=403)
+        completed = store.complete_pending_authorization_hash(
+            upstream.pending_authorization_hash,
+            subject=principal.canonical,
+        )
+        if completed is None:
+            return JSONResponse({"error": "invalid_or_expired_transaction"}, status_code=400)
+        return client_redirect(completed)
 
     async def introspect(request: Request) -> Response:
         authorization = request.headers.get("Authorization", "")
@@ -192,6 +268,8 @@ def create_auth_app(
             methods=["GET", "OPTIONS"],
         ),
         Route("/login", login, methods=["GET"]),
+        Route("/oauth/provider/github/start", github_start, methods=["GET"]),
+        Route("/oauth/provider/github/callback", github_callback, methods=["GET"]),
         Route("/internal/introspect", introspect, methods=["POST"]),
         Route("/revoke", revoke, methods=["POST"]),
         Route("/healthz", healthz, methods=["GET"]),

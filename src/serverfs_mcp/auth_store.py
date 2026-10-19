@@ -21,6 +21,7 @@ from mcp.shared.auth import OAuthClientInformationFull
 _SCHEMA_VERSION = 1
 _AUTHORIZATION_CODE_TTL_SECONDS = 300
 _LOGIN_TRANSACTION_TTL_SECONDS = 300
+_UPSTREAM_LOGIN_TTL_SECONDS = 600
 
 
 def _digest(value: str) -> str:
@@ -50,6 +51,13 @@ class TokenPair:
     refresh_token: str
     access_expires_at: int
     refresh_expires_at: int
+
+
+@dataclass(frozen=True)
+class UpstreamLoginTransaction:
+    provider: str
+    pending_authorization_hash: str
+    code_verifier: str
 
 
 class OAuthStateStore:
@@ -84,6 +92,13 @@ class OAuthStateStore:
                     redirect_uri TEXT NOT NULL,
                     redirect_uri_provided INTEGER NOT NULL,
                     resource TEXT NOT NULL,
+                    expires_at REAL NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS upstream_login_transactions (
+                    state_hash TEXT PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    pending_authorization_hash TEXT NOT NULL,
+                    code_verifier TEXT NOT NULL,
                     expires_at REAL NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS authorization_codes (
@@ -192,6 +207,11 @@ class OAuthStateStore:
     def complete_pending_authorization(
         self, transaction: str, *, subject: str
     ) -> CompletedAuthorization | None:
+        return self.complete_pending_authorization_hash(_digest(transaction), subject=subject)
+
+    def complete_pending_authorization_hash(
+        self, transaction_hash: str, *, subject: str
+    ) -> CompletedAuthorization | None:
         now = time.time()
         code_value = secrets.token_urlsafe(32)
         code_expires_at = now + _AUTHORIZATION_CODE_TTL_SECONDS
@@ -199,13 +219,13 @@ class OAuthStateStore:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
                 "SELECT * FROM pending_authorizations WHERE transaction_hash = ?",
-                (_digest(transaction),),
+                (transaction_hash,),
             ).fetchone()
             if row is None:
                 return None
             conn.execute(
                 "DELETE FROM pending_authorizations WHERE transaction_hash = ?",
-                (_digest(transaction),),
+                (transaction_hash,),
             )
             if float(row["expires_at"]) <= now:
                 return None
@@ -240,6 +260,70 @@ class OAuthStateStore:
                 subject=subject,
             )
             return CompletedAuthorization(code=code, state=row["state"])
+
+    def create_upstream_login(
+        self,
+        transaction: str,
+        *,
+        provider: str,
+        code_verifier: str,
+    ) -> str | None:
+        pending_hash = _digest(transaction)
+        state = secrets.token_urlsafe(32)
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT expires_at FROM pending_authorizations WHERE transaction_hash = ?",
+                (pending_hash,),
+            ).fetchone()
+            if row is None or float(row["expires_at"]) <= now:
+                return None
+            conn.execute(
+                """
+                INSERT INTO upstream_login_transactions(
+                    state_hash, provider, pending_authorization_hash, code_verifier, expires_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    _digest(state),
+                    provider,
+                    pending_hash,
+                    code_verifier,
+                    now + _UPSTREAM_LOGIN_TTL_SECONDS,
+                ),
+            )
+        return state
+
+    def consume_upstream_login(
+        self, state: str, *, provider: str
+    ) -> UpstreamLoginTransaction | None:
+        now = time.time()
+        state_hash = _digest(state)
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM upstream_login_transactions WHERE state_hash = ? AND provider = ?",
+                (state_hash, provider),
+            ).fetchone()
+            if row is None:
+                return None
+            conn.execute(
+                "DELETE FROM upstream_login_transactions WHERE state_hash = ?", (state_hash,)
+            )
+            if float(row["expires_at"]) <= now:
+                return None
+            return UpstreamLoginTransaction(
+                provider=row["provider"],
+                pending_authorization_hash=row["pending_authorization_hash"],
+                code_verifier=row["code_verifier"],
+            )
+
+    def discard_pending_authorization_hash(self, transaction_hash: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM pending_authorizations WHERE transaction_hash = ?", (transaction_hash,)
+            )
 
     def load_authorization_code(self, client_id: str, code_value: str) -> AuthorizationCode | None:
         with self._connect() as conn:
