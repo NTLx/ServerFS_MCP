@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase G complete; Phase H protocol core complete, provider live acceptance pending.
+Status: in progress — Phase 0 through Phase J complete for ServerFS-owned behavior; external provider browser acceptance and cross-platform native regression remain pending.
 
 Plan frozen: 2026-10-19.
 
@@ -83,9 +83,16 @@ Completed and verified so far:
 - Phase H protocol-core acceptance adds a real-loopback-TCP E2E in which `serverfs-auth` and `serverfs-mcp` run as separate Uvicorn HTTP servers and are connected through the production private introspection verifier rather than an in-process fake verifier;
 - that E2E covers RFC 9728 discovery/challenge, Authorization Server metadata, a pre-registered public PKCE client, authorization-code exchange, opaque ServerFS token issuance, real introspection, authenticated MCP tool discovery/calls, a revision-guarded file edit, refresh-token rotation, old access-token invalidation, wrong-resource rejection and revocation;
 - the E2E explicitly verifies both protocol eras supported by the pinned MCP SDK: the `initialize` handshake correctly negotiates the newest handshake revision (`2025-11-25`), while the official remote `mcp.Client` succeeds in modern `2026-07-28` per-request mode through the same OAuth bearer boundary;
-- the complete OAuth-focused regression is green at 154 tests (one upstream Starlette/AnyIO deprecation warning only), with Ruff and `git diff --check` clean.
+- the complete OAuth-focused regression is green at 154 tests (one upstream Starlette/AnyIO deprecation warning only), with Ruff and `git diff --check` clean;
+- Phase I1 re-runs the existing bounded Linux OpenAI Tunnel direct/proxy acceptance against the repository-tested `tunnel-client v0.0.16` using a derived nonexistent tunnel ID: direct and proxied control-plane paths both pass, proxy mode observes external CONNECT traffic and zero loopback CONNECT traffic, and no production tunnel is attached;
+- Phase I2 adds the official Tunnel `MCP_OAUTH_TRUSTED_ORIGINS` pass-through only in `compose.oauth.yml`, so a separate public `serverfs-auth` origin can participate in OAuth discovery without broadening the base Compose deployment, MCP forwarding targets or credential scope;
+- current official Tunnel documentation confirms that protected-resource discovery is executed inside the customer network and inbound `Authorization` is forwarded to the MCP server; the separate authorization-server origin must be explicitly trusted when it differs from the configured MCP origin;
+- OpenAI tunnel-client issue #78 remains open as of 2026-10-19: ChatGPT may replace the canonical RFC 9728 resource with its hosted tunnel resource in the actual authorization request. ServerFS therefore records this as an upstream live-acceptance blocker and does not weaken `resource`/audience validation, add wildcard audiences or hard-code OpenAI internal gateway hosts;
+- Phase J adds explicit concurrency and corruption regression coverage: a single authorization code has exactly one successful concurrent consumer, a refresh token has exactly one successful concurrent rotation, stale/replayed credentials fail closed, and unsupported/corrupted OAuth SQLite state fails closed rather than being silently repaired;
+- Phase J's focused cross-boundary security matrix is green at 335 tests across filesystem security, OAuth/resource-server/auth-server/client registration/admission/provider adapters, file-ingress and Agent lease/deployment behavior; the new Tunnel/OAuth-security deployment checks add another 22 green focused tests;
+- base, generic HTTP, OAuth and OAuth+Agent Compose rendering remain green after the Tunnel trusted-origin addition, with `git diff --check` and focused Ruff lint/format clean.
 
-Phase H's ServerFS-owned protocol core is complete. Real GitHub, Feishu, DingTalk and WeChat browser login still require operator-provided provider applications/credentials and remain explicit live-acceptance gates before release rather than fabricated passes. Phase I/J can proceed independently while those external credentials are unavailable.
+Phase H–J are complete for ServerFS-owned behavior. Real GitHub, Feishu, DingTalk and WeChat browser login still require operator-provided provider applications/credentials and remain explicit external acceptance gates rather than fabricated passes. The next implementation checkpoint is Linux/shared full regression and synchronization, followed by WorkPC Windows-native and MacBook macOS-native regression in their own workdirs.
 
 ## Goal
 

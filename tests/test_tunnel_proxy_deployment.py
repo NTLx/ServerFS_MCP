@@ -210,6 +210,16 @@ def test_compose_scopes_proxy_environment_to_openai_tunnel() -> None:
     assert 'entrypoint: ["/bin/sh", "/opt/serverfs/tunnel-launcher.sh"]' in tunnel
 
 
+def test_oauth_overlay_scopes_trusted_auth_origins_to_openai_tunnel() -> None:
+    overlay = (_REPO_ROOT / "compose.oauth.yml").read_text(encoding="utf-8")
+    env_example = (_REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert overlay.count("      MCP_OAUTH_TRUSTED_ORIGINS:") == 1
+    tunnel = overlay.split("  openai-tunnel:\n", 1)[1].split("\n  serverfs-mcp:\n", 1)[0]
+    assert "MCP_OAUTH_TRUSTED_ORIGINS:" in tunnel
+    assert env_example.count("MCP_OAUTH_TRUSTED_ORIGINS=") == 1
+
+
 def test_tunnel_image_examples_track_tested_native_version() -> None:
     compose = (_REPO_ROOT / "compose.yml").read_text(encoding="utf-8")
     env_example = (_REPO_ROOT / ".env.example").read_text(encoding="utf-8")

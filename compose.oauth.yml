@@ -11,6 +11,14 @@
 # and SERVERFS_AUTH_PUBLIC_URL. The default host publications remain loopback.
 
 services:
+  openai-tunnel:
+    environment:
+      # Tunnel OAuth discovery trusts the MCP origin by default. When the
+      # Authorization Server uses a separate origin, list that public origin
+      # here (one origin per line for multiple entries) so discovery can reach
+      # it without broadening MCP forwarding or credential scope.
+      MCP_OAUTH_TRUSTED_ORIGINS: ${MCP_OAUTH_TRUSTED_ORIGINS:-}
+
   serverfs-mcp:
     depends_on:
       serverfs-auth:
