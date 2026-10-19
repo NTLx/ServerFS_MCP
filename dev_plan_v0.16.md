@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase G complete.
+Status: in progress — Phase 0 through Phase G complete; Phase H protocol core complete, provider live acceptance pending.
 
 Plan frozen: 2026-10-19.
 
@@ -79,9 +79,13 @@ Completed and verified so far:
 - static Compose gates are green for base, generic HTTP, OAuth, OAuth+Agent and OAuth+file-ingress shapes, and the Container CI now keeps those render/service-shape combinations under regression coverage;
 - live isolated Docker acceptance with a disposable image/project is green after correcting one real overlay wiring defect (`SERVERFS_OAUTH_ISSUER_URL` was initially not passed into `serverfs-auth`): both services become healthy, `auth.sqlite3` is created as the current UID/GID with mode `0600`, an unauthenticated MCP initialize request returns `401` with `resource_metadata`, auth can reach external TCP while MCP cannot, and only auth is attached to `oauth_egress`;
 - a separate create-spec diagnostic confirms Docker receives the intended loopback port bindings in `HostConfig.PortBindings` for both MCP and auth; the earlier host-loopback refusal observed in one disposable live run was therefore not a missing Compose publication rule and is not treated as an OAuth configuration defect;
-- all disposable containers, networks, state directories and test images used for the Phase G acceptance were removed, and the real ServerFS deployment was never modified.
+- all disposable containers, networks, state directories and test images used for the Phase G acceptance were removed, and the real ServerFS deployment was never modified;
+- Phase H protocol-core acceptance adds a real-loopback-TCP E2E in which `serverfs-auth` and `serverfs-mcp` run as separate Uvicorn HTTP servers and are connected through the production private introspection verifier rather than an in-process fake verifier;
+- that E2E covers RFC 9728 discovery/challenge, Authorization Server metadata, a pre-registered public PKCE client, authorization-code exchange, opaque ServerFS token issuance, real introspection, authenticated MCP tool discovery/calls, a revision-guarded file edit, refresh-token rotation, old access-token invalidation, wrong-resource rejection and revocation;
+- the E2E explicitly verifies both protocol eras supported by the pinned MCP SDK: the `initialize` handshake correctly negotiates the newest handshake revision (`2025-11-25`), while the official remote `mcp.Client` succeeds in modern `2026-07-28` per-request mode through the same OAuth bearer boundary;
+- the complete OAuth-focused regression is green at 154 tests (one upstream Starlette/AnyIO deprecation warning only), with Ruff and `git diff --check` clean.
 
-Phase H is the next implementation target. Real GitHub, Feishu, DingTalk and WeChat browser login still require operator-provided provider applications/credentials and remain later live-acceptance gates rather than fabricated passes.
+Phase H's ServerFS-owned protocol core is complete. Real GitHub, Feishu, DingTalk and WeChat browser login still require operator-provided provider applications/credentials and remain explicit live-acceptance gates before release rather than fabricated passes. Phase I/J can proceed independently while those external credentials are unavailable.
 
 ## Goal
 
