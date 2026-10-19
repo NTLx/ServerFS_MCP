@@ -29,6 +29,7 @@ from .auth_config import AuthServiceSettings, auth_settings_from_env
 from .auth_policy import AdmissionPolicy, Principal, parse_principal
 from .auth_provider import ServerFSOAuthProvider
 from .auth_store import OAuthStateStore
+from .oauth_providers.dingtalk import DingTalkOAuthError, DingTalkOAuthProvider
 from .oauth_providers.feishu import FeishuOAuthError, FeishuOAuthProvider
 from .oauth_providers.github import GitHubOAuthError, GitHubOAuthProvider
 
@@ -42,6 +43,7 @@ def create_auth_app(
     client_resolver: ClientMetadataResolver | None = None,
     github_provider: GitHubOAuthProvider | None = None,
     feishu_provider: FeishuOAuthProvider | None = None,
+    dingtalk_provider: DingTalkOAuthProvider | None = None,
     test_identity: str | None = None,
 ) -> Starlette:
     """Build the isolated authorization service.
@@ -86,8 +88,16 @@ def create_auth_app(
             client_secret=settings.feishu_client_secret,
             proxy=settings.proxy if settings.use_proxy else None,
         )
+    effective_dingtalk_provider = dingtalk_provider
+    if effective_dingtalk_provider is None and settings.dingtalk_enabled:
+        effective_dingtalk_provider = DingTalkOAuthProvider(
+            client_id=settings.dingtalk_client_id,
+            client_secret=settings.dingtalk_client_secret,
+            proxy=settings.proxy if settings.use_proxy else None,
+        )
     github_callback_url = f"{settings.public_url}/oauth/provider/github/callback"
     feishu_callback_url = f"{settings.public_url}/oauth/provider/feishu/callback"
+    dingtalk_callback_url = f"{settings.public_url}/oauth/provider/dingtalk/callback"
 
     def admit(principal: Principal) -> bool:
         allowed = admission_policy.allows(principal)
@@ -142,6 +152,8 @@ def create_auth_app(
             providers.append(("GitHub", "github"))
         if effective_feishu_provider is not None:
             providers.append(("Feishu", "feishu"))
+        if effective_dingtalk_provider is not None:
+            providers.append(("DingTalk", "dingtalk"))
         if not providers:
             return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
         query = urllib.parse.urlencode({"transaction": transaction})
@@ -253,6 +265,46 @@ def create_auth_app(
             return JSONResponse({"error": "identity_provider_failed"}, status_code=502)
         return complete_upstream_identity(upstream, principal)
 
+    async def dingtalk_start(request: Request) -> Response:
+        if effective_dingtalk_provider is None:
+            return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
+        transaction = request.query_params.get("transaction", "")
+        if not transaction:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        state = store.create_upstream_login(
+            transaction,
+            provider="dingtalk",
+            code_verifier="",
+        )
+        if state is None:
+            return JSONResponse({"error": "invalid_or_expired_transaction"}, status_code=400)
+        redirect = effective_dingtalk_provider.authorization_url(
+            callback_url=dingtalk_callback_url,
+            state=state,
+        )
+        return RedirectResponse(redirect, status_code=302, headers={"Cache-Control": "no-store"})
+
+    async def dingtalk_callback(request: Request) -> Response:
+        if effective_dingtalk_provider is None:
+            return JSONResponse({"error": "identity_provider_unavailable"}, status_code=503)
+        state = request.query_params.get("state", "")
+        if not state:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        upstream = store.consume_upstream_login(state, provider="dingtalk")
+        if upstream is None:
+            return JSONResponse({"error": "invalid_or_expired_state"}, status_code=400)
+        if request.query_params.get("error"):
+            return JSONResponse({"error": "access_denied"}, status_code=400)
+        auth_code = request.query_params.get("authCode", "")
+        if not auth_code:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            principal = await effective_dingtalk_provider.authenticate(auth_code=auth_code)
+        except DingTalkOAuthError:
+            jsonlog.warning("auth_provider_failed", provider="dingtalk")
+            return JSONResponse({"error": "identity_provider_failed"}, status_code=502)
+        return complete_upstream_identity(upstream, principal)
+
     async def introspect(request: Request) -> Response:
         authorization = request.headers.get("Authorization", "")
         if not authorization.startswith("Bearer "):
@@ -347,6 +399,8 @@ def create_auth_app(
         Route("/oauth/provider/github/callback", github_callback, methods=["GET"]),
         Route("/oauth/provider/feishu/start", feishu_start, methods=["GET"]),
         Route("/oauth/provider/feishu/callback", feishu_callback, methods=["GET"]),
+        Route("/oauth/provider/dingtalk/start", dingtalk_start, methods=["GET"]),
+        Route("/oauth/provider/dingtalk/callback", dingtalk_callback, methods=["GET"]),
         Route("/internal/introspect", introspect, methods=["POST"]),
         Route("/revoke", revoke, methods=["POST"]),
         Route("/healthz", healthz, methods=["GET"]),

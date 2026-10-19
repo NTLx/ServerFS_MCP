@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase F2 complete.
+Status: in progress — Phase 0 through Phase F3 complete.
 
 Plan frozen: 2026-10-19.
 
@@ -57,9 +57,15 @@ Completed and verified so far:
 - Feishu upstream state remains single-use through the same generic upstream-login transaction store; Feishu user access tokens stay request-local and are discarded immediately after identity lookup;
 - when exactly one real upstream provider is enabled, `/login` keeps the simple automatic redirect; when multiple providers are enabled, `serverfs-auth` renders one minimal no-store provider selection page rather than guessing a provider;
 - GitHub and Feishu remain isolated adapters with independent callbacks and provider-bound state, reducing OAuth mix-up risk;
-- Phase F2 focused validation is green: 45 Feishu/GitHub/broker/admission tests, Ruff lint/format and `git diff --check`.
+- Phase F2 focused validation is green: 45 Feishu/GitHub/broker/admission tests, Ruff lint/format and `git diff --check`;
+- Phase F3 adds a DingTalk OAuth adapter using the current `login.dingtalk.com/oauth2/auth` authorization endpoint, `api.dingtalk.com/v1.0/oauth2/userAccessToken` JSON token endpoint and `api.dingtalk.com/v1.0/contact/users/me` identity endpoint;
+- DingTalk requests only `openid`; its provider-specific callback consumes `authCode` rather than silently accepting generic `code`, and token exchange preserves DingTalk's camelCase `clientId` / `clientSecret` / `grantType` wire contract;
+- DingTalk user lookup uses the provider-specific `x-acs-dingtalk-access-token` request header and admission keys use the Open Platform-account-scoped `unionId` (`dingtalk:<unionId>`), not mutable nick/mobile/email fields or single-enterprise `UserId` values;
+- DingTalk `accessToken` and any returned provider `refreshToken` remain ephemeral provider material: ServerFS persists neither and issues only its own opaque resource-bound tokens after admission;
+- upstream state remains single-use and provider-bound to `dingtalk`; replay, wrong callback field and unlisted identities fail closed before ServerFS authorization-code issuance;
+- Phase F3 focused validation is green: 55 cross-provider/broker/admission tests plus a 27-test short recheck after formatting, Ruff lint/format and `git diff --check`.
 
-Phase F3 is the next implementation target. Real GitHub and Feishu browser login still require operator-provided provider applications/credentials and remain later live-acceptance gates rather than fabricated passes.
+Phase F4 is the next implementation target. Real GitHub, Feishu and DingTalk browser login still require operator-provided provider applications/credentials and remain later live-acceptance gates rather than fabricated passes.
 
 ## Goal
 
