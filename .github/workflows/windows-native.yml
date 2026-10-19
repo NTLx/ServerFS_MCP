@@ -22,6 +22,8 @@ on:
       - "src/serverfs_mcp/cli.py"
       - "src/serverfs_mcp/config.py"
       - "src/serverfs_mcp/main.py"
+      - "src/serverfs_mcp/auth_config.py"
+      - "src/serverfs_mcp/file_ingress.py"
       - "src/serverfs_mcp/native_config.py"
       - "src/serverfs_mcp/native_tunnel.py"
       - "src/serverfs_mcp/shared_proxy.py"
@@ -39,6 +41,12 @@ on:
       - "tests/test_search_find_contract.py"
       - "tests/test_native_windows.py"
       - "tests/test_import_safety.py"
+      - "tests/test_auth_config.py"
+      - "tests/test_file_ingress.py"
+      - "tests/test_oauth_e2e.py"
+      - "tests/test_darwin_backend.py"
+      - "tests/test_darwin_service.py"
+      - "tests/test_darwin_bridge_policy.py"
       - ".github/workflows/windows-native.yml"
   pull_request:
     branches:
@@ -55,6 +63,8 @@ on:
       - "src/serverfs_mcp/cli.py"
       - "src/serverfs_mcp/config.py"
       - "src/serverfs_mcp/main.py"
+      - "src/serverfs_mcp/auth_config.py"
+      - "src/serverfs_mcp/file_ingress.py"
       - "src/serverfs_mcp/native_config.py"
       - "src/serverfs_mcp/native_tunnel.py"
       - "src/serverfs_mcp/shared_proxy.py"
@@ -72,6 +82,12 @@ on:
       - "tests/test_search_find_contract.py"
       - "tests/test_native_windows.py"
       - "tests/test_import_safety.py"
+      - "tests/test_auth_config.py"
+      - "tests/test_file_ingress.py"
+      - "tests/test_oauth_e2e.py"
+      - "tests/test_darwin_backend.py"
+      - "tests/test_darwin_service.py"
+      - "tests/test_darwin_bridge_policy.py"
       - ".github/workflows/windows-native.yml"
 
 permissions:
@@ -150,12 +166,20 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
 
+      - name: Cross-platform pytest collection gate
+        env:
+          PYTHONPATH: "${{ github.workspace }}\\native\\windows\\pyd-staging"
+        run: uv run pytest --collect-only -q
+
       - name: Windows Python/native test set
         env:
           PYTHONPATH: "${{ github.workspace }}\\native\\windows\\pyd-staging"
         run: >
           uv run pytest
           tests/test_import_safety.py
+          tests/test_auth_config.py
+          tests/test_file_ingress.py
+          tests/test_oauth_e2e.py
           tests/test_native_windows.py
           tests/test_windows_backend.py
           tests/test_windows_mcp_e2e.py
