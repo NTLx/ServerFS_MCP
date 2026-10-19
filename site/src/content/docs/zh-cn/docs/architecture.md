@@ -3,25 +3,23 @@ title: 架构
 description: ServerFS 的数据路径与信任边界。
 ---
 
-## 基础路径
+## MCP Core 与入口路径
 
 ```text
-Linux 文件系统
+MCP 宿主
    │
-   ▼
-Docker bind mounts
-   │  默认只读
-   ▼
-ServerFS MCP
-   │  仅内部网络
-   ▼
-OpenAI Secure MCP Tunnel
-   │  仅出站
-   ▼
-ChatGPT
+   ├── stdio（Windows/macOS 原生）
+   ├── Streamable HTTP（Linux；默认 loopback/私有）
+   └── OpenAI Secure MCP Tunnel（可选 ChatGPT 入口）
+               │
+               ▼
+          ServerFS MCP Core
+               │  限定策略
+               ▼
+          明确配置的 workdir
 ```
 
-MCP 容器不发布端口，也没有互联网出口。OpenAI Tunnel 使用独立的出站网络访问控制面。
+MCP Core 与工具契约不依赖特定宿主。Linux 的通用 HTTP 发布为显式 opt-in，默认只绑定 loopback；对公网开放时必须显式配置 Host 策略，并在明确的入口边界终止 TLS 与认证。OpenAI Tunnel 继续作为可选、经过认证、仅出站的 ChatGPT 适配器，并使用独立控制面网络。MCP 主容器仍然没有通用互联网出口。
 
 ## 可选 ChatGPT 文件入口路径
 
@@ -110,4 +108,4 @@ ServerFS 提供窄能力操作，而不是通用执行原语：
 - 结构化 Agent task RPC、模型发现与单次任务模型覆盖
 - 可选的宿主机 Jev advisory decision
 
-当前 **v0.14.1** 稳定版仍支持 11 / 13 / 21 / 23 个工具的四种 MCP 能力面。每种可选能力都有独立门控；v0.12 的 Tunnel / Agent / Jev 独立代理开关、v0.13 的 macOS 原生部署以及 v0.14 的 Windows 持久生命周期都不会改变公开工具数量。Jev 仍是 Agent Bridge 内部 advisor，而不是新的 MCP capability surface。
+当前 **v0.15.0** 稳定版仍支持 11 / 13 / 21 / 23 个工具的四种 MCP 能力面。每种可选能力都有独立门控；v0.12 的 Tunnel / Agent / Jev 独立代理开关、v0.13 的 macOS 原生部署以及 v0.14 的 Windows 持久生命周期都不会改变公开工具数量。Jev 仍是 Agent Bridge 内部 advisor，而不是新的 MCP capability surface。

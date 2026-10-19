@@ -1,6 +1,6 @@
 ---
 title: 快速开始
-description: 使用 Docker Compose 与 OpenAI Secure MCP Tunnel 部署 ServerFS MCP。
+description: 使用标准 Streamable HTTP 部署 ServerFS MCP；仅在需要时再启用 OpenAI Secure MCP Tunnel。
 ---
 
 本页介绍 Linux/Docker 部署。原生部署请分别查看 [Windows 原生部署](./windows-native/) 或 [macOS 原生部署](./macos-native/)。
@@ -9,10 +9,10 @@ description: 使用 Docker Compose 与 OpenAI Secure MCP Tunnel 部署 ServerFS 
 
 - Linux 服务器
 - Docker + Docker Compose
-- OpenAI Secure MCP Tunnel
-- 具备官方 Tunnel 客户端所需权限的 Runtime API Key
 
-## 基础部署
+OpenAI Secure MCP Tunnel 与 Runtime API Key 都是可选项，仅在需要 ChatGPT Tunnel 入口时使用。
+
+## 标准 MCP 部署
 
 ```bash
 git clone https://github.com/NTLx/ServerFS_MCP.git
@@ -21,7 +21,19 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-至少在 `.env` 中配置一个 workdir 与 Tunnel 凭据，然后运行：
+至少在 `.env` 中配置一个 workdir，然后启动标准 Streamable HTTP 端点：
+
+```bash
+docker compose pull
+docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
+docker compose -f compose.yml -f compose.http.yml ps
+```
+
+HTTP override 默认仅发布 `127.0.0.1:8000/mcp`，并保持 OpenAI Tunnel 不启动。11 个文件系统工具仍默认只读；除非某个 workdir 显式设置 `WORKDIR_XX_READ_ONLY=false`。如需超出 loopback 暴露 ServerFS，应配置 Host allowlist，并在明确的入口边界终止 TLS 与认证。
+
+## 可选 ChatGPT / OpenAI Tunnel 部署
+
+在 `.env` 中设置 `CONTROL_PLANE_TUNNEL_ID` 与 `CONTROL_PLANE_API_KEY`，然后使用既有基础 Compose 路径：
 
 ```bash
 docker compose pull
@@ -30,7 +42,7 @@ docker compose ps
 docker compose logs -f openai-tunnel
 ```
 
-基础部署暴露 11 个文件系统工具。除非某个 workdir 显式设置 `WORKDIR_XX_READ_ONLY=false`，否则保持只读。
+该路径继续作为受支持的认证入口适配器，但不再是通用 MCP 客户端的前置条件。
 
 ## Agent 部署
 
@@ -79,14 +91,14 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 引入的文件入口主机策略与网络边界详见[二进制传输](./binary-transfer/)和[安全模型](./security/)。
 
-## 当前稳定版本：v0.14.1
+## 当前稳定版本：v0.15.0
 
-v0.14.1 使用不可变标签 `v0.14.1`，并发布以下 GHCR 稳定标签：
+v0.15.0 使用不可变标签 `v0.15.0`，并发布以下 GHCR 稳定标签：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.14
-ghcr.io/ntlx/serverfs_mcp:0.14.1
+ghcr.io/ntlx/serverfs_mcp:0.15
+ghcr.io/ntlx/serverfs_mcp:0.15.0
 ```
 
-生产环境应固定使用 `0.14.1`，而不是长期跟随 `latest` 或 `edge`。同一 tag 在 GitHub Release 上发布三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）并记录 SHA-256。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.14.1 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](./windows-native/)和 [macOS 原生部署](./macos-native/)。
+生产环境应固定使用 `0.15.0`，而不是长期跟随 `latest` 或 `edge`。同一 tag 在 GitHub Release 上发布三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）并记录 SHA-256。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.15.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](./windows-native/)和 [macOS 原生部署](./macos-native/)。

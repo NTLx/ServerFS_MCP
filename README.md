@@ -6,11 +6,11 @@
 [![macOS CI](https://github.com/NTLx/ServerFS_MCP/actions/workflows/macos-native.yml/badge.svg)](https://github.com/NTLx/ServerFS_MCP/actions/workflows/macos-native.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Secure, scoped filesystem access and optional native Agent delegation for ChatGPT and other MCP clients.**
+**A secure, standards-first MCP filesystem server with scoped access and optional native Agent delegation.**
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured Codex / Claude Code / Qoder delegation only where you need them.
 
-**Current stable release: v0.14.1**
+**Current stable release: v0.15.0**
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -58,9 +58,9 @@ The shortest path is the Linux Docker deployment.
 ### Prerequisites
 
 - Docker + Docker Compose
-- An OpenAI Secure MCP Tunnel
-- A tunnel Runtime API Key
 - At least one directory you want to expose
+
+An OpenAI Secure MCP Tunnel is optional and only required for the ChatGPT Tunnel ingress path.
 
 ### 1. Clone and configure
 
@@ -71,50 +71,48 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Edit `.env` and configure the tunnel plus at least one workdir:
+Edit `.env` and configure at least one workdir:
 
 ```env
-CONTROL_PLANE_TUNNEL_ID=tunnel_...
-CONTROL_PLANE_API_KEY=rtk_...
-
 WORKDIR_01_ALIAS=projects
 WORKDIR_01_PATH=/srv/projects
 WORKDIR_01_DESCRIPTION="Projects"
 WORKDIR_01_READ_ONLY=true
 ```
 
-### 2. Start ServerFS
+### 2. Start the standard Streamable HTTP endpoint
 
 ```bash
 docker compose pull
-docker compose up -d
-docker compose ps
+docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
+docker compose -f compose.yml -f compose.http.yml ps
 ```
 
-The base deployment exposes the filesystem surface and keeps workdirs read-only unless a slot explicitly sets `WORKDIR_XX_READ_ONLY=false`.
+The generic HTTP override publishes ServerFS on `127.0.0.1:8000/mcp` by default and does not start the OpenAI Tunnel. Configure `SERVERFS_HTTP_ALLOWED_HOSTS` and place an authenticated TLS ingress in front of ServerFS before any non-loopback/public deployment.
 
-For Agent delegation, binary transfer, file ingress, proxy routing, or production hardening, continue with the [Getting Started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) and [Configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) guides instead of expanding the base Compose command blindly.
+For ChatGPT through the existing OpenAI Secure MCP Tunnel, configure `CONTROL_PLANE_TUNNEL_ID` and `CONTROL_PLANE_API_KEY` and use the base Compose deployment. For Agent delegation, binary transfer, file ingress, proxy routing, or production hardening, continue with the [Getting Started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) and [Configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) guides.
 
 ## How it works
 
 ```text
-ChatGPT / MCP client
-        |
-        | OpenAI Secure MCP Tunnel
-        v
-+---------------------------+
-|        ServerFS MCP       |
-|                           |
-|  scoped filesystem tools  |------> configured workdirs
-|  optional binary tools    |
-|  optional Agent tools     |------> host Agent Bridge
-+---------------------------+            |
-                                         +--> Codex
-                                         +--> Claude Code
-                                         +--> Qoder
+Claude Code / Codex / Qoder / MCP hosts
+             |               |
+           stdio      Streamable HTTP
+             |               |
+             +-------+-------+
+                     v
+              +-------------+
+              | ServerFS MCP |------> configured workdirs
+              | Core        |------> optional host Agent Bridge
+              +-------------+                |
+                     ^                       +--> Codex
+                     |                       +--> Claude Code
+          OpenAI Secure MCP Tunnel           +--> Qoder
+                     |
+                  ChatGPT
 ```
 
-On Linux, the MCP service stays inside internal Docker networks with no published port or general Internet egress; the tunnel and optional file-ingress sidecar have separate network responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. Since v0.14.0, Windows uses the current user's Task Scheduler as the persistent OS owner and keeps the managed process tree windowless; no SCM/LocalSystem service or UAC elevation is required. On macOS v0.13.2+, a small headless ServiceManagement companion registers the persistent per-user Tunnel and Agent Bridge through `SMAppService`; no root LaunchDaemon or hand-installed LaunchAgent is required.
+The MCP core is host-neutral. Standard clients use stdio or Streamable HTTP; the OpenAI Secure MCP Tunnel remains an optional authenticated ChatGPT ingress adapter. On Linux, generic HTTP is opt-in and loopback-only by default, while the historical Tunnel deployment remains supported. The optional file-ingress sidecar retains separate egress responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. Since v0.14.0, Windows uses the current user's Task Scheduler as the persistent OS owner and keeps the managed process tree windowless; no SCM/LocalSystem service or UAC elevation is required. On macOS v0.13.2+, a small headless ServiceManagement companion registers the persistent per-user Tunnel and Agent Bridge through `SMAppService`; no root LaunchDaemon or hand-installed LaunchAgent is required.
 
 See [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) for the complete deployment and trust-boundary model.
 
@@ -198,10 +196,10 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-The current stable release is **v0.14.1**.
+The current stable release is **v0.15.0**.
 
 - Linux images: `ghcr.io/ntlx/serverfs_mcp`
-- Stable release tag: `v0.14.1`
+- Stable release tag: `v0.15.0`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel. v0.13.2 locally builds the small bundled ServiceManagement companion used for persistent per-user services.

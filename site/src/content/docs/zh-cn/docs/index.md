@@ -1,11 +1,11 @@
 ---
 title: ServerFS MCP
-description: 让 ChatGPT 与 AI Agent 在 Linux、Windows 与 macOS 上安全、受控地访问 workdir。
+description: 面向 Linux、Windows 与 macOS 的安全、标准优先 MCP 文件系统服务。
 ---
 
 ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux 容器为既有形态，v0.10.0 起支持 Windows 原生，v0.13.0 起支持 macOS 原生）暴露为**受控 workdir**。
 
-当前稳定版本：**v0.14.1**。Windows 现已具备完全当前用户、无需管理员权限的持久生命周期：Task Scheduler 2.0 以最低权限持有无窗口 watchdog，watchdog 负责恢复 managed runner，runner 再负责恢复 Tunnel generation。Linux、Windows 与 macOS 的公开工具面保持不变。
+当前稳定版本：**v0.15.0**。ServerFS 现在以标准 MCP 为中心：兼容 MCP 的宿主可使用原生 stdio 或标准 Streamable HTTP；OpenAI Secure MCP Tunnel 继续作为可选的 ChatGPT 入口。Linux、Windows 与 macOS 继续共享同一套文件系统、二进制与 Agent 能力契约。
 
 它**默认只读**。管理员可以按 workdir 显式启用受控文件写入、有界整文件二进制传输，以及隔离且独立门控的 ChatGPT 文件参数入口。宿主机 Agent Bridge 仍然是可选能力；Codex、Claude 和 Qoder 在原生 runtime 支持时提供 provider-neutral 模型发现与单次任务模型覆盖，同时可按需启用 advisory-only 的 TypeSafe Jev 支持。Windows 始终保持原生形态：预构建 Rust/NTFS 内核 wheel 之上的 MCP stdio 服务，无需 Docker、WSL 或 MSVC；v0.14.0 进一步让正常 Windows 生命周期不再依赖终端/会话存活。
 
@@ -22,9 +22,9 @@ ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆�
 
 ## 从这里开始
 
-- [快速开始](./getting-started/) — 使用 OpenAI Secure MCP Tunnel 部署基础服务。
+- [快速开始](./getting-started/) — 先使用标准 MCP 连接；仅在需要 ChatGPT Tunnel 路径时再启用 OpenAI Tunnel。
 - [配置](./configuration/) — 定义 workdir 与每个 workdir 的最终生效策略。
-- [架构](./architecture/) — 理解容器、Tunnel 与 Agent Bridge 的边界。
+- [架构](./architecture/) — 理解 MCP Core、传输/入口适配器、部署边界与 Agent Bridge。
 - [安全模型](./security/) — 查看纵深防御模型。
 - [二进制传输](./binary-transfer/) — 启用有界 download/upload，以及可选的 ChatGPT 文件参数入口。
 - [Agent Bridge](./agent-bridge/) — 按需启用结构化 Codex/Claude/Qoder 委派。

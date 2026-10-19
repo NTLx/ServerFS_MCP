@@ -5,6 +5,22 @@ description: Define scoped workdirs and inherit secure defaults.
 
 ServerFS resolves an immutable effective policy for each enabled workdir at startup.
 
+## MCP transport settings
+
+Linux Streamable HTTP uses these explicit settings:
+
+```text
+SERVERFS_HTTP_HOST=0.0.0.0
+SERVERFS_HTTP_PORT=8000
+SERVERFS_HTTP_PATH=/mcp
+SERVERFS_HTTP_ALLOWED_HOSTS=
+SERVERFS_HTTP_ALLOWED_ORIGINS=
+```
+
+The listener address is independent from publication. `compose.http.yml` publishes it on `127.0.0.1:8000` by default. DNS-rebinding protection stays enabled: when a deployment is reached through another hostname or reverse proxy, add only the exact Host authorities that should be accepted through `SERVERFS_HTTP_ALLOWED_HOSTS`. `SERVERFS_HTTP_ALLOWED_ORIGINS` provides the corresponding explicit browser Origin allowlist where an Origin header is expected. Do not disable Host protection to make a proxy work. Public/non-loopback exposure should terminate TLS and authentication at a separately configured ingress boundary.
+
+The default host/port/path continue to match the existing OpenAI Tunnel's Docker-internal path, so Tunnel deployments do not require a migration merely because generic MCP HTTP is now supported.
+
 ## Workdir slots
 
 Up to 16 workdirs can be configured:

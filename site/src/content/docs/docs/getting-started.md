@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Deploy ServerFS MCP with Docker Compose and the OpenAI Secure MCP Tunnel.
+description: Deploy ServerFS MCP with standard Streamable HTTP; add the OpenAI Secure MCP Tunnel only when needed.
 ---
 
 This page covers the Linux/Docker deployment. For native deployments, use [Windows Native](./windows-native/) or [macOS Native](./macos-native/) instead.
@@ -9,10 +9,10 @@ This page covers the Linux/Docker deployment. For native deployments, use [Windo
 
 - Linux server
 - Docker + Docker Compose
-- An OpenAI Secure MCP Tunnel
-- A tunnel Runtime API Key with the permissions required by the official tunnel client
 
-## Base deployment
+An OpenAI Secure MCP Tunnel and Runtime API Key are optional and only needed for the ChatGPT Tunnel ingress path.
+
+## Standard MCP deployment
 
 ```bash
 git clone https://github.com/NTLx/ServerFS_MCP.git
@@ -21,7 +21,19 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Configure at least one workdir and the tunnel credentials in `.env`, then:
+Configure at least one workdir in `.env`, then start the standard Streamable HTTP endpoint:
+
+```bash
+docker compose pull
+docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
+docker compose -f compose.yml -f compose.http.yml ps
+```
+
+The HTTP override publishes `127.0.0.1:8000/mcp` by default and keeps the OpenAI Tunnel disabled. The 11-tool filesystem surface remains read-only unless a workdir explicitly sets `WORKDIR_XX_READ_ONLY=false`. Before exposing ServerFS beyond loopback, configure the Host allowlist and terminate TLS/authentication at an explicit ingress boundary.
+
+## Optional ChatGPT / OpenAI Tunnel deployment
+
+Set `CONTROL_PLANE_TUNNEL_ID` and `CONTROL_PLANE_API_KEY` in `.env`, then use the historical base Compose path:
 
 ```bash
 docker compose pull
@@ -30,7 +42,7 @@ docker compose ps
 docker compose logs -f openai-tunnel
 ```
 
-The base deployment exposes the 11 filesystem tools and remains read-only unless a workdir explicitly sets `WORKDIR_XX_READ_ONLY=false`.
+This remains a supported authenticated ingress adapter; it is no longer required for generic MCP clients.
 
 ## Agent deployment
 
@@ -79,14 +91,14 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](./binary-transfer/) and [Security Model](./security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
-## Current stable release: v0.14.1
+## Current stable release: v0.15.0
 
-The v0.14.1 release uses immutable tag `v0.14.1` and publishes these stable GHCR tags:
+The v0.15.0 release uses immutable tag `v0.15.0` and publishes these stable GHCR tags:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.14
-ghcr.io/ntlx/serverfs_mcp:0.14.1
+ghcr.io/ntlx/serverfs_mcp:0.15
+ghcr.io/ntlx/serverfs_mcp:0.15.0
 ```
 
-For production deployments, pin `0.14.1` rather than following `latest` or `edge`. The same tag carries the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests. macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](./windows-native/) and [macOS Native](./macos-native/).
+For production deployments, pin `0.15.0` rather than following `latest` or `edge`. The same tag carries the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests. macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](./windows-native/) and [macOS Native](./macos-native/).

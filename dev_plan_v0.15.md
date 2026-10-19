@@ -1,6 +1,6 @@
 # ServerFS v0.15.0 Development Plan
 
-Status: implementation in progress.
+Status: released — v0.15.0 release complete.
 
 ## Implementation checkpoint — 2026-10-19
 
@@ -17,16 +17,17 @@ Completed and verified so far:
 - modern MCP `2026-07-28` and legacy `2025-11-25` clients expose the same 11-tool base surface in-process and over a real transient TCP Streamable HTTP endpoint;
 - real Qoder CLI interoperability is verified: Qoder `1.1.65` consumed the transient Streamable HTTP endpoint in a strict headless session, invoked only `mcp__serverfs__list_workdirs`, and received the expected empty workdir list with exit status 0;
 - real Codex CLI interoperability is verified: Codex `0.163.0` consumed the transient Streamable HTTP endpoint with ServerFS MCP tool approval explicitly set to `approve`, invoked only `list_workdirs`, and received the expected empty workdir list with exit status 0;
-- bounded root regression batches are green: HTTP/config/security `91 passed`; deployment/binary `129 passed, 8 skipped`; core filesystem `625 passed, 3 skipped`; Agent/shared lifecycle `365 passed, 167 skipped`; remaining platform/package/CLI paths `208 passed, 138 skipped`. These batches intentionally contain some overlap and are evidence by boundary rather than an additive suite total.
+- real Claude Code interoperability is verified with Claude Code `2.1.302` using the supported local-scope HTTP MCP registration path (`claude mcp add --transport http ...`): `mcp get` reported Connected, one valid print-mode session invoked only `mcp__serverfs_v015_probe_20261019__list_workdirs`, received `{"workdirs":[]}`, and exited 0; the temporary MCP registration, transient ServerFS process, and `/tmp` probe artifacts were removed afterward;
+- bounded root regression batches are green: HTTP/config/security `91 passed`; deployment/binary `129 passed, 8 skipped`; core filesystem `625 passed, 3 skipped`; Agent/shared lifecycle `365 passed, 167 skipped`; remaining platform/package/CLI paths `208 passed, 138 skipped`. These batches intentionally contain some overlap and are evidence by boundary rather than an additive suite total;
+- Linux/shared checkpoint `5e5e82767167fcf38ed7faec34575e808746fb1f` was pushed before native-platform validation;
+- real WorkPC Windows validation is green after fast-forwarding from GitHub: native stdio `1/1`, representative filesystem/mutation `5/5`, Agent Bridge protocol `3/3`, and current-user lifecycle contract `3/3`; no Windows production-source change was justified, and evidence is recorded in `docs/v0.15.0-windows-shared-core-validation-2026-10-19.md` at checkpoint `141fec305505032b1e826b5942658abfb495bdcf`;
+- real MacBook Apple Silicon validation is green after fast-forwarding the Windows checkpoint: a new process-level macOS native stdio acceptance test passes `1/1`, and focused Darwin backend / Bridge policy / ServiceManagement regression passes `13/13`; no macOS production-source change was justified, and evidence plus the missing native-stdio test landed at checkpoint `499812ac8379d96e2fa8a4348e61e907f03c8dde`;
+- the full VPS → WorkPC → MacBook → VPS synchronization cycle completed through GitHub `origin` only; VPS fast-forwarded to the combined native-platform checkpoint before final Linux/release closeout;
+- real ChatGPT/OpenAI Tunnel live acceptance passed on a scratch image built from the v0.15 source: filesystem discovery/read/write, revision-conflict rejection, binary upload/download, ChatGPT `file` parameter ingress, and one narrow Codex Agent task all passed through the official Tunnel; all disposable `agent-e2e` artifacts were removed afterward. Evidence is recorded in `docs/v0.15.0-linux-chatgpt-live-acceptance-2026-10-19.md`;
+- release-facing README, `.env.example`, maintainer/deployment docs and English/Chinese site content now describe v0.15.0 as the current stable release and present standard MCP stdio / Streamable HTTP as the primary interfaces with the OpenAI Tunnel as an optional ChatGPT ingress;
+- final release gates are green: `git diff --check`, both `uv lock --check` gates, Ruff lint/format, the complete root pytest suite (exit 0), base/generic/Agent+file-ingress Compose rendering, and the 23-page site build all pass; package/lock version surfaces are `0.15.0` and the MCP SDK remains exactly `2.3.0`.
 
-Still pending before v0.15.0 acceptance:
-
-- native Windows/macOS live shared-core validation on the corresponding hosts (Linux platform-specific skips are not substitutes);
-- repeatable real-host interoperability with Claude Code. Current transient Claude Code `2.1.302` probes are **Not verified**: its `mcp list` management subcommand does not surface session-only `--mcp-config` servers on this host, and the first prompt probe did not load the temporary tool. This is not evidence of a ServerFS protocol failure because official Python clients plus Qoder and Codex all consume the same transient endpoint successfully;
-- ChatGPT/OpenAI Tunnel regression including optional file ingress/Agent surfaces;
-- release-facing README/docs/site convergence and final release gates.
-
-The full monolithic root `pytest` was intentionally not left running when it produced no incremental evidence within the short baseline window; validation is being executed in bounded domain batches instead. This is not recorded as a passing full-suite gate.
+v0.15.0 acceptance is complete. The immutable release tag and GitHub Release point at the same final release commit described by this document.
 
 ## Goal
 

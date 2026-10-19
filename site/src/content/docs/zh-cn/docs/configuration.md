@@ -5,6 +5,22 @@ description: 定义受控 workdir，并继承安全默认值。
 
 ServerFS 在启动时为每个已启用 workdir 解析出一份不可变的最终生效策略。
 
+## MCP 传输配置
+
+Linux Streamable HTTP 使用以下显式配置：
+
+```text
+SERVERFS_HTTP_HOST=0.0.0.0
+SERVERFS_HTTP_PORT=8000
+SERVERFS_HTTP_PATH=/mcp
+SERVERFS_HTTP_ALLOWED_HOSTS=
+SERVERFS_HTTP_ALLOWED_ORIGINS=
+```
+
+监听地址与对外发布彼此独立。`compose.http.yml` 默认只发布到 `127.0.0.1:8000`。DNS rebinding 防护始终保持启用：当部署通过其他主机名或反向代理访问时，只把确实允许的 Host authority 精确加入 `SERVERFS_HTTP_ALLOWED_HOSTS`。需要浏览器 Origin 时，通过 `SERVERFS_HTTP_ALLOWED_ORIGINS` 显式配置允许列表。不要为了让代理工作而关闭 Host 防护。任何公网或非 loopback 暴露都应在单独配置的入口边界终止 TLS 与认证。
+
+默认 host/port/path 继续与既有 OpenAI Tunnel 的 Docker 内部路径一致，因此新增通用 MCP HTTP 支持不会强迫现有 Tunnel 部署迁移。
+
 ## Workdir 槽位
 
 最多可配置 16 个 workdir：

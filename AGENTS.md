@@ -11,7 +11,7 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 
 ## Current baseline
 
-- **Current stable release: v0.14.1.**
+- **Current stable release: v0.15.0.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to each platform/runtime gate.
 - Windows v0.14.0 uses a strictly current-user and non-elevated lifecycle: Task Scheduler 2.0 owns a least-privilege watchdog through `InteractiveToken`, a logon trigger and an indefinite one-minute time-trigger heartbeat with `IgnoreNew`; the watchdog restarts the managed runner, and the runner restarts Tunnel generations. Do not replace this with SCM/LocalSystem, HKLM registration, stored credentials or another admin-required path.

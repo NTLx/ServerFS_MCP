@@ -3,25 +3,23 @@ title: Architecture
 description: The ServerFS data path and trust boundaries.
 ---
 
-## Base path
+## MCP core and ingress paths
 
 ```text
-Linux filesystem
+MCP host
    │
-   ▼
-Docker bind mounts
-   │  read-only by default
-   ▼
-ServerFS MCP
-   │  internal network only
-   ▼
-OpenAI Secure MCP Tunnel
-   │  outbound-only
-   ▼
-ChatGPT
+   ├── stdio (native Windows/macOS)
+   ├── Streamable HTTP (Linux; loopback/private by default)
+   └── OpenAI Secure MCP Tunnel (optional ChatGPT ingress)
+               │
+               ▼
+          ServerFS MCP Core
+               │  scoped policy
+               ▼
+       explicitly configured workdirs
 ```
 
-The MCP container has no published ports and no Internet egress. The OpenAI tunnel has a separate outbound network for control-plane traffic.
+The MCP core and tool contract are host-neutral. Generic Linux HTTP publication is opt-in and binds loopback by default; public exposure requires explicit Host policy plus a TLS/authentication ingress boundary. The OpenAI Tunnel remains an optional authenticated outbound-only adapter with a separate control-plane network. The main MCP container still has no general Internet egress.
 
 ## Optional ChatGPT file-ingress path
 
@@ -110,4 +108,4 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - structured Agent task RPC, model discovery and request-scoped model override
 - optional host-side Jev advisory decisions
 
-In the current **v0.14.1** stable release, the supported MCP surfaces remain 11 / 13 / 21 / 23 tools. Every optional capability is separately gated; v0.12's independent Tunnel/Agent/Jev proxy switches, v0.13's native macOS deployment and v0.14's Windows persistent lifecycle do not change the public tool counts. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.
+In the current **v0.15.0** stable release, the supported MCP surfaces remain 11 / 13 / 21 / 23 tools. Every optional capability is separately gated; v0.12's independent Tunnel/Agent/Jev proxy switches, v0.13's native macOS deployment and v0.14's Windows persistent lifecycle do not change the public tool counts. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.
