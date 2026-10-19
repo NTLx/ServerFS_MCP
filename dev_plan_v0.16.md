@@ -1,8 +1,24 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: planned — implementation not started.
+Status: in progress — Phase 0 and Phase A complete.
 
 Plan frozen: 2026-10-19.
+
+## Implementation checkpoint — 2026-10-19
+
+Completed and verified so far:
+
+- Phase 0 repository baseline was clean and synchronized with `origin/main` before product changes;
+- the frozen v0.16 plan was committed separately at `1d9ee4720b819c93f58f71686e3e462b01599250`;
+- pre-change Linux baseline is green: `git diff --check`, Ruff lint/format, full root pytest (`1419 passed, 317 skipped`), base Compose rendering and generic HTTP Compose rendering;
+- Phase A adds strict default-off MCP Resource Server OAuth settings without changing default v0.15 behavior;
+- upstream provider credentials live in a separate `AuthServiceSettings` / `auth_config.py` boundary so they never need to enter the `serverfs-mcp` process;
+- GitHub, DingTalk, Feishu and WeChat provider switches are independently opt-in and strict;
+- `serverfs-auth` configuration is default-deny, validates public HTTPS URLs outside loopback, exact provider-qualified principals, token TTLs, state path and shared proxy reuse;
+- `.env.example` now documents the optional OAuth configuration surface while keeping `SERVERFS_OAUTH_ENABLED=false` by default;
+- Phase A focused validation is green: `git diff --check`, 89 config/main tests, Ruff lint and Ruff format checks.
+
+Phase B is the next implementation target. No OAuth network verifier or provider/database service has been added yet.
 
 ## Goal
 

@@ -110,6 +110,95 @@ class TestHttpConfig:
             settings_from_env({"SERVERFS_HTTP_ALLOWED_ORIGINS": value})
 
 
+class TestOAuthConfig:
+    def test_defaults_are_disabled_and_v015_compatible(self) -> None:
+        s = settings_from_env({})
+        assert s.oauth_enabled is False
+        assert s.oauth_resource_url == ""
+        assert s.oauth_issuer_url == ""
+        assert s.oauth_required_scopes == ("serverfs:access",)
+        assert s.oauth_introspection_url == "http://serverfs-auth:8082/internal/introspect"
+        assert s.oauth_introspection_secret == ""
+        assert s.oauth_introspection_timeout_seconds == 2.0
+
+    def test_enabled_resource_server_settings(self) -> None:
+        s = settings_from_env(
+            {
+                "SERVERFS_OAUTH_ENABLED": "true",
+                "SERVERFS_OAUTH_RESOURCE_URL": "https://mcp.example.com/mcp",
+                "SERVERFS_OAUTH_ISSUER_URL": "https://auth.example.com",
+                "SERVERFS_OAUTH_INTROSPECTION_SECRET": "shared-secret",
+                "SERVERFS_OAUTH_REQUIRED_SCOPES": "serverfs:access,serverfs:test",
+                "SERVERFS_OAUTH_INTROSPECTION_TIMEOUT_SECONDS": "1.5",
+            }
+        )
+        assert s.oauth_enabled is True
+        assert s.oauth_resource_url == "https://mcp.example.com/mcp"
+        assert s.oauth_issuer_url == "https://auth.example.com"
+        assert s.oauth_required_scopes == ("serverfs:access", "serverfs:test")
+        assert s.oauth_introspection_secret == "shared-secret"
+        assert s.oauth_introspection_timeout_seconds == 1.5
+
+    def test_loopback_http_urls_are_allowed_for_tests(self) -> None:
+        s = settings_from_env(
+            {
+                "SERVERFS_OAUTH_ENABLED": "true",
+                "SERVERFS_OAUTH_RESOURCE_URL": "http://127.0.0.1:8000/mcp",
+                "SERVERFS_OAUTH_ISSUER_URL": "http://localhost:8082",
+                "SERVERFS_OAUTH_INTROSPECTION_SECRET": "shared-secret",
+            }
+        )
+        assert s.oauth_enabled is True
+
+    @pytest.mark.parametrize(
+        ("key", "value"),
+        [
+            ("SERVERFS_OAUTH_RESOURCE_URL", "http://mcp.example.com/mcp"),
+            ("SERVERFS_OAUTH_ISSUER_URL", "http://auth.example.com"),
+            ("SERVERFS_OAUTH_RESOURCE_URL", "https://user@mcp.example.com/mcp"),
+            ("SERVERFS_OAUTH_ISSUER_URL", "https://auth.example.com?x=1"),
+        ],
+    )
+    def test_invalid_public_oauth_url_fails_closed(self, key: str, value: str) -> None:
+        env = {
+            "SERVERFS_OAUTH_ENABLED": "true",
+            "SERVERFS_OAUTH_RESOURCE_URL": "https://mcp.example.com/mcp",
+            "SERVERFS_OAUTH_ISSUER_URL": "https://auth.example.com",
+            "SERVERFS_OAUTH_INTROSPECTION_SECRET": "shared-secret",
+        }
+        env[key] = value
+        with pytest.raises(ValueError):
+            settings_from_env(env)
+
+    @pytest.mark.parametrize(
+        "missing",
+        [
+            "SERVERFS_OAUTH_RESOURCE_URL",
+            "SERVERFS_OAUTH_ISSUER_URL",
+            "SERVERFS_OAUTH_INTROSPECTION_SECRET",
+        ],
+    )
+    def test_enabled_oauth_requires_resource_server_contract(self, missing: str) -> None:
+        env = {
+            "SERVERFS_OAUTH_ENABLED": "true",
+            "SERVERFS_OAUTH_RESOURCE_URL": "https://mcp.example.com/mcp",
+            "SERVERFS_OAUTH_ISSUER_URL": "https://auth.example.com",
+            "SERVERFS_OAUTH_INTROSPECTION_SECRET": "shared-secret",
+        }
+        env.pop(missing)
+        with pytest.raises(ValueError, match=missing):
+            settings_from_env(env)
+
+    def test_invalid_master_switch_fails_closed(self) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env({"SERVERFS_OAUTH_ENABLED": "maybe"})
+
+    @pytest.mark.parametrize("value", ["", "serverfs access", "serverfs:access,serverfs:access"])
+    def test_invalid_required_scopes_fail_closed(self, value: str) -> None:
+        with pytest.raises(ValueError):
+            settings_from_env({"SERVERFS_OAUTH_REQUIRED_SCOPES": value})
+
+
 class TestFileIngressConfig:
     def test_defaults_are_disabled(self) -> None:
         s = settings_from_env({})

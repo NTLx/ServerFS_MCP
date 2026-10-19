@@ -22,6 +22,13 @@ class Settings:
     http_path: str = "/mcp"
     http_allowed_hosts: tuple[str, ...] = ("serverfs-mcp:8000",)
     http_allowed_origins: tuple[str, ...] = ()
+    oauth_enabled: bool = False
+    oauth_resource_url: str = ""
+    oauth_issuer_url: str = ""
+    oauth_required_scopes: tuple[str, ...] = ("serverfs:access",)
+    oauth_introspection_url: str = "http://serverfs-auth:8082/internal/introspect"
+    oauth_introspection_secret: str = ""
+    oauth_introspection_timeout_seconds: float = 2.0
     max_read_bytes: int = 524_288
     max_read_lines: int = 500
     default_list_limit: int = 100
@@ -71,6 +78,19 @@ def _get_float(env: Mapping[str, str], key: str, default: float) -> float:
     except ValueError:
         return default
     return value if value > 0 else default
+
+
+def _get_positive_float_strict(env: Mapping[str, str], key: str, default: float) -> float:
+    raw = env.get(key, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"invalid {key} value {env.get(key, '')!r}") from exc
+    if value <= 0:
+        raise ValueError(f"invalid {key} value {env.get(key, '')!r}")
+    return value
 
 
 def _get_bool(env: Mapping[str, str], key: str, default: bool) -> bool:
@@ -187,6 +207,53 @@ def _get_http_allowed_origins(env: Mapping[str, str]) -> tuple[str, ...]:
     return values
 
 
+def _is_loopback_host(hostname: str | None) -> bool:
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def _get_oauth_url(
+    env: Mapping[str, str],
+    key: str,
+    *,
+    required: bool,
+    default: str = "",
+    require_https: bool,
+) -> str:
+    raw = env.get(key, "").strip() or default
+    if not raw:
+        if required:
+            raise ValueError(f"{key} is required when SERVERFS_OAUTH_ENABLED=true")
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError(f"invalid {key} value {env.get(key, '')!r}") from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or any(char.isspace() for char in raw)
+    ):
+        raise ValueError(f"invalid {key} value {env.get(key, '')!r}")
+    if require_https and parsed.scheme != "https" and not _is_loopback_host(parsed.hostname):
+        raise ValueError(f"{key} must use https outside loopback")
+    return raw
+
+
+def _get_oauth_scopes(env: Mapping[str, str]) -> tuple[str, ...]:
+    raw = env.get("SERVERFS_OAUTH_REQUIRED_SCOPES", "serverfs:access")
+    values = tuple(item.strip() for item in raw.split(",") if item.strip())
+    if not values or len(values) != len(set(values)):
+        raise ValueError(f"invalid SERVERFS_OAUTH_REQUIRED_SCOPES value {raw!r}")
+    if any(any(char.isspace() for char in item) for item in values):
+        raise ValueError(f"invalid SERVERFS_OAUTH_REQUIRED_SCOPES value {raw!r}")
+    return values
+
+
 def _get_deny_globs(env: Mapping[str, str]) -> tuple[str, ...]:
     """Parse a comma-separated glob list; empty/whitespace entries dropped."""
     raw = env.get("SERVERFS_EXTRA_DENY_GLOBS", "")
@@ -219,6 +286,32 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
     http_port = _get_http_port(env)
     agent_mode = _get_agent_mode(env)
     agent_runtimes = _get_agent_runtimes(env)
+    oauth_enabled = _get_strict_bool(env, "SERVERFS_OAUTH_ENABLED", False)
+    oauth_resource_url = _get_oauth_url(
+        env,
+        "SERVERFS_OAUTH_RESOURCE_URL",
+        required=oauth_enabled,
+        require_https=True,
+    )
+    oauth_issuer_url = _get_oauth_url(
+        env,
+        "SERVERFS_OAUTH_ISSUER_URL",
+        required=oauth_enabled,
+        require_https=True,
+    )
+    oauth_introspection_url = _get_oauth_url(
+        env,
+        "SERVERFS_OAUTH_INTROSPECTION_URL",
+        required=False,
+        default="http://serverfs-auth:8082/internal/introspect",
+        require_https=False,
+    )
+    oauth_required_scopes = _get_oauth_scopes(env)
+    oauth_introspection_secret = env.get("SERVERFS_OAUTH_INTROSPECTION_SECRET", "").strip()
+    if oauth_enabled and not oauth_introspection_secret:
+        raise ValueError(
+            "SERVERFS_OAUTH_INTROSPECTION_SECRET is required when SERVERFS_OAUTH_ENABLED=true"
+        )
     if agent_mode == "disabled" and agent_runtimes:
         raise ValueError("SERVERFS_AGENT_MODE=disabled cannot have Agent runtimes")
     if agent_mode != "disabled" and not agent_runtimes:
@@ -230,6 +323,15 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         http_path=_get_http_path(env),
         http_allowed_hosts=_get_http_allowed_hosts(env, http_port),
         http_allowed_origins=_get_http_allowed_origins(env),
+        oauth_enabled=oauth_enabled,
+        oauth_resource_url=oauth_resource_url,
+        oauth_issuer_url=oauth_issuer_url,
+        oauth_required_scopes=oauth_required_scopes,
+        oauth_introspection_url=oauth_introspection_url,
+        oauth_introspection_secret=oauth_introspection_secret,
+        oauth_introspection_timeout_seconds=_get_positive_float_strict(
+            env, "SERVERFS_OAUTH_INTROSPECTION_TIMEOUT_SECONDS", 2.0
+        ),
         max_read_bytes=_get_positive_int_strict(env, "SERVERFS_MAX_READ_BYTES", 524_288),
         max_read_lines=_get_positive_int_strict(env, "SERVERFS_MAX_READ_LINES", 500),
         default_list_limit=_get_int(env, "SERVERFS_DEFAULT_LIST_LIMIT", 100),
