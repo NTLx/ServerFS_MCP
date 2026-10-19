@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import os
 from urllib.parse import parse_qs, urlparse
 
 from mcp.shared.auth import OAuthClientInformationFull
 from starlette.testclient import TestClient
 
+from serverfs_mcp.auth_clients import ClientMetadataResolver
 from serverfs_mcp.auth_config import AuthServiceSettings
 from serverfs_mcp.auth_server import create_auth_app
 from serverfs_mcp.auth_store import OAuthStateStore
@@ -26,14 +28,16 @@ CODE_CHALLENGE = (
 )
 
 
-def settings(tmp_path) -> AuthServiceSettings:
-    return AuthServiceSettings(
-        oauth_enabled=True,
-        public_url=ISSUER,
-        resource_url=RESOURCE,
-        state_dir=str(tmp_path),
-        introspection_secret=INTROSPECTION_SECRET,
-    )
+def settings(tmp_path, **overrides) -> AuthServiceSettings:
+    values = {
+        "oauth_enabled": True,
+        "public_url": ISSUER,
+        "resource_url": RESOURCE,
+        "state_dir": str(tmp_path),
+        "introspection_secret": INTROSPECTION_SECRET,
+    }
+    values.update(overrides)
+    return AuthServiceSettings(**values)
 
 
 def public_client() -> OAuthClientInformationFull:
@@ -114,6 +118,8 @@ class TestAuthorizationCore:
         assert payload["token_endpoint"] == f"{ISSUER}/token"
         assert payload["revocation_endpoint"] == f"{ISSUER}/revoke"
         assert payload["code_challenge_methods_supported"] == ["S256"]
+        assert payload["client_id_metadata_document_supported"] is True
+        assert payload["authorization_response_iss_parameter_supported"] is True
         assert "registration_endpoint" not in payload
 
     def test_code_token_refresh_rotation_revocation_and_persistence(self, tmp_path) -> None:
@@ -269,3 +275,115 @@ class TestAuthorizationCore:
                 content=b"x" * 5000,
             )
         assert response.status_code == 413
+
+
+class StaticCimdFetcher:
+    def __init__(self, document: dict[str, object]) -> None:
+        self.document = document
+        self.calls: list[str] = []
+
+    def fetch(self, client_id: str):
+        self.calls.append(client_id)
+        return self.document
+
+
+class TestClientRegistration:
+    def test_dcr_is_advertised_only_when_enabled_and_public_client_registers(
+        self, tmp_path
+    ) -> None:
+        app = create_auth_app(settings(tmp_path, dcr_enabled=True), test_identity="github:123")
+        with TestClient(app) as client:
+            metadata = client.get("/.well-known/oauth-authorization-server").json()
+            assert metadata["registration_endpoint"] == f"{ISSUER}/register"
+            response = client.post(
+                "/register",
+                json={
+                    "redirect_uris": [REDIRECT],
+                    "token_endpoint_auth_method": "none",
+                    "grant_types": ["authorization_code", "refresh_token"],
+                    "response_types": ["code"],
+                    "scope": "serverfs:access",
+                    "application_type": "native",
+                },
+            )
+        assert response.status_code == 201, response.text
+        payload = response.json()
+        assert payload["client_id"]
+        assert payload["token_endpoint_auth_method"] == "none"
+        assert payload.get("client_secret") is None
+
+    def test_dcr_rejects_confidential_client(self, tmp_path) -> None:
+        app = create_auth_app(settings(tmp_path, dcr_enabled=True), test_identity="github:123")
+        with TestClient(app) as client:
+            response = client.post(
+                "/register",
+                json={
+                    "redirect_uris": [REDIRECT],
+                    "token_endpoint_auth_method": "client_secret_post",
+                    "grant_types": ["authorization_code"],
+                    "response_types": ["code"],
+                    "scope": "serverfs:access",
+                },
+            )
+        assert response.status_code == 400
+        assert response.json()["error"] == "invalid_client_metadata"
+
+    def test_cimd_client_is_resolved_without_registration(self, tmp_path) -> None:
+        client_id = "https://client.example.com/oauth/client.json"
+        document = {
+            "client_id": client_id,
+            "redirect_uris": [REDIRECT],
+            "token_endpoint_auth_method": "none",
+            "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"],
+            "scope": "serverfs:access",
+        }
+        fetcher = StaticCimdFetcher(document)
+        resolver = ClientMetadataResolver(fetcher=fetcher)
+        app = create_auth_app(
+            settings(tmp_path),
+            client_resolver=resolver,
+            test_identity="github:123",
+        )
+        with TestClient(app) as client:
+            response = client.get(
+                "/authorize",
+                params={
+                    "client_id": client_id,
+                    "redirect_uri": REDIRECT,
+                    "response_type": "code",
+                    "code_challenge": CODE_CHALLENGE,
+                    "code_challenge_method": "S256",
+                    "scope": "serverfs:access",
+                    "resource": RESOURCE,
+                },
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert response.headers["location"].startswith(f"{ISSUER}/login?transaction=")
+        assert fetcher.calls == [client_id]
+
+    def test_pre_registered_clients_file_is_loaded(self, tmp_path) -> None:
+        clients_file = tmp_path / "clients.json"
+        clients_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "client_id": "operator-client",
+                        "redirect_uris": [REDIRECT],
+                        "token_endpoint_auth_method": "none",
+                        "grant_types": ["authorization_code", "refresh_token"],
+                        "response_types": ["code"],
+                        "scope": "serverfs:access",
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        app = create_auth_app(
+            settings(tmp_path / "state", clients_file=str(clients_file)),
+            test_identity="github:123",
+        )
+        loaded = asyncio.run(app.state.oauth_provider.get_client("operator-client"))
+        assert loaded is not None
+        assert loaded.client_id == "operator-client"

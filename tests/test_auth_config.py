@@ -85,6 +85,17 @@ class TestAuthEnabledValidation:
         with pytest.raises(ValueError, match="must equal"):
             auth_settings_from_env(env)
 
+    def test_clients_file_must_be_absolute(self) -> None:
+        env = self.valid_env()
+        env["SERVERFS_AUTH_CLIENTS_FILE"] = "clients.json"
+        with pytest.raises(ValueError, match="SERVERFS_AUTH_CLIENTS_FILE"):
+            auth_settings_from_env(env)
+
+    def test_absolute_clients_file_is_preserved(self) -> None:
+        env = self.valid_env()
+        env["SERVERFS_AUTH_CLIENTS_FILE"] = "/etc/serverfs/clients.json"
+        assert auth_settings_from_env(env).clients_file == "/etc/serverfs/clients.json"
+
     def test_enabled_requires_introspection_secret(self) -> None:
         env = self.valid_env()
         env.pop("SERVERFS_OAUTH_INTROSPECTION_SECRET")

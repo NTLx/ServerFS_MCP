@@ -9,9 +9,10 @@ import sys
 from typing import Any
 
 import uvicorn
+from mcp.server.auth.handlers.metadata import MetadataHandler
 from mcp.server.auth.middleware.client_auth import AuthenticationError, ClientAuthenticator
 from mcp.server.auth.provider import construct_redirect_uri
-from mcp.server.auth.routes import create_auth_routes
+from mcp.server.auth.routes import build_metadata, cors_middleware, create_auth_routes
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -19,6 +20,7 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from . import logging as jsonlog
+from .auth_clients import ClientMetadataResolver, load_pre_registered_clients
 from .auth_config import AuthServiceSettings, auth_settings_from_env
 from .auth_provider import ServerFSOAuthProvider
 from .auth_store import OAuthStateStore
@@ -30,6 +32,7 @@ def create_auth_app(
     settings: AuthServiceSettings,
     *,
     provider: ServerFSOAuthProvider | None = None,
+    client_resolver: ClientMetadataResolver | None = None,
     test_identity: str | None = None,
 ) -> Starlette:
     """Build the isolated authorization service.
@@ -53,7 +56,10 @@ def create_auth_app(
         supported_scopes=("serverfs:access",),
         access_token_ttl_seconds=settings.access_token_ttl_seconds,
         refresh_token_ttl_seconds=settings.refresh_token_ttl_seconds,
+        client_resolver=client_resolver or ClientMetadataResolver(),
     )
+    for client in load_pre_registered_clients(settings.clients_file):
+        oauth_provider.pre_register_client(client)
     client_authenticator = ClientAuthenticator(oauth_provider)
 
     async def login(request: Request) -> Response:
@@ -142,23 +148,43 @@ def create_auth_app(
         issuer_url=settings.public_url,
         resource_server_url=None,
     ).issuer_url
+    registration_options = ClientRegistrationOptions(
+        enabled=settings.dcr_enabled,
+        valid_scopes=["serverfs:access"],
+        default_scopes=["serverfs:access"],
+    )
+    revocation_options = RevocationOptions(enabled=True)
+    metadata = build_metadata(
+        issuer_url,
+        service_documentation_url=None,
+        client_registration_options=registration_options,
+        revocation_options=revocation_options,
+    )
+    metadata.client_id_metadata_document_supported = True
+    metadata.authorization_response_iss_parameter_supported = True
     auth_routes = create_auth_routes(
         provider=oauth_provider,
         issuer_url=issuer_url,
-        client_registration_options=ClientRegistrationOptions(
-            enabled=False,
-            valid_scopes=["serverfs:access"],
-            default_scopes=["serverfs:access"],
-        ),
-        revocation_options=RevocationOptions(enabled=True),
+        client_registration_options=registration_options,
+        revocation_options=revocation_options,
     )
     routes = [
+        Route(
+            "/.well-known/oauth-authorization-server",
+            endpoint=cors_middleware(MetadataHandler(metadata).handle, ["GET", "OPTIONS"]),
+            methods=["GET", "OPTIONS"],
+        ),
         Route("/login", login, methods=["GET"]),
         Route("/internal/introspect", introspect, methods=["POST"]),
         Route("/revoke", revoke, methods=["POST"]),
         Route("/healthz", healthz, methods=["GET"]),
     ]
-    routes.extend(route for route in auth_routes if getattr(route, "path", None) != "/revoke")
+    routes.extend(
+        route
+        for route in auth_routes
+        if getattr(route, "path", None)
+        not in {"/.well-known/oauth-authorization-server", "/revoke"}
+    )
     app = Starlette(routes=routes)
     app.state.oauth_store = store
     app.state.oauth_provider = oauth_provider
@@ -182,7 +208,7 @@ def main() -> int:
         port=settings.port,
         provider_count=len(settings.enabled_providers),
         admitted_principal_count=len(settings.allowed_principals),
-        dcr_enabled=False,
+        dcr_enabled=settings.dcr_enabled,
     )
     uvicorn.run(app, host=settings.host, port=settings.port, log_config=None)
     return 0

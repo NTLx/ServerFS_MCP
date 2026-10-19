@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase C complete.
+Status: in progress — Phase 0 through Phase D complete.
 
 Plan frozen: 2026-10-19.
 
@@ -29,9 +29,16 @@ Completed and verified so far:
 - Authorization Code + PKCE S256, refresh, RFC 9207 `iss`, metadata and token endpoints use the MCP SDK where its behavior matches the ServerFS contract; the public-client revocation endpoint is narrowly owned by ServerFS because the installed SDK revocation request model incorrectly requires a `client_secret` field even for `token_endpoint_auth_method=none`;
 - issuer canonicalization is routed through the installed SDK `AuthSettings` model so Authorization Server Metadata and authorization-response `iss` use the same exact issuer string;
 - real upstream identity providers are still unavailable in Phase C by design: production `/login` fails closed with 503, while deterministic identity completion exists only as an explicit in-process test injection and cannot be enabled from `.env`;
-- Phase C focused validation is green: 62 auth-config/auth-server/resource-server tests, Ruff lint/format, `uv lock --check` and `git diff --check`.
+- Phase C focused validation is green: 62 auth-config/auth-server/resource-server tests, Ruff lint/format, `uv lock --check` and `git diff --check`;
+- Phase D implements three explicit client-identification paths: operator pre-registration from an optional read-only JSON file, standards-current CIMD resolution, and DCR only when `SERVERFS_AUTH_DCR_ENABLED=true`;
+- ServerFS advertises `client_id_metadata_document_supported=true` and `authorization_response_iss_parameter_supported=true`; DCR's registration endpoint is absent from metadata unless the compatibility switch is enabled;
+- CIMD follows the current MCP/Tier-1-client-compatible strict URL subset: HTTPS, non-root path, no query/fragment/userinfo/dot segments, exact `client_id` document match and public PKCE clients only;
+- the CIMD fetcher does not use proxies or redirects, resolves DNS before connecting, rejects the entire answer set if any address is non-global/special-use, and pins the TLS TCP connection to a previously checked IP while keeping certificate/SNI verification on the original hostname;
+- successful CIMD metadata is held only in a bounded in-memory cache; fetch errors and invalid documents are never cached or persisted to SQLite;
+- pre-registered and DCR clients are intentionally public PKCE clients in v0.16, avoiding persistent client-secret material; unsupported confidential/shared-secret client registrations fail closed;
+- Phase D focused validation is green: 77 client-registration/auth tests, Ruff lint/format and `git diff --check`.
 
-Phase D is the next implementation target. No upstream provider adapter has been added yet.
+Phase E is the next implementation target. No upstream provider adapter has been added yet.
 
 ## Goal
 

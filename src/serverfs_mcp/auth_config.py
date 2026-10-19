@@ -28,6 +28,7 @@ class AuthServiceSettings:
     public_url: str = ""
     resource_url: str = ""
     state_dir: str = "/var/lib/serverfs-auth"
+    clients_file: str = ""
     allowed_principals: tuple[str, ...] = ()
     access_token_ttl_seconds: int = 3600
     refresh_token_ttl_seconds: int = 2_592_000
@@ -132,6 +133,13 @@ def _get_state_dir(env: Mapping[str, str]) -> str:
     return value
 
 
+def _get_clients_file(env: Mapping[str, str]) -> str:
+    value = env.get("SERVERFS_AUTH_CLIENTS_FILE", "").strip()
+    if value and not PurePath(value).is_absolute():
+        raise ValueError("SERVERFS_AUTH_CLIENTS_FILE must be absolute")
+    return value
+
+
 def _get_allowed_principals(env: Mapping[str, str]) -> tuple[str, ...]:
     raw = env.get("SERVERFS_AUTH_ALLOWED_PRINCIPALS", "")
     values = tuple(item.strip() for item in raw.split(",") if item.strip())
@@ -212,6 +220,7 @@ def auth_settings_from_env(env: Mapping[str, str]) -> AuthServiceSettings:
         public_url=public_url,
         resource_url=resource_url,
         state_dir=_get_state_dir(env),
+        clients_file=_get_clients_file(env),
         allowed_principals=_get_allowed_principals(env),
         access_token_ttl_seconds=_get_positive_int(
             env, "SERVERFS_AUTH_ACCESS_TOKEN_TTL_SECONDS", 3600

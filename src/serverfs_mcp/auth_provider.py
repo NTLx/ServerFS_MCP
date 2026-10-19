@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urlencode
 
 from mcp.server.auth.provider import (
@@ -10,10 +11,12 @@ from mcp.server.auth.provider import (
     AuthorizationParams,
     AuthorizeError,
     RefreshToken,
+    RegistrationError,
     TokenError,
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
+from .auth_clients import ClientMetadataResolver
 from .auth_store import CompletedAuthorization, OAuthStateStore
 
 
@@ -29,6 +32,7 @@ class ServerFSOAuthProvider:
         supported_scopes: tuple[str, ...] = ("serverfs:access",),
         access_token_ttl_seconds: int = 3600,
         refresh_token_ttl_seconds: int = 2_592_000,
+        client_resolver: ClientMetadataResolver | None = None,
     ) -> None:
         self.store = store
         self.issuer_url = issuer_url.rstrip("/")
@@ -36,11 +40,44 @@ class ServerFSOAuthProvider:
         self.supported_scopes = supported_scopes
         self.access_token_ttl_seconds = access_token_ttl_seconds
         self.refresh_token_ttl_seconds = refresh_token_ttl_seconds
+        self.client_resolver = client_resolver
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
-        return self.store.get_client(client_id)
+        stored = self.store.get_client(client_id)
+        if stored is not None or self.client_resolver is None:
+            return stored
+        return await asyncio.to_thread(self.client_resolver.resolve, client_id)
+
+    @staticmethod
+    def _validate_public_client(client_info: OAuthClientInformationFull) -> None:
+        if (
+            client_info.client_secret is not None
+            or client_info.token_endpoint_auth_method != "none"
+        ):
+            raise RegistrationError(
+                error="invalid_client_metadata",
+                error_description="ServerFS v0.16 supports public PKCE OAuth clients only",
+            )
+        if not client_info.redirect_uris:
+            raise RegistrationError(
+                error="invalid_redirect_uri",
+                error_description="at least one redirect URI is required",
+            )
+        if (
+            "authorization_code" not in client_info.grant_types
+            or "code" not in client_info.response_types
+        ):
+            raise RegistrationError(
+                error="invalid_client_metadata",
+                error_description="authorization_code/code flow is required",
+            )
+
+    def pre_register_client(self, client_info: OAuthClientInformationFull) -> None:
+        self._validate_public_client(client_info)
+        self.store.save_client(client_info)
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
+        self._validate_public_client(client_info)
         self.store.save_client(client_info)
 
     async def authorize(
