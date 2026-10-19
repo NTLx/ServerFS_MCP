@@ -10,7 +10,7 @@
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured Codex / Claude Code / Qoder delegation only where you need them.
 
-**Current stable release: v0.15.0**
+**Current stable release: v0.16.0**
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -130,7 +130,7 @@ Claude Code / Codex / Qoder / MCP hosts
                   ChatGPT
 ```
 
-The MCP core is host-neutral. Standard clients use stdio or Streamable HTTP; the OpenAI Secure MCP Tunnel remains an optional authenticated ChatGPT ingress adapter. On Linux, generic HTTP is opt-in and loopback-only by default, while the historical Tunnel deployment remains supported. v0.16 can add an isolated `serverfs-auth` OAuth 2.1 broker to remote HTTP without giving the MCP core provider credentials or general Internet egress. The optional file-ingress sidecar retains separate egress responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. Since v0.14.0, Windows uses the current user's Task Scheduler as the persistent OS owner and keeps the managed process tree windowless; no SCM/LocalSystem service or UAC elevation is required. On macOS v0.13.2+, a small headless ServiceManagement companion registers the persistent per-user Tunnel and Agent Bridge through `SMAppService`; no root LaunchDaemon or hand-installed LaunchAgent is required.
+The MCP core is host-neutral. Standard clients use stdio or Streamable HTTP; the OpenAI Secure MCP Tunnel remains an optional authenticated ChatGPT ingress adapter. On Linux, generic HTTP is opt-in and loopback-only by default, while the historical Tunnel deployment remains supported. v0.16 adds an isolated `serverfs-auth` OAuth 2.1 broker to remote HTTP without giving the MCP core provider credentials or general Internet egress. The optional file-ingress sidecar retains separate egress responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. Since v0.14.0, Windows uses the current user's Task Scheduler as the persistent OS owner and keeps the managed process tree windowless; no SCM/LocalSystem service or UAC elevation is required. On macOS v0.13.2+, a small headless ServiceManagement companion registers the persistent per-user Tunnel and Agent Bridge through `SMAppService`; no root LaunchDaemon or hand-installed LaunchAgent is required.
 
 See [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) for the complete deployment and trust-boundary model.
 
@@ -215,10 +215,10 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-The current stable release is **v0.15.0**.
+The current stable release is **v0.16.0**.
 
 - Linux images: `ghcr.io/ntlx/serverfs_mcp`
-- Stable release tag: `v0.15.0`
+- Stable release tag: `v0.16.0`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel. v0.13.2 locally builds the small bundled ServiceManagement companion used for persistent per-user services.

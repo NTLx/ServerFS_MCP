@@ -85,6 +85,8 @@ Display names, email addresses, mobile numbers and nicknames are not authorizati
 
 Enable only the providers you need; each enabled provider requires a client ID and secret.
 
+> **External live-acceptance prerequisite:** ServerFS cannot ship real GitHub, Feishu/Lark, DingTalk or WeChat Open Platform applications or operator credentials. v0.16.0 validates all four adapters with deterministic protocol/security tests; before production use, create the relevant provider application, register the exact callback below, keep real credentials outside Git, and complete a real browser login for each provider you enable.
+
 ### GitHub OAuth App
 
 Callback:

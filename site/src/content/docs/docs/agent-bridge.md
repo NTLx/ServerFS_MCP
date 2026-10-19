@@ -3,7 +3,7 @@ title: Agent Bridge
 description: Optional structured delegation to native Codex, Claude and Qoder runtimes.
 ---
 
-The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.15.0 is the current published stable release: it keeps the provider-neutral Agent contract while adding the current-user Windows Task Scheduler lifecycle around the native stack; the macOS persistent Tunnel/Bridge lifecycle remains Apple `SMAppService`-based.
+The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.16.0 is the current published stable release: it keeps the provider-neutral Agent contract while adding the current-user Windows Task Scheduler lifecycle around the native stack; the macOS persistent Tunnel/Bridge lifecycle remains Apple `SMAppService`-based.
 
 ```text
 ChatGPT

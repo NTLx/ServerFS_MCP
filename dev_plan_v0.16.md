@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase L complete for ServerFS-owned, cross-platform and documentation/site behavior. Phase M release gates remain; external provider browser acceptance and the OpenAI Tunnel OAuth resource rewrite are explicit release prerequisites/limitations.
+Status: released — v0.16.0 release complete. OAuth is optional/default-off, cross-platform compatibility gates are closed, provider browser login retains explicit operator-owned live prerequisites, and the known OpenAI Tunnel OAuth resource-rewrite limitation remains documented without weakening ServerFS resource validation.
 
 Plan frozen: 2026-10-19.
 
@@ -103,10 +103,17 @@ Completed and verified so far:
 - Phase L adds one canonical operator contract at `docs/oauth.md` covering the Linux OAuth deployment boundary, public TLS/reverse proxy shape, four provider callbacks, exact stable-principal admission, client pre-registration/CIMD/DCR, opaque token/resource semantics, Tunnel compatibility, proxying, backup/restore, revocation, secret rotation and troubleshooting;
 - README remains an entry-level document and now links to the OAuth guide plus a minimal opt-in Compose example rather than duplicating the full operator contract;
 - the documentation site now has dedicated English and Chinese OAuth pages, with Getting Started, Configuration, Security, Architecture and both documentation indexes linking the new boundary into the existing information architecture;
-- release-facing stable-version surfaces intentionally remain at v0.15.0 during Phase L, matching the plan requirement to update them only in the final release stage rather than falsely claiming v0.16.0 is already published;
-- Phase L validation is clean: full Ruff lint/format passes, `git diff --check` passes, Astro production build completes with zero warnings/errors, and both `/docs/oauth/` and `/zh-cn/docs/oauth/` are present in the generated site.
+- release-facing stable-version surfaces intentionally remained at v0.15.0 during Phase L, matching the plan requirement to update them only in the final release stage rather than falsely claiming v0.16.0 was already published;
+- Phase L validation is clean: full Ruff lint/format passes, `git diff --check` passes, Astro production build completes with zero warnings/errors, and both `/docs/oauth/` and `/zh-cn/docs/oauth/` are present in the generated site;
+- Phase M updates the root Python package, Agent Bridge package and Windows native Cargo package plus all corresponding lockfiles to exact version `0.16.0`; root/Bridge `uv lock --check` and Windows `/home/lx/.cargo/bin/cargo metadata --locked --no-deps --format-version 1` all pass;
+- final release-candidate quality gates are green: `git diff --check`, full Ruff lint/format, complete root pytest (`1565 passed, 316 skipped`), and the explicit OAuth/security matrix (`157 passed`) all pass after the version and documentation changes;
+- all five release Compose shapes render successfully with quiet validation: base, generic HTTP, OAuth, OAuth+Agent and OAuth+file-ingress; the production Astro build succeeds with 25 generated pages;
+- direct OAuth live acceptance remains the Phase H real-loopback two-server E2E through production introspection, while the OAuth-disabled OpenAI Tunnel direct/proxy regression remains the Phase I1 live acceptance against the repository-tested `tunnel-client v0.0.16`; neither was re-run merely because the final release stage changed package metadata and documentation only;
+- GitHub, Feishu/Lark, DingTalk and WeChat Open Platform adapters all have deterministic protocol/security coverage, while real browser acceptance requires operator-owned provider applications and credentials. `docs/oauth.md` plus the English/Chinese OAuth pages now state this external prerequisite explicitly rather than fabricating live-provider evidence;
+- OpenAI tunnel-client issue #78 remains an explicit upstream limitation for OAuth-through-Tunnel as of release: ServerFS does not accept wildcard audiences, disable resource validation or hard-code undocumented OpenAI gateway hosts to hide it;
+- README, `.env.example`, maintainer/deployment docs, Agent Bridge docs and English/Chinese site release surfaces now describe `v0.16.0` as the current stable release before the final release commit is tagged, preserving the one-release-commit convention.
 
-Phase 0–L are complete for ServerFS-owned behavior, cross-platform compatibility and operator documentation. Real GitHub, Feishu, DingTalk and WeChat browser login still require operator-provided provider applications/credentials and remain explicit external acceptance gates rather than fabricated passes. OpenAI tunnel-client issue #78 remains an explicit upstream limitation for OAuth-through-Tunnel; ServerFS does not weaken resource/audience validation around it. Phase M now owns final release gating and release-facing version surfaces.
+Phase 0–M are complete. The final release commit carries the released documentation/version state; its clean-host Container, Windows Native and macOS Native CI must be green before the immutable `v0.16.0` tag and GitHub Release are created on that exact commit. No post-tag documentation commit is required.
 
 ## Goal
 

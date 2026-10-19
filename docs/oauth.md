@@ -139,6 +139,8 @@ Removing a principal prevents future admission. It is not a substitute for revok
 
 Enable providers independently. An enabled provider requires both a client ID and client secret.
 
+> **External live-acceptance prerequisite:** the repository cannot manufacture real GitHub, Feishu/Lark, DingTalk or WeChat Open Platform applications or operator credentials. The v0.16.0 release validates all four adapters with deterministic protocol/security tests, but a production operator must still create the corresponding provider application, register the exact callback below, supply real credentials outside Git, and complete at least one real browser login for each provider they enable. Absence of those external applications/credentials is an explicit deployment prerequisite, not a reason to weaken ServerFS validation or embed test credentials in the project.
+
 ### GitHub
 
 Create a GitHub OAuth App and register this exact callback URL:

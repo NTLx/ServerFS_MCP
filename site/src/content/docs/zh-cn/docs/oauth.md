@@ -85,6 +85,8 @@ chmod 700 .serverfs-auth-state
 
 每个 provider 独立启用；启用后必须同时提供 client ID 与 client secret。
 
+> **外部 live acceptance 前置条件：** ServerFS 不会随仓库提供真实的 GitHub、飞书/Lark、钉钉或微信开放平台应用与运维凭据。v0.16.0 已通过确定性的协议/安全测试验证四个 adapter；正式启用某个 provider 前，运维者仍需创建对应平台应用、登记下方精确回调地址、将真实凭据保留在 Git 之外，并完成一次真实浏览器登录验收。
+
 ### GitHub OAuth App
 
 回调地址：
