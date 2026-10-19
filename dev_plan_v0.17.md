@@ -1,6 +1,6 @@
 # ServerFS v0.17.0 Development Plan
 
-Status: implementation in progress — shared Linux/core checkpoint validated; Windows/macOS regression and release closeout pending.
+Status: released — v0.17.0 release complete. Static API Key HTTP authentication is optional/default-off, OAuth/API-Key mutual exclusion is enforced, query-secret logging is bounded at the ServerFS/Uvicorn layer, stdio remains unchanged, and Linux/Windows/macOS release gates are closed.
 
 Plan frozen: 2026-10-19. Plan-only checkpoint: `8cb15bcbcc8d0adb4836e9e215a8139ce374da57`.
 
@@ -26,7 +26,16 @@ Completed and verified so far:
 - the Astro/Starlight production site builds **27 pages** successfully; `npm ci` reports 10 pre-existing moderate dependency advisories, which are not changed opportunistically in this authentication release;
 - Windows Native CI trigger/test coverage has been extended to include the new shared `http_auth.py`, `test_http_auth.py` and `test_api_key_e2e.py` boundaries so future auth-only regressions cannot silently bypass the Windows gate.
 
-Next checkpoint: commit/push the accepted shared implementation, then fast-forward and verify the Windows and macOS development environments independently before version/release convergence.
+Cross-platform and release-candidate closeout evidence:
+
+- accepted shared implementation checkpoint: `879aad8bcdcf38e0186a911b33e9d0364fb44ec6`;
+- macOS local regression on that checkpoint: focused auth suite **104 passed**; full root regression **1414 passed / 370 skipped / 0 failed**; arm64 Service Manager build/codesign, product-wheel content and a real API-Key-unset stdio smoke test all passed without mutating persistent ServiceManagement state;
+- Windows local kernel regression: `cargo test --locked` **48 passed / 0 failed / 3 intentionally ignored diagnostic probes**; the three ignored tests are manual read-kernel probes, not product acceptance cases;
+- hosted CI on the shared implementation checkpoint is green for **Container**, **Windows Native** and **macOS Native**; this provides the authoritative clean-host Windows/macOS compatibility evidence where local host policy or Python DLL search-path state differs;
+- final VPS release-candidate verification after version/docs convergence is green: `git diff --check`; root and Agent Bridge `uv lock --check`; Windows Cargo `--locked` metadata at `0.17.0`; Ruff lint/format; full root pytest **1586 passed / 316 skipped / 0 failed**; focused HTTP/API-Key/OAuth matrix **40 passed**; five Compose render shapes; scratch Docker image build; and Astro/Starlight production build of **27 pages**;
+- release-facing present-tense version scans no longer describe v0.16.0 as current stable; historical v0.16 OAuth introduction/evidence statements remain intentionally preserved.
+
+The final release commit carries the `0.17.0` package/lock versions and released/current documentation wording before tagging, preserving the repository's one-release-commit convention. The immutable `v0.17.0` tag and GitHub Release are created only after required CI on that exact release commit is green.
 
 ## Goal
 

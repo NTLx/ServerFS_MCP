@@ -4,7 +4,7 @@
 
 ## Current release
 
-- **v0.16.0 is the current stable release.**
+- **v0.17.0 is the current stable release.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
 - Windows v0.14.0 replaces the manual outer launcher with a current-user, least-privilege Task Scheduler 2.0 lifecycle: logon + repeating time triggers own a windowless watchdog, the watchdog restarts the managed runner, and the runner restarts Tunnel generations. Installation, runtime, maintenance and removal remain non-elevated.
@@ -45,6 +45,9 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.12** — independent Linux proxy controls for Tunnel, Agent runtimes and Jev, plus related restricted-network reliability work.
 - **v0.13** — native macOS filesystem + Agent deployment, POSIX-generic Codex seam and Darwin acceptance; v0.13.2 adds Apple-native ServiceManagement persistence for the Tunnel and Agent Bridge.
 - **v0.14** — Windows current-user persistent lifecycle through Task Scheduler 2.0, a windowless watchdog, controlled legacy hand-over, exactly-one native Tunnel ownership and layered Tunnel/runner/watchdog recovery without administrator requirements.
+- **v0.15** — standards-first generic Streamable HTTP support and MCP SDK 2.3.0 portability baseline.
+- **v0.16** — optional OAuth 2.1 Resource Server plus isolated identity broker for remote HTTP.
+- **v0.17** — optional one-secret static API Key authentication for Streamable HTTP, with Bearer and DingTalk-style query-key interoperability.
 
 ## Keep this index small
 
