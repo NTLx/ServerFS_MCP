@@ -26,6 +26,7 @@ class AuthServiceSettings:
     host: str = "0.0.0.0"
     port: int = 8082
     public_url: str = ""
+    resource_url: str = ""
     state_dir: str = "/var/lib/serverfs-auth"
     allowed_principals: tuple[str, ...] = ()
     access_token_ttl_seconds: int = 3600
@@ -98,8 +99,7 @@ def _is_loopback_host(hostname: str | None) -> bool:
     return hostname in {"localhost", "127.0.0.1", "::1"}
 
 
-def _get_public_url(env: Mapping[str, str], *, required: bool) -> str:
-    key = "SERVERFS_AUTH_PUBLIC_URL"
+def _get_external_url(env: Mapping[str, str], key: str, *, required: bool) -> str:
     raw = env.get(key, "").strip()
     if not raw:
         if required:
@@ -199,11 +199,18 @@ def auth_settings_from_env(env: Mapping[str, str]) -> AuthServiceSettings:
     if use_proxy and proxy is None:
         raise ValueError("SERVERFS_AUTH_USE_PROXY=true requires SERVERFS_PROXY_HOST/PORT")
 
+    public_url = _get_external_url(env, "SERVERFS_AUTH_PUBLIC_URL", required=oauth_enabled)
+    issuer_url = _get_external_url(env, "SERVERFS_OAUTH_ISSUER_URL", required=oauth_enabled)
+    resource_url = _get_external_url(env, "SERVERFS_OAUTH_RESOURCE_URL", required=oauth_enabled)
+    if oauth_enabled and issuer_url != public_url:
+        raise ValueError("SERVERFS_OAUTH_ISSUER_URL must equal SERVERFS_AUTH_PUBLIC_URL")
+
     return AuthServiceSettings(
         oauth_enabled=oauth_enabled,
         host=_get_host(env),
         port=_get_port(env),
-        public_url=_get_public_url(env, required=oauth_enabled),
+        public_url=public_url,
+        resource_url=resource_url,
         state_dir=_get_state_dir(env),
         allowed_principals=_get_allowed_principals(env),
         access_token_ttl_seconds=_get_positive_int(

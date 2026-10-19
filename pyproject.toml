@@ -11,10 +11,13 @@ requires-python = ">=3.12"
 dependencies = [
     "mcp==2.3.0",
     "pydantic>=2.7",
+    "starlette>=0.48",
+    "uvicorn>=0.30",
 ]
 
 [project.scripts]
 serverfs = "serverfs_mcp.cli:main"
+serverfs-auth = "serverfs_mcp.auth_server:main"
 
 [dependency-groups]
 dev = [

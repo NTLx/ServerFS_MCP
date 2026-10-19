@@ -29,6 +29,8 @@ class TestAuthEnabledValidation:
         return {
             "SERVERFS_OAUTH_ENABLED": "true",
             "SERVERFS_AUTH_PUBLIC_URL": "https://auth.example.com",
+            "SERVERFS_OAUTH_ISSUER_URL": "https://auth.example.com",
+            "SERVERFS_OAUTH_RESOURCE_URL": "https://mcp.example.com/mcp",
             "SERVERFS_OAUTH_INTROSPECTION_SECRET": "shared-secret",
             "SERVERFS_OAUTH_GITHUB_ENABLED": "true",
             "SERVERFS_OAUTH_GITHUB_CLIENT_ID": "client-id",
@@ -39,12 +41,14 @@ class TestAuthEnabledValidation:
         settings = auth_settings_from_env(self.valid_env())
         assert settings.oauth_enabled is True
         assert settings.public_url == "https://auth.example.com"
+        assert settings.resource_url == "https://mcp.example.com/mcp"
         assert settings.enabled_providers == ("github",)
         assert settings.introspection_secret == "shared-secret"
 
     def test_loopback_http_public_url_is_allowed_for_tests(self) -> None:
         env = self.valid_env()
         env["SERVERFS_AUTH_PUBLIC_URL"] = "http://127.0.0.1:8082"
+        env["SERVERFS_OAUTH_ISSUER_URL"] = "http://127.0.0.1:8082"
         assert auth_settings_from_env(env).public_url == "http://127.0.0.1:8082"
 
     @pytest.mark.parametrize(
@@ -65,10 +69,20 @@ class TestAuthEnabledValidation:
         with pytest.raises(ValueError):
             auth_settings_from_env(env)
 
-    def test_enabled_requires_public_url(self) -> None:
+    @pytest.mark.parametrize(
+        "missing",
+        ["SERVERFS_AUTH_PUBLIC_URL", "SERVERFS_OAUTH_ISSUER_URL", "SERVERFS_OAUTH_RESOURCE_URL"],
+    )
+    def test_enabled_requires_public_urls(self, missing: str) -> None:
         env = self.valid_env()
-        env.pop("SERVERFS_AUTH_PUBLIC_URL")
-        with pytest.raises(ValueError, match="SERVERFS_AUTH_PUBLIC_URL"):
+        env.pop(missing)
+        with pytest.raises(ValueError, match=missing):
+            auth_settings_from_env(env)
+
+    def test_issuer_must_equal_auth_public_url(self) -> None:
+        env = self.valid_env()
+        env["SERVERFS_OAUTH_ISSUER_URL"] = "https://other.example.com"
+        with pytest.raises(ValueError, match="must equal"):
             auth_settings_from_env(env)
 
     def test_enabled_requires_introspection_secret(self) -> None:

@@ -1,6 +1,6 @@
 # ServerFS v0.16.0 Development Plan
 
-Status: in progress — Phase 0 through Phase B complete.
+Status: in progress — Phase 0 through Phase C complete.
 
 Plan frozen: 2026-10-19.
 
@@ -21,9 +21,17 @@ Completed and verified so far:
 - `OAuthIntrospectionVerifier` performs bounded private opaque-token introspection with process proxy bypass, strict issuer/resource/subject/client/scope/expiry checks, and sanitized failure logging;
 - OAuth-enabled Streamable HTTP publishes RFC 9728 Protected Resource Metadata and challenges unauthenticated clients while `validate_token_resource=True` enforces the configured MCP resource;
 - OAuth-disabled `create_server()` still constructs no auth settings/verifier and preserves the v0.15 path;
-- Phase B focused validation is green: 124 OAuth/config/main/security tests, Ruff lint/format and `git diff --check`.
+- Phase B focused validation is green: 124 OAuth/config/main/security tests, Ruff lint/format and `git diff --check`;
+- Phase C adds the isolated `serverfs-auth` Authorization Server core with a user-owned SQLite state store and a dedicated `serverfs-auth` console entry point;
+- OAuth clients, pending login transactions, authorization codes and opaque access/refresh tokens persist across auth-service restarts; authorization codes and login transactions are single-use and refresh tokens rotate as one paired access/refresh credential family;
+- raw authorization codes, access tokens and refresh tokens are never stored in SQLite: only SHA-256 digests are persisted, while state/DB permissions are tightened to 0700/0600 where the platform supports POSIX modes;
+- access/refresh revocation invalidates the credential pair, internal introspection is authenticated and body-bounded, and the Resource Server receives only the minimal active-token claims it needs;
+- Authorization Code + PKCE S256, refresh, RFC 9207 `iss`, metadata and token endpoints use the MCP SDK where its behavior matches the ServerFS contract; the public-client revocation endpoint is narrowly owned by ServerFS because the installed SDK revocation request model incorrectly requires a `client_secret` field even for `token_endpoint_auth_method=none`;
+- issuer canonicalization is routed through the installed SDK `AuthSettings` model so Authorization Server Metadata and authorization-response `iss` use the same exact issuer string;
+- real upstream identity providers are still unavailable in Phase C by design: production `/login` fails closed with 503, while deterministic identity completion exists only as an explicit in-process test injection and cannot be enabled from `.env`;
+- Phase C focused validation is green: 62 auth-config/auth-server/resource-server tests, Ruff lint/format, `uv lock --check` and `git diff --check`.
 
-Phase C is the next implementation target. No upstream provider adapter or OAuth persistence/Authorization Server has been added yet.
+Phase D is the next implementation target. No upstream provider adapter has been added yet.
 
 ## Goal
 
