@@ -65,6 +65,70 @@ const copy = {
       { count: '21', label: '+ Agent', detail: 'native delegation + model discovery' },
       { count: '23', label: 'Full surface', detail: 'binary + Agent Bridge enabled' },
     ],
+    platformEyebrow: 'THREE DEPLOYMENT SHAPES',
+    platformTitle: 'One contract. Native boundaries on every platform.',
+    platformBody:
+      'The MCP capability model stays consistent. Deployment, filesystem containment, transport, and lifecycle follow the operating system instead of pretending every host is Linux.',
+    platformScrollHint: 'Scroll vertically to move across platforms · or choose a tab',
+    platforms: [
+      {
+        id: 'linux',
+        name: 'Linux',
+        kicker: 'DOCKER-NATIVE SERVER DEPLOYMENT',
+        title: 'Containers define the outer boundary.',
+        body: 'Linux is the server-oriented shape: Docker Compose on amd64 or arm64, standard Streamable HTTP by default, and optional overlays for authentication, file ingress, Agent Bridge, or the OpenAI Tunnel.',
+        facts: [
+          ['DEPLOYMENT', 'Docker Compose · linux/amd64 · linux/arm64'],
+          ['MCP', 'Streamable HTTP · optional OpenAI Tunnel'],
+          ['FILESYSTEM', 'Bind-mounted workdirs · read-only by default'],
+          ['AGENT', 'Optional host Agent Bridge'],
+        ],
+        commands: [
+          'docker compose pull',
+          'docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp',
+        ],
+        href: 'docs/getting-started/',
+        cta: 'Linux deployment guide',
+      },
+      {
+        id: 'macos',
+        name: 'macOS',
+        kicker: 'APPLE-NATIVE USER DEPLOYMENT',
+        title: 'Darwin-native semantics, owned by the current user.',
+        body: 'The macOS shape is native arm64 on Apple M-series Macs with local APFS workdirs. ServerFS uses descriptor-relative Darwin filesystem primitives and Apple SMAppService for persistent per-user Tunnel and Agent Bridge lifecycle.',
+        facts: [
+          ['PLATFORM', 'Apple M-series · macOS 27 · native arm64'],
+          ['MCP', 'Native stdio · no MCP network listener'],
+          ['FILESYSTEM', 'Descriptor-relative Darwin backend · local APFS'],
+          ['LIFECYCLE', 'SMAppService · per-user · no LaunchDaemon'],
+        ],
+        commands: [
+          'serverfs doctor --config serverfs.toml',
+          'serverfs service install --config serverfs.toml --env-file .env',
+        ],
+        href: 'docs/macos-native/',
+        cta: 'macOS native guide',
+      },
+      {
+        id: 'windows',
+        name: 'Windows',
+        kicker: 'WINDOWS-NATIVE USER DEPLOYMENT',
+        title: 'NTFS-native semantics without administrator privileges.',
+        body: 'The Windows shape runs natively on Windows 11 x64 with local NTFS. A HANDLE-relative Rust kernel provides filesystem containment, while a current-user Task Scheduler watchdog owns persistent lifecycle without SCM, LocalSystem, or UAC elevation.',
+        facts: [
+          ['PLATFORM', 'Windows 11 x64 · local NTFS'],
+          ['MCP', 'Native stdio · no MCP network listener'],
+          ['FILESYSTEM', 'HANDLE-relative Rust kernel · prebuilt abi3 wheel'],
+          ['LIFECYCLE', 'Current-user Task Scheduler · windowless watchdog'],
+        ],
+        commands: [
+          'serverfs doctor --config serverfs.toml',
+          'serverfs service install --config serverfs.toml --env-file .env',
+        ],
+        href: 'docs/windows-native/',
+        cta: 'Windows native guide',
+      },
+    ],
     architectureEyebrow: 'ARCHITECTURE',
     architectureTitle: 'Capability, not ambient authority.',
     architectureBody:
@@ -179,6 +243,70 @@ const copy = {
       { count: '13', label: '+ 二进制', detail: '有界的整文件传输' },
       { count: '21', label: '+ Agent', detail: '原生 Agent 委派 + 模型发现' },
       { count: '23', label: '完整能力面', detail: '二进制 + Agent Bridge' },
+    ],
+    platformEyebrow: '三种部署形态',
+    platformTitle: '同一套能力契约，各自遵循平台原生边界。',
+    platformBody:
+      'MCP 能力模型保持一致，但部署方式、文件系统约束、传输与生命周期管理遵循各自操作系统，而不是把所有主机都抽象成 Linux。',
+    platformScrollHint: '继续向下滚动即可横向浏览 · 也可以直接点击标签',
+    platforms: [
+      {
+        id: 'linux',
+        name: 'Linux',
+        kicker: 'DOCKER 原生服务器部署',
+        title: '用容器定义外层边界。',
+        body: 'Linux 是面向服务器的部署形态：通过 Docker Compose 支持 amd64 与 arm64，默认采用标准 Streamable HTTP，并可按需叠加认证、文件入口、Agent Bridge 或 OpenAI Tunnel。',
+        facts: [
+          ['部署', 'Docker Compose · linux/amd64 · linux/arm64'],
+          ['MCP', 'Streamable HTTP · 可选 OpenAI Tunnel'],
+          ['文件系统', 'Bind mount Workdir · 默认只读'],
+          ['AGENT', '可选宿主机 Agent Bridge'],
+        ],
+        commands: [
+          'docker compose pull',
+          'docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp',
+        ],
+        href: 'docs/getting-started/',
+        cta: 'Linux 部署指南',
+      },
+      {
+        id: 'macos',
+        name: 'macOS',
+        kicker: 'APPLE 原生用户级部署',
+        title: '使用原生 Darwin 语义，由当前用户管理。',
+        body: 'macOS 形态运行于 Apple M 系列、原生 arm64 与本地 APFS Workdir。ServerFS 使用 descriptor-relative Darwin 文件系统原语，并通过 Apple SMAppService 管理持久的用户级 Tunnel 与 Agent Bridge 生命周期。',
+        facts: [
+          ['平台', 'Apple M 系列 · macOS 27 · 原生 arm64'],
+          ['MCP', '原生 stdio · 无 MCP 网络监听端口'],
+          ['文件系统', 'Descriptor-relative Darwin backend · 本地 APFS'],
+          ['生命周期', 'SMAppService · 当前用户 · 无 LaunchDaemon'],
+        ],
+        commands: [
+          'serverfs doctor --config serverfs.toml',
+          'serverfs service install --config serverfs.toml --env-file .env',
+        ],
+        href: 'docs/macos-native/',
+        cta: 'macOS 原生部署指南',
+      },
+      {
+        id: 'windows',
+        name: 'Windows',
+        kicker: 'WINDOWS 原生用户级部署',
+        title: '使用原生 NTFS 语义，无需管理员权限。',
+        body: 'Windows 形态原生运行于 Windows 11 x64 与本地 NTFS。HANDLE-relative Rust 内核负责文件系统约束；当前用户 Task Scheduler watchdog 负责持久生命周期，不依赖 SCM、LocalSystem 或 UAC 提权。',
+        facts: [
+          ['平台', 'Windows 11 x64 · 本地 NTFS'],
+          ['MCP', '原生 stdio · 无 MCP 网络监听端口'],
+          ['文件系统', 'HANDLE-relative Rust kernel · 预编译 abi3 wheel'],
+          ['生命周期', '当前用户 Task Scheduler · 无窗口 watchdog'],
+        ],
+        commands: [
+          'serverfs doctor --config serverfs.toml',
+          'serverfs service install --config serverfs.toml --env-file .env',
+        ],
+        href: 'docs/windows-native/',
+        cta: 'Windows 原生部署指南',
+      },
     ],
     architectureEyebrow: '架构',
     architectureTitle: '提供能力，而不是环境权限。',
@@ -454,6 +582,80 @@ const canonicalUrl = isZh
         </div>
       </section>
 
+      <section class="platform-scroll" id="platforms" data-platform-section data-reveal>
+        <div class="platform-sticky shell" data-platform-sticky>
+          <div class="platform-heading" data-reveal-item>
+            <div>
+              <p class="eyebrow">{c.platformEyebrow}</p>
+              <h2>{c.platformTitle}</h2>
+            </div>
+            <p>{c.platformBody}</p>
+          </div>
+
+          <div class="platform-tabs" role="tablist" aria-label="ServerFS deployment platforms" data-platform-tabs>
+            {c.platforms.map((platform, index) => (
+              <button
+                type="button"
+                class:list={['platform-tab', { active: index === 0 }]}
+                role="tab"
+                id={`platform-tab-${platform.id}`}
+                aria-controls={`platform-panel-${platform.id}`}
+                aria-selected={index === 0 ? 'true' : 'false'}
+                tabindex={index === 0 ? 0 : -1}
+                data-platform-tab={index}
+              >
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                {platform.name}
+              </button>
+            ))}
+          </div>
+
+          <div class="platform-viewport" data-platform-viewport>
+            <div class="platform-track" data-platform-track>
+              {c.platforms.map((platform, index) => (
+                <article
+                  class="platform-panel"
+                  id={`platform-panel-${platform.id}`}
+                  role="tabpanel"
+                  aria-labelledby={`platform-tab-${platform.id}`}
+                  data-platform-panel={index}
+                >
+                  <div class="platform-panel-copy">
+                    <p class="mini-label">{platform.kicker}</p>
+                    <h3>{platform.title}</h3>
+                    <p>{platform.body}</p>
+                    <a class="text-link" href={local(platform.href)}>
+                      {platform.cta} <span aria-hidden="true">→</span>
+                    </a>
+                  </div>
+
+                  <div class="platform-spec">
+                    <div class="platform-facts">
+                      {platform.facts.map(([label, detail]) => (
+                        <div class="platform-fact"><span>{label}</span><strong>{detail}</strong></div>
+                      ))}
+                    </div>
+                    <div class="platform-terminal" aria-label={`${platform.name} command example`}>
+                      <div class="terminal-bar">
+                        <span class="terminal-dots"><i></i><i></i><i></i></span>
+                        <span>{platform.name.toLowerCase()} · serverfs</span>
+                        <span></span>
+                      </div>
+                      <pre><code>{platform.commands.map((command) => <><span class="prompt">$</span> {command}{'\n'}</>)}</code></pre>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div class="platform-progress" aria-hidden="true">
+            <span data-platform-progress></span>
+            <small>{c.platformScrollHint}</small>
+          </div>
+        </div>
+      </section>
+
       <section class="section shell" id="architecture" data-reveal>
         <div class="section-heading" data-reveal-item>
           <p class="eyebrow">{c.architectureEyebrow}</p>
@@ -621,15 +823,32 @@ const canonicalUrl = isZh
         const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
         const revealSections = document.querySelectorAll('[data-reveal]');
         const stage = document.querySelector('[data-system-stage]');
+        const platformSection = document.querySelector('[data-platform-section]');
+        const platformViewport = document.querySelector('[data-platform-viewport]');
+        const platformTrack = document.querySelector('[data-platform-track]');
+        const platformTabs = [...document.querySelectorAll('[data-platform-tab]')];
+        const platformPanels = [...document.querySelectorAll('[data-platform-panel]')];
+        const platformProgress = document.querySelector('[data-platform-progress]');
 
         const revealAll = () => {
           revealSections.forEach((section) => section.classList.add('is-visible'));
           stage?.classList.add('is-visible');
         };
 
+        const setActivePlatform = (index) => {
+          platformTabs.forEach((tab, tabIndex) => {
+            const active = tabIndex === index;
+            tab.classList.toggle('active', active);
+            tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            tab.tabIndex = active ? 0 : -1;
+          });
+          platformPanels.forEach((panel, panelIndex) => panel.classList.toggle('active', panelIndex === index));
+        };
+
         if (reducedMotion.matches) {
           revealAll();
           if (stage) stage.dataset.systemStep = '4';
+          setActivePlatform(0);
           return;
         }
 
@@ -650,12 +869,9 @@ const canonicalUrl = isZh
           revealSections.forEach((section) => section.classList.add('is-visible'));
         }
 
-        if (!stage) return;
-
-        requestAnimationFrame(() => stage.classList.add('is-visible'));
-
-        let ticking = false;
+        let stageTicking = false;
         const updateSystemStage = () => {
+          if (!stage) return;
           const rect = stage.getBoundingClientRect();
           const travel = window.innerHeight + rect.height;
           const progress = Math.min(1, Math.max(0, (window.innerHeight - rect.top) / travel));
@@ -663,18 +879,65 @@ const canonicalUrl = isZh
 
           stage.style.setProperty('--system-progress', progress.toFixed(3));
           stage.dataset.systemStep = String(step);
-          ticking = false;
+          stageTicking = false;
         };
 
         const requestStageUpdate = () => {
-          if (ticking) return;
-          ticking = true;
+          if (!stage || stageTicking) return;
+          stageTicking = true;
           requestAnimationFrame(updateSystemStage);
         };
 
+        let platformTicking = false;
+        const updatePlatformStage = () => {
+          if (!platformSection || !platformViewport || !platformTrack || platformPanels.length < 2) return;
+          const rect = platformSection.getBoundingClientRect();
+          const travel = Math.max(1, platformSection.offsetHeight - window.innerHeight);
+          const progress = Math.min(1, Math.max(0, -rect.top / travel));
+          const maxShift = platformViewport.clientWidth * (platformPanels.length - 1);
+          const index = Math.min(platformPanels.length - 1, Math.round(progress * (platformPanels.length - 1)));
+
+          platformTrack.style.transform = `translate3d(${-progress * maxShift}px, 0, 0)`;
+          if (platformProgress) platformProgress.style.transform = `scaleX(${progress})`;
+          setActivePlatform(index);
+          platformTicking = false;
+        };
+
+        const requestPlatformUpdate = () => {
+          if (!platformSection || platformTicking) return;
+          platformTicking = true;
+          requestAnimationFrame(updatePlatformStage);
+        };
+
+        platformTabs.forEach((tab, index) => {
+          tab.addEventListener('click', () => {
+            if (!platformSection || platformPanels.length < 2) return;
+            const sectionTop = window.scrollY + platformSection.getBoundingClientRect().top;
+            const travel = Math.max(1, platformSection.offsetHeight - window.innerHeight);
+            const target = sectionTop + (index / (platformPanels.length - 1)) * travel;
+            window.scrollTo({ top: target, behavior: 'smooth' });
+          });
+
+          tab.addEventListener('keydown', (event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            let next = index;
+            if (event.key === 'ArrowLeft') next = Math.max(0, index - 1);
+            if (event.key === 'ArrowRight') next = Math.min(platformTabs.length - 1, index + 1);
+            if (event.key === 'Home') next = 0;
+            if (event.key === 'End') next = platformTabs.length - 1;
+            platformTabs[next]?.click();
+            platformTabs[next]?.focus({ preventScroll: true });
+          });
+        });
+
+        requestAnimationFrame(() => stage?.classList.add('is-visible'));
         updateSystemStage();
+        updatePlatformStage();
         window.addEventListener('scroll', requestStageUpdate, { passive: true });
+        window.addEventListener('scroll', requestPlatformUpdate, { passive: true });
         window.addEventListener('resize', requestStageUpdate, { passive: true });
+        window.addEventListener('resize', requestPlatformUpdate, { passive: true });
       })();
     </script>
   </body>
