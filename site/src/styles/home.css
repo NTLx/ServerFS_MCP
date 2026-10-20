@@ -1737,8 +1737,9 @@ h1 {
   position: sticky;
   top: 72px;
   display: flex;
-  min-height: calc(100vh - 108px);
-  min-height: calc(100svh - 108px);
+  height: calc(100vh - 108px);
+  height: calc(100svh - 108px);
+  min-height: 0;
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
@@ -2332,8 +2333,9 @@ h1 {
 
   .platform-sticky {
     top: 72px;
-    min-height: calc(100vh - 96px);
-    min-height: calc(100svh - 96px);
+    height: calc(100vh - 96px);
+    height: calc(100svh - 96px);
+    min-height: 0;
     padding: 24px 0 max(12px, env(safe-area-inset-bottom));
   }
 
@@ -2571,6 +2573,7 @@ h1 {
   .platform-sticky {
     position: relative;
     top: auto;
+    height: auto;
     min-height: auto;
     overflow: visible;
   }
