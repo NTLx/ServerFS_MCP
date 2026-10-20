@@ -122,14 +122,14 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 引入的文件入口主机策略与网络边界详见[二进制传输](./binary-transfer/)和[安全模型](./security/)。
 
-## 当前稳定版本：v0.17.1
+## 当前稳定版本：v0.18.0
 
-v0.17.1 使用不可变标签 `v0.17.1`，并发布以下 GHCR 稳定标签：
+v0.18.0 使用不可变标签 `v0.18.0`，并发布以下 GHCR 稳定标签：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.17
-ghcr.io/ntlx/serverfs_mcp:0.17.1
+ghcr.io/ntlx/serverfs_mcp:0.18
+ghcr.io/ntlx/serverfs_mcp:0.18.0
 ```
 
-生产环境应固定使用 `0.17.1`，而不是长期跟随 `latest` 或 `edge`。同一 tag 在 GitHub Release 上发布三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）并记录 SHA-256。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.17.1 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](./windows-native/)和 [macOS 原生部署](./macos-native/)。
+生产环境应固定使用 `0.18.0`，而不是长期跟随 `latest` 或 `edge`。同一 tag 在 GitHub Release 上发布三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）并记录 SHA-256。同一 Release 还提供一个 skills-only portable Agent Plugin：`serverfs-plugin-v0.18.0.zip`，见 [Agent Skills](./agent-skills/)。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.18.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](./windows-native/)和 [macOS 原生部署](./macos-native/)。

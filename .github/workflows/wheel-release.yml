@@ -12,8 +12,9 @@ name: Windows wheel release
 # release artifacts themselves are the sole providers of all three
 # distributions, that neither environment can import the other's package,
 # and that the real supervisor chain works across SERVERFS_BRIDGE_PYTHON.
-# All three wheels are then attached to the tag's GitHub Release; the wheel
-# section in the release body is regenerated in place under a management
+# All three wheels plus one skills-only portable Agent Plugin ZIP are attached
+# to the tag's GitHub Release; the wheel section in the release body is
+# regenerated in place under a management
 # marker, preserving any notes the maintainer wrote. The
 # "Private :: Do Not Upload" trove classifier in
 # native/windows/pyproject.toml remains a PyPI guard: this workflow does not
@@ -57,6 +58,13 @@ jobs:
           $bridge = (Get-ChildItem dist/serverfs_agent_bridge-*.whl).FullName
           uv run --no-project --python 3.12 python deployment/native/wheel_release.py version-gate `
             --tag "${{ github.ref_name }}" --wheel $native --wheel $product --wheel $bridge
+        shell: pwsh
+
+      - name: validate and build ServerFS Agent Plugin release ZIP
+        run: |
+          uv run --no-project --python 3.12 python deployment/plugin/package_plugin.py build `
+            --output-dir dist `
+            --tag "${{ github.ref_name }}"
         shell: pwsh
 
       - name: three-wheel clean-install acceptance across the frozen two-interpreter boundary
@@ -119,7 +127,7 @@ jobs:
           & $serverfsPy -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py tests/test_windows_service.py tests/test_doctor.py tests/test_tunnel_bootstrap.py tests/test_d9_native_lifecycle.py -q
         shell: pwsh
 
-      - name: attach wheels to the tag's GitHub Release, preserving notes
+      - name: attach release artifacts to the tag's GitHub Release, preserving notes
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -130,12 +138,16 @@ jobs:
           $native = Get-ChildItem native/windows/target/wheels/*.whl
           $product = Get-ChildItem dist/serverfs_mcp-*.whl
           $bridge = Get-ChildItem dist/serverfs_agent_bridge-*.whl
+          $plugin = Get-ChildItem dist/serverfs-plugin-v*.zip
           if (-not (gh release view $tag 2>$null)) {
             gh release create $tag --target $env:COMMIT --verify-tag --title "ServerFS $tag" --notes "ServerFS $tag"
           }
           gh release upload $tag $native.FullName --clobber
           gh release upload $tag $product.FullName --clobber
           gh release upload $tag $bridge.FullName --clobber
+          gh release upload $tag $plugin.FullName --clobber
+          $pluginHash = (Get-FileHash $plugin.FullName -Algorithm SHA256).Hash.ToLower()
+          Write-Host "ServerFS Agent Plugin: $($plugin.Name) sha256=$pluginHash"
           $nativeHash = (Get-FileHash $native.FullName -Algorithm SHA256).Hash.ToLower()
           $productHash = (Get-FileHash $product.FullName -Algorithm SHA256).Hash.ToLower()
           $bridgeHash = (Get-FileHash $bridge.FullName -Algorithm SHA256).Hash.ToLower()

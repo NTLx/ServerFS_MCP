@@ -122,14 +122,14 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](./binary-transfer/) and [Security Model](./security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
-## Current stable release: v0.17.1
+## Current stable release: v0.18.0
 
-The v0.17.1 release uses immutable tag `v0.17.1` and publishes these stable GHCR tags:
+The v0.18.0 release uses immutable tag `v0.18.0` and publishes these stable GHCR tags:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.17
-ghcr.io/ntlx/serverfs_mcp:0.17.1
+ghcr.io/ntlx/serverfs_mcp:0.18
+ghcr.io/ntlx/serverfs_mcp:0.18.0
 ```
 
-For production deployments, pin `0.17.1` rather than following `latest` or `edge`. The same tag carries the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests. macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](./windows-native/) and [macOS Native](./macos-native/).
+For production deployments, pin `0.18.0` rather than following `latest` or `edge`. The same tag carries the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests. The same release also provides one skills-only portable Agent Plugin, `serverfs-plugin-v0.18.0.zip`; see [Agent Skills](./agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](./windows-native/) and [macOS Native](./macos-native/).

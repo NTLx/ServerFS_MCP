@@ -73,6 +73,11 @@ export default defineConfig({
           translations: { 'zh-CN': '能力' },
           items: [
             {
+              label: 'Agent Skills',
+              translations: { 'zh-CN': 'Agent Skills' },
+              slug: 'docs/agent-skills',
+            },
+            {
               label: 'Binary Transfer',
               translations: { 'zh-CN': '二进制传输' },
               slug: 'docs/binary-transfer',

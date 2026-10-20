@@ -10,7 +10,7 @@
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured Codex / Claude Code / Qoder delegation only where you need them.
 
-**Current stable release: v0.17.1**
+**Current stable release: v0.18.0**
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -52,6 +52,12 @@ For native setup, use the dedicated guides:
 
 - [Windows Native](https://ntlx.github.io/ServerFS_MCP/docs/windows-native/)
 - [macOS Native](https://ntlx.github.io/ServerFS_MCP/docs/macos-native/)
+
+## Agent Skills (v0.18.0)
+
+The repository now carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
+
+The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The v0.18.0 stable tag builds one `serverfs-plugin-v0.18.0.zip` GitHub Release asset containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
 
 ## Quick start
 
@@ -230,11 +236,12 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-The current stable release is **v0.17.1**.
+The current stable release is **v0.18.0**.
 
 - Linux images: `ghcr.io/ntlx/serverfs_mcp`
-- Stable release tag: `v0.17.1`
+- Stable release tag: `v0.18.0`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
+- Portable Agent Plugin: one skills-only `serverfs-plugin-v0.18.0.zip` asset.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel. v0.13.2 locally builds the small bundled ServiceManagement companion used for persistent per-user services.
 

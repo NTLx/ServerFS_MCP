@@ -11,7 +11,7 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 
 ## Current baseline
 
-- **Current stable release: v0.17.1.**
+- **Current stable release: v0.18.0.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to each platform/runtime gate.
 - Windows v0.14.0 uses a strictly current-user and non-elevated lifecycle: Task Scheduler 2.0 owns a least-privilege watchdog through `InteractiveToken`, a logon trigger and an indefinite one-minute time-trigger heartbeat with `IgnoreNew`; the watchdog restarts the managed runner, and the runner restarts Tunnel generations. Do not replace this with SCM/LocalSystem, HKLM registration, stored credentials or another admin-required path.
@@ -29,6 +29,20 @@ Read the smallest relevant set before changing the repository:
 - The relevant `dev_plan_v*.md` / acceptance evidence — version-specific design history and measured support.
 
 When sources appear to conflict, inspect implementation, executable tests and accepted evidence rather than guessing.
+
+## Agent Skills
+
+Operational Agent Skills live under [`skills/`](skills/). Load the smallest skill that matches the user's objective instead of treating every operational procedure as base repository context:
+
+- first installation → [`skills/serverfs-install/SKILL.md`](skills/serverfs-install/SKILL.md)
+- ordinary workdir/policy configuration → [`skills/serverfs-configure/SKILL.md`](skills/serverfs-configure/SKILL.md)
+- existing deployment upgrade → [`skills/serverfs-upgrade/SKILL.md`](skills/serverfs-upgrade/SKILL.md)
+- unknown failure or health verification → [`skills/serverfs-diagnose/SKILL.md`](skills/serverfs-diagnose/SKILL.md)
+- OpenAI Secure MCP Tunnel → [`skills/serverfs-tunnel/SKILL.md`](skills/serverfs-tunnel/SKILL.md)
+- remote HTTP API Key/OAuth → [`skills/serverfs-auth/SKILL.md`](skills/serverfs-auth/SKILL.md)
+- Agent Bridge/runtimes/Jev → [`skills/serverfs-agent-bridge/SKILL.md`](skills/serverfs-agent-bridge/SKILL.md)
+
+Skills are workflow guidance, not a second configuration/source-of-truth layer. Read the current checkout's CLI, templates, deployment files and product docs before mutation. Keep provider-private skills/configuration under provider/user ownership; ServerFS does not silently install these repository skills into provider-specific directories.
 
 ## Non-negotiable invariants
 

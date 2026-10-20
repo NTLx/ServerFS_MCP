@@ -180,4 +180,4 @@ All three issues were closed only after the implementation was pushed to the sha
 
 ## 9. Release boundary
 
-v0.17.1 is the current stable maintenance release. Its immutable `v0.17.1` tag and GitHub Release are bound to the validated release commit under the normal release workflow. The stable tag must never be moved or recreated after publication.
+v0.17.1 was the stable maintenance release produced by this plan. Its immutable `v0.17.1` tag and GitHub Release are bound to the validated release commit under the normal release workflow. The stable tag must never be moved or recreated after publication.

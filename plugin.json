@@ -1,0 +1,27 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "serverfs",
+  "version": "0.18.0",
+  "description": "Deploy, configure, upgrade, and diagnose ServerFS across supported Linux, Windows, and macOS deployments.",
+  "author": {
+    "name": "NTLx"
+  },
+  "homepage": "https://ntlx.github.io/ServerFS_MCP/",
+  "repository": "https://github.com/NTLx/ServerFS_MCP",
+  "license": "MIT",
+  "keywords": [
+    "serverfs",
+    "mcp",
+    "deployment",
+    "operations",
+    "agent-skills"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "ServerFS",
+        "shortDescription": "Deploy, configure, upgrade, and diagnose ServerFS"
+      }
+    }
+  }
+}

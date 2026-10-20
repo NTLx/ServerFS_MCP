@@ -40,6 +40,27 @@ SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 
 Run all applicable gates when the change crosses that boundary. The generic HTTP Compose render is mandatory for v0.15+ ingress/deployment changes; use `--quiet` when only validity is required so expanded secrets are never printed. The scratch image tag is mandatory: Compose builds to the image name it is given, so building under a published production tag can shadow that release locally.
 
+### Agent Skills / portable Plugin
+
+Repository operational skills live under `skills/` and the portable skills-only Agent Plugin manifest is root `plugin.json`. These files are a workflow/distribution layer over existing product interfaces, not a second configuration schema.
+
+For any `skills/**`, `plugin.json`, Plugin packaging, or Plugin release-workflow change, run:
+
+```bash
+uv run python deployment/plugin/package_plugin.py validate
+uv run pytest tests/test_agent_skills.py
+```
+
+For a packaging change, also build the archive into a disposable directory and inspect the file list:
+
+```bash
+uv run python deployment/plugin/package_plugin.py build --output-dir /tmp/serverfs-plugin-check
+```
+
+The archive must contain exactly one top-level `serverfs/` Plugin, root `plugin.json`, and the seven runtime skill directories. It must not contain `skills/README.md`, local configuration, source/VCS state, `mcp.json`, credentials, or a parallel `.codex-plugin/plugin.json`.
+
+`plugin.json` version must equal the root project version. On a release tag, the packaging command also receives `--tag vX.Y.Z` and fails closed unless tag, project and Plugin versions agree. Agent Skill instructions must keep platform/source-of-truth links current; do not copy the whole `.env`/TOML schema into skill prose merely to satisfy a test.
+
 ### Agent Bridge
 
 The root pytest configuration does not collect `agent_bridge/tests/`. For any `agent_bridge/` change, also run from `agent_bridge/`:
@@ -138,6 +159,8 @@ Git tags drive published images:
 - production deployments pin exact versions; `edge`/`latest` are not production pins.
 
 A published stable tag is immutable. Post-release documentation/site/metadata corrections land on `main`; never move/recreate the stable tag to absorb them.
+
+Starting with v0.18, the established tag-driven release workflow also builds `serverfs-plugin-vX.Y.Z.zip` from the same immutable tag commit and attaches that single skills-only Plugin asset to the existing GitHub Release alongside the Windows wheels. The repository `skills/` tree remains canonical; do not maintain seven independent skill ZIPs, publish a private ChatGPT Plugin, submit to the Plugin Directory, or create a second release publisher as part of normal ServerFS release automation.
 
 Use supported GitHub CLI/API operations (`gh`) for GitHub actions when requested. If a required operation has no supported CLI/API path, report that exception rather than inventing an endpoint.
 

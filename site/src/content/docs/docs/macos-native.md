@@ -1,9 +1,9 @@
 ---
 title: macOS Native
-description: ServerFS v0.17.1 native macOS deployment — Apple M-series, macOS 27, Darwin FD safety and Apple SMAppService persistence for Tunnel and Agent Bridge.
+description: ServerFS v0.18.0 native macOS deployment — Apple M-series, macOS 27, Darwin FD safety and Apple SMAppService persistence for Tunnel and Agent Bridge.
 ---
 
-The current stable project release is **v0.17.1**; the macOS native support shape introduced in **v0.13.2** remains unchanged. ServerFS runs natively on **Apple M-series Macs running macOS 27 Golden Gate**. The supported boundary remains exact: native **arm64** only, no Rosetta/x86_64, macOS 27.x only, and **local APFS** workdirs. Intel Macs, Hackintosh, macOS 26 or older and macOS 28 or newer fail closed with `NATIVE_PLATFORM_UNSUPPORTED`.
+The current stable project release is **v0.18.0**; the macOS native support shape introduced in **v0.13.2** remains unchanged. ServerFS runs natively on **Apple M-series Macs running macOS 27 Golden Gate**. The supported boundary remains exact: native **arm64** only, no Rosetta/x86_64, macOS 27.x only, and **local APFS** workdirs. Intel Macs, Hackintosh, macOS 26 or older and macOS 28 or newer fail closed with `NATIVE_PLATFORM_UNSUPPORTED`.
 
 v0.13.2 keeps the Darwin filesystem and Agent protocol implementation in Python, but replaces the old hand-installed LaunchAgent lifecycle with Apple's current **ServiceManagement / `SMAppService`** model. A small headless `ServerFSServiceManager.app` owns registration and status for two per-user LaunchAgents:
 
