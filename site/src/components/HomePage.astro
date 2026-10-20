@@ -70,6 +70,8 @@ const copy = {
     platformBody:
       'The MCP capability model stays consistent. Deployment, filesystem containment, transport, and lifecycle follow the operating system instead of pretending every host is Linux.',
     platformScrollHint: 'Scroll vertically to move across platforms · or choose a tab',
+    platformPathLabel: 'NATIVE EXECUTION PATH',
+    platformWhyLabel: 'WHY THIS SHAPE',
     platforms: [
       {
         id: 'linux',
@@ -77,11 +79,15 @@ const copy = {
         kicker: 'DOCKER-NATIVE SERVER DEPLOYMENT',
         title: 'Containers define the outer boundary.',
         body: 'Linux is the server-oriented shape: Docker Compose on amd64 or arm64, standard Streamable HTTP by default, and optional overlays for authentication, file ingress, Agent Bridge, or the OpenAI Tunnel.',
-        facts: [
-          ['DEPLOYMENT', 'Docker Compose · linux/amd64 · linux/arm64'],
-          ['MCP', 'Streamable HTTP · optional OpenAI Tunnel'],
-          ['FILESYSTEM', 'Bind-mounted workdirs · read-only by default'],
-          ['AGENT', 'Optional host Agent Bridge'],
+        path: [
+          ['01', 'INGRESS', 'Streamable HTTP', 'Authenticated TLS edge · optional OpenAI Tunnel'],
+          ['02', 'RUNTIME', 'ServerFS container', 'Policy-bound MCP surface · no shell'],
+          ['03', 'BOUNDARY', 'Bind-mounted workdirs', 'Only explicitly configured paths are visible'],
+          ['04', 'HOST AGENT', 'Optional Agent Bridge', 'Native delegation stays outside the container'],
+        ],
+        insights: [
+          ['Container boundary', 'Compose makes runtime and filesystem mounts explicit, so adding capability never silently expands host access.'],
+          ['Remote by design', 'Linux is the server-facing shape: HTTP is first-class, while authentication and Tunnel remain independent overlays.'],
         ],
         commands: [
           'docker compose pull',
@@ -96,11 +102,15 @@ const copy = {
         kicker: 'APPLE-NATIVE USER DEPLOYMENT',
         title: 'Darwin-native semantics, owned by the current user.',
         body: 'The macOS shape is native arm64 on Apple M-series Macs with local APFS workdirs. ServerFS uses descriptor-relative Darwin filesystem primitives and Apple SMAppService for persistent per-user Tunnel and Agent Bridge lifecycle.',
-        facts: [
-          ['PLATFORM', 'Apple M-series · macOS 27 · native arm64'],
-          ['MCP', 'Native stdio · no MCP network listener'],
-          ['FILESYSTEM', 'Descriptor-relative Darwin backend · local APFS'],
-          ['LIFECYCLE', 'SMAppService · per-user · no LaunchDaemon'],
+        path: [
+          ['01', 'LIFECYCLE', 'SMAppService', 'Current-user persistence · no LaunchDaemon'],
+          ['02', 'TRANSPORT', 'Native stdio', 'No MCP network listener'],
+          ['03', 'FILESYSTEM', 'Darwin FD backend', 'Descriptor-relative traversal · symlinks fail closed'],
+          ['04', 'WORKDIR', 'Local APFS', 'TCC and user permissions remain authoritative'],
+        ],
+        insights: [
+          ['Current-user ownership', 'Persistence uses Apple’s user-level service model instead of root daemons or hand-installed LaunchAgents.'],
+          ['Native containment', 'ServerFS follows Darwin file-descriptor semantics and never bypasses macOS privacy controls.'],
         ],
         commands: [
           'serverfs doctor --config serverfs.toml',
@@ -115,11 +125,15 @@ const copy = {
         kicker: 'WINDOWS-NATIVE USER DEPLOYMENT',
         title: 'NTFS-native semantics without administrator privileges.',
         body: 'The Windows shape runs natively on Windows 11 x64 with local NTFS. A HANDLE-relative Rust kernel provides filesystem containment, while a current-user Task Scheduler watchdog owns persistent lifecycle without SCM, LocalSystem, or UAC elevation.',
-        facts: [
-          ['PLATFORM', 'Windows 11 x64 · local NTFS'],
-          ['MCP', 'Native stdio · no MCP network listener'],
-          ['FILESYSTEM', 'HANDLE-relative Rust kernel · prebuilt abi3 wheel'],
-          ['LIFECYCLE', 'Current-user Task Scheduler · windowless watchdog'],
+        path: [
+          ['01', 'LIFECYCLE', 'Task Scheduler', 'Current-user watchdog · least privilege'],
+          ['02', 'TRANSPORT', 'Native stdio', 'No MCP network listener'],
+          ['03', 'FILESYSTEM', 'Rust NTFS kernel', 'HANDLE-relative traversal · reparse points blocked'],
+          ['04', 'WORKDIR', 'Local NTFS', 'No network shares · no elevation'],
+        ],
+        insights: [
+          ['No administrator path', 'Install, run, recover and remove stay current-user operations: no SCM, LocalSystem or stored account password.'],
+          ['Measured native boundary', 'The prebuilt abi3 kernel enforces NTFS-specific containment instead of emulating POSIX filesystem semantics.'],
         ],
         commands: [
           'serverfs doctor --config serverfs.toml',
@@ -249,6 +263,8 @@ const copy = {
     platformBody:
       'MCP 能力模型保持一致，但部署方式、文件系统约束、传输与生命周期管理遵循各自操作系统，而不是把所有主机都抽象成 Linux。',
     platformScrollHint: '继续向下滚动即可横向浏览 · 也可以直接点击标签',
+    platformPathLabel: '原生执行路径',
+    platformWhyLabel: '为什么采用这种形态',
     platforms: [
       {
         id: 'linux',
@@ -256,11 +272,15 @@ const copy = {
         kicker: 'DOCKER 原生服务器部署',
         title: '用容器定义外层边界。',
         body: 'Linux 是面向服务器的部署形态：通过 Docker Compose 支持 amd64 与 arm64，默认采用标准 Streamable HTTP，并可按需叠加认证、文件入口、Agent Bridge 或 OpenAI Tunnel。',
-        facts: [
-          ['部署', 'Docker Compose · linux/amd64 · linux/arm64'],
-          ['MCP', 'Streamable HTTP · 可选 OpenAI Tunnel'],
-          ['文件系统', 'Bind mount Workdir · 默认只读'],
-          ['AGENT', '可选宿主机 Agent Bridge'],
+        path: [
+          ['01', '入口', 'Streamable HTTP', '带认证的 TLS 边界 · 可选 OpenAI Tunnel'],
+          ['02', '运行时', 'ServerFS 容器', '策略约束的 MCP 能力面 · 无 Shell'],
+          ['03', '边界', 'Bind mount Workdir', '仅能看到显式配置的路径'],
+          ['04', '宿主机 Agent', '可选 Agent Bridge', '原生 Agent 委托保持在容器外'],
+        ],
+        insights: [
+          ['容器就是外层边界', 'Compose 将运行时与文件系统挂载显式化，增加能力时不会悄悄扩大宿主机访问范围。'],
+          ['天然面向远程服务', 'Linux 是服务器形态：HTTP 是一等入口，而认证与 Tunnel 仍是相互独立的可选叠加层。'],
         ],
         commands: [
           'docker compose pull',
@@ -275,11 +295,15 @@ const copy = {
         kicker: 'APPLE 原生用户级部署',
         title: '使用原生 Darwin 语义，由当前用户管理。',
         body: 'macOS 形态运行于 Apple M 系列、原生 arm64 与本地 APFS Workdir。ServerFS 使用 descriptor-relative Darwin 文件系统原语，并通过 Apple SMAppService 管理持久的用户级 Tunnel 与 Agent Bridge 生命周期。',
-        facts: [
-          ['平台', 'Apple M 系列 · macOS 27 · 原生 arm64'],
-          ['MCP', '原生 stdio · 无 MCP 网络监听端口'],
-          ['文件系统', 'Descriptor-relative Darwin backend · 本地 APFS'],
-          ['生命周期', 'SMAppService · 当前用户 · 无 LaunchDaemon'],
+        path: [
+          ['01', '生命周期', 'SMAppService', '当前用户持久化 · 无 LaunchDaemon'],
+          ['02', '传输', '原生 stdio', '不开放 MCP 网络监听端口'],
+          ['03', '文件系统', 'Darwin FD backend', 'Descriptor-relative 遍历 · 符号链接 fail closed'],
+          ['04', 'Workdir', '本地 APFS', 'TCC 与当前用户权限继续生效'],
+        ],
+        insights: [
+          ['由当前用户拥有', '持久化采用 Apple 的用户级 ServiceManagement 模型，而不是 root daemon 或手工安装的 LaunchAgent。'],
+          ['遵循 Darwin 原生约束', 'ServerFS 使用 Darwin 文件描述符语义，并且不会绕过 macOS 的隐私与 TCC 控制。'],
         ],
         commands: [
           'serverfs doctor --config serverfs.toml',
@@ -294,11 +318,15 @@ const copy = {
         kicker: 'WINDOWS 原生用户级部署',
         title: '使用原生 NTFS 语义，无需管理员权限。',
         body: 'Windows 形态原生运行于 Windows 11 x64 与本地 NTFS。HANDLE-relative Rust 内核负责文件系统约束；当前用户 Task Scheduler watchdog 负责持久生命周期，不依赖 SCM、LocalSystem 或 UAC 提权。',
-        facts: [
-          ['平台', 'Windows 11 x64 · 本地 NTFS'],
-          ['MCP', '原生 stdio · 无 MCP 网络监听端口'],
-          ['文件系统', 'HANDLE-relative Rust kernel · 预编译 abi3 wheel'],
-          ['生命周期', '当前用户 Task Scheduler · 无窗口 watchdog'],
+        path: [
+          ['01', '生命周期', 'Task Scheduler', '当前用户 watchdog · 最小权限'],
+          ['02', '传输', '原生 stdio', '不开放 MCP 网络监听端口'],
+          ['03', '文件系统', 'Rust NTFS kernel', 'HANDLE-relative 遍历 · 拒绝 reparse point'],
+          ['04', 'Workdir', '本地 NTFS', '不支持网络共享 · 无需提权'],
+        ],
+        insights: [
+          ['没有管理员路径', '安装、运行、恢复与卸载都保持当前用户权限：不用 SCM、LocalSystem，也不保存账户密码。'],
+          ['真实的 Windows 原生边界', '预编译 abi3 内核直接执行 NTFS 专用约束，而不是把 POSIX 文件系统语义硬套到 Windows 上。'],
         ],
         commands: [
           'serverfs doctor --config serverfs.toml',
@@ -633,11 +661,35 @@ const canonicalUrl = isZh
                     </div>
 
                     <div class="platform-spec">
-                      <div class="platform-facts">
-                        {platform.facts.map(([label, detail]) => (
-                          <div class="platform-fact"><span>{label}</span><strong>{detail}</strong></div>
-                        ))}
+                      <div class="platform-architecture">
+                        <div class="platform-architecture-head">
+                          <span>{c.platformPathLabel}</span>
+                          <strong>{platform.name}</strong>
+                        </div>
+
+                        <div class="platform-path" aria-label={`${platform.name} native execution path`}>
+                          {platform.path.map(([number, label, title, detail], nodeIndex) => (
+                            <div class="platform-path-step">
+                              <div class="platform-path-node">
+                                <div class="platform-path-meta"><span>{number}</span><small>{label}</small></div>
+                                <strong>{title}</strong>
+                                <p>{detail}</p>
+                              </div>
+                              {nodeIndex < platform.path.length - 1 && <span class="platform-path-arrow" aria-hidden="true">→</span>}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div class="platform-value">
+                          <span class="platform-value-label">{c.platformWhyLabel}</span>
+                          <div class="platform-insights">
+                            {platform.insights.map(([title, detail]) => (
+                              <div class="platform-insight"><strong>{title}</strong><p>{detail}</p></div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
+
                       <div class="platform-terminal" aria-label={`${platform.name} command example`}>
                         <div class="terminal-bar">
                           <span class="terminal-dots"><i></i><i></i><i></i></span>
