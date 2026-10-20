@@ -1741,7 +1741,7 @@ h1 {
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
-  padding-block: 42px 34px;
+  padding: 38px 0 max(72px, env(safe-area-inset-bottom));
 }
 
 .platform-heading {
@@ -1827,6 +1827,7 @@ h1 {
 
 .platform-track {
   display: flex;
+  gap: clamp(24px, 3vw, 44px);
   will-change: transform;
 }
 
@@ -2331,7 +2332,7 @@ h1 {
   .platform-sticky {
     top: 72px;
     min-height: calc(100vh - 72px);
-    padding-block: 24px 20px;
+    padding: 24px 0 max(44px, env(safe-area-inset-bottom));
   }
 
   .platform-heading {
@@ -2584,7 +2585,7 @@ h1 {
 
   .platform-track {
     display: grid;
-    gap: 26px;
+    gap: 32px;
     transform: none !important;
   }
 
