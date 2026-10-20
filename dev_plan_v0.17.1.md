@@ -162,7 +162,7 @@ Validation evidence on Pi1 ARM64 for this implementation:
 - `compose.yml + compose.http.yml` render: PASS;
 - Starlight/Astro production build: PASS; both English and Simplified-Chinese versions of all three new operations pages are present in `site/dist`;
 - `site/package.json` and `site/package-lock.json` remain unmodified after `npm ci`;
-- full root pytest was attempted, but the ServerFS Agent validation subprocess could not resolve the external `rg` executable and therefore failed in `tests/test_search_find_contract.py::TestSearchContract::test_tree_root_matches` before exercising search semantics. Pi1 itself reports `rg 14.1.1`, and `git diff --name-only v0.17.0 -- src/serverfs_mcp tests/test_search_find_contract.py` is empty. This is recorded as a validation-sandbox PATH limitation, not a v0.17.1 product regression; no unrelated search code is changed in this maintenance release.
+- full root pytest: **PASS** with `PATH=/home/linuxbrew/.linuxbrew/bin:$PATH`; **1903 tests total: 1587 passed, 316 skipped, 0 failed in 125.11s**. Pi1's Homebrew-installed `rg` is `/home/linuxbrew/.linuxbrew/bin/rg`; adding Linuxbrew to the Agent subprocess PATH removes the earlier `rg` resolution failure and confirms there is no search-contract regression.
 
 No Agent Bridge, Windows-native, or macOS-native acceptance is required because those boundaries are intentionally unchanged.
 
