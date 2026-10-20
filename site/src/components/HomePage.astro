@@ -14,15 +14,15 @@ const copy = {
     lang: 'en',
     title: 'ServerFS MCP — Controlled filesystem access for AI on Linux, Windows, and macOS',
     description:
-      'ServerFS MCP securely exposes selected directories as controlled workdirs to standards-compatible MCP hosts on Linux, Windows, and macOS.',
-    nav: { docs: 'Docs', architecture: 'Architecture', security: 'Security' },
+      'ServerFS MCP securely exposes selected directories as controlled workdirs to standards-compatible MCP hosts on Linux, Windows, and macOS, with standard Streamable HTTP, optional API Key or OAuth 2.1 authentication, and portable Agent Skills.',
+    nav: { docs: 'Docs', connect: 'Connect', architecture: 'Architecture', security: 'Security' },
     languageSwitch: '简中',
     languageLabel: '切换到简体中文',
     release: 'v0.18.0',
     heroEyebrow: 'SECURE MCP FOR LINUX · WINDOWS · MACOS WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
-      'Expose selected workdirs on Linux, Windows, and macOS. Read-only by default, with guarded writes and bounded binary transfer. File ingress and native Agent delegation remain separately gated capabilities.',
+      'Expose selected workdirs through native stdio or standard Streamable HTTP. Read-only by default, with guarded writes and bounded binary transfer; API Key, OAuth 2.1, OpenAI Tunnel, file ingress, Agent delegation, and Agent Skills stay explicit capabilities.',
     getStarted: 'Get started',
     viewSource: 'View source',
     guaranteesShort: ['No shell', 'No escape', 'Scoped writes', 'MIT licensed'],
@@ -40,6 +40,20 @@ const copy = {
     userSocket: 'user-owned socket',
     internalNetwork: 'Linux: loopback/private HTTP by default',
     noPorts: 'Windows/macOS: stdio · no MCP listener',
+    connectEyebrow: 'STANDARD MCP CONNECTIVITY',
+    connectTitle: 'Connect your way. Keep one policy boundary.',
+    connectBody:
+      'Use the transport and authentication model that fits the host. ServerFS keeps filesystem authorization separate from ingress choice.',
+    connectionModes: [
+      ['stdio', 'Native local', 'Windows / macOS native MCP without a network listener'],
+      ['Streamable HTTP', 'Standard remote MCP', 'Loopback by default; place authenticated TLS ingress in front for remote use'],
+      ['Static API Key', 'Lightweight auth', 'One high-entropy secret for simple remote deployments'],
+      ['OAuth 2.1', 'Identity-aware auth', 'Optional brokered authentication for production remote deployments'],
+      ['OpenAI Tunnel', 'Optional ChatGPT ingress', 'Authenticated outbound tunnel path; no longer the generic MCP default'],
+    ],
+    exploreHttp: 'HTTP setup',
+    exploreApiKey: 'API Key',
+    exploreOAuth: 'OAuth 2.1',
     surfacesLabel: 'Capability surfaces',
     capabilityEyebrow: 'PROGRESSIVE CAPABILITY',
     capabilityTitle: 'Start narrow. Expand deliberately.',
@@ -96,11 +110,16 @@ const copy = {
     quickTitleLine1: 'One controlled service.',
     quickTitleLine2: 'Your machine. Your policy.',
     quickBody:
-      'Start with the 11-tool filesystem surface. Add bounded binary transfer as needed; file ingress, Agent delegation, and advisory-only Jev support remain explicit, separately gated capabilities on the deployments that support them.',
+      'Start with standard Streamable HTTP on Linux, then add only the capabilities you need. OpenAI Tunnel remains available for ChatGPT, while API Key, OAuth 2.1, file ingress, Agent delegation, Agent Skills, and Jev stay explicit opt-ins.',
     readDeployment: 'Read the deployment guide',
     finalTitleLine1: 'Make your server legible to AI.',
     finalTitleLine2: 'Keep the boundary explicit.',
     readDocs: 'Read the docs',
+    skillsEyebrow: 'PORTABLE AGENT SKILLS',
+    skillsTitle: 'Operational knowledge ships with the project.',
+    skillsBody:
+      'v0.18.0 includes seven task-oriented Agent Skills for installation, configuration, upgrades, diagnostics, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. A skills-only portable plugin is published with the release.',
+    exploreSkills: 'Explore Agent Skills',
     footer: 'Secure MCP access to explicitly configured workdirs on Linux, Windows, and macOS.',
     footerDocs: 'Docs',
     footerSource: 'Source',
@@ -110,15 +129,15 @@ const copy = {
     lang: 'zh-CN',
     title: 'ServerFS MCP — 让 AI 在 Linux、Windows 和 macOS 上受控访问文件系统',
     description:
-      'ServerFS MCP 在 Linux、Windows 和 macOS 上将你明确指定的目录以受控 workdir 的形式安全开放给兼容标准 MCP 的宿主。',
-    nav: { docs: '文档', architecture: '架构', security: '安全' },
+      'ServerFS MCP 在 Linux、Windows 和 macOS 上将你明确指定的目录以受控 workdir 的形式安全开放给标准 MCP 宿主，并支持 Streamable HTTP、可选 API Key / OAuth 2.1 认证与可移植 Agent Skills。',
+    nav: { docs: '文档', connect: '接入', architecture: '架构', security: '安全' },
     languageSwitch: 'EN',
     languageLabel: 'Switch to English',
     release: 'v0.18.0',
     heroEyebrow: '面向 Linux · Windows · macOS Workdir 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
-      '在 Linux、Windows 和 macOS 上只开放你明确指定的 workdir。默认只读，并支持受控写入与有界二进制传输；文件入口与原生 Agent 委托仍是分别门控的可选能力。',
+      '通过原生 stdio 或标准 Streamable HTTP 只开放你明确指定的 workdir。默认只读，并支持受控写入与有界二进制传输；API Key、OAuth 2.1、OpenAI Tunnel、文件入口、Agent 委托与 Agent Skills 都保持显式可选。',
     getStarted: '快速开始',
     viewSource: '查看源码',
     guaranteesShort: ['无 Shell', '无法越界', '受控写入', 'MIT 许可'],
@@ -136,6 +155,20 @@ const copy = {
     userSocket: '用户自有 socket',
     internalNetwork: 'Linux：默认仅 loopback / 私有 HTTP',
     noPorts: 'Windows/macOS：stdio · 无 MCP 监听端口',
+    connectEyebrow: '标准 MCP 接入',
+    connectTitle: '按需选择接入方式，始终保持同一策略边界。',
+    connectBody:
+      '根据宿主选择合适的传输与认证方式。ServerFS 将文件系统授权与入口方式分离，不因接入方式扩大权限。',
+    connectionModes: [
+      ['stdio', '原生本地', 'Windows / macOS 原生 MCP，不开放网络监听端口'],
+      ['Streamable HTTP', '标准远程 MCP', '默认仅 loopback；远程使用时在前方部署带认证的 TLS 入口'],
+      ['Static API Key', '轻量认证', '使用单个高熵密钥满足简单远程部署'],
+      ['OAuth 2.1', '身份感知认证', '面向正式远程部署的可选代理认证层'],
+      ['OpenAI Tunnel', '可选 ChatGPT 入口', '经过认证的出站 Tunnel；不再作为通用 MCP 默认入口'],
+    ],
+    exploreHttp: 'HTTP 配置',
+    exploreApiKey: 'API Key',
+    exploreOAuth: 'OAuth 2.1',
     surfacesLabel: '能力面',
     capabilityEyebrow: '渐进式能力',
     capabilityTitle: '从最小能力开始，按需扩展。',
@@ -191,11 +224,16 @@ const copy = {
     quickTitleLine1: '一个受控服务。',
     quickTitleLine2: '你的机器，你的策略。',
     quickBody:
-      '从 11 个文件系统工具开始，按需增加有界二进制传输；文件入口、Agent 委托与仅提供建议的 Jev 支持仍是显式、独立门控的可选能力，并遵循各部署平台的支持边界。',
+      'Linux 上从标准 Streamable HTTP 开始，再按需增加能力。OpenAI Tunnel 仍可用于 ChatGPT；API Key、OAuth 2.1、文件入口、Agent 委托、Agent Skills 与 Jev 都保持显式 opt-in。',
     readDeployment: '阅读部署指南',
     finalTitleLine1: '让 AI 理解你的服务器。',
     finalTitleLine2: '让边界始终清晰。',
     readDocs: '阅读文档',
+    skillsEyebrow: '可移植 AGENT SKILLS',
+    skillsTitle: '让运维知识随项目一起交付。',
+    skillsBody:
+      'v0.18.0 提供 7 个面向任务的 Agent Skills，覆盖安装、配置、升级、诊断、OpenAI Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维；Release 同时发布仅包含 Skills 的可移植 Plugin。',
+    exploreSkills: '了解 Agent Skills',
     footer: '让 MCP 在 Linux、Windows 和 macOS 上安全访问你明确配置的 workdir。',
     footerDocs: '文档',
     footerSource: '源码',
@@ -244,6 +282,7 @@ const canonicalUrl = isZh
 
       <nav aria-label="Primary navigation">
         <a href={local('docs/')}>{c.nav.docs}</a>
+        <a href="#connect">{c.nav.connect}</a>
         <a href="#architecture">{c.nav.architecture}</a>
         <a href="#security">{c.nav.security}</a>
         <a class="language-link" href={languageUrl} aria-label={c.languageLabel}>
@@ -265,7 +304,7 @@ const canonicalUrl = isZh
         <div class="hero-copy">
           <a
             class="release-pill"
-            href="https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.13.2"
+            href="https://github.com/NTLx/ServerFS_MCP/releases/latest"
             target="_blank"
             rel="noreferrer"
           >
@@ -326,7 +365,7 @@ const canonicalUrl = isZh
               <div class="server-head">
                 <span class="server-led"></span>
                 <strong>ServerFS MCP</strong>
-                <code>v0.13.2</code>
+                <code>{c.release}</code>
               </div>
               {c.serverRows.map(([label, detail]) => (
                 <div class="server-row" data-policy-row><span>{label}</span><em>{detail}</em></div>
@@ -366,6 +405,31 @@ const canonicalUrl = isZh
               <span><i class="ok"></i> {c.noPorts}</span>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section class="section shell connect-section" id="connect" data-reveal>
+        <div class="section-heading split-heading" data-reveal-item>
+          <div>
+            <p class="eyebrow">{c.connectEyebrow}</p>
+            <h2>{c.connectTitle}</h2>
+          </div>
+          <p>{c.connectBody}</p>
+        </div>
+
+        <div class="connection-grid" data-reveal-item>
+          {c.connectionModes.map(([name, label, detail]) => (
+            <article class="connection-card">
+              <code>{name}</code>
+              <h3>{label}</h3>
+              <p>{detail}</p>
+            </article>
+          ))}
+        </div>
+        <div class="connection-links" data-reveal-item>
+          <a class="text-link" href={local('docs/getting-started/')}>{c.exploreHttp} <span aria-hidden="true">→</span></a>
+          <a class="text-link" href={local('docs/api-key/')}>{c.exploreApiKey} <span aria-hidden="true">→</span></a>
+          <a class="text-link" href={local('docs/oauth/')}>{c.exploreOAuth} <span aria-hidden="true">→</span></a>
         </div>
       </section>
 
@@ -492,10 +556,11 @@ const canonicalUrl = isZh
 <span class="prompt">$</span> cd ServerFS_MCP
 <span class="prompt">$</span> cp .env.example .env
 <span class="prompt">$</span> docker compose pull
-<span class="prompt">$</span> docker compose up -d
+<span class="prompt">$</span> docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
+<span class="prompt">$</span> docker compose -f compose.yml -f compose.http.yml ps
 
 <span class="success">✓ serverfs-mcp      healthy</span>
-<span class="success">✓ openai-tunnel     connected</span></code></pre>
+<span class="success">✓ http://127.0.0.1:8000/mcp</span></code></pre>
         </div>
 
         <div class="quickstart-copy" data-reveal-item>
@@ -503,6 +568,19 @@ const canonicalUrl = isZh
           <h2>{c.quickTitleLine1}<br />{c.quickTitleLine2}</h2>
           <p>{c.quickBody}</p>
           <a class="button secondary" href={local('docs/getting-started/')}>{c.readDeployment}</a>
+        </div>
+      </section>
+
+      <section class="section shell skills-section" data-reveal>
+        <div class="section-heading split-heading" data-reveal-item>
+          <div>
+            <p class="eyebrow">{c.skillsEyebrow}</p>
+            <h2>{c.skillsTitle}</h2>
+          </div>
+          <div>
+            <p>{c.skillsBody}</p>
+            <a class="text-link" href={local('docs/agent-skills/')}>{c.exploreSkills} <span aria-hidden="true">→</span></a>
+          </div>
         </div>
       </section>
 

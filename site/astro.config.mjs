@@ -14,7 +14,7 @@ export default defineConfig({
         alt: 'ServerFS',
       },
       description:
-        'Secure, scoped filesystem access on Linux, Windows and macOS for ChatGPT and AI agents — read-only by default, with controlled mutations, binary transfer and optional Agent delegation.',
+        'Secure, standards-first MCP filesystem access on Linux, Windows and macOS — read-only by default, with Streamable HTTP, optional API Key or OAuth 2.1 authentication, controlled mutations, binary transfer and Agent delegation.',
       defaultLocale: 'root',
       locales: {
         root: {
@@ -55,6 +55,11 @@ export default defineConfig({
               label: 'Static API Key',
               translations: { 'zh-CN': '静态 API Key' },
               slug: 'docs/api-key',
+            },
+            {
+              label: 'OAuth 2.1',
+              translations: { 'zh-CN': 'OAuth 2.1' },
+              slug: 'docs/oauth',
             },
             {
               label: 'Windows Native',

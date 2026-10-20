@@ -1655,6 +1655,78 @@ h1 {
   margin-bottom: 64px;
 }
 
+.connect-section {
+  padding-top: 136px;
+}
+
+.connection-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.connection-card {
+  min-height: 196px;
+  padding: 26px 22px;
+  border-right: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(156, 171, 255, 0.025), transparent 74%);
+}
+
+.connection-card:last-child {
+  border-right: 0;
+}
+
+.connection-card code {
+  display: inline-block;
+  color: #9caaff;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.connection-card h3 {
+  margin: 38px 0 10px;
+  color: #d9dee8;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.connection-card p {
+  margin: 0;
+  color: #727d90;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.connection-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-top: 18px;
+}
+
+.connection-links .text-link {
+  margin-top: 0;
+}
+
+.skills-section {
+  margin-top: 156px;
+  padding: 68px 0 20px;
+  border-top: 1px solid var(--line);
+}
+
+.skills-section .section-heading {
+  margin-bottom: 0;
+}
+
+.skills-section .split-heading > div:last-child > p {
+  margin: 0;
+  color: #8f99aa;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
 .architecture-layout {
   gap: 42px;
 }
@@ -1871,6 +1943,31 @@ h1 {
     padding-top: 112px;
   }
 
+  .connect-section {
+    padding-top: 112px;
+  }
+
+  .connection-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .connection-card:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .connection-card:nth-child(-n + 4) {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .connection-card:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .skills-section {
+    margin-top: 112px;
+    padding-top: 52px;
+  }
+
   .capability-strip {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1915,6 +2012,35 @@ h1 {
 
   .capability-section {
     padding-top: 94px;
+  }
+
+  .connect-section {
+    padding-top: 94px;
+  }
+
+  .connection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-card,
+  .connection-card:nth-child(n) {
+    min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .connection-card:last-child {
+    grid-column: auto;
+    border-bottom: 0;
+  }
+
+  .connection-card h3 {
+    margin-top: 24px;
+  }
+
+  .skills-section {
+    margin-top: 94px;
+    padding-top: 40px;
   }
 
   .capability-strip {
