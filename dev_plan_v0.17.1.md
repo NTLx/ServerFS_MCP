@@ -1,6 +1,6 @@
 # ServerFS MCP v0.17.1 Maintenance Release Plan
 
-Status: implementation complete; shared-branch/issue closeout pending
+Status: implementation complete; issues #15/#16/#17 closed as completed; v0.17.1 publication pending
 Baseline: v0.17.0 (`e63f4c676a88d594d20adafba97b6ef27ca4a012`)
 Scope: Linux/Docker operational reliability and documentation only
 Issues: #15, #16, #17
@@ -168,13 +168,15 @@ No Agent Bridge, Windows-native, or macOS-native acceptance is required because 
 
 ## 8. GitHub issue closeout
 
-After the implementation is present on the repository's shared branch and validation is green:
+Shared implementation commit: `b006a2ab0c514e3ec456912c08ae8a476f84e3fc` on `main`.
 
-- #15: reply with the readiness healthcheck and diagnostics-guide resolution, then close as completed.
-- #16: reply with the read-only observability recipe resolution, then close as completed.
-- #17: reply with the daemon-proxy/offline ARM64 deployment guide resolution, then close as completed.
+GitHub closeout is complete:
 
-Do not close an issue merely because a local working tree contains an unshared fix.
+- #15: resolution reply posted; closed as `completed`.
+- #16: resolution reply posted; closed as `completed`.
+- #17: resolution reply posted; closed as `completed`.
+
+All three issues were closed only after the implementation was pushed to the shared branch.
 
 ## 9. Release boundary
 
