@@ -69,7 +69,11 @@ docker compose ps
 docker compose logs -f openai-tunnel
 ```
 
-This remains a supported authenticated ingress adapter; it is no longer required for generic MCP clients.
+This remains a supported authenticated ingress adapter; it is no longer required for generic MCP clients. For operational troubleshooting, use [Tunnel Diagnostics](./tunnel-diagnostics/); container `Up` state alone is not proof of Tunnel readiness or control-plane continuity.
+
+On Linux hosts with restricted registry/network access, see [Restricted-network ARM64 Deployment](./restricted-network-arm64/) for the separate Docker-daemon proxy and offline image-transfer paths.
+
+For a least-privilege monitoring pattern that exposes generated host status rather than host authority, see [Read-only Host Observability](./host-observability/).
 
 ## Agent deployment
 

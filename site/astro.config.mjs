@@ -90,6 +90,27 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Operations',
+          translations: { 'zh-CN': '运维' },
+          items: [
+            {
+              label: 'Tunnel Diagnostics',
+              translations: { 'zh-CN': 'Tunnel 诊断' },
+              slug: 'docs/tunnel-diagnostics',
+            },
+            {
+              label: 'Host Observability',
+              translations: { 'zh-CN': '宿主机可观测性' },
+              slug: 'docs/host-observability',
+            },
+            {
+              label: 'Restricted-network ARM64',
+              translations: { 'zh-CN': '受限网络 ARM64' },
+              slug: 'docs/restricted-network-arm64',
+            },
+          ],
+        },
+        {
           label: 'Trust Boundary',
           translations: { 'zh-CN': '信任边界' },
           items: [

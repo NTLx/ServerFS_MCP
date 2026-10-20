@@ -220,6 +220,9 @@ The documentation site is the authoritative user and operator reference. The REA
 | Binary transfer / file ingress | [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/docs/binary-transfer/) |
 | Agent delegation | [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/) |
 | Optional Jev advice | [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) |
+| OpenAI Tunnel troubleshooting | [Tunnel Diagnostics](https://ntlx.github.io/ServerFS_MCP/docs/tunnel-diagnostics/) |
+| Read-only host status publication | [Host Observability](https://ntlx.github.io/ServerFS_MCP/docs/host-observability/) |
+| Restricted-network Linux ARM64 | [Restricted-network ARM64](https://ntlx.github.io/ServerFS_MCP/docs/restricted-network-arm64/) |
 | Windows native | [Windows Native](https://ntlx.github.io/ServerFS_MCP/docs/windows-native/) |
 | macOS native | [macOS Native](https://ntlx.github.io/ServerFS_MCP/docs/macos-native/) |
 

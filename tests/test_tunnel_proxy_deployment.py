@@ -210,6 +210,20 @@ def test_compose_scopes_proxy_environment_to_openai_tunnel() -> None:
     assert 'entrypoint: ["/bin/sh", "/opt/serverfs/tunnel-launcher.sh"]' in tunnel
 
 
+def test_openai_tunnel_healthcheck_uses_readiness_probe() -> None:
+    compose = (_REPO_ROOT / "compose.yml").read_text(encoding="utf-8")
+    tunnel = compose.split("  openai-tunnel:\n", 1)[1].split("\n\nnetworks:\n", 1)[0]
+
+    assert "healthcheck:" in tunnel
+    assert '"CMD-SHELL"' in tunnel
+    assert "port=$${HEALTH_LISTEN_ADDR##*:}" in tunnel
+    assert "/usr/bin/tunnel-client health" in tunnel
+    assert "--require-control-plane-poll" in tunnel
+    assert "HEALTH_LISTEN_ADDR: ${HEALTH_LISTEN_ADDR:-:8080}" in tunnel
+    assert "ports:" not in tunnel
+    assert '      - "8080"' in tunnel
+
+
 def test_oauth_overlay_scopes_trusted_auth_origins_to_openai_tunnel() -> None:
     overlay = (_REPO_ROOT / "compose.oauth.yml").read_text(encoding="utf-8")
     env_example = (_REPO_ROOT / ".env.example").read_text(encoding="utf-8")

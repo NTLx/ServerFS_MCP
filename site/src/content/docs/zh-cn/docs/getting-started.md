@@ -69,7 +69,11 @@ docker compose ps
 docker compose logs -f openai-tunnel
 ```
 
-该路径继续作为受支持的认证入口适配器，但不再是通用 MCP 客户端的前置条件。
+该路径继续作为受支持的认证入口适配器，但不再是通用 MCP 客户端的前置条件。运维排障请使用 [Tunnel 诊断](./tunnel-diagnostics/)；仅看到容器 `Up` 并不能证明 Tunnel readiness 或 control-plane 连续可用。
+
+Linux 主机如果受到 registry/网络访问限制，见[受限网络 ARM64 部署](./restricted-network-arm64/)，其中分别说明 Docker daemon proxy 与离线镜像转运路径。
+
+如果只希望以最低权限向 AI 暴露生成后的宿主机状态，而不是授予宿主机权限，见[只读宿主机可观测性](./host-observability/)。
 
 ## Agent 部署
 
