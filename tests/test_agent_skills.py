@@ -103,6 +103,73 @@ def plugin_source(tmp_path: Path) -> Path:
     return root
 
 
+@pytest.mark.parametrize("newline", [b"\r\n", b"\r"])
+def test_plugin_archive_is_canonical_across_hosts_and_newlines(
+    plugin_source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, newline: bytes
+) -> None:
+    manifest_path = plugin_source / "plugin.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["description"] += " — 中文 café e\u0301\u2028\u2029"
+    manifest_path.write_bytes((json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode())
+    sources = [manifest_path, *sorted((plugin_source / "skills").rglob("*.md"))]
+    for path in sources:
+        content = path.read_bytes().decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+        if path.suffix == ".md":
+            content += "\nUnicode: 中文 café e\u0301\u2028\u2029\n"
+        path.write_bytes(content.encode("utf-8"))
+
+    other_source = tmp_path / "other-source"
+    shutil.copytree(plugin_source, other_source)
+    for path in sources:
+        (other_source / path.relative_to(plugin_source)).write_bytes(
+            path.read_bytes().replace(b"\n", newline)
+        )
+
+    original_init = zipfile.ZipInfo.__init__
+    host_system = 3
+
+    def host_init(self: zipfile.ZipInfo, *args: object, **kwargs: object) -> None:
+        original_init(self, *args, **kwargs)
+        self.create_system = host_system
+
+    monkeypatch.setattr(zipfile.ZipInfo, "__init__", host_init)
+    first = PACKAGE_API["build_archive"](plugin_source, tmp_path / "first")
+    host_system = 0  # Simulate the Windows ZipInfo default for the other checkout.
+    second = PACKAGE_API["build_archive"](other_source, tmp_path / "second")
+    assert first.read_bytes() == second.read_bytes()
+    with zipfile.ZipFile(first) as left, zipfile.ZipFile(second) as right:
+        assert left.namelist() == right.namelist()
+        for left_info, right_info in zip(left.infolist(), right.infolist(), strict=True):
+            assert {slot: getattr(left_info, slot, None) for slot in zipfile.ZipInfo.__slots__} == {
+                slot: getattr(right_info, slot, None) for slot in zipfile.ZipInfo.__slots__
+            }
+            assert left_info.create_system == 3
+            assert left_info.external_attr == 0o100644 << 16
+            assert left_info.date_time == (1980, 1, 1, 0, 0, 0)
+            assert left_info.compress_type == zipfile.ZIP_DEFLATED
+            content = left.read(left_info)
+            source = plugin_source / Path(left_info.filename).relative_to("serverfs")
+            assert content == right.read(right_info) == source.read_bytes()
+            assert b"\r" not in content
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "plugin.json",
+        "skills/serverfs-install/SKILL.md",
+        "skills/serverfs-auth/references/api-key.md",
+    ],
+)
+def test_non_utf8_runtime_text_fails_closed(
+    plugin_source: Path, tmp_path: Path, relative: str
+) -> None:
+    path = plugin_source / relative
+    path.write_bytes(path.read_bytes() + b"\xff")
+    with pytest.raises(UnicodeDecodeError):
+        PACKAGE_API["build_archive"](plugin_source, tmp_path / "output")
+
+
 def test_packaged_references_resolve_without_checkout(tmp_path: Path) -> None:
     output = PACKAGE_API["build_archive"](REPO_ROOT, tmp_path)
     extracted = tmp_path / "standalone"

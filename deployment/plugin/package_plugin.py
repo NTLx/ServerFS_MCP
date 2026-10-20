@@ -230,10 +230,12 @@ def expected_archive_members(root: Path) -> list[str]:
 
 
 def _write_deterministic_file(archive: zipfile.ZipFile, source: Path, target: str) -> None:
+    content = source.read_bytes().decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
     info = zipfile.ZipInfo(target, date_time=(1980, 1, 1, 0, 0, 0))
+    info.create_system = 3  # Unix, matching the fixed POSIX permissions on every host.
     info.compress_type = zipfile.ZIP_DEFLATED
     info.external_attr = 0o100644 << 16
-    archive.writestr(info, source.read_bytes())
+    archive.writestr(info, content.encode("utf-8"))
 
 
 def build_archive(root: Path, output_dir: Path, *, tag: str | None = None) -> Path:
