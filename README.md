@@ -1,76 +1,78 @@
 # ServerFS MCP
 
+**简体中文** · [English](README_EN.md)
+
 [![Release](https://img.shields.io/github/v/release/NTLx/ServerFS_MCP)](https://github.com/NTLx/ServerFS_MCP/releases/latest)
 [![Linux CI](https://github.com/NTLx/ServerFS_MCP/actions/workflows/container.yml/badge.svg)](https://github.com/NTLx/ServerFS_MCP/actions/workflows/container.yml)
 [![Windows CI](https://github.com/NTLx/ServerFS_MCP/actions/workflows/windows-native.yml/badge.svg)](https://github.com/NTLx/ServerFS_MCP/actions/workflows/windows-native.yml)
 [![macOS CI](https://github.com/NTLx/ServerFS_MCP/actions/workflows/macos-native.yml/badge.svg)](https://github.com/NTLx/ServerFS_MCP/actions/workflows/macos-native.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**A secure, standards-first MCP filesystem server with scoped access and optional native Agent delegation.**
+**一个安全、标准优先、按范围授权的 MCP 文件系统服务器，并可选支持原生 AI Agent 委托。**
 
-Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured Codex / Claude Code / Qoder delegation only where you need them.
+只暴露你明确选择的目录，并默认保持只读。仅在需要的位置按需开启受限文件修改、基于 revision 的并发保护、有限制的二进制传输，以及结构化的 Codex / Claude Code / Qoder Agent 委托能力。
 
-**Current stable release: v0.18.0**
+**当前稳定版本：v0.18.0**
 
-[Website](https://ntlx.github.io/ServerFS_MCP/) ·
-[Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
-[Getting started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) ·
-[Security model](https://ntlx.github.io/ServerFS_MCP/docs/security/) ·
-[Static API Key](https://ntlx.github.io/ServerFS_MCP/docs/api-key/) ·
+[项目网站](https://ntlx.github.io/ServerFS_MCP/) ·
+[文档](https://ntlx.github.io/ServerFS_MCP/docs/) ·
+[快速开始](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) ·
+[安全模型](https://ntlx.github.io/ServerFS_MCP/docs/security/) ·
+[静态 API Key](https://ntlx.github.io/ServerFS_MCP/docs/api-key/) ·
 [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/docs/oauth/) ·
 [Releases](https://github.com/NTLx/ServerFS_MCP/releases)
 
 ---
 
-## Why ServerFS
+## 为什么选择 ServerFS
 
-Giving an AI agent broad filesystem or shell access is easy. Giving it **only the capabilities required for the task** is harder.
+给 AI Agent 开放整个文件系统或 Shell 很容易，真正困难的是让它**只获得完成当前任务所必需的能力**。
 
-ServerFS is built around that narrower boundary:
+ServerFS 围绕这一更窄、更明确的安全边界设计：
 
-- **Explicit workdirs** — only administrator-configured directories are visible, addressed by aliases rather than host paths.
-- **Read-only by default** — write access is an explicit per-workdir decision, not a global default.
-- **Narrow file operations** — no shell, generic command executor, recursive delete, or unguarded overwrite.
-- **Concurrency-aware mutations** — destructive operations use opaque revisions; text edits are exact-match and atomic.
-- **Defense in depth** — path confinement, symlink rejection, credential-path deny rules, bounded I/O, audit events, and platform-specific filesystem safety.
-- **Optional capabilities stay optional** — binary transfer, ChatGPT file ingress, Agent delegation, and Jev advice are independently gated.
-- **Linux, Windows, and macOS** — one public capability model with platform-native containment and deployment boundaries.
+- **显式 Workdir** —— 只有预先配置的目录可见，对外使用别名而不是主机真实路径。
+- **默认只读** —— 写权限按 Workdir 单独显式开启，而不是全局默认开放。
+- **受限文件操作** —— 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
+- **并发安全的修改** —— 破坏性操作使用不透明 revision；文本修改采用精确匹配并原子提交。
+- **纵深防御** —— 路径约束、符号链接拒绝、凭据路径拒绝规则、有界 I/O、审计事件，以及平台原生的文件系统安全机制。
+- **可选能力保持可选** —— 二进制传输、ChatGPT 文件输入、Agent 委托和 Jev 建议能力均可独立启用。
+- **Linux、Windows、macOS** —— 对外保持一致的能力模型，同时使用各平台原生的约束与部署边界。
 
-## Supported deployments
+## 支持的部署方式
 
-| Platform | Supported shape | Filesystem boundary | Agent delegation |
+| 平台 | 支持形态 | 文件系统边界 | Agent 委托 |
 | --- | --- | --- | --- |
-| **Linux** | Docker Compose, `linux/amd64` and `linux/arm64` | Bind-mounted workdirs; container read-only by default | Optional host Agent Bridge |
-| **Windows** | Windows 11 x64, local NTFS, native stdio; current-user Task Scheduler persistence since v0.14.0 | Native HANDLE-relative Rust kernel over MCP stdio | Codex, Claude Code, Qoder |
-| **macOS** | Apple M-series, native arm64, macOS 27 Golden Gate | Native descriptor-relative Darwin backend over MCP stdio | Codex, Claude Code, Qoder |
+| **Linux** | Docker Compose，支持 `linux/amd64` 与 `linux/arm64` | Bind mount Workdir；容器默认只读 | 可选 Host Agent Bridge |
+| **Windows** | Windows 11 x64、本地 NTFS、原生 stdio；自 v0.14.0 起支持当前用户 Task Scheduler 持久化 | MCP stdio 上的原生 HANDLE-relative Rust 内核 | Codex、Claude Code、Qoder |
+| **macOS** | Apple M 系列、原生 arm64、macOS 27 Golden Gate | MCP stdio 上基于 descriptor-relative 的 Darwin 原生后端 | Codex、Claude Code、Qoder |
 
-The macOS v0.13 support boundary is intentionally strict: Intel Macs, Rosetta/x86_64 execution, macOS 26 or older, and macOS 28+ are not claimed as supported. **v0.13.2** adds Apple-native `SMAppService` persistence for the Tunnel and Agent Bridge, so the managed stack no longer depends on terminal/session lifetime. `SMAppService` owns user-login persistence; live reboot/re-login recovery validation is deferred beyond v0.13.2.
+macOS v0.13 的支持边界有意保持严格：目前不声明支持 Intel Mac、Rosetta/x86_64、macOS 26 及更早版本，以及 macOS 28+。**v0.13.2** 使用 Apple 原生 `SMAppService` 为 Tunnel 与 Agent Bridge 提供持久化，使托管服务不再依赖终端或会话生命周期。`SMAppService` 负责当前用户登录后的持久化；真实重启/重新登录恢复验证未纳入 v0.13.2 的发布验收范围。
 
-**v0.14.0** brings persistent outer-lifecycle reliability to Windows without introducing administrator requirements. Windows Native uses a current-user, least-privilege Task Scheduler 2.0 task that owns a windowless watchdog; the watchdog restarts the managed runner, and the runner restarts Tunnel generations. A logon trigger plus an indefinite one-minute time-trigger heartbeat re-establishes the outer owner while `IgnoreNew` preserves one healthy instance. `serverfs service install/start/stop/restart/status/uninstall` is the supported operator surface; installation, runtime, recovery and maintenance remain non-elevated and current-user scoped. Release acceptance verified Tunnel-, runner- and Task-Scheduler-level recovery, intentional stop semantics, explicit start recovery, Agent Bridge recovery, windowless operation and exactly-one Tunnel ownership; a physical reboot/re-login cycle was not part of that acceptance.
+**v0.14.0** 在不引入管理员权限要求的前提下，为 Windows 增加持久化的外层生命周期管理。Windows Native 使用当前用户、最小权限的 Task Scheduler 2.0 任务托管无窗口 watchdog；watchdog 负责恢复 managed runner，runner 再负责恢复 Tunnel generation。登录触发器与无限期每分钟 heartbeat 共同重建外层 owner，同时通过 `IgnoreNew` 保证只保留一个健康实例。官方运维入口为 `serverfs service install/start/stop/restart/status/uninstall`；安装、运行、恢复和维护始终保持非提权、当前用户范围。发布验收覆盖 Tunnel、runner、Task Scheduler 层恢复、主动停止语义、显式启动恢复、Agent Bridge 恢复、无窗口运行以及单一 Tunnel ownership；物理重启/重新登录未包含在该版本验收中。
 
-For native setup, use the dedicated guides:
+原生平台部署请参考：
 
 - [Windows Native](https://ntlx.github.io/ServerFS_MCP/docs/windows-native/)
 - [macOS Native](https://ntlx.github.io/ServerFS_MCP/docs/macos-native/)
 
-## Agent Skills (v0.18.0)
+## Agent Skills（v0.18.0）
 
-The repository now carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
+仓库现已提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
 
-The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The v0.18.0 stable tag builds one `serverfs-plugin-v0.18.0.zip` GitHub Release asset containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
+仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。v0.18.0 稳定标签会构建一个 `serverfs-plugin-v0.18.0.zip` GitHub Release 资产，其中包含 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
 
-## Quick start
+## 快速开始
 
-The shortest path is the Linux Docker deployment.
+最短部署路径是 Linux Docker。
 
-### Prerequisites
+### 前置要求
 
 - Docker + Docker Compose
-- At least one directory you want to expose
+- 至少一个希望暴露给 MCP 的目录
 
-An OpenAI Secure MCP Tunnel is optional and only required for the ChatGPT Tunnel ingress path.
+OpenAI Secure MCP Tunnel 是可选组件，仅在需要通过 ChatGPT Tunnel 接入时使用。
 
-### 1. Clone and configure
+### 1. 克隆并配置
 
 ```bash
 git clone https://github.com/NTLx/ServerFS_MCP.git
@@ -79,7 +81,7 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Edit `.env` and configure at least one workdir:
+编辑 `.env`，至少配置一个 Workdir：
 
 ```env
 WORKDIR_01_ALIAS=projects
@@ -88,7 +90,7 @@ WORKDIR_01_DESCRIPTION="Projects"
 WORKDIR_01_READ_ONLY=true
 ```
 
-### 2. Start the standard Streamable HTTP endpoint
+### 2. 启动标准 Streamable HTTP 端点
 
 ```bash
 docker compose pull
@@ -96,23 +98,23 @@ docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
 docker compose -f compose.yml -f compose.http.yml ps
 ```
 
-The generic HTTP override publishes ServerFS on `127.0.0.1:8000/mcp` by default and does not start the OpenAI Tunnel. Configure `SERVERFS_HTTP_ALLOWED_HOSTS` and place an authenticated TLS ingress in front of ServerFS before any non-loopback/public deployment.
+通用 HTTP override 默认将 ServerFS 发布到 `127.0.0.1:8000/mcp`，且不会启动 OpenAI Tunnel。任何非 loopback 或公网部署前，都应配置 `SERVERFS_HTTP_ALLOWED_HOSTS`，并在 ServerFS 前放置带认证的 TLS ingress。
 
-For ChatGPT through the existing OpenAI Secure MCP Tunnel, configure `CONTROL_PLANE_TUNNEL_ID` and `CONTROL_PLANE_API_KEY` and use the base Compose deployment. For Agent delegation, binary transfer, file ingress, proxy routing, or production hardening, continue with the [Getting Started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) and [Configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) guides.
+如果要通过现有 OpenAI Secure MCP Tunnel 接入 ChatGPT，请配置 `CONTROL_PLANE_TUNNEL_ID` 和 `CONTROL_PLANE_API_KEY`，并使用基础 Compose 部署。Agent 委托、二进制传输、文件输入、代理路由或生产环境加固请继续阅读 [快速开始](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) 与 [配置](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) 文档。
 
-### Optional static API Key for remote HTTP
+### 可选：为远程 HTTP 启用静态 API Key
 
-v0.17.0 adds a lightweight built-in authentication mode for operators who do not need OAuth identity flows. Set one high-entropy secret in `.env`:
+v0.17.0 增加了轻量的内置认证模式，适用于不需要 OAuth 身份流程的场景。在 `.env` 中设置一个高熵密钥：
 
 ```env
 SERVERFS_HTTP_API_KEY=<long-random-secret>
 ```
 
-Clients should preferably send `Authorization: Bearer <key>`. A DingTalk-style one-line URL such as `https://mcp.example.com/mcp?key=<key>` is also supported, but URL credentials can be captured by reverse-proxy or infrastructure logs. Public endpoints still require HTTPS, and API Key mode is mutually exclusive with `SERVERFS_OAUTH_ENABLED=true`. See [Static API Key](https://ntlx.github.io/ServerFS_MCP/docs/api-key/).
+客户端优先使用 `Authorization: Bearer <key>`。同时支持钉钉等场景常见的一行式 URL，例如 `https://mcp.example.com/mcp?key=<key>`，但 URL 中的凭据可能被反向代理或基础设施日志记录。公网端点仍必须使用 HTTPS；API Key 模式与 `SERVERFS_OAUTH_ENABLED=true` 互斥。详见 [Static API Key](https://ntlx.github.io/ServerFS_MCP/docs/api-key/)。
 
-### Optional OAuth 2.1 for remote HTTP
+### 可选：为远程 HTTP 启用 OAuth 2.1
 
-v0.16.0 adds an opt-in OAuth 2.1 deployment for generic remote Streamable HTTP. OAuth stays **disabled by default**, applies only when `SERVERFS_OAUTH_ENABLED=true` and `compose.oauth.yml` is included, and does not change native Windows/macOS stdio.
+v0.16.0 为通用远程 Streamable HTTP 增加了可选 OAuth 2.1 部署。OAuth 默认**关闭**，仅在 `SERVERFS_OAUTH_ENABLED=true` 且引入 `compose.oauth.yml` 时生效，不改变 Windows/macOS 原生 stdio 行为。
 
 ```bash
 mkdir -p .serverfs-auth-state
@@ -125,9 +127,9 @@ docker compose --env-file .env \
   up -d
 ```
 
-The recommended public shape uses separate HTTPS MCP and authorization-server origins behind a reverse proxy; `serverfs-auth` alone owns provider/CIMD egress. Supported identity providers are GitHub, DingTalk, Feishu/Lark and WeChat Open Platform. See [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/docs/oauth/) for callbacks, stable-principal admission, CIMD/DCR, resource binding, backup/revocation, proxy configuration and the current OpenAI Tunnel OAuth limitation.
+推荐的公网架构是在反向代理后使用彼此独立的 HTTPS MCP origin 与 Authorization Server origin，并仅允许 `serverfs-auth` 承担 Provider/CIMD 出站访问。当前支持 GitHub、钉钉、飞书/Lark 和微信开放平台身份提供方。回调地址、稳定主体准入、CIMD/DCR、资源绑定、备份/吊销、代理配置以及 OpenAI Tunnel 当前的 OAuth 限制，详见 [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/docs/oauth/)。
 
-## How it works
+## 工作原理
 
 ```text
 Claude Code / Codex / Qoder / MCP hosts
@@ -147,109 +149,111 @@ Claude Code / Codex / Qoder / MCP hosts
                   ChatGPT
 ```
 
-The MCP core is host-neutral. Standard clients use stdio or Streamable HTTP; the OpenAI Secure MCP Tunnel remains an optional authenticated ChatGPT ingress adapter. On Linux, generic HTTP is opt-in and loopback-only by default, while the historical Tunnel deployment remains supported. v0.17 adds an optional one-secret API Key boundary directly around Streamable HTTP; v0.16 adds the isolated `serverfs-auth` OAuth 2.1 broker for identity-aware deployments. Neither mode changes the existing workdir authorization model or native stdio. The optional file-ingress sidecar retains separate egress responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. Since v0.14.0, Windows uses the current user's Task Scheduler as the persistent OS owner and keeps the managed process tree windowless; no SCM/LocalSystem service or UAC elevation is required. On macOS v0.13.2+, a small headless ServiceManagement companion registers the persistent per-user Tunnel and Agent Bridge through `SMAppService`; no root LaunchDaemon or hand-installed LaunchAgent is required.
+MCP Core 与宿主平台解耦。标准 MCP 客户端使用 stdio 或 Streamable HTTP；OpenAI Secure MCP Tunnel 保持为可选的、带认证的 ChatGPT ingress 适配器。Linux 上的通用 HTTP 需要显式开启，并默认仅监听 loopback；原有 Tunnel 部署方式继续受支持。v0.17 在 Streamable HTTP 外增加可选的单密钥 API Key 边界；v0.16 则提供独立的 `serverfs-auth` OAuth 2.1 Broker，用于需要身份感知的部署。这两种认证方式都不会改变既有 Workdir 授权模型或原生 stdio。可选 file-ingress sidecar 仍维持独立的出站职责。
 
-See [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) for the complete deployment and trust-boundary model.
+Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持独立 Host Process 边界。自 v0.14.0 起，Windows 使用当前用户 Task Scheduler 作为持久化 OS owner，并保持托管进程树无窗口运行，不依赖 SCM/LocalSystem 服务或 UAC 提权。macOS v0.13.2+ 使用一个轻量 headless ServiceManagement companion，通过 `SMAppService` 注册当前用户范围的持久 Tunnel 与 Agent Bridge，不需要 root LaunchDaemon，也不需要手工安装 LaunchAgent。
 
-## Capability surface
+完整部署与信任边界模型见 [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/)。
 
-ServerFS exposes capabilities in layers rather than enabling everything at once.
+## 能力边界
 
-| Surface | Tools | What it adds |
+ServerFS 按层暴露能力，而不是一次性开启所有权限。
+
+| 能力层 | 工具数 | 增加的能力 |
 | --- | ---: | --- |
-| Filesystem | 11 | 6 read tools + 5 controlled mutation tools |
-| Filesystem + binary | 13 | Bounded whole-file download/upload |
-| Filesystem + Agent | 21 | 10 structured Agent Bridge tools |
-| Full capability | 23 | Filesystem + binary + Agent |
+| 文件系统 | 11 | 6 个只读工具 + 5 个受控修改工具 |
+| 文件系统 + 二进制 | 13 | 有大小限制的整文件下载/上传 |
+| 文件系统 + Agent | 21 | 10 个结构化 Agent Bridge 工具 |
+| 完整能力 | 23 | 文件系统 + 二进制 + Agent |
 
-### Filesystem tools
+### 文件系统工具
 
-**Read everywhere:** `list_workdirs`, `list_directory`, `find_files`, `search_text`, `read_text_file`, `stat_file`
+**所有 Workdir 可用的读取工具：** `list_workdirs`、`list_directory`、`find_files`、`search_text`、`read_text_file`、`stat_file`
 
-**Read-write workdirs only:** `create_text_file`, `edit_text_file`, `delete_file`, `create_directory`, `delete_directory`
+**仅 Read-Write Workdir 可用：** `create_text_file`、`edit_text_file`、`delete_file`、`create_directory`、`delete_directory`
 
-**Optional binary transfer:** `download_binary_file`, `upload_binary_file`
+**可选二进制传输：** `download_binary_file`、`upload_binary_file`
 
-Agent tools submit and observe structured provider tasks; they are **not** a shell or arbitrary command-execution API. See [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/).
+Agent 工具用于提交和观察结构化 Provider Task，**不是** Shell 或任意命令执行 API。详见 [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/)。
 
-## Security model
+## 安全模型
 
-ServerFS assumes file contents are untrusted data and uses independent enforcement layers rather than a single permission check.
+ServerFS 假设文件内容均为不可信数据，并通过多个独立防线实施安全约束，而不是依赖单一权限检查。
 
-Key properties include:
+关键特性包括：
 
-- workdir confinement with host paths hidden from MCP results;
-- read-only-by-default policy, reinforced by the deployment/filesystem layer;
-- descriptor- or handle-relative traversal with symlink/reparse-point defenses;
-- revision-guarded destructive operations and atomic publication;
-- metadata preservation for replacement writes;
-- reserved internal names and built-in credential-path deny rules;
-- bounded reads, writes, searches, binary transfers, task results, and interaction lifetimes;
-- no recursive delete, force flag, generic `write_file`, shell, or arbitrary command executor;
-- isolated file ingress instead of giving the MCP service general download egress;
-- allowlisted Agent runtimes, writer leases, recovery guards, explicit provider approvals, and advisory-only Jev integration.
+- Workdir confinement，且 MCP 返回结果不暴露主机真实路径；
+- 默认只读，并由部署层/文件系统层进一步强化；
+- 基于 descriptor 或 HANDLE 的相对路径遍历，并防御 symlink/reparse point；
+- 破坏性操作使用 revision guard，并原子发布修改结果；
+- 替换写入时保留文件元数据；
+- 保留内部名称与内置凭据路径拒绝规则；
+- 对读取、写入、搜索、二进制传输、任务结果及交互生命周期设置明确上限；
+- 不提供递归删除、force、通用 `write_file`、Shell 或任意命令执行器；
+- 使用隔离的 file ingress，而不是给 MCP 主服务开放通用下载出站能力；
+- Agent runtime allowlist、writer lease、恢复保护、显式 Provider approval，以及仅提供建议的 Jev 集成。
 
-For the actual trust boundaries and security contract, read the [Security Model](https://ntlx.github.io/ServerFS_MCP/docs/security/) and [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) pages.
+实际信任边界和安全契约请以 [Security Model](https://ntlx.github.io/ServerFS_MCP/docs/security/) 与 [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) 为准。
 
-## Optional Agent Bridge
+## 可选 Agent Bridge
 
-ServerFS can delegate bounded tasks to native **Codex**, **Claude Code**, and **Qoder** runtimes through a separate host-side Agent Bridge.
+ServerFS 可通过独立的 Host-side Agent Bridge，将受限任务委托给原生 **Codex**、**Claude Code** 和 **Qoder** Runtime。
 
-The Bridge adds structured task submission, status/events, cancellation, approvals/questions, model discovery where the provider exposes it, request-scoped model selection, result spooling, idempotent retries, and recovery semantics. Provider capabilities are reported per runtime rather than assumed to be uniform.
+Agent Bridge 提供结构化任务提交、状态/事件、取消、审批/提问、Provider 支持时的模型发现、请求级模型选择、结果 spool、幂等重试以及恢复语义。Provider 能力按 Runtime 实际上报，不假设不同 Provider 具有完全一致的功能。
 
-Jev integration is optional and advisory only: it may provide task preflight, runtime/model advice, and approval context, but it never expands permissions or automatically overrides the caller's selected runtime/model/approval decision.
+Jev 集成为可选且仅提供建议：它可以提供任务 preflight、Runtime/模型建议和审批上下文，但不会扩展权限，也不会自动覆盖调用方选择的 Runtime、模型或审批决定。
 
 - [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/)
 - [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/)
 
-## Binary transfer and ChatGPT file ingress
+## 二进制传输与 ChatGPT 文件输入
 
-Binary transfer is a separate opt-in capability with explicit byte limits. Uploads to existing files remain revision-guarded and still require a read-write workdir.
+二进制传输是独立的可选能力，并有明确字节上限。覆盖已有文件时仍需 revision guard，且目标必须位于 Read-Write Workdir。
 
-ChatGPT file parameters use an optional isolated ingress helper rather than giving the main MCP service unrestricted Internet access.
+ChatGPT 文件参数通过可选的隔离 ingress helper 处理，而不是让 MCP 主服务获得不受限的互联网访问能力。
 
-See [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/docs/binary-transfer/) for the supported sources, limits, and network boundary.
+支持来源、限制和网络边界见 [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/docs/binary-transfer/)。
 
-## Documentation
+## 文档
 
-The documentation site is the authoritative user and operator reference. The README intentionally stays at project-entry level.
+文档站是面向用户和运维人员的权威参考；README 有意保持在项目入口层级。
 
-| Topic | Documentation |
+| 主题 | 文档 |
 | --- | --- |
-| Overview | [ServerFS MCP docs](https://ntlx.github.io/ServerFS_MCP/docs/) |
-| First deployment | [Getting Started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) |
-| Workdirs and policy | [Configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) |
-| Architecture and trust boundaries | [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) |
-| Security contract | [Security Model](https://ntlx.github.io/ServerFS_MCP/docs/security/) |
-| Static API Key remote HTTP | [Static API Key](https://ntlx.github.io/ServerFS_MCP/docs/api-key/) |
-| OAuth 2.1 remote HTTP | [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/docs/oauth/) |
-| Binary transfer / file ingress | [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/docs/binary-transfer/) |
-| Agent delegation | [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/) |
-| Optional Jev advice | [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) |
-| OpenAI Tunnel troubleshooting | [Tunnel Diagnostics](https://ntlx.github.io/ServerFS_MCP/docs/tunnel-diagnostics/) |
-| Read-only host status publication | [Host Observability](https://ntlx.github.io/ServerFS_MCP/docs/host-observability/) |
-| Restricted-network Linux ARM64 | [Restricted-network ARM64](https://ntlx.github.io/ServerFS_MCP/docs/restricted-network-arm64/) |
-| Windows native | [Windows Native](https://ntlx.github.io/ServerFS_MCP/docs/windows-native/) |
-| macOS native | [macOS Native](https://ntlx.github.io/ServerFS_MCP/docs/macos-native/) |
+| 项目概览 | [ServerFS MCP docs](https://ntlx.github.io/ServerFS_MCP/docs/) |
+| 首次部署 | [Getting Started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) |
+| Workdir 与策略 | [Configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) |
+| 架构与信任边界 | [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) |
+| 安全契约 | [Security Model](https://ntlx.github.io/ServerFS_MCP/docs/security/) |
+| 远程 HTTP 静态 API Key | [Static API Key](https://ntlx.github.io/ServerFS_MCP/docs/api-key/) |
+| 远程 HTTP OAuth 2.1 | [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/docs/oauth/) |
+| 二进制传输 / 文件输入 | [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/docs/binary-transfer/) |
+| Agent 委托 | [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/) |
+| 可选 Jev 建议 | [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) |
+| OpenAI Tunnel 故障诊断 | [Tunnel Diagnostics](https://ntlx.github.io/ServerFS_MCP/docs/tunnel-diagnostics/) |
+| Host 只读状态发布 | [Host Observability](https://ntlx.github.io/ServerFS_MCP/docs/host-observability/) |
+| 受限网络 Linux ARM64 | [Restricted-network ARM64](https://ntlx.github.io/ServerFS_MCP/docs/restricted-network-arm64/) |
+| Windows 原生部署 | [Windows Native](https://ntlx.github.io/ServerFS_MCP/docs/windows-native/) |
+| macOS 原生部署 | [macOS Native](https://ntlx.github.io/ServerFS_MCP/docs/macos-native/) |
 
-Release history and upgrade-specific notes belong in [GitHub Releases](https://github.com/NTLx/ServerFS_MCP/releases), not in this README.
+版本历史和升级专用说明应放在 [GitHub Releases](https://github.com/NTLx/ServerFS_MCP/releases)，而不是持续堆积在 README 中。
 
-## Releases
+## 发布版本
 
-The current stable release is **v0.18.0**.
+当前稳定版本为 **v0.18.0**。
 
-- Linux images: `ghcr.io/ntlx/serverfs_mcp`
-- Stable release tag: `v0.18.0`
-- Production deployments should pin an exact release rather than `latest` or `edge`.
-- Portable Agent Plugin: one skills-only `serverfs-plugin-v0.18.0.zip` asset.
-- Windows release assets include the product, Agent Bridge, and native kernel wheels.
-- macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel. v0.13.2 locally builds the small bundled ServiceManagement companion used for persistent per-user services.
+- Linux 镜像：`ghcr.io/ntlx/serverfs_mcp`
+- 稳定版本标签：`v0.18.0`
+- 生产部署应固定到明确版本，不建议使用 `latest` 或 `edge`。
+- 可移植 Agent Plugin：一个仅包含 Skills 的 `serverfs-plugin-v0.18.0.zip` Release 资产。
+- Windows Release 资产包含产品本体、Agent Bridge 与原生 kernel wheel。
+- macOS 直接使用产品与 Agent Bridge 的 Python distribution；v0.13 不提供单独的 macOS native wheel。v0.13.2 会在本地构建用于当前用户持久化服务的轻量 ServiceManagement companion。
 
-See the [latest release](https://github.com/NTLx/ServerFS_MCP/releases/latest) for artifacts, checksums, and version-specific notes.
+具体资产、校验和与版本说明见 [最新 Release](https://github.com/NTLx/ServerFS_MCP/releases/latest)。
 
-## Development
+## 开发
 
-For the main Python/Linux path:
+Python/Linux 主路径：
 
 ```bash
 uv sync --frozen
@@ -260,8 +264,8 @@ docker compose config
 SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 ```
 
-Platform-native development has additional gates in the Windows and macOS workflows. Maintainer invariants, validation rules, and release discipline live in [AGENTS.md](AGENTS.md) and [docs/maintainers/](docs/maintainers/).
+Windows 与 macOS 原生开发还有额外的平台 Gate。维护者不变量、验证规则和 Release 纪律见 [AGENTS.md](AGENTS.md) 与 [docs/maintainers/](docs/maintainers/)。
 
 ## License
 
-ServerFS MCP is released under the [MIT License](LICENSE).
+ServerFS MCP 基于 [MIT License](LICENSE) 发布。
