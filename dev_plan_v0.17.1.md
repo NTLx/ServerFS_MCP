@@ -1,6 +1,6 @@
 # ServerFS MCP v0.17.1 Maintenance Release Plan
 
-Status: implementation complete; issues #15/#16/#17 closed as completed; v0.17.1 publication pending
+Status: released — v0.17.1 maintenance release complete; issues #15/#16/#17 closed as completed
 Baseline: v0.17.0 (`e63f4c676a88d594d20adafba97b6ef27ca4a012`)
 Scope: Linux/Docker operational reliability and documentation only
 Issues: #15, #16, #17
@@ -180,4 +180,4 @@ All three issues were closed only after the implementation was pushed to the sha
 
 ## 9. Release boundary
 
-The implementation is targeted for v0.17.1. Preparing the fixes and closing the issues does not by itself move or recreate any existing tag. The final v0.17.1 tag/GitHub Release must be created from a validated shared commit under the normal release workflow when publication is explicitly authorized.
+v0.17.1 is the current stable maintenance release. Its immutable `v0.17.1` tag and GitHub Release are bound to the validated release commit under the normal release workflow. The stable tag must never be moved or recreated after publication.

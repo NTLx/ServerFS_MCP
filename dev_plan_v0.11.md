@@ -47,7 +47,7 @@ source-checkout tolerance, `78f4547` release-workflow runner fix) landed on `mai
 per-wheel digests) were published 2026-10-09. Layered evidence and the release-contract
 table are in `docs/phase-h-acceptance-2026-10.md`. The production WorkPC deployment runs
 the released code with a preserved rollback baseline. **v0.11.0 was the stable release
-produced by this plan; repository current stable is v0.17.0.**
+produced by this plan; repository current stable is v0.17.1.**
 
 Phase E's §40–§49 gates were all measured on the real provider through the public MCP surface: §40,
 §41, §42, §44, §45, §46, §47, §48 pass; §43 is NOT APPLICABLE because Codex 0.159.2 does not expose

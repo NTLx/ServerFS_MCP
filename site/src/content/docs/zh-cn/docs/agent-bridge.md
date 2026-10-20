@@ -3,7 +3,7 @@ title: Agent Bridge
 description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时委派。
 ---
 
-Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.17.0 是当前已发布稳定版本：保持同一套 provider-neutral Agent 契约，同时为 Windows 原生栈增加当前用户 Task Scheduler 持久生命周期；macOS 的持久 Tunnel/Bridge 生命周期继续使用 Apple `SMAppService`。
+Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.17.1 是当前已发布稳定版本：保持同一套 provider-neutral Agent 契约，同时为 Windows 原生栈增加当前用户 Task Scheduler 持久生命周期；macOS 的持久 Tunnel/Bridge 生命周期继续使用 Apple `SMAppService`。
 
 ```text
 ChatGPT
