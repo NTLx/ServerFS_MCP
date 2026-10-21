@@ -77,6 +77,8 @@ serverfs service open-settings
 
 ## Agent Bridge policy
 
+v0.19.0 ACP release candidate 包含通用 POSIX process group 任务级子进程约束设计。目前没有真实的、支持 ACP 的本地 Agent 通过 macOS 验收，因此尚不宣称支持 macOS ACP 平台。
+
 `serverfs.toml` 仍是 Agent workdir/runtime policy 的唯一用户配置来源。所有暴露 workdir 之外的私有 `bridge.json` 仍是派生状态，只保存 Bridge 所需的限定 Jev/proxy 私有材料。
 
 ```bash

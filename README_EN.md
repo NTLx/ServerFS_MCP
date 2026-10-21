@@ -14,6 +14,8 @@ Expose only the directories you choose. Keep them read-only by default. Opt into
 
 **Current stable release: v0.18.0**
 
+v0.19.0 is an implemented ACP release candidate that has not been tagged or released; v0.18.0 remains the current published stable release. The candidate adds generic ACP v1 profiles alongside the native Codex, Claude Code, and Qoder runtimes. An operator configures an absolute executable path and fixed argv for each profile; ACP profiles require `workspace-write`, and tasks cannot override command, argv, or environment. ServerFS does not auto-install or trust Agents from the ACP Registry, and provider authentication remains provider-owned. ACP model discovery/override, elicitation, client filesystem, and terminal capabilities are unsupported; other runtime capabilities are reported conservatively from measured behavior. The Linux two-real-Agent core smoke has not passed, and macOS/Windows ACP platform support has not been accepted.
+
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
 [Getting started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) ·
@@ -195,9 +197,9 @@ For the actual trust boundaries and security contract, read the [Security Model]
 
 ## Optional Agent Bridge
 
-ServerFS can delegate bounded tasks to native **Codex**, **Claude Code**, and **Qoder** runtimes through a separate host-side Agent Bridge.
+ServerFS can delegate bounded tasks to native **Codex**, **Claude Code**, and **Qoder** runtimes through a separate host-side Agent Bridge. The unreleased v0.19.0 candidate also implements generic ACP v1 profiles with runtime IDs such as `acp-<profile>`; these are not new native provider integrations or evidence of accepted platform support.
 
-The Bridge adds structured task submission, status/events, cancellation, approvals/questions, model discovery where the provider exposes it, request-scoped model selection, result spooling, idempotent retries, and recovery semantics. Provider capabilities are reported per runtime rather than assumed to be uniform.
+The Bridge adds structured task submission, status/events, cancellation, approvals/questions, model discovery where the provider exposes it, request-scoped model selection, result spooling, idempotent retries, and recovery semantics. Provider capabilities are reported per runtime rather than assumed to be uniform. ACP candidate runtimes do not support model discovery or override, elicitation, ACP client filesystem, or terminal capabilities; remaining capabilities are reported conservatively from measured behavior.
 
 Jev integration is optional and advisory only: it may provide task preflight, runtime/model advice, and approval context, but it never expands permissions or automatically overrides the caller's selected runtime/model/approval decision.
 

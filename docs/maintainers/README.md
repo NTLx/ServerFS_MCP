@@ -50,7 +50,7 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.17** — optional one-secret static API Key authentication for Streamable HTTP, with Bearer and DingTalk-style query-key interoperability; v0.17.1 adds Tunnel readiness/control-plane diagnostics, a read-only host-observability recipe, and restricted-network ARM64 deployment guidance.
 
 - **v0.18** — seven operational Agent Skills and one skills-only portable Agent Plugin release asset, `serverfs-plugin-v0.18.0.zip`.
-- **v0.19 (planned)** — one provider-neutral ACP v1 adapter for standards-based Agent expansion, while Codex/Claude/Qoder remain the native baseline; ACP v2 draft behavior and new provider-specific native adapters are outside the release scope unless a later plan explicitly passes the native runtime admission gate.
+- **v0.19.0 (implemented release candidate, not tagged/released)** — generic ACP v1 profiles alongside the native Codex/Claude/Qoder baseline. v0.18.0 remains the current published stable release. Linux two-real-Agent smoke is unmet; macOS/Windows ACP platform support is not accepted. See [`dev_plan_v0.19.md`](../../dev_plan_v0.19.md) for implementation commits and blockers.
 
 ## Keep this index small
 

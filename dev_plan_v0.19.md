@@ -1,6 +1,6 @@
 # ServerFS v0.19.0 Development Plan
 
-Status: **planned / not yet implemented**. This document freezes the v0.19.0 product and engineering boundary before source implementation begins. The current stable release remains **v0.18.0**.
+Status: **implemented release candidate; not tagged or released**. The current published stable release remains **v0.18.0**. v0.19.0 must not be described as released until an explicitly authorized release is published.
 
 Planning date: 2026-10-21.
 
@@ -712,7 +712,25 @@ skills/serverfs-agent-bridge/* where the operational workflow needs ACP knowledg
 
 Historical plans/evidence are not mechanically rewritten.
 
-## 17. Implementation phases
+## 17. Implementation phases and current evidence
+
+Implementation commits in this checkout:
+
+- `1099062 feat(agent): add generic ACP runtime support` — generic ACP v1 adapter, profile configuration/rendering, authorization, tests and Linux integration.
+- `b57a024 fix(agent): sync ACP profiles in native policy` — native config synchronization and focused tests.
+- `be17a94 fix(windows): contain ACP process trees safely` — Windows ACP process containment; fixes launch order to `CREATE_SUSPENDED` → Job assignment → resume and adds task-level process-tree stop.
+
+Measured acceptance and current blockers:
+
+- Linux two-real-Agent core smoke is **not met**. Grok Build `0.2.114` completed ACP initialize/load, but `new_session` returned `auth_required`. OpenCode `1.18.19` timed out during initialize. Neither has passed the required core live smoke.
+- macOS baseline code and native tests passed at `b57a024`, but no ACP-capable local Agent was available. Final `be17a94` synchronization is currently blocked because the Tunnel is disconnected. No macOS ACP platform support is accepted.
+- Windows containment and argv tests passed. `be17a94` fixes suspended creation → Job assignment → resume and task-level process-tree stop. This is implementation evidence only; real ACP Agent smoke and remaining native acceptance are outstanding, so Windows ACP platform support is not accepted.
+- ACP model discovery and override are unsupported in this candidate. ACP elicitation, Client filesystem, and Client terminal methods are not advertised. Runtime capabilities are conservative and may be claimed only from measured peer behavior.
+- Final Linux RC regression at `be17a94` plus 0.19.0 metadata/docs: Agent Bridge **413 passed / 14 skipped**; root **1664 passed / 317 skipped**; Agent Skills **29 passed**; root/Bridge Ruff and format checks passed; Plugin `v0.19.0` validation passed; **5/5** Compose render gates passed; main Docker image built successfully; site production build generated **35 pages**; root and Agent Bridge `0.19.0` wheels built successfully; `git diff --check` passed. Cargo verification is delegated to Windows because the VPS has no `cargo`.
+
+v0.19.0 remains an implemented release candidate with platform acceptance gates outstanding. Do not infer support from implementation or unit tests alone.
+
+### Planned phase record (scope and gates)
 
 ### Phase 0 — governance and plan
 
@@ -720,14 +738,14 @@ Deliverables:
 
 - repository-wide standard-protocol-first instruction in `AGENTS.md`;
 - detailed Native runtime admission gate in `docs/maintainers/invariants.md`;
-- maintainer index records planned v0.19 direction;
+- maintainer index records v0.19 as an implemented release candidate;
 - this development plan.
 
 Gate:
 
 - an unfamiliar Agent reading repository instructions can determine that it must not add a provider-specific native adapter without passing the gate;
 - any future native proposal must contain the required **Native runtime admission record** and the Agent must stop before source implementation unless the maintainer explicitly records `Admission decision: PASS` after review; an Agent's own research conclusion is not approval;
-- v0.19 scope does not claim implementation has started.
+- current implementation status and measured acceptance evidence are recorded above.
 
 ### Phase 1 — normalized runtime registry and configuration
 

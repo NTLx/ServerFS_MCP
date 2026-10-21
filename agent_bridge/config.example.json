@@ -32,6 +32,7 @@
     "probe_timeout_seconds": 5,
     "event_idle_timeout_seconds": null
   },
+  "acp_profiles": [],
   "workdirs": [
     {
       "slot": 1,

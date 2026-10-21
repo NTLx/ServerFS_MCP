@@ -89,6 +89,8 @@ Task Scheduler 同时使用用户登录触发器与无限期的每 1 分钟 `Tim
 
 ## Windows 上的 Agent 运行时
 
+v0.19.0 ACP release candidate 增加了通用配置型 `acp-<id>` profile，但 Windows ACP 实时验收仍未完成，尚不宣称支持 Windows ACP 平台。进程约束实现先以 `CREATE_SUSPENDED` 创建子进程，将其分配到现有 supervisor Job Object 后再恢复；任务级停止会终止 ACP 进程树，不会创建第二个 Job Object。
+
 每个 runtime 都是一个真实的 provider 进程；能力按 runtime 逐一记录，不做统一宣传：
 
 | Runtime | 模型发现 | 实时转向（live steering） | proxy 路由 |

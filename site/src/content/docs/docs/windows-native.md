@@ -84,6 +84,8 @@ Intentional lifecycle operations are explicit:
 
 ## Agent runtimes on Windows
 
+The v0.19.0 ACP release candidate adds configured generic `acp-<id>` profiles, but Windows ACP live acceptance remains outstanding and Windows ACP platform support is not claimed. The containment implementation creates the child with `CREATE_SUSPENDED`, assigns it to the existing supervisor Job Object, then resumes it; task-level stop terminates the ACP process tree without creating a second Job Object.
+
 Each runtime is a real provider process; capabilities are recorded per runtime, not advertised uniformly:
 
 | Runtime | Model discovery | Live steering | Proxy routing |

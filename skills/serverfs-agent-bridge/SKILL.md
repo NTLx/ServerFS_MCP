@@ -1,11 +1,13 @@
 ---
 name: serverfs-agent-bridge
-description: Enable workdir Agent delegation; operate Bridge lifecycle, Codex/Claude/Qoder runtimes, proxy routing, Jev advice, or task/HITL failures.
+description: Enable workdir Agent delegation; operate Bridge lifecycle, native Codex/Claude/Qoder or operator-configured ACP profiles, proxy routing, Jev advice, or task/HITL failures.
 ---
 
 # Operate ServerFS Agent Bridge
 
 Agent delegation is an explicit optional capability. Preserve the two-process security boundary, per-workdir authorization, provider-native ownership and current-user lifecycle.
+
+The current published stable is v0.18.0. v0.19.0 adds an implemented ACP release candidate; do not describe it as released or claim ACP platform support without real live acceptance. Native `codex`, `claude` and `qoder` adapters remain distinct from operator-configured `acp-<id>` profiles.
 
 ## When to use
 
@@ -15,6 +17,7 @@ Use this skill when the user explicitly wants to:
 - install/update/verify the Linux host Agent Bridge;
 - configure native Windows/macOS Agent policy and Bridge lifecycle;
 - allow Codex, Claude or Qoder runtimes;
+- configure an operator-owned ACP v1 profile (`acp-<id>`);
 - configure Agent-specific proxy routing or optional Jev advisory features;
 - diagnose missing Agent tools, unavailable runtimes, Bridge IPC/identity errors, task lifecycle/HITL problems or provider parity issues.
 
@@ -61,7 +64,7 @@ The Linux deployment guide is the authoritative step-by-step source for peer ide
 
 ## Procedure
 
-1. **Define the authorization boundary first.** Agent delegation is enabled only for selected workdirs/runtimes. A native runtime requiring `workspace-write` must not be enabled on a read-only workdir by silently widening filesystem policy. Record the selected workdir/runtime authorization and explicit write permission before enablement.
+1. **Define the authorization boundary first.** Agent delegation is enabled only for selected workdirs/runtimes. ACP profiles always require `workspace-write`; reject them on read-only workdirs and never widen workdir policy silently. Record explicit authorization before enablement.
 2. **Establish the provider-native baseline.** Confirm the selected provider CLI works for the same login user before blaming ServerFS. Preserve provider-owned auth and permission configuration. Proceed after direct CLI availability/version is observed for the same user.
 3. **Configure only the required ServerFS policy.** Use Linux `.env` or native TOML as documented; keep provider secrets/private env in their dedicated user-owned boundary. Review the local policy diff and pass the applicable parser/doctor or Compose gate.
 4. **Install/configure the Bridge through supported current-user lifecycle.** Do not create system users, root services or administrator services. Confirm status identifies the supported current-user owner.
@@ -69,6 +72,16 @@ The Linux deployment guide is the authoritative step-by-step source for peer ide
 6. **Verify provider parity.** Compare direct provider version/availability with normalized ServerFS runtime evidence. Treat stale managed provider daemons using the provider's official lifecycle, not arbitrary kill/delete operations. Record direct and Bridge-reported runtime evidence; resolve unexplained differences before task testing.
 7. **Exercise a disposable Agent task only after structural checks pass.** Use a safe workdir and verify poll/result/cancel/HITL as required by the user's objective. Record a terminal result and lease release; when cancel/HITL is exercised, verify those outcomes too.
 8. **Preserve writer-lease semantics.** Never bypass a legitimate `WORKDIR_BUSY` by deleting locks or launching an uncontrolled parallel writer. Report busy/recovery state and use the documented lifecycle before retrying.
+
+## ACP profile workflow (v0.19.0 release candidate)
+
+ACP is the standards-based path for compatible Agents. Follow standard-protocol-first: do not add a provider-specific native runtime unless the Native runtime admission gate in `docs/maintainers/invariants.md` is satisfied, including an explicit maintainer `PASS` recorded after review. An Agent must stop before native-adapter source implementation without that approval.
+
+1. Treat each `acp-<id>` as an operator-configured profile, separate from native Codex/Claude/Qoder. Configure an absolute executable path and fixed bounded argv (`SERVERFS_ACP_PROFILES_JSON` on Linux; `[[agent.acp_profiles]]` on native platforms). Task callers cannot supply command, argv or environment. Never turn an ACP task into command execution.
+2. Confirm the selected workdir is explicitly `workspace-write`. ACP's native sandbox is not controlled by ServerFS; never enable it by silently converting a read-only workdir. Keep provider authentication and credentials provider-owned.
+3. Treat ACP Registry as discovery/reference metadata only. Never auto-install, trust or authorize a Registry entry. Runtime listing/probe may inspect local executable/config and cached measured capabilities, but must not launch an Agent solely to discover capabilities.
+4. Use only capability evidence measured for that configured profile. ACP model discovery/override, elicitation, client filesystem and terminal are unsupported; do not invent or infer them. For permission requests, show the offered options and require the human to select the exact offered option ID; never synthesize, broaden or auto-select one.
+5. Cancellation is terminal-first, but protocol cancel or a final response alone does not prove the child stopped. Require platform task-tree stop evidence before releasing the writer lease/clearing recovery state. If stop is uncertain, fail closed and retain the recovery guard; never blindly rerun an in-flight task after restart. Session resumability is not old-process stop evidence.
 
 ## Platform branches
 
@@ -91,6 +104,7 @@ Stop when:
 - a stale provider daemon/process cannot be proven and safely handed over through its official lifecycle;
 - Agent/Tunnel/Jev proxy settings are being conflated;
 - root/Admin ownership is proposed as a fix.
+- ACP support is being claimed for a platform without real live acceptance on that platform; stop and report it as unaccepted.
 
 Never manually delete a live control socket, lock or Bridge state as a first-line repair. Use documented lifecycle/rollback mechanisms.
 

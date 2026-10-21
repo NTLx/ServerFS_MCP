@@ -78,6 +78,8 @@ Approve the ServerFS background item under **System Settings > General > Login I
 
 ## Agent Bridge policy
 
+The v0.19.0 ACP release candidate includes a generic POSIX process-group design for task-level child containment. No real ACP-capable local Agent has passed macOS acceptance, so macOS ACP platform support is not claimed.
+
 `serverfs.toml` remains the operator source of Agent workdir/runtime policy. The private `bridge.json` outside every exposed workdir remains derived state and may contain the narrow Jev/proxy material needed by the Bridge.
 
 ```bash

@@ -14,3 +14,5 @@ serverfs doctor --config serverfs.toml
 Persistent Bridge ownership is through the app-associated current-user ServiceManagement lifecycle. Do not resurrect the retired `serverfs agent-bridge install` path or hand-install legacy LaunchAgent plists.
 
 Respect Login Items/TCC user decisions; do not bypass them.
+
+ACP is an implemented v0.19.0 release candidate, not a released feature. Profiles are operator-owned absolute executable paths with fixed argv, configured through `[[agent.acp_profiles]]`; task callers cannot override command/argv/environment. Require explicit `workspace-write` workdir authorization. Runtime listing/probe must not launch the Agent. ACP task children use POSIX process-group stop semantics; retain the recovery guard and writer lease if stopping the group cannot be proven. Do not claim macOS ACP support until real live ACP acceptance passes on macOS.

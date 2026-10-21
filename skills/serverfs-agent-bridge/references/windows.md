@@ -14,3 +14,5 @@ Agent policy lives in `serverfs.toml`; secret/proxy/runtime values use the docum
 The current-user Task Scheduler lifecycle owns persistent operation. Do not use SCM/LocalSystem/Admin services.
 
 For provider/runtime failures, compare direct provider CLIs with ServerFS runtime discovery. ServerFS must not rewrite provider authentication or sandbox policy.
+
+ACP is an implemented v0.19.0 release candidate, not a released feature. Profiles are operator-owned absolute executable paths with fixed argv, configured through `[[agent.acp_profiles]]`; task callers cannot override command/argv/environment. Require explicit `workspace-write` workdir authorization. Runtime listing/probe must not launch the Agent. ACP children inherit the supervisor's existing Job Object; stop the task process tree at task scope and do not create a second Job. Retain the recovery guard and writer lease if stop cannot be proven. Do not claim Windows ACP support until real live ACP acceptance passes on Windows.

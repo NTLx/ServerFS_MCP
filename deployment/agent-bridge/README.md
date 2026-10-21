@@ -166,7 +166,11 @@ WORKDIR_01_PATH=/srv/ServerFS_MCP
 WORKDIR_01_READ_ONLY=false
 WORKDIR_01_AGENT_MODE=workspace-write
 WORKDIR_01_AGENT_RUNTIMES=codex,claude,qoder
+# Optional v0.19.0 release-candidate ACP profiles; omit or use [] for none.
+SERVERFS_ACP_PROFILES_JSON='[]'
 ```
+
+For an ACP profile, set `SERVERFS_ACP_PROFILES_JSON` to a JSON array of operator-owned profiles with `id`, `command`, fixed `args`, and optional `use_proxy`, `probe_timeout_seconds`, and `shutdown_timeout_seconds`. The renderer validates and copies these launch settings into private Bridge configuration. `command` must name an existing absolute executable path; task callers cannot override command, argv, or environment. Allow the derived `acp-<id>` runtime explicitly on a writable `workspace-write` workdir. This v0.19.0 candidate is not a published release. ACP model discovery/override, elicitation, client filesystem, and terminal are unsupported; capabilities are otherwise conservative and measured. Current Linux live smoke is blocked for Grok Build 0.2.114 (`auth_required` at `new_session`) and OpenCode 1.18.19 (initialize timeout); this does not meet the two-Agent gate.
 
 Native Codex/Claude/Qoder currently require `workspace-write`, therefore the same
 workdir must have `READ_ONLY=false`.

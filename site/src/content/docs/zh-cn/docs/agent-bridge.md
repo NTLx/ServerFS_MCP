@@ -5,6 +5,8 @@ description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时委派�
 
 Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.18.0 是当前已发布稳定版本：保持同一套 provider-neutral Agent 契约，同时为 Windows 原生栈增加当前用户 Task Scheduler 持久生命周期；macOS 的持久 Tunnel/Bridge 生命周期继续使用 Apple `SMAppService`。
 
+已实现的 **v0.19.0 release candidate** 在 Codex、Claude、Qoder 原生 runtime 之外增加通用 ACP v1 profile；该版本尚未发布，v0.18.0 仍是稳定版。每个 `acp-<id>` runtime 都由运营者配置的 profile 派生，profile 使用绝对可执行文件路径和固定 argv。ACP 任务必须使用 `workspace-write`；任务调用方不能覆盖命令、argv 或环境变量。ACP Registry 只是参考元数据，不是执行信任根；Provider 认证仍由 Provider 自行管理。能力仅依据实测的 peer 行为保守报告。ACP 模型发现与模型覆盖、elicitation，以及 Client 文件系统/终端方法均不支持。Linux 真实 Agent 验收仍未达成；macOS 和 Windows 的 ACP 平台验收尚未获认可。
+
 ```text
 ChatGPT
   │

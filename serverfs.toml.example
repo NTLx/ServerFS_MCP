@@ -106,6 +106,19 @@ read_only = false
 # # Measured directly reachable, so proxying is a policy choice here.
 # use_proxy = false
 #
+# Generic ACP v1 profiles (v0.19.0 release candidate only). Leave this list
+# absent or empty when no ACP Agent is configured. Every profile command is
+# an operator-selected absolute executable path; argv is fixed at config time.
+# Task callers cannot override command, argv or environment. ACP profiles
+# require workspace-write workdir policy. Provider authentication remains in
+# provider-owned state. No Registry Agent is installed or trusted automatically.
+#
+# [[agent.acp_profiles]]
+# id = "my-agent"
+# command = "/absolute/path/to/agent"
+# args = ["acp"]
+# use_proxy = false
+#
 # Per-workdir Agent policy. agent_mode is one of disabled | review |
 # workspace-write. A workdir that allowlists a native runtime must be
 # workspace-write, because a native runtime may only submit with that profile,

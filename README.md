@@ -14,6 +14,8 @@
 
 **当前稳定版本：v0.18.0**
 
+v0.19.0 是尚未打标签或发布的 ACP release candidate；当前发布的稳定版本仍为 v0.18.0。候选版本在 Agent Bridge 中加入通用 ACP v1 profile，与原生 Codex、Claude Code、Qoder runtime 并存。ACP profile 使用运维人员配置的绝对可执行文件路径和固定 argv，仅支持 `workspace-write`；任务调用不能覆盖 command、argv 或 env。ServerFS 不会从 ACP Registry 自动安装或信任 Agent，Provider authentication 仍由 Provider 自己管理。ACP 的模型发现/覆盖、elicitation、client filesystem 和 terminal 均不支持；能力只按实测结果保守报告。Linux 两个真实 Agent 的核心 smoke 尚未通过，macOS/Windows ACP 平台支持也尚未获验收。
+
 [项目网站](https://ntlx.github.io/ServerFS_MCP/) ·
 [文档](https://ntlx.github.io/ServerFS_MCP/docs/) ·
 [快速开始](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) ·
@@ -197,9 +199,9 @@ ServerFS 假设文件内容均为不可信数据，并通过多个独立防线�
 
 ## 可选 Agent Bridge
 
-ServerFS 可通过独立的 Host-side Agent Bridge，将受限任务委托给原生 **Codex**、**Claude Code** 和 **Qoder** Runtime。
+ServerFS 可通过独立的 Host-side Agent Bridge，将受限任务委托给原生 **Codex**、**Claude Code** 和 **Qoder** Runtime。未发布的 v0.19.0 候选版本还实现了通用 ACP v1 profiles，公开 runtime ID 形如 `acp-<profile>`；它们不代表新原生 Provider 集成或已验收的平台支持。
 
-Agent Bridge 提供结构化任务提交、状态/事件、取消、审批/提问、Provider 支持时的模型发现、请求级模型选择、结果 spool、幂等重试以及恢复语义。Provider 能力按 Runtime 实际上报，不假设不同 Provider 具有完全一致的功能。
+Agent Bridge 提供结构化任务提交、状态/事件、取消、审批/提问、Provider 支持时的模型发现、请求级模型选择、结果 spool、幂等重试以及恢复语义。Provider 能力按 Runtime 实际上报，不假设不同 Provider 具有完全一致的功能。v0.19.0 ACP 候选 runtime 不支持模型发现或覆盖、elicitation、ACP client filesystem 或 terminal；其余 runtime capabilities 也仅按实测结果保守报告。
 
 Jev 集成为可选且仅提供建议：它可以提供任务 preflight、Runtime/模型建议和审批上下文，但不会扩展权限，也不会自动覆盖调用方选择的 Runtime、模型或审批决定。
 

@@ -36,3 +36,5 @@ If generic HTTP/OAuth/file ingress is already part of the deployment, preserve t
 The Bridge service is `systemctl --user`; no system-level unit or `loginctl enable-linger` side effect is introduced by ServerFS. Host linger policy is external and must be reported rather than worked around with root.
 
 Agent proxying is credentialless-only on the supported Linux path. Do not inject shared proxy credentials into provider children. Tunnel and Jev proxy decisions remain independent.
+
+ACP is an implemented v0.19.0 release candidate, not a released feature. Profiles are operator-owned absolute executable paths with fixed argv, configured through `SERVERFS_ACP_PROFILES_JSON`; never accept task-level launch metadata. Configure `acp-*` only for explicitly authorized `workspace-write` workdirs. Runtime listing/probe must not launch the Agent. ACP task children use POSIX process-group stop semantics; retain the recovery guard and writer lease if stopping the group cannot be proven. Do not claim Linux ACP support until the real live acceptance gate passes (including two materially different ACP Agents).
