@@ -13,7 +13,10 @@ import urllib.request
 from contextlib import contextmanager
 from typing import Any
 
+import httpx2
 import uvicorn
+from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
 
 from helpers import read_write, registry_for
 from serverfs_mcp.config import Settings
@@ -134,8 +137,8 @@ def test_static_api_key_protects_real_streamable_http_surface(workdir) -> None:
         host=settings.http_host,
     )
     protected_app = StaticAPIKeyMiddleware(app, API_KEY)
-    initialize_params = {
-        "protocolVersion": "2026-07-28",
+    legacy_initialize_params = {
+        "protocolVersion": "2025-11-25",
         "capabilities": {},
         "clientInfo": {"name": "api-key-e2e", "version": "1"},
     }
@@ -144,7 +147,7 @@ def test_static_api_key_protects_real_streamable_http_surface(workdir) -> None:
         status, headers, payload = _json_rpc(
             resource_url,
             method="initialize",
-            params=initialize_params,
+            params=legacy_initialize_params,
         )
         assert status == 401
         assert "www-authenticate" not in headers
@@ -153,7 +156,7 @@ def test_static_api_key_protects_real_streamable_http_surface(workdir) -> None:
         status, _, _ = _json_rpc(
             resource_url,
             method="initialize",
-            params=initialize_params,
+            params=legacy_initialize_params,
             authorization="Bearer wrong-key",
         )
         assert status == 401
@@ -161,11 +164,46 @@ def test_static_api_key_protects_real_streamable_http_surface(workdir) -> None:
         status, headers, payload = _json_rpc(
             resource_url,
             method="initialize",
-            params=initialize_params,
+            params=legacy_initialize_params,
             authorization=f"Bearer {API_KEY}",
         )
         assert status == 200
         assert payload is not None and "error" not in payload
+
+        async def sdk_roundtrip(mode: str):
+            async with httpx2.AsyncClient(
+                headers={"Authorization": f"Bearer {API_KEY}"},
+                trust_env=False,
+            ) as http_client:
+                transport = streamable_http_client(
+                    resource_url,
+                    http_client=http_client,
+                    terminate_on_close=False,
+                )
+                async with Client(
+                    transport,
+                    mode=mode,
+                    raise_exceptions=True,
+                ) as client:
+                    tools = await client.list_tools()
+                    result = await client.call_tool("list_workdirs", {})
+                    return (
+                        str(client.protocol_version),
+                        {tool.name for tool in tools.tools},
+                        result.structured_content,
+                    )
+
+        modern_protocol, modern_tools, modern_workdirs = asyncio.run(sdk_roundtrip("2026-07-28"))
+        assert modern_protocol == "2026-07-28"
+        assert "list_workdirs" in modern_tools
+        assert modern_workdirs is not None
+        assert modern_workdirs["workdirs"][0]["access"] == "read-write"
+
+        legacy_protocol, legacy_tools, legacy_workdirs = asyncio.run(sdk_roundtrip("legacy"))
+        assert legacy_protocol == "2025-11-25"
+        assert "list_workdirs" in legacy_tools
+        assert legacy_workdirs is not None
+        assert legacy_workdirs["workdirs"][0]["access"] == "read-write"
         session_id = headers["mcp-session-id"]
 
         status, _, payload = _json_rpc(
@@ -183,7 +221,7 @@ def test_static_api_key_protects_real_streamable_http_surface(workdir) -> None:
         status, _, payload = _json_rpc(
             query_url,
             method="initialize",
-            params=initialize_params,
+            params=legacy_initialize_params,
             request_id=3,
         )
         assert status == 200
