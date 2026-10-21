@@ -269,3 +269,6 @@ Platform-native development has additional gates in the Windows and macOS workfl
 ## License
 
 ServerFS MCP is released under the [MIT License](LICENSE).
+
+
+ACP profile configuration and operation: [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/).

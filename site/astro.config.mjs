@@ -92,6 +92,7 @@ export default defineConfig({
               translations: { 'zh-CN': 'Agent Bridge' },
               slug: 'docs/agent-bridge',
             },
+            { label: 'ACP Guide', translations: { 'zh-CN': 'ACP 指南' }, slug: 'docs/acp' },
             {
               label: 'Jev Advisors',
               translations: { 'zh-CN': 'Jev Advisors' },

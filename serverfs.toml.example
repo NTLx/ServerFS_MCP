@@ -106,7 +106,7 @@ read_only = false
 # # Measured directly reachable, so proxying is a policy choice here.
 # use_proxy = false
 #
-# Generic ACP v1 profiles (v0.19.0 release candidate only). Leave this list
+# Generic ACP v1 profiles (v0.19.0). Leave this list
 # absent or empty when no ACP Agent is configured. Every profile command is
 # an operator-selected absolute executable path; argv is fixed at config time.
 # Task callers cannot override command, argv or environment. ACP profiles
@@ -114,8 +114,8 @@ read_only = false
 # provider-owned state. No Registry Agent is installed or trusted automatically.
 #
 # [[agent.acp_profiles]]
-# id = "my-agent"
-# command = "/absolute/path/to/agent"
+# id = "opencode"
+# command = "/absolute/path/to/opencode"
 # args = ["acp"]
 # use_proxy = false
 #
@@ -129,4 +129,4 @@ read_only = false
 # path = "D:\\agent-data\\project"
 # read_only = false
 # agent_mode = "workspace-write"
-# agent_runtimes = ["codex", "claude"]
+# agent_runtimes = ["acp-opencode"]

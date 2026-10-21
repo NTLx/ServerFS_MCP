@@ -118,3 +118,5 @@ bootstrap 把 client 存到用户所有的 ServerFS 数据目录下，绝不修�
 ## Windows 上保持不变的契约
 
 所有通道——读、列、stat、find、search 与全部五个变更工具——行为与 Linux 一致：句柄相对遍历且 reparse point 永不跟随、revision 保护的原子发布、fail-closed 的元数据保留、跨通道一致的策略过滤、内容无关的结构化日志。两个平台可见差异已文档化：符号链接拒绝在 Windows 上报 `REPARSE_POINT_NOT_ALLOWED`（Linux 为 `SYMLINK_NOT_ALLOWED`）；Windows 目录 revision 是否随子项移动取决于卷设置，因此 `delete_directory` 依赖物理空扫描。Windows 的 `revision` 仍是元数据推导的乐观并发令牌——设计上存在同 tick、同大小的盲写窗口，ServerFS 不宣称任意进程的 compare-and-swap。
+
+ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](./acp/)。

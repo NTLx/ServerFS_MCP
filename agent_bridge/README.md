@@ -308,3 +308,6 @@ schema.
 - Qoder `approve_session` may echo only provider-supplied permission suggestions; the Bridge does not invent or persist permission rules.
 
 The frozen provider-neutral architecture contract is `../dev_plan_v0.3.md`; the Qoder extension is specified in `../dev_plan_v0.8.md`, with real validation evidence in `../docs/qoder-runtime-validation-2026-09-29.md`.
+
+
+ACP profile configuration and operation: [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/).

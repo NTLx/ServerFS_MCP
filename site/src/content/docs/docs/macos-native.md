@@ -102,3 +102,5 @@ ServerFS never bypasses macOS TCC privacy controls. Protected paths fail cleanly
 ## Acceptance evidence
 
 See `docs/phase-0-macos27-arm64-capability-probe-2026-10.md`, `docs/phase-v0.13.2-servicemanagement-probe-2026-10.md`, the v0.13 macOS acceptance records, and the v0.13.2 development/acceptance record.
+
+For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](./acp/).

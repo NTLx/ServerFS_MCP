@@ -178,6 +178,7 @@ const copy = {
     agentBody:
       'The optional Agent Bridge delegates structured tasks to native Codex, Claude and Qoder runtimes, plus operator-configured ACP v1 profiles using an absolute executable and fixed argv. OpenCode 2.1.2 with opencode/glm-5.3-flash-free passed real end-to-end acceptance on Linux, macOS and Windows, including prompts, persisted-session continuation, and active-tool cancellation/cleanup. ACP model discovery/override, elicitation, client filesystem and terminal are unsupported; capabilities remain conservative. Windows v0.14.0 uses current-user Task Scheduler persistence with a windowless watchdog and layered recovery; macOS v0.13.2+ uses Apple SMAppService for persistent per-user lifecycle. Provider defaults stay native; request-scoped model overrides remain explicit, while optional Jev advisors can add pre-submit advice without becoming execution authority.',
     exploreAgent: 'Explore Agent Bridge',
+    exploreAcp: 'ACP Guide',
     exploreJev: 'Explore Jev Advisors',
     mcpContainer: 'MCP CONTAINER',
     hostService: 'HOST USER SERVICE',
@@ -370,6 +371,7 @@ const copy = {
     agentBody:
       '可选 Agent Bridge 通过平台原生本地 IPC 与生命周期集成，将结构化任务委托给 Codex、Claude、Qoder 原生 runtime，以及运维人员配置的通用 ACP v1 profile；每个 profile 固定绝对可执行文件与 argv。OpenCode 2.1.2 使用 opencode/glm-5.3-flash-free 已通过 Linux、macOS、Windows 真实端到端验收，覆盖 prompt、持久 session continuation 和 active-tool cancellation/cleanup。ACP 不支持模型发现/覆盖、elicitation、client filesystem 和 terminal；能力保持保守报告。Windows v0.14.0 使用当前用户 Task Scheduler、无窗口 watchdog 与分层恢复的持久生命周期；macOS v0.13.2+ 使用 Apple SMAppService 管理持久的用户级生命周期。Provider 默认配置保持原生；单次任务模型覆盖必须显式指定，可选 Jev Advisors 可在提交前提供建议，但不会获得执行权。',
     exploreAgent: '了解 Agent Bridge',
+    exploreAcp: 'ACP 指南',
     exploreJev: '了解 Jev Advisors',
     mcpContainer: 'MCP 容器',
     hostService: '宿主机用户服务',
@@ -552,6 +554,7 @@ const canonicalUrl = isZh
                   <span><i></i> Codex</span>
                   <span><i></i> Claude</span>
                   <span><i></i> Qoder</span>
+                  <span><i></i> ACP</span>
                 </div>
               </div>
             </div>
@@ -774,6 +777,9 @@ const canonicalUrl = isZh
           <a class="text-link" href={local('docs/agent-bridge/')}>
             {c.exploreAgent} <span aria-hidden="true">→</span>
           </a>
+          <a class="text-link" href={local('docs/acp/')}>
+            {c.exploreAcp} <span aria-hidden="true">→</span>
+          </a>
           <a class="text-link" href={local('docs/jev-advisors/')}>
             {c.exploreJev} <span aria-hidden="true">→</span>
           </a>
@@ -792,6 +798,7 @@ const canonicalUrl = isZh
               <span><i></i> Codex</span>
               <span><i></i> Claude</span>
               <span><i></i> Qoder</span>
+              <span><i></i> ACP</span>
             </div>
             <div class="advisor-row">
               <span class="advisor-name">Jev</span>

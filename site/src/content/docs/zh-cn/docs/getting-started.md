@@ -133,3 +133,5 @@ ghcr.io/ntlx/serverfs_mcp:0.19.0
 ```
 
 生产环境应固定使用 `0.19.0`，而不是长期跟随 `latest` 或 `edge`。同一 tag 在 GitHub Release 上发布三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）并记录 SHA-256。同一 Release 还提供一个 skills-only portable Agent Plugin：`serverfs-plugin-v0.19.0.zip`，见 [Agent Skills](./agent-skills/)。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.19.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](./windows-native/)和 [macOS 原生部署](./macos-native/)。
+
+ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](./acp/)。

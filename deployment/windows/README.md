@@ -95,3 +95,6 @@ with a managed `serverfs service` instance.
    (a scoped `rtk_` Runtime key is preferred over a full `sk-` key).
 4. Repo root `serverfs.toml` + `.env` with `CONTROL_PLANE_TUNNEL_ID` and
    `SERVERFS_PROXY_*` (HTTP-only four-field proxy contract).
+
+
+ACP profile configuration and operation: [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/).

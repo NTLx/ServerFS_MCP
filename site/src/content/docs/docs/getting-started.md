@@ -133,3 +133,5 @@ ghcr.io/ntlx/serverfs_mcp:0.19.0
 ```
 
 For production deployments, pin `0.19.0` rather than following `latest` or `edge`. The same tag carries the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests. The same release also provides one skills-only portable Agent Plugin, `serverfs-plugin-v0.19.0.zip`; see [Agent Skills](./agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](./windows-native/) and [macOS Native](./macos-native/).
+
+For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](./acp/).

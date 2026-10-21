@@ -35,3 +35,5 @@ ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆�
 - [Jev Advisors](./jev-advisors/) — 按需启用实验性的 task preflight、五路 runtime routing、提交前模型建议与 approval advice；v0.12 新增独立、显式的 Jev 代理路由。
 
 本文档站是面向用户与运维的权威参考；仓库 README 有意保持为简洁的项目入口。
+
+ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](./acp/)。

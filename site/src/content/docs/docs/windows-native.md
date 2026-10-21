@@ -109,3 +109,5 @@ Direct `serverfs tunnel` remains useful for bounded diagnostics and compatibilit
 ## What stays true on Windows
 
 Every channel — read, list, stat, find, search and all five mutation tools — behaves as on Linux: handle-relative traversal with reparse points never followed, revision-guarded atomic publication, metadata preservation with fail-closed semantics, policy filtering identical across channels, and content-free structured logging. Two platform-visible differences are documented: a symlink rejection surfaces as `REPARSE_POINT_NOT_ALLOWED` (Linux: `SYMLINK_NOT_ALLOWED`), and Windows directory revisions may or may not move with children depending on volume settings, so `delete_directory` relies on a physical emptiness scan. The Windows `revision` remains a metadata-derived optimistic concurrency token — a same-tick, same-size blind write window exists by design, and ServerFS does not claim arbitrary-process compare-and-swap.
+
+For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](./acp/).

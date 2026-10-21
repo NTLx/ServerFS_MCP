@@ -130,3 +130,5 @@ Jev 不会覆盖显式 runtime/model、workdir policy、writer lease、provider 
 指令。不要为了绕过分类器而编码、伪装、碎片化或转移指令。如果一个合法任务被拦截，
 应按真实能力边界进一步收窄，或改用已有的结构化 ServerFS primitive；不得因此削弱授权、
 审计、writer lease 或网络隔离控制。
+
+ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](./acp/)。

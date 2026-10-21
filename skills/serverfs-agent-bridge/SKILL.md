@@ -7,7 +7,7 @@ description: Enable workdir Agent delegation; operate Bridge lifecycle, native C
 
 Agent delegation is an explicit optional capability. Preserve the two-process security boundary, per-workdir authorization, provider-native ownership and current-user lifecycle.
 
-The current published stable is v0.18.0. v0.19.0 adds an implemented ACP release candidate; do not describe it as released or claim ACP platform support without real live acceptance. Native `codex`, `claude` and `qoder` adapters remain distinct from operator-configured `acp-<id>` profiles.
+The current published stable is v0.19.0, including generic ACP v1 profiles. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete configuration and operations. Native `codex`, `claude` and `qoder` adapters remain distinct from operator-configured `acp-<id>` profiles.
 
 ## When to use
 
@@ -73,7 +73,7 @@ The Linux deployment guide is the authoritative step-by-step source for peer ide
 7. **Exercise a disposable Agent task only after structural checks pass.** Use a safe workdir and verify poll/result/cancel/HITL as required by the user's objective. Record a terminal result and lease release; when cancel/HITL is exercised, verify those outcomes too.
 8. **Preserve writer-lease semantics.** Never bypass a legitimate `WORKDIR_BUSY` by deleting locks or launching an uncontrolled parallel writer. Report busy/recovery state and use the documented lifecycle before retrying.
 
-## ACP profile workflow (v0.19.0 release candidate)
+## ACP profile workflow (v0.19.0)
 
 ACP is the standards-based path for compatible Agents. Follow standard-protocol-first: do not add a provider-specific native runtime unless the Native runtime admission gate in `docs/maintainers/invariants.md` is satisfied, including an explicit maintainer `PASS` recorded after review. An Agent must stop before native-adapter source implementation without that approval.
 
@@ -104,7 +104,7 @@ Stop when:
 - a stale provider daemon/process cannot be proven and safely handed over through its official lifecycle;
 - Agent/Tunnel/Jev proxy settings are being conflated;
 - root/Admin ownership is proposed as a fix.
-- ACP support is being claimed for a platform without real live acceptance on that platform; stop and report it as unaccepted.
+- Do not extend recorded ACP acceptance evidence into a compatibility guarantee for all Agents or versions.
 
 Never manually delete a live control socket, lock or Bridge state as a first-line repair. Use documented lifecycle/rollback mechanisms.
 

@@ -96,3 +96,6 @@ supervisor/serve/helper tree shuts down coherently rather than becoming orphaned
 No root, no LaunchDaemon and no shell-profile dependency are introduced. launchd remains a service
 manager rather than a containment kernel; the Agent Bridge recovery guard still keeps
 workspace-write failed closed whenever provider state is unknown.
+
+
+ACP profile configuration and operation: [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/).

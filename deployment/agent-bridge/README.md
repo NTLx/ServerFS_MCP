@@ -547,3 +547,6 @@ container.
 If post-release verification fails, use the documented rollback script to restore the
 previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The current v0.13.2 stable release uses an immutable
 tag; earlier release tags remain immutable as well. The v0.13.2 release passed the unified Linux + Windows + macOS release gates before publication.
+
+
+ACP profile configuration and operation: [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/).

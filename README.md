@@ -271,3 +271,6 @@ Windows 与 macOS 原生开发还有额外的平台 Gate。维护者不变量、
 ## License
 
 ServerFS MCP 基于 [MIT License](LICENSE) 发布。
+
+
+ACP profile configuration and operation: [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/).

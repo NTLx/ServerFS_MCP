@@ -135,3 +135,5 @@ disguise, fragment or relocate instructions merely to bypass a classifier. If a 
 task is blocked, narrow it at a real capability boundary or use a more structured existing
 ServerFS primitive without weakening authorization, audit, writer-lease or network-isolation
 controls.
+
+For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](./acp/).

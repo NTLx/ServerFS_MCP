@@ -35,3 +35,5 @@ There is no shell, generic command executor, recursive delete, or unguarded over
 - [Jev Advisors](./jev-advisors/) — optional experimental task preflight, five-way runtime routing, pre-submit model advice, and approval advice; v0.12 adds independent explicit Jev proxy routing.
 
 This documentation site is the authoritative user and operator reference. The repository README is intentionally a concise project entry point.
+
+For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](./acp/).
