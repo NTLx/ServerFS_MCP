@@ -1,6 +1,6 @@
 # ServerFS v0.21.0 Development Plan
 
-Status: **Phases A–C complete; Phase D is next but cannot add hot-path instrumentation until its performance baseline is measured.** The v0.20.0 implementation prerequisite is accepted. Phase A inventories existing operational surfaces; Phase B implements the internal-only observation contract and bounded metric catalog; Phase C adds an opt-in sanitized common projection to the existing macOS/Windows `serverfs service status` while preserving default native status. Evidence is recorded in [`docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md`](docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md), [`docs/v0.21.0-phase-b-observation-contract-2026-10-22.md`](docs/v0.21.0-phase-b-observation-contract-2026-10-22.md), and [`docs/v0.21.0-phase-c-status-convergence-2026-10-22.md`](docs/v0.21.0-phase-c-status-convergence-2026-10-22.md). No new MCP tool, network listener, exporter dependency, collector, or authority was added. Release-facing site/README updates remain deferred to Phase F so stable v0.19 documentation does not advertise unreleased v0.21 behavior.
+Status: **Phases A–C complete; Phase D pre-instrumentation baseline established and hot-path implementation may proceed.** The v0.20.0 implementation prerequisite is accepted. Phase A inventories existing operational surfaces; Phase B implements the internal-only observation contract and bounded metric catalog; Phase C adds an opt-in sanitized common projection to the existing macOS/Windows `serverfs service status` while preserving default native status. Phase D Linux/VPS baseline measurements and evidence-based performance budgets are frozen in [`docs/v0.21.0-phase-d-performance-baseline-2026-10-22.md`](docs/v0.21.0-phase-d-performance-baseline-2026-10-22.md). No new MCP tool, network listener, exporter dependency, collector, or authority has been added. Release-facing site/README updates remain deferred to Phase F so stable v0.19 documentation does not advertise unreleased v0.21 behavior.
 
 ## 0. Decision summary
 
@@ -218,11 +218,13 @@ Implemented in `src/serverfs_mcp/service_observability.py` and the existing `ser
 
 **Gate: PASS.** Focused Phase B+C status tests: 22 passed. Full root regression: `uv run pytest` → 1730 passed, 317 skipped; root Ruff check/format and `git diff --check` → PASS. Human/JSON aggregate parity and actual CLI stderr/no-stdout behavior are tested, default native output is unchanged, and unobserved Tunnel state remains `unknown`. Public stable-release site copy is intentionally unchanged until Phase F.
 
-### Phase D — Agent observations and runtime cost
+### Phase D — Agent observations and runtime cost — **BASELINE COMPLETE; INSTRUMENTATION NEXT**
 
-Instrument task outcomes, queue wait/depth, execution duration, lease acquisition/contention and recovery/reconciliation with the stable internal metric catalog. Confirm event boundaries against task state machine and adapter semantics. Run fault injection and before/after performance measurements.
+Pre-instrumentation Linux/VPS evidence is recorded in [`docs/v0.21.0-phase-d-performance-baseline-2026-10-22.md`](docs/v0.21.0-phase-d-performance-baseline-2026-10-22.md) using the maintainer-only `agent_bridge/benchmarks/v021_phase_d_baseline.py` harness: deterministic fake runtime, temporary state, no provider/network/Jev/Tunnel. Three bounded runs establish startup, idle CPU/RSS, submit, submit-to-terminal, persisted queue/execution and lease/contended-lease baselines. Because the provisional relative 5% idle CPU/RSS thresholds are below measurement resolution on this workload, the documented pre-coding budget is refined to no background observer loop, no continuing idle RSS growth, <=256 KiB startup RSS increase, <=5 ms increase in the cross-run median submit-call p95, and no MCP request-path instrumentation. Lease primitives should remain unchanged; if they must change, their cross-run median p95 allowance is +0.10 ms.
 
-**Gate:** task outcome accounting matches persisted lifecycle fixtures; cancellation/recovery/lease evidence is truthful; budgets pass or have an explicitly approved evidence-based adjustment.
+Next, instrument task outcomes, queue wait/depth, execution duration, lease acquisition/contention and recovery/reconciliation with the stable internal metric catalog. Confirm event boundaries against task state machine and adapter semantics. Run fault injection and the same before/after benchmark shape.
+
+**Gate:** task outcome accounting matches persisted lifecycle fixtures; cancellation/recovery/lease evidence is truthful; the frozen evidence-based budgets pass; Linux before/after measurements use the same benchmark shape and native-platform reruns are collected in Phase F where available.
 
 ### Phase E — Optional exporter decision and isolated implementation
 
