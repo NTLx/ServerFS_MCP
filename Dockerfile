@@ -19,6 +19,8 @@ RUN uv sync --frozen --no-dev --no-editable && \
 # ---------- runtime stage ----------
 FROM python:3.12-slim
 
+LABEL io.modelcontextprotocol.server.name="io.github.NTLx/serverfs-mcp"
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ripgrep && \
     rm -rf /var/lib/apt/lists/* && \
@@ -26,7 +28,15 @@ RUN apt-get update && \
 
 # dedicated non-root account (no login shell, no home contents)
 RUN groupadd -g 10001 serverfs && \
-    useradd -u 10001 -g 10001 -s /usr/sbin/nologin -M serverfs
+    useradd -u 10001 -g 10001 -s /usr/sbin/nologin -M serverfs && \
+    mkdir -p /workdirs && \
+    for slot in $(seq -w 1 16); do \
+        mkdir "/workdirs/${slot}" && \
+        touch "/workdirs/${slot}/.serverfs-disabled" && \
+        chown -R 10001:10001 "/workdirs/${slot}" && \
+        chmod 0555 "/workdirs/${slot}" && \
+        chmod 0444 "/workdirs/${slot}/.serverfs-disabled"; \
+    done
 
 WORKDIR /app
 COPY --from=build --chown=10001:10001 /app/.venv /app/.venv

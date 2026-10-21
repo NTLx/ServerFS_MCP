@@ -1,0 +1,65 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.NTLx/serverfs-mcp",
+  "title": "ServerFS MCP",
+  "description": "Secure read-only MCP access to explicitly configured workspaces.",
+  "version": "0.20.0",
+  "websiteUrl": "https://ntlx.github.io/ServerFS_MCP/",
+  "repository": {
+    "url": "https://github.com/NTLx/ServerFS_MCP",
+    "source": "github",
+    "id": "1375202485"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/ntlx/serverfs_mcp:0.20.0",
+      "version": "0.20.0",
+      "runtimeHint": "docker",
+      "runtimeArguments": [
+        { "type": "positional", "value": "run" },
+        { "type": "named", "name": "--rm", "value": "true" },
+        {
+          "type": "named",
+          "name": "--publish",
+          "value": "127.0.0.1:8000:8000"
+        },
+        {
+          "type": "named",
+          "name": "--mount",
+          "value": "type=bind,src={workspace_path},dst=/workdirs/01,readonly",
+          "variables": {
+            "workspace_path": {
+              "format": "filepath",
+                "isRequired": true,
+                "isSecret": false,
+                "description": "Host workspace directory to expose read-only."
+            }
+          }
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "WORKDIR_01_ALIAS",
+          "value": "workspace"
+        },
+        {
+          "name": "WORKDIR_01_READ_ONLY",
+          "value": "true"
+        },
+        {
+          "name": "SERVERFS_HTTP_ALLOWED_HOSTS",
+          "value": "127.0.0.1:8000,localhost:8000"
+        },
+        {
+          "name": "SERVERFS_HTTP_ALLOWED_ORIGINS",
+          "value": "http://127.0.0.1:8000,http://localhost:8000"
+        }
+      ],
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://127.0.0.1:8000/mcp"
+      }
+    }
+  ]
+}

@@ -60,6 +60,9 @@ jobs:
       - name: Validate Agent Skills and Plugin
         run: uv run python deployment/plugin/package_plugin.py validate
 
+      - name: Validate MCP Registry metadata (offline)
+        run: uv run python deployment/registry/validate.py
+
       - name: Validate Compose shapes
         shell: bash
         run: |
@@ -284,11 +287,19 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
+          load: true
           pull: true
           platforms: linux/amd64
+          tags: serverfs-mcp:phase-d-scratch
           provenance: false
           sbom: false
           cache-from: type=gha,scope=serverfs-mcp
+
+      - name: Verify OCI ownership label
+        run: >-
+          test "$(docker image inspect serverfs-mcp:phase-d-scratch
+          --format '{{ index .Config.Labels "io.modelcontextprotocol.server.name" }}')"
+          = "io.github.NTLx/serverfs-mcp"
 
   publish:
     name: Publish

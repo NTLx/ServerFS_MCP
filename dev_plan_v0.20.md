@@ -1,6 +1,6 @@
 # ServerFS v0.20.0 Development Plan
 
-Status: **Planning baseline.** This document defines scope and acceptance gates; it is not evidence that implementation or platform acceptance has occurred.
+Status: **In progress.** Phases B and C were implemented and validated in baseline commit `840aae50`. Phase D local acceptance is complete: its initial direct MCP-over-HTTP smoke failure was traced to missing disabled-slot placeholders in `/workdirs/02..16`, fixed by image defaults, and the post-fix single direct MCP call returned the configured read-only `workspace`. Focused tests, root Ruff, full root pytest, scratch image build, version lock checks and `git diff --check` passed. Registry client interoperability is **Not verified**. Phases E and F remain outstanding.
 
 Planning date: 2026-10-21.
 
@@ -8,7 +8,7 @@ Planning date: 2026-10-21.
 
 v0.20.0 is **Protocol & Distribution Maturity**. It hardens the existing MCP contract across dated protocol revisions, produces verifiable wire evidence, and makes the existing Linux OCI distribution registry-ready. It does not widen host authority or add a new runtime/execution surface.
 
-The implementation starts from the v0.19.0 repository as checked out: Python MCP SDK `mcp==2.3.0`; separate root ServerFS and `agent_bridge` environments; stdio and Streamable HTTP; optional API Key and OAuth HTTP authentication; a Linux container/Tunnel deployment; native Windows wheels/lifecycle; and narrowly supported native arm64 macOS 27 lifecycle. These are distinct surfaces and must retain distinct evidence.
+Development started from the v0.19.0 repository baseline: Python MCP SDK `mcp==2.3.0`; separate root ServerFS and `agent_bridge` environments; stdio and Streamable HTTP; optional API Key and OAuth HTTP authentication; a Linux container/Tunnel deployment; native Windows wheels/lifecycle; and narrowly supported native arm64 macOS 27 lifecycle. The development version is now `0.20.0`. These are distinct surfaces and must retain distinct evidence.
 
 Frozen decisions:
 
@@ -211,7 +211,7 @@ Stable release `v0.1.16` lacks `--requirements`; v0.20 uses official source comm
 
 ### Phase D — Registry-ready metadata and CI
 
-Add schema-validated `server.json`, OCI name label, version/name consistency check and image inspection. Keep validation local/offline; optional preview endpoint probe is supplemental. Validate multi-architecture digest/manifest after image build. **Gate:** one source tag yields consistent manifest/image identity and reproducible metadata validation.
+Implemented and locally accepted: added schema-validated `server.json`, OCI name label, version/name consistency check, vendored schema and offline CI validation. A temporary-filesystem reproduction confirmed the initial smoke's cause: with slot01 aliased and slots02..16 absent, registry construction raises `WorkdirError`; sentinel-only directories for those slots construct the expected read-only `workspace` registry. The image now creates `/workdirs/01..16` with only `.serverfs-disabled`, owned by UID/GID 10001 and without write permission. Real workspace bind mounts cover the image defaults. `server.json` no longer declares the unused `WORKDIR_01_PATH`; the read-only bind, alias, `READ_ONLY`, and HTTP Host/Origin settings remain. A scratch image built successfully; one named container stayed running and one direct root MCP client call returned alias `workspace`, access `read-only`; the container was then stopped and removed. Focused tests: 92 passed. Root Ruff check/format passed; full root pytest: 1691 passed, 317 skipped. Version lock checks and `git diff --check` passed. **Not verified:** Registry client OCI + Streamable HTTP installation/interoperability. Multi-architecture publish manifest verification remains in the existing publish workflow.
 
 ### Phase E — Cross-platform regression and stale-state cleanup
 

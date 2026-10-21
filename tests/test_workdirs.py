@@ -44,6 +44,24 @@ def envs(alias: str = "", **overrides: str) -> tuple[dict[int, str], dict[int, s
 
 
 class TestValidConfig:
+    def test_enabled_slot_requires_disabled_placeholders_for_all_other_slots(
+        self, tmp_path: Path
+    ) -> None:
+        root = tmp_path / "workdirs"
+        root.mkdir()
+        (root / "01").mkdir()
+        with pytest.raises(WorkdirError, match="slot 02: workdir path is configured"):
+            build_registry(*envs("workspace"), workdir_root=root)
+
+        for slot in range(2, SLOT_COUNT + 1):
+            directory = root / f"{slot:02d}"
+            directory.mkdir()
+            (directory / DISABLED_SENTINEL).touch()
+        registry = build_registry(*envs("workspace"), workdir_root=root)
+        assert [(workdir.alias, workdir.access) for workdir in registry.all_workdirs()] == [
+            ("workspace", ACCESS_READ_ONLY)
+        ]
+
     def test_valid_alias(self, tmp_path: Path) -> None:
         root = make_root(tmp_path, {1: True})
         reg = build_registry(*envs("projects"), workdir_root=root)
