@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from . import lease_identity
+from .config import _load_acp_profiles
 from .data_home import bridge_data_home
 from .errors import BridgeError
 from .local_ipc import derive_pipe_name
@@ -62,7 +63,7 @@ NATIVE_LEASE_KEY = "alias"
 #: A rendered document is operator policy, so it is bounded like any other bounded input.
 MAX_INPUT_BYTES = 256 * 1024
 
-_INPUT_KEYS = frozenset({"workdirs", "enable_fake_runtime", "limits", "runtimes"})
+_INPUT_KEYS = frozenset({"workdirs", "enable_fake_runtime", "limits", "runtimes", "acp_profiles"})
 _WORKDIR_KEYS = frozenset({"alias", "host_path", "read_only", "agent_mode", "agent_runtimes"})
 
 #: Per-runtime policy keys the renderer accepts. These are all non-secret: an executable name and
@@ -258,6 +259,19 @@ def build_policy_document(request: dict[str, Any]) -> dict[str, Any]:
     if isinstance(request.get("limits"), dict):
         document["limits"] = request["limits"]
     document.update(_runtime_block(runtimes))
+    if "acp_profiles" in request:
+        profiles = _load_acp_profiles(request["acp_profiles"])
+        document["acp_profiles"] = [
+            {
+                "id": profile.id,
+                "command": profile.command,
+                "args": list(profile.args),
+                "use_proxy": profile.use_proxy,
+                "probe_timeout_seconds": profile.probe_timeout_seconds,
+                "shutdown_timeout_seconds": profile.shutdown_timeout_seconds,
+            }
+            for profile in sorted(profiles, key=lambda profile: profile.id)
+        ]
     return document
 
 

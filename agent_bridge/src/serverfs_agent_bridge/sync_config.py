@@ -42,6 +42,7 @@ _DERIVED_KEYS = frozenset(
         "codex",
         "claude",
         "qoder",
+        "acp_profiles",
     }
 )
 _PRIVATE_KEYS = frozenset({"proxy", "jev"})
@@ -127,6 +128,17 @@ def _policy_matches(existing: dict[str, Any], request: dict[str, Any]) -> bool:
             actual_runtime.get(key) != value for key, value in expected_runtime.items()
         ):
             return False
+    expected_profiles = derived.get("acp_profiles", [])
+    actual_profiles = existing.get("acp_profiles", [])
+    if not isinstance(actual_profiles, list) or not isinstance(expected_profiles, list):
+        return False
+    try:
+        actual_profiles = sorted(actual_profiles, key=lambda item: item["id"])
+        expected_profiles = sorted(expected_profiles, key=lambda item: item["id"])
+    except (KeyError, TypeError):
+        return False
+    if actual_profiles != expected_profiles:
+        return False
     return True
 
 

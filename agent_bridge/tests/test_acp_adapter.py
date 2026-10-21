@@ -475,11 +475,17 @@ async def test_cancel_kills_descendant_process_group(tmp_path: Path) -> None:
     recorded: list[tuple[str | None, str | None]] = []
     task = asyncio.create_task(adapter.run_task(_context(tmp_path, events, recorded)))
     pid_file = tmp_path / "fixture-descendant.pid"
+    pid = None
     for _ in range(300):
         if pid_file.exists() and await adapter.get_state("task-1") == "running":
-            break
+            try:
+                pid = int(pid_file.read_text())
+            except ValueError:
+                pass
+            else:
+                break
         await asyncio.sleep(0.01)
-    pid = int(pid_file.read_text())
+    assert pid is not None
     await adapter.cancel("task-1")
     with pytest.raises(BridgeError):
         await asyncio.wait_for(task, timeout=5)

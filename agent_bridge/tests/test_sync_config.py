@@ -96,6 +96,17 @@ def _request(workdir: Path, *, use_proxy: bool = True) -> dict:
     }
 
 
+def _acp_profile(executable: Path, profile_id: str, *, use_proxy: bool = False) -> dict:
+    return {
+        "id": profile_id,
+        "command": str(executable),
+        "args": ["serve"],
+        "use_proxy": use_proxy,
+        "probe_timeout_seconds": 5,
+        "shutdown_timeout_seconds": 5,
+    }
+
+
 def test_sync_replaces_only_derived_policy_and_preserves_private_material(tmp_path: Path) -> None:
     old_workdir = tmp_path / "old-workdir"
     new_workdir = tmp_path / "serverfs"
@@ -180,3 +191,44 @@ def test_invalid_merged_policy_is_refused_without_replacing_live_config(tmp_path
         sync_bridge_config(config_path, _request(workdir, use_proxy=True))
 
     assert config_path.read_bytes() == before
+
+
+def test_sync_adds_updates_and_removes_acp_profiles_deterministically(tmp_path: Path) -> None:
+    from serverfs_agent_bridge.render_config import build_policy_document
+
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    executable = tmp_path / "acp-agent"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o700)
+    config_path = tmp_path / "bridge.json"
+    _write_private(config_path, _base_config(tmp_path, workdir))
+
+    alpha = _acp_profile(executable, "alpha")
+    zeta = _acp_profile(executable, "zeta", use_proxy=True)
+    request = {**_request(workdir), "acp_profiles": [zeta, alpha]}
+    derived = build_policy_document(request)
+    assert derived["acp_profiles"] == [alpha, zeta]
+    sync_bridge_config(config_path, request)
+    synced = json.loads(config_path.read_text(encoding="utf-8"))
+    assert [profile["id"] for profile in synced["acp_profiles"]] == ["alpha", "zeta"]
+    assert check_bridge_config(config_path, {**request, "acp_profiles": [alpha, zeta]})
+
+    updated = {**zeta, "use_proxy": False}
+    request = {**request, "acp_profiles": [alpha, updated]}
+    sync_bridge_config(config_path, request)
+    assert check_bridge_config(config_path, request)
+    synced = json.loads(config_path.read_text(encoding="utf-8"))
+    assert synced["acp_profiles"][1]["use_proxy"] is False
+
+    request.pop("acp_profiles")
+    sync_bridge_config(config_path, request)
+    assert "acp_profiles" not in json.loads(config_path.read_text(encoding="utf-8"))
+    assert check_bridge_config(config_path, request)
+
+
+def test_acp_profiles_do_not_weaken_unknown_key_rejection(tmp_path: Path) -> None:
+    from serverfs_agent_bridge.render_config import build_policy_document
+
+    with pytest.raises(BridgeError, match="unknown render request field"):
+        build_policy_document({"workdirs": [], "acp_profiles": [], "surprise": True})
