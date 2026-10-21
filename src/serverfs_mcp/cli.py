@@ -188,7 +188,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--_handover-roots",
         help=argparse.SUPPRESS,
     )
-    service_sub.add_parser("status", help="Report registration and process health")
+    service_status = service_sub.add_parser("status", help="Report registration and process health")
+    service_status.add_argument(
+        "--format",
+        dest="status_format",
+        choices=("native", "common-json", "common-human"),
+        default="native",
+    )
     service_sub.add_parser("start", help="Register configured persistent services")
     service_sub.add_parser("restart", help="Unregister then register configured services")
     service_sub.add_parser("stop", help="Unregister configured persistent services")
@@ -582,7 +588,24 @@ def cmd_service(args: argparse.Namespace) -> int:
                 sys.stderr.write(json.dumps(snapshot, sort_keys=True) + "\n")
                 return 0
             if command == "status":
-                sys.stderr.write(json.dumps(windows_service.status(), sort_keys=True) + "\n")
+                native_status = windows_service.status()
+                status_format = getattr(args, "status_format", "native")
+                if status_format == "native":
+                    sys.stderr.write(json.dumps(native_status, sort_keys=True) + "\n")
+                else:
+                    from .service_observability import (
+                        render_common_human,
+                        render_common_json,
+                        windows_common_projection,
+                    )
+
+                    snapshot, policy = windows_common_projection(native_status)
+                    renderer = (
+                        render_common_json
+                        if status_format == "common-json"
+                        else render_common_human
+                    )
+                    sys.stderr.write(renderer(snapshot, policy))
                 return 0
             if command == "start":
                 sys.stderr.write(json.dumps(windows_service.start(), sort_keys=True) + "\n")
@@ -670,7 +693,21 @@ def cmd_service(args: argparse.Namespace) -> int:
             return 0
         if command == "status":
             snapshot = darwin_service.status()
-            sys.stderr.write(json.dumps(snapshot, sort_keys=True) + "\n")
+            status_format = getattr(args, "status_format", "native")
+            if status_format == "native":
+                sys.stderr.write(json.dumps(snapshot, sort_keys=True) + "\n")
+            else:
+                from .service_observability import (
+                    darwin_common_projection,
+                    render_common_human,
+                    render_common_json,
+                )
+
+                observation, policy = darwin_common_projection(snapshot)
+                renderer = (
+                    render_common_json if status_format == "common-json" else render_common_human
+                )
+                sys.stderr.write(renderer(observation, policy))
             return 0
         if command == "start":
             states = darwin_service.start()

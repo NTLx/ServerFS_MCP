@@ -1,6 +1,6 @@
 # ServerFS v0.21.0 Development Plan
 
-Status: **Phases A–B complete; Phase C ready to implement.** The v0.20.0 implementation prerequisite is accepted. Phase A inventories existing operational surfaces in [`docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md`](docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md); Phase B implements the internal-only observation contract and bounded metric catalog recorded in [`docs/v0.21.0-phase-b-observation-contract-2026-10-22.md`](docs/v0.21.0-phase-b-observation-contract-2026-10-22.md). No new MCP tool, listener, exporter dependency, collector, or authority was added. Performance baseline remains Not measured and must be established before Phase D hot-path instrumentation.
+Status: **Phases A–C complete; Phase D is next but cannot add hot-path instrumentation until its performance baseline is measured.** The v0.20.0 implementation prerequisite is accepted. Phase A inventories existing operational surfaces; Phase B implements the internal-only observation contract and bounded metric catalog; Phase C adds an opt-in sanitized common projection to the existing macOS/Windows `serverfs service status` while preserving default native status. Evidence is recorded in [`docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md`](docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md), [`docs/v0.21.0-phase-b-observation-contract-2026-10-22.md`](docs/v0.21.0-phase-b-observation-contract-2026-10-22.md), and [`docs/v0.21.0-phase-c-status-convergence-2026-10-22.md`](docs/v0.21.0-phase-c-status-convergence-2026-10-22.md). No new MCP tool, network listener, exporter dependency, collector, or authority was added. Release-facing site/README updates remain deferred to Phase F so stable v0.19 documentation does not advertise unreleased v0.21 behavior.
 
 ## 0. Decision summary
 
@@ -212,11 +212,11 @@ Implemented in `src/serverfs_mcp/observability.py` with focused contract tests i
 
 **Gate: PASS.** Focused validation: `uv run pytest tests/test_observability_contract.py` → 16 passed. Full root regression: `uv run pytest` → 1724 passed, 317 skipped; `uv run ruff check .`, `uv run ruff format --check .`, and `git diff --check` → PASS. Configured/not-checked/stale evidence cannot assert healthy, disabled optional components do not degrade the role, and arbitrary/high-cardinality metric label values are rejected. Platform mappings remain an explicit Phase C adapter responsibility rather than being invented in the shared contract.
 
-### Phase C — Structured status and operator convergence
+### Phase C — Structured status and operator convergence — **COMPLETE**
 
-Project the contract through the narrowest existing status/JSON and doctor surfaces. Align human CLI and JSON states, doctor wording, Tunnel diagnostic summary and host-observability guidance. Preserve detailed domain-specific diagnostics and existing service commands. Add documented output examples using synthetic data only.
+Implemented in `src/serverfs_mcp/service_observability.py` and the existing `serverfs service status` CLI. The default native JSON remains unchanged; explicit `--format common-json` and `--format common-human` project the Phase B contract on supported macOS/Windows native lifecycle surfaces without exposing paths, PIDs, task names or raw platform state. Windows maps existing recovery/watchdog/runner + Tunnel-generation evidence; macOS conservatively maps only managed Tunnel lifecycle evidence and does not guess Agent Bridge applicability. Linux Compose keeps its existing Tunnel/private health boundary rather than receiving a fabricated native-service projection. Doctor, Tunnel deep diagnostics and read-only host observability retain their distinct responsibilities; the relationship and public-doc timing are recorded in [`docs/v0.21.0-phase-c-status-convergence-2026-10-22.md`](docs/v0.21.0-phase-c-status-convergence-2026-10-22.md).
 
-**Gate:** output parity tests pass, existing CLI/MCP behavior remains compatible, and operators can distinguish liveness/readiness/component health and stale/unknown state.
+**Gate: PASS.** Focused Phase B+C status tests: 22 passed. Full root regression: `uv run pytest` → 1730 passed, 317 skipped; root Ruff check/format and `git diff --check` → PASS. Human/JSON aggregate parity and actual CLI stderr/no-stdout behavior are tested, default native output is unchanged, and unobserved Tunnel state remains `unknown`. Public stable-release site copy is intentionally unchanged until Phase F.
 
 ### Phase D — Agent observations and runtime cost
 
