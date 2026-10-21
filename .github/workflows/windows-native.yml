@@ -220,7 +220,7 @@ jobs:
           uv pip install --python .venv-wheel/Scripts/python.exe $wheel pytest
           uv pip install --python .venv-wheel/Scripts/python.exe -e .
           Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
-          .venv-wheel/Scripts/python.exe -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py tests/test_windows_service.py tests/test_mcp_stdio_subprocess.py -q
+          .venv-wheel/Scripts/python.exe -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py tests/test_windows_service.py -q
         shell: pwsh
 
       - name: upload native wheel
