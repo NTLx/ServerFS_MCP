@@ -203,6 +203,81 @@ class TestWorkdirAgentPolicy:
         assert workdirs[0].agent_mode == AGENT_MODE_WORKSPACE_WRITE
         assert workdirs[0].agent_runtimes == frozenset({"codex"})
 
+    def test_acp_profile_and_allowlist_parse_with_windows_lexical_path(
+        self, tmp_path: Path
+    ) -> None:
+        config = _write(
+            tmp_path,
+            "[agent]\nenabled = true\n\n[[agent.acp_profiles]]\n"
+            'id = "grok-build"\ncommand = "C:\\\\Tools\\\\grok.exe"\n'
+            'args = ["agent", "stdio"]\nuse_proxy = true\n'
+            "probe_timeout_seconds = 7\nshutdown_timeout_seconds = 9\n\n"
+            '[[workdirs]]\nalias = "p"\npath = "C:\\\\Projects"\nread_only = false\n'
+            'agent_mode = "workspace-write"\nagent_runtimes = ["acp-grok-build"]\n',
+        )
+        workdirs, settings = load_native_config(config)
+        assert settings.agent is not None
+        profile = settings.agent.acp_profiles[0]
+        assert (profile.runtime_id, profile.command, profile.args) == (
+            "acp-grok-build",
+            "C:\\Tools\\grok.exe",
+            ("agent", "stdio"),
+        )
+        assert settings.agent.enabled_runtimes == frozenset({"acp-grok-build"})
+        assert settings.agent.runtime_use_proxy("acp-grok-build") is True
+        assert workdirs[0].agent_runtimes == frozenset({"acp-grok-build"})
+        from serverfs_mcp.agent_lifecycle import render_request_from_config
+
+        request = render_request_from_config(workdirs, settings)
+        assert request["acp_profiles"] == [
+            {
+                "id": "grok-build",
+                "command": "C:\\Tools\\grok.exe",
+                "args": ["agent", "stdio"],
+                "use_proxy": True,
+                "probe_timeout_seconds": 7.0,
+                "shutdown_timeout_seconds": 9.0,
+            }
+        ]
+        assert request["runtimes"] == {}
+
+    def test_acp_runtime_requires_matching_profile(self, tmp_path: Path) -> None:
+        config = _write(
+            tmp_path,
+            '[agent]\nenabled = true\n\n[[workdirs]]\nalias = "p"\npath = "/srv/p"\n'
+            'read_only = false\nagent_mode = "workspace-write"\nagent_runtimes = ["acp-missing"]\n',
+        )
+        with pytest.raises(NativeConfigError, match="agent.acp-missing.enabled is false"):
+            load_native_config(config)
+
+    @pytest.mark.parametrize("mode", ["review", "disabled"])
+    def test_acp_runtime_requires_workspace_write(self, tmp_path: Path, mode: str) -> None:
+        config = _write(
+            tmp_path,
+            '[agent]\nenabled = true\n\n[[agent.acp_profiles]]\nid = "grok"\n'
+            'command = "C:\\\\Tools\\\\grok.exe"\n\n[[workdirs]]\nalias = "p"\n'
+            'path = "C:\\\\Projects"\nread_only = false\n'
+            f'agent_mode = "{mode}"\nagent_runtimes = ["acp-grok"]\n',
+        )
+        expected = (
+            "requires an agent_mode other than"
+            if mode == "disabled"
+            else "requires agent_mode = 'workspace-write'"
+        )
+        with pytest.raises(NativeConfigError, match=expected):
+            load_native_config(config)
+
+    @pytest.mark.parametrize("field", ["env", "cwd", "shell"])
+    def test_acp_profile_rejects_authority_fields(self, tmp_path: Path, field: str) -> None:
+        config = _write(
+            tmp_path,
+            '[agent]\nenabled = true\n\n[[agent.acp_profiles]]\nid = "grok"\n'
+            f'command = "C:\\\\Tools\\\\grok.exe"\n{field} = "x"\n\n'
+            '[[workdirs]]\nalias = "p"\npath = "/srv/p"\n',
+        )
+        with pytest.raises(NativeConfigError, match="unknown agent.acp_profiles"):
+            load_native_config(config)
+
     def test_review_mode_needs_no_allowlist(self, tmp_path: Path) -> None:
         config = _write(
             tmp_path,

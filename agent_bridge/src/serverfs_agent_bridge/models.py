@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from typing import Any
@@ -44,7 +45,35 @@ class AgentMode(StrEnum):
 
 # Runtime names are validated centrally. Phase A supplies the deterministic
 # ``fake`` runtime; production runtimes are Codex, Claude and Qoder.
-KNOWN_RUNTIME_NAMES = frozenset({"fake", "codex", "claude", "qoder"})
+NATIVE_RUNTIME_NAMES = frozenset({"fake", "codex", "claude", "qoder"})
+
+
+class _RuntimeNames(frozenset[str]):
+    """Static native names plus the bounded derived ACP runtime namespace."""
+
+    def __contains__(self, value: object) -> bool:
+        if super().__contains__(value):
+            return True
+        return isinstance(value, str) and ACP_RUNTIME_ID_RE.fullmatch(value) is not None
+
+
+ACP_PROFILE_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,27}$")
+ACP_RUNTIME_ID_RE = re.compile(r"^acp-[a-z][a-z0-9_-]{0,27}$")
+KNOWN_RUNTIME_NAMES = _RuntimeNames(NATIVE_RUNTIME_NAMES)
+
+
+@dataclass(frozen=True)
+class AcpProfile:
+    id: str
+    command: str
+    args: tuple[str, ...]
+    use_proxy: bool = False
+    probe_timeout_seconds: float = 5.0
+    shutdown_timeout_seconds: float = 5.0
+
+    @property
+    def runtime_id(self) -> str:
+        return f"acp-{self.id}"
 
 
 class RequestKind(StrEnum):

@@ -454,13 +454,13 @@ class BridgeProtocolServer:
         if method == "task.approval.respond":
             _require_keys(
                 params,
-                {"task_id", "request_id", "decision"},
-                optional={"granted_permission_ids"},
+                {"task_id", "request_id"},
+                optional={"decision", "option_id", "granted_permission_ids"},
             )
             _require_types(
                 params,
-                {"task_id": str, "request_id": str, "decision": str},
-                optional={"granted_permission_ids": list},
+                {"task_id": str, "request_id": str},
+                optional={"decision": str, "option_id": str, "granted_permission_ids": list},
             )
             if "granted_permission_ids" in params and any(
                 not isinstance(item, str) for item in params["granted_permission_ids"]

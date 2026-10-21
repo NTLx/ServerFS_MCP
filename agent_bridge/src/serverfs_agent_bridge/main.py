@@ -37,6 +37,7 @@ async def _serve(
     # provider SDK/client is constructed. Explicit v0.12 proxy endpoints are held in
     # config/bootstrap objects and mapped downward afterwards, never written back here.
     scrub_process_proxy_environment()
+    store = TaskStore(config.state_dir)
     adapters = {}
     # The runtime-only egress material from the private bootstrap channel. It is handed to the
     # adapters here and applied downward to each runtime's network-owning child; it is never placed
@@ -46,7 +47,10 @@ async def _serve(
         # the private bootstrap channel and is never persisted in its generated Bridge config.
         runtime_proxy = bootstrap.agent_proxy
     elif config.proxy is not None and (
-        config.codex.use_proxy or config.claude.use_proxy or config.qoder.use_proxy
+        config.codex.use_proxy
+        or config.claude.use_proxy
+        or config.qoder.use_proxy
+        or any(profile.use_proxy for profile in config.acp_profiles)
     ):
         # Linux v0.12 is an unsupervised user service. Its private 0600 config may carry the
         # normalized shared endpoint; provider credentials are forbidden for Agent use at config
@@ -85,6 +89,14 @@ async def _serve(
         # after connect, and the environment gets a deletion-only scrub instead.
         qoder = runtime_adapters.QoderAdapter(config.qoder, runtime_proxy=runtime_proxy)
         adapters[qoder.name] = qoder
+    for profile in config.acp_profiles:
+        acp_adapter = runtime_adapters.AcpAdapter(
+            profile,
+            runtime_proxy=runtime_proxy,
+            load_capabilities=store.load_runtime_capabilities,
+            save_capabilities=store.save_runtime_capabilities,
+        )
+        adapters[acp_adapter.name] = acp_adapter
 
     preflight = (
         JevTaskPreflight.from_api_key(
@@ -97,7 +109,6 @@ async def _serve(
         else None
     )
 
-    store = TaskStore(config.state_dir)
     service = BridgeService(
         store=store,
         policies=config.policies,

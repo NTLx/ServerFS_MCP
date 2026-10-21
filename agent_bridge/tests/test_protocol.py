@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import socket
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -160,6 +161,12 @@ async def test_runtime_list_over_unix_socket(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_task_lifecycle_and_fake_interactions_over_uds(tmp_path: Path) -> None:
     service = make_protocol_service(tmp_path)
+
+    class ModelOverrideFakeAdapter(FakeAdapter):
+        async def probe(self):
+            return replace(await super().probe(), model_override=True)
+
+    service.adapters["fake"] = ModelOverrideFakeAdapter()
     await service.start()
     server = BridgeProtocolServer(
         service=service,

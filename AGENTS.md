@@ -54,6 +54,7 @@ Skills are workflow guidance, not a second configuration/source-of-truth layer. 
 - Public MCP schemas and stable error/protocol contracts are product API, not documentation-only decoration.
 - Protocol stdout stays protocol-clean; contents, credentials, private paths and other sensitive payloads stay out of normal logs.
 - Agent delegation remains provider-neutral and explicitly authorized. ServerFS does not silently change provider authentication, defaults, sandbox/permission policy or runtime.
+- **Standard protocol first:** adding a new provider-specific native Agent runtime is an exception, not the default. Before implementing one, read and satisfy the **Native runtime admission gate** in [`docs/maintainers/invariants.md`](docs/maintainers/invariants.md). If ACP or another stable standard can preserve the required ServerFS contract without a material capability loss, use the standard adapter instead of adding a native adapter. An Agent may research and draft the admission record, but it must not self-approve the exception or begin native-adapter source implementation without an explicit maintainer `PASS` recorded after that review.
 - `model=None` means no ServerFS model override. Explicit model selection is request-scoped; no automatic cross-provider fallback or fabricated model catalog.
 - Human approvals/questions remain human-controlled. Jev is advisory only and never gains runtime, authorization or approval authority.
 - Preserve platform boundaries instead of forcing Linux assumptions onto Windows/macOS or vice versa.

@@ -216,6 +216,8 @@ class JevTaskPreflight:
         prompt: str,
         approval: dict[str, Any],
     ) -> dict[str, Any]:
+        if isinstance(approval.get("response_options"), list):
+            return {"status": "not_applicable", "automatic": False}
         state = {
             "task": {
                 "runtime": runtime,

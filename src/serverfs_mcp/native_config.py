@@ -34,6 +34,8 @@ v0.11 Phase D adds the operator-facing ``[agent]`` model (§7, §7.1). Three rul
 
 from __future__ import annotations
 
+import json
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,6 +45,7 @@ from .workdirs import (
     AGENT_MODE_WORKSPACE_WRITE,
     AGENT_MODES,
     ALIAS_RE,
+    NATIVE_AGENT_RUNTIMES,
     PUBLIC_AGENT_RUNTIMES,
     EffectiveWorkdirPolicy,
     Workdir,
@@ -52,6 +55,11 @@ from .workdirs import (
 # has no 16-slot layout, but an unbounded workdir count would let a config
 # file exhaust startup resources. This ceiling is deliberately generous.
 MAX_NATIVE_WORKDIRS = 64
+MAX_ACP_PROFILES = 16
+MAX_ACP_ARGS = 32
+MAX_ACP_ARG_LENGTH = 4096
+MAX_ACP_PROFILE_BYTES = 65_536
+ACP_PROFILE_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,27}$")
 
 
 class NativeConfigError(Exception):
@@ -113,6 +121,20 @@ class NativeQoderSettings:
 
 
 @dataclass(frozen=True)
+class NativeAcpProfile:
+    id: str
+    command: str
+    args: tuple[str, ...] = ()
+    use_proxy: bool = False
+    probe_timeout_seconds: float = 5.0
+    shutdown_timeout_seconds: float = 5.0
+
+    @property
+    def runtime_id(self) -> str:
+        return f"acp-{self.id}"
+
+
+@dataclass(frozen=True)
 class NativeProxySettings:
     """The dedicated Agent egress proxy policy (§7.1).
 
@@ -154,16 +176,26 @@ class NativeAgentSettings:
     codex: NativeCodexSettings = field(default_factory=NativeCodexSettings)
     claude: NativeClaudeSettings = field(default_factory=NativeClaudeSettings)
     qoder: NativeQoderSettings = field(default_factory=NativeQoderSettings)
+    acp_profiles: tuple[NativeAcpProfile, ...] = ()
     proxy: NativeProxySettings = field(default_factory=NativeProxySettings)
 
     def runtime_enabled(self, name: str) -> bool:
+        if name.startswith("acp-"):
+            return any(profile.runtime_id == name for profile in self.acp_profiles)
         return self.runtime(name).enabled
 
     def runtime_use_proxy(self, name: str) -> bool:
+        if name.startswith("acp-"):
+            return self.acp_profile(name).use_proxy
         return self.runtime(name).use_proxy
 
     def runtime_binary(self, name: str) -> str:
+        if name.startswith("acp-"):
+            return self.acp_profile(name).command
         return self.runtime(name).binary
+
+    def acp_profile(self, runtime_id: str) -> NativeAcpProfile:
+        return next(profile for profile in self.acp_profiles if profile.runtime_id == runtime_id)
 
     def runtime(self, name: str):
         """The settings for one public runtime name."""
@@ -171,7 +203,8 @@ class NativeAgentSettings:
 
     @property
     def enabled_runtimes(self) -> frozenset[str]:
-        return frozenset(name for name in PUBLIC_AGENT_RUNTIMES if self.runtime(name).enabled)
+        native = {name for name in NATIVE_AGENT_RUNTIMES if self.runtime(name).enabled}
+        return frozenset(native | {profile.runtime_id for profile in self.acp_profiles})
 
 
 @dataclass(frozen=True)
@@ -249,6 +282,76 @@ def _parse_proxy(section: dict | None) -> NativeProxySettings:
     return NativeProxySettings(enabled=enabled, source=source)
 
 
+def _parse_acp_profiles(value: object) -> tuple[NativeAcpProfile, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise NativeConfigError("[agent.acp_profiles] must be an array of tables")
+    if len(value) > MAX_ACP_PROFILES:
+        raise NativeConfigError(f"agent.acp_profiles must not exceed {MAX_ACP_PROFILES} entries")
+    profiles: list[NativeAcpProfile] = []
+    seen: set[str] = set()
+    total_size = 0
+    for index, entry in enumerate(value):
+        where = f"agent.acp_profiles[{index}]"
+        if not isinstance(entry, dict):
+            raise NativeConfigError(f"{where} must be a table")
+        _reject_unknown(
+            entry,
+            {
+                "id",
+                "command",
+                "args",
+                "use_proxy",
+                "probe_timeout_seconds",
+                "shutdown_timeout_seconds",
+            },
+            where,
+        )
+        profile_id = entry.get("id")
+        if not isinstance(profile_id, str) or not ACP_PROFILE_ID_RE.fullmatch(profile_id):
+            raise NativeConfigError(f"{where}.id has an invalid format")
+        if profile_id in NATIVE_AGENT_RUNTIMES or profile_id in seen:
+            raise NativeConfigError(f"{where}.id is reserved or duplicated")
+        seen.add(profile_id)
+        command = entry.get("command")
+        if (
+            not isinstance(command, str)
+            or not command
+            or "\x00" in command
+            or any(char in command for char in ("\n", "\r"))
+            or not _is_absolute_native_path(command)
+        ):
+            raise NativeConfigError(f"{where}.command must be an absolute native path")
+        args = entry.get("args", [])
+        if (
+            not isinstance(args, list)
+            or len(args) > MAX_ACP_ARGS
+            or any(
+                not isinstance(arg, str) or "\x00" in arg or len(arg) > MAX_ACP_ARG_LENGTH
+                for arg in args
+            )
+        ):
+            raise NativeConfigError(f"{where}.args must contain at most 32 bounded strings")
+        use_proxy = _require_strict_bool(where, "use_proxy", entry.get("use_proxy"), False)
+        timeouts: list[float] = []
+        for key in ("probe_timeout_seconds", "shutdown_timeout_seconds"):
+            raw_timeout = entry.get(key, 5)
+            if not isinstance(raw_timeout, (int, float)) or isinstance(raw_timeout, bool):
+                raise NativeConfigError(f"{where}.{key} must be a positive number")
+            timeout = float(raw_timeout)
+            if not 0 < timeout <= 60:
+                raise NativeConfigError(f"{where}.{key} must be between 0 and 60 seconds")
+            timeouts.append(timeout)
+        total_size += len(
+            json.dumps(entry, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+        )
+        profiles.append(NativeAcpProfile(profile_id, command, tuple(args), use_proxy, *timeouts))
+    if total_size > MAX_ACP_PROFILE_BYTES:
+        raise NativeConfigError("encoded agent.acp_profiles must not exceed 65536 bytes")
+    return tuple(profiles)
+
+
 def _parse_runtime(
     section: dict | None,
     *,
@@ -292,6 +395,7 @@ def _parse_agent(data: dict) -> NativeAgentSettings | None:
             "claude",
             "qoder",
             "proxy",
+            "acp_profiles",
         },
         "[agent]",
     )
@@ -317,6 +421,7 @@ def _parse_agent(data: dict) -> NativeAgentSettings | None:
         default_bin=defaults.qoder.qoder_bin,
         default_use_proxy=defaults.qoder.use_proxy,
     )
+    acp_profiles = _parse_acp_profiles(section.get("acp_profiles"))
     return NativeAgentSettings(
         enabled=_require_strict_bool("agent", "enabled", section.get("enabled"), False),
         task_timeout_seconds=_require_positive_int(
@@ -349,6 +454,7 @@ def _parse_agent(data: dict) -> NativeAgentSettings | None:
         qoder=NativeQoderSettings(
             enabled=qoder_enabled, use_proxy=qoder_proxy, qoder_bin=qoder_bin
         ),
+        acp_profiles=acp_profiles,
         proxy=_parse_proxy(_require_section(section, "proxy")),
     )
 
@@ -581,8 +687,7 @@ def _cross_validate_agent(
                     f"workdir {wd.alias!r} allowlists runtime {runtime!r} but "
                     f"agent.{runtime}.enabled is false"
                 )
-        # The frozen native-mode rule: a native runtime may only submit with workspace-write,
-        # so any workdir allowing one must itself be workspace-write.
+        # Both native and ACP runtimes require workspace-write.
         if wd.agent_runtimes and wd.agent_mode != AGENT_MODE_WORKSPACE_WRITE:
             raise NativeConfigError(
                 f"workdir {wd.alias!r} allowlists native runtimes {sorted(wd.agent_runtimes)} "

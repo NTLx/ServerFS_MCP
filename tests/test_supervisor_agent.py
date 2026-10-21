@@ -289,6 +289,7 @@ class TestRenderRequest:
         workdirs, settings = load_native_config(config)
         request = render_request_from_config(workdirs, settings)
         blob = json.dumps(request)
+        assert "acp_profiles" not in request
         assert "127.0.0.1" not in blob
         assert "agent_proxy" not in request
         # The policy itself is present, which is the point of the runtime-policy fix.

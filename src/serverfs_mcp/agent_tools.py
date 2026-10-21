@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Annotated, Any, Literal
 
@@ -64,8 +65,14 @@ AGENT_CANCEL_ANNOTATIONS = ToolAnnotations(
 )
 
 RuntimeArg = Annotated[
-    Literal["codex", "claude", "qoder"],
-    Field(description="Configured native Agent runtime"),
+    str,
+    Field(
+        min_length=4,
+        max_length=32,
+        description=(
+            "Configured Agent runtime: codex, claude, qoder, or configured acp-<profile-id>"
+        ),
+    ),
 ]
 AgentProfileArg = Annotated[
     Literal["review", "workspace-write"],
@@ -157,6 +164,8 @@ def register_agent_tools(
         """
         t0 = time.monotonic()
         try:
+            if not _valid_runtime_id(runtime):
+                raise ToolError("INVALID_REQUEST: malformed Agent runtime identifier")
             if runtime not in _allowed_runtimes(registry):
                 raise ToolError(
                     f"AGENT_RUNTIME_NOT_ALLOWED: runtime {runtime!r} is not allowlisted"
@@ -399,9 +408,13 @@ def register_agent_tools(
         task_id: Annotated[str, Field(description="ServerFS Agent task identifier")],
         request_id: Annotated[str, Field(description="Pending approval request identifier")],
         decision: Annotated[
-            Literal["approve_once", "approve_session", "deny", "cancel_task"],
-            Field(description="Decision offered by the pending runtime approval"),
-        ],
+            Literal["approve_once", "approve_session", "deny", "cancel_task"] | None,
+            Field(default=None, description="Decision offered by a native runtime approval"),
+        ] = None,
+        option_id: Annotated[
+            str | None,
+            Field(default=None, description="Exact option_id offered by an ACP approval request"),
+        ] = None,
         granted_permission_ids: Annotated[
             list[str] | None,
             Field(
@@ -411,11 +424,11 @@ def register_agent_tools(
         ] = None,
     ) -> dict[str, Any]:
         """Resolve one pending Agent approval; no permanent approvals are exposed."""
-        params: dict[str, Any] = {
-            "task_id": task_id,
-            "request_id": request_id,
-            "decision": decision,
-        }
+        params: dict[str, Any] = {"task_id": task_id, "request_id": request_id}
+        if decision is not None:
+            params["decision"] = decision
+        if option_id is not None:
+            params["option_id"] = option_id
         if granted_permission_ids is not None:
             params["granted_permission_ids"] = granted_permission_ids
         return await _simple_agent_call(
@@ -425,7 +438,8 @@ def register_agent_tools(
             params,
             task_id=task_id,
             request_id=request_id,
-            decision=decision,
+            **({"decision": decision} if decision is not None else {}),
+            **({"option_id": option_id} if option_id is not None else {}),
         )
 
     @mcp.tool(annotations=AGENT_QUESTION_ANNOTATIONS)
@@ -532,6 +546,8 @@ def _authorize_submit(
     runtime: str,
     profile: str,
 ) -> Workdir:
+    if not _valid_runtime_id(runtime):
+        raise ToolError("INVALID_REQUEST: malformed Agent runtime identifier")
     wd = registry.get(workdir)
     if wd is None:
         raise ToolError(f"WORKDIR_NOT_FOUND: {workdir!r} is not a configured workdir")
@@ -555,6 +571,13 @@ def _authorize_submit(
             f"AGENT_PROFILE_NOT_ALLOWED: native {runtime} currently requires workspace-write"
         )
     return wd
+
+
+def _valid_runtime_id(runtime: str) -> bool:
+    return (
+        runtime in {"codex", "claude", "qoder"}
+        or re.fullmatch(r"acp-[a-z][a-z0-9_-]{0,27}", runtime) is not None
+    )
 
 
 def _validate_agent_cwd(wd: Workdir, path: str, settings: Settings) -> str:

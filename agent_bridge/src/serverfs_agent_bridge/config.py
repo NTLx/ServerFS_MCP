@@ -12,7 +12,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from . import lease_identity
-from .models import KNOWN_RUNTIME_NAMES, AgentMode
+from .models import ACP_PROFILE_ID_RE, KNOWN_RUNTIME_NAMES, AcpProfile, AgentMode
 from .policy import PolicyRegistry, WorkdirAgentPolicy
 
 _CONFIG_KEYS = frozenset(
@@ -29,6 +29,7 @@ _CONFIG_KEYS = frozenset(
         "codex",
         "claude",
         "qoder",
+        "acp_profiles",
         "jev",
         "proxy",
         "workdirs",
@@ -79,6 +80,13 @@ _LIMIT_KEYS = frozenset(
     }
 )
 _MAX_SPOOLED_RESULT_BYTES = 8 * 1024 * 1024
+_MAX_ACP_PROFILES = 16
+_MAX_ACP_ARGS = 32
+_MAX_ACP_ARG_LENGTH = 4096
+_MAX_ACP_PROFILE_BYTES = 64 * 1024
+_ACP_PROFILE_KEYS = frozenset(
+    {"id", "command", "args", "use_proxy", "probe_timeout_seconds", "shutdown_timeout_seconds"}
+)
 _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _LEASE_KEY_SLOT = "slot"
 _LEASE_KEY_ALIAS = "alias"
@@ -152,6 +160,68 @@ class QoderSettings:
     event_idle_timeout_seconds: float | None = None
 
 
+def _load_acp_profiles(value: Any) -> tuple[AcpProfile, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("acp_profiles must be an array")
+    if len(value) > _MAX_ACP_PROFILES:
+        raise ValueError("acp_profiles must not contain more than 16 profiles")
+    profiles: list[AcpProfile] = []
+    ids: set[str] = set()
+    total_size = 0
+    for entry in value:
+        if not isinstance(entry, dict):
+            raise ValueError("acp_profiles entries must be objects")
+        _reject_unknown_keys(entry, _ACP_PROFILE_KEYS, "ACP profile")
+        profile_id = _strict_string(entry.get("id"), "acp_profiles.id")
+        if ACP_PROFILE_ID_RE.fullmatch(profile_id) is None or profile_id in KNOWN_RUNTIME_NAMES:
+            raise ValueError("acp_profiles.id has an invalid or reserved format")
+        if profile_id in ids:
+            raise ValueError(f"duplicate ACP profile id: {profile_id}")
+        ids.add(profile_id)
+        command = _strict_string(entry.get("command"), "acp_profiles.command")
+        command_path = Path(command)
+        if not command_path.is_absolute() or "\x00" in command:
+            raise ValueError("acp_profiles.command must be an absolute executable path")
+        try:
+            command_path.stat()
+        except OSError as exc:
+            raise ValueError("acp_profiles.command must be an absolute executable path") from exc
+        if not command_path.is_file() or not os.access(command_path, os.X_OK):
+            raise ValueError("acp_profiles.command must be a regular executable file")
+        args = entry.get("args", [])
+        if not isinstance(args, list) or len(args) > _MAX_ACP_ARGS:
+            raise ValueError("acp_profiles.args must be an array of at most 32 strings")
+        if any(
+            not isinstance(arg, str) or "\x00" in arg or len(arg) > _MAX_ACP_ARG_LENGTH
+            for arg in args
+        ):
+            raise ValueError("acp_profiles.args entries must be bounded strings")
+        probe = _strict_positive_number(
+            entry.get("probe_timeout_seconds", 5), "acp_profiles.probe_timeout_seconds"
+        )
+        shutdown = _strict_positive_number(
+            entry.get("shutdown_timeout_seconds", 5), "acp_profiles.shutdown_timeout_seconds"
+        )
+        if probe > 60 or shutdown > 60:
+            raise ValueError("ACP probe and shutdown timeouts must not exceed 60 seconds")
+        total_size += len(json.dumps(entry, ensure_ascii=True, separators=(",", ":")).encode())
+        profiles.append(
+            AcpProfile(
+                profile_id,
+                str(command_path),
+                tuple(args),
+                _strict_bool(entry.get("use_proxy", False), "acp_profiles.use_proxy"),
+                probe,
+                shutdown,
+            )
+        )
+    if total_size > _MAX_ACP_PROFILE_BYTES:
+        raise ValueError("encoded ACP profiles must not exceed 65536 bytes")
+    return tuple(profiles)
+
+
 @dataclass(frozen=True)
 class LifecycleLimits:
     task_timeout_seconds: int = 7200
@@ -190,6 +260,7 @@ class BridgeConfig:
     codex: CodexSettings
     claude: ClaudeSettings
     qoder: QoderSettings
+    acp_profiles: tuple[AcpProfile, ...]
     jev: JevSettings
     proxy: SharedProxySettings | None
     policies: PolicyRegistry
@@ -268,6 +339,16 @@ class BridgeConfig:
         codex = _load_codex_settings(data.get("codex"))
         claude = _load_claude_settings(data.get("claude"))
         qoder = _load_qoder_settings(data.get("qoder"))
+        acp_profiles = _load_acp_profiles(data.get("acp_profiles"))
+        acp_runtime_names = {profile.runtime_id for profile in acp_profiles}
+        if len(acp_runtime_names) != len(acp_profiles):
+            raise ValueError("duplicate ACP runtime id")
+        for policy in policies:
+            for runtime in policy.runtimes:
+                if runtime.startswith("acp-") and runtime not in acp_runtime_names:
+                    raise ValueError(f"ACP runtime is not configured: {runtime}")
+                if runtime.startswith("acp-") and policy.mode is not AgentMode.WORKSPACE_WRITE:
+                    raise ValueError("ACP runtime requires agent_mode=workspace-write")
         jev = _load_jev_settings(data.get("jev"))
         proxy = _load_proxy_settings(data.get("proxy"))
         codex_policies = [policy for policy in policies if "codex" in policy.runtimes]
@@ -298,6 +379,9 @@ class BridgeConfig:
             )
 
         agent_proxy_enabled = codex.use_proxy or claude.use_proxy or qoder.use_proxy
+        agent_proxy_enabled = agent_proxy_enabled or any(
+            profile.use_proxy for profile in acp_profiles
+        )
         # Agent proxy material may arrive later through the private supervised bootstrap channel
         # (the Windows v0.11 contract), so BridgeConfig must not require a persisted endpoint.
         # Linux's renderer does require one before launch. Jev has no bootstrap-specific transport:
@@ -324,6 +408,7 @@ class BridgeConfig:
             codex=codex,
             claude=claude,
             qoder=qoder,
+            acp_profiles=acp_profiles,
             jev=jev,
             proxy=proxy,
             policies=PolicyRegistry(policies),

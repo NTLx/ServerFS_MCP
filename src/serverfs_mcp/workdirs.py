@@ -35,7 +35,19 @@ AGENT_MODE_DISABLED = "disabled"
 AGENT_MODE_REVIEW = "review"
 AGENT_MODE_WORKSPACE_WRITE = "workspace-write"
 AGENT_MODES = frozenset({AGENT_MODE_DISABLED, AGENT_MODE_REVIEW, AGENT_MODE_WORKSPACE_WRITE})
-PUBLIC_AGENT_RUNTIMES = frozenset({"codex", "claude", "qoder"})
+NATIVE_AGENT_RUNTIMES = frozenset({"codex", "claude", "qoder"})
+ACP_PROFILE_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,27}$")
+ACP_RUNTIME_ID_RE = re.compile(r"^acp-[a-z][a-z0-9_-]{0,27}$")
+
+
+class _PublicAgentRuntimes(frozenset[str]):
+    def __contains__(self, value: object) -> bool:
+        return super().__contains__(value) or (
+            isinstance(value, str) and ACP_RUNTIME_ID_RE.fullmatch(value) is not None
+        )
+
+
+PUBLIC_AGENT_RUNTIMES = _PublicAgentRuntimes(NATIVE_AGENT_RUNTIMES)
 
 SENTINEL_CONFLICT_MSG = (
     "workdir root for slot {slot} contains the reserved file "
@@ -305,12 +317,9 @@ def _build_registry(
                 f"slot {slot:02d}: workspace-write Agent mode requires "
                 f"WORKDIR_{slot:02d}_READ_ONLY=false"
             )
-        if (
-            policy.agent_runtimes & {"codex", "claude", "qoder"}
-            and policy.agent_mode != AGENT_MODE_WORKSPACE_WRITE
-        ):
+        if policy.agent_runtimes and policy.agent_mode != AGENT_MODE_WORKSPACE_WRITE:
             raise WorkdirError(
-                f"slot {slot:02d}: Codex/Claude/Qoder native mode currently requires "
+                f"slot {slot:02d}: native mode and ACP runtimes currently require "
                 "WORKDIR_XX_AGENT_MODE=workspace-write"
             )
 
@@ -468,10 +477,13 @@ def parse_agent_mode(slot: int, raw: str) -> str:
 def parse_agent_runtimes(slot: int, raw: str) -> frozenset[str]:
     if not raw.strip():
         return frozenset()
-    values = [item.strip().lower() for item in raw.split(",") if item.strip()]
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    values = [
+        value.lower() if value.lower() in NATIVE_AGENT_RUNTIMES else value for value in values
+    ]
     if len(values) != len(set(values)):
         raise WorkdirError(f"slot {slot:02d}: duplicate Agent runtime")
-    unknown = set(values) - PUBLIC_AGENT_RUNTIMES
+    unknown = {value for value in values if value not in PUBLIC_AGENT_RUNTIMES}
     if unknown:
         raise WorkdirError(
             f"slot {slot:02d}: unknown WORKDIR_{slot:02d}_AGENT_RUNTIMES value: "

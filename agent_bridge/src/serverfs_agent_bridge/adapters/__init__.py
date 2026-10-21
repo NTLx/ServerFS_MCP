@@ -17,11 +17,13 @@ from .base import AdapterResult, AgentAdapter, TaskContext
 from .fake import FakeAdapter
 
 if TYPE_CHECKING:
+    from .acp import AcpAdapter
     from .claude import ClaudeAdapter
     from .codex import CodexAdapter
     from .qoder import QoderAdapter
 
 _RUNTIME_ADAPTERS = {
+    "AcpAdapter": (".acp", "agent-client-protocol"),
     "ClaudeAdapter": (".claude", "claude-agent-sdk"),
     "CodexAdapter": (".codex", "Codex App Server transport"),
     "QoderAdapter": (".qoder", "qoder-agent-sdk"),
@@ -29,6 +31,7 @@ _RUNTIME_ADAPTERS = {
 
 __all__ = [
     "AdapterResult",
+    "AcpAdapter",
     "AgentAdapter",
     "ClaudeAdapter",
     "CodexAdapter",

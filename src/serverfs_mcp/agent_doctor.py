@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import stat
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -207,6 +208,27 @@ def _probe_runtimes(report, settings) -> None:
         report.note(f"agent {name}", f"enabled, use_proxy={str(runtime.use_proxy).lower()}")
         if name == "codex":
             _probe_codex_cli(report, runtime)
+
+    for profile in agent.acp_profiles:
+        # ACP profiles are configuration only in doctor: inspect the configured command as a
+        # filesystem object, but never invoke it or expose any part of its command configuration.
+        try:
+            command_stat = Path(profile.command).stat()
+            executable_present = stat.S_ISREG(command_stat.st_mode) and os.access(
+                profile.command, os.X_OK
+            )
+        except OSError:
+            executable_present = False
+        detail = (
+            "configured, executable locally present"
+            if executable_present
+            else ("configured, executable unavailable")
+        )
+        report.status(
+            f"agent {profile.runtime_id}",
+            OK if executable_present else WARN,
+            f"{detail}, use_proxy={str(profile.use_proxy).lower()}",
+        )
 
 
 def _codex_argv(binary: str, *args: str) -> list[str]:

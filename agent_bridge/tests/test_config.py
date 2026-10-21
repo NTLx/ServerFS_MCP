@@ -51,6 +51,61 @@ def test_load_review_config(tmp_path: Path) -> None:
     assert config.proxy is None
 
 
+def test_acp_profile_registry_and_workspace_write_allowlist(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    executable = tmp_path / "agent"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    path = write_config(
+        tmp_path,
+        repo,
+        acp_profiles=[{"id": "grok-build", "command": str(executable), "args": ["agent", "stdio"]}],
+    )
+    data = json.loads(path.read_text())
+    data["workdirs"][0].update(
+        read_only=False,
+        agent_mode="workspace-write",
+        agent_runtimes=["acp-grok-build"],
+    )
+    path.write_text(json.dumps(data))
+    config = BridgeConfig.load(path)
+    assert config.acp_profiles[0].runtime_id == "acp-grok-build"
+    assert config.acp_profiles[0].args == ("agent", "stdio")
+    assert config.policies.get("repo").runtimes == frozenset({"acp-grok-build"})
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        {"id": "Bad", "command": "/bin/true"},
+        {"id": "codex", "command": "/bin/true"},
+        {"id": "x", "command": "relative"},
+        {"id": "x", "command": "/bin/true", "env": {}},
+        {"id": "x", "command": "/bin/true", "args": [1]},
+        {"id": "x", "command": "/bin/true", "probe_timeout_seconds": 61},
+    ],
+)
+def test_acp_profile_rejects_invalid_or_unsupported_fields(
+    tmp_path: Path, profile: dict[str, object]
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    with pytest.raises(ValueError):
+        BridgeConfig.load(write_config(tmp_path, repo, acp_profiles=[profile]))
+
+
+def test_acp_profiles_must_be_configured_and_workspace_write(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    path = write_config(tmp_path, repo)
+    data = json.loads(path.read_text())
+    data["workdirs"][0]["agent_runtimes"] = ["acp-missing"]
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="not configured"):
+        BridgeConfig.load(path)
+
+
 def test_lifecycle_limits_are_strict_positive_integers(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

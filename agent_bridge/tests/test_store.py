@@ -253,3 +253,37 @@ def test_existing_database_migrates_idempotency_columns(tmp_path: Path) -> None:
     task = reopened.get_task("agt_test")
     assert task.idempotency_key is None
     assert task.request_fingerprint is None
+
+
+def test_existing_database_migrates_pending_request_expiry_and_capability_table(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    store = TaskStore(state_dir)
+    with store._connect() as con:
+        con.execute("ALTER TABLE pending_requests DROP COLUMN expires_at")
+
+    reopened = TaskStore(state_dir)
+    with reopened._connect() as con:
+        columns = {row[1] for row in con.execute("PRAGMA table_info(pending_requests)")}
+        tables = {
+            row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+    assert "expires_at" in columns
+    assert "runtime_capabilities" in tables
+
+
+def test_runtime_capability_snapshot_read_write_is_bounded_and_replaces_old_fingerprint(
+    tmp_path: Path,
+) -> None:
+    store = TaskStore(tmp_path / "state")
+    first = {"protocol_version": 1, "load_session": True}
+    second = {"protocol_version": 2, "load_session": False}
+    store.save_runtime_capabilities("acp-one", "fingerprint-a", first)
+    assert store.load_runtime_capabilities("acp-one", "fingerprint-a") == first
+    assert store.load_runtime_capabilities("acp-one", "fingerprint-b") is None
+    store.save_runtime_capabilities("acp-one", "fingerprint-b", second)
+    assert store.load_runtime_capabilities("acp-one", "fingerprint-a") is None
+    assert store.load_runtime_capabilities("acp-one", "fingerprint-b") == second
+    with pytest.raises(ValueError, match="exceeds 2048 bytes"):
+        store.save_runtime_capabilities("acp-one", "fingerprint-c", {"data": "x" * 2049})

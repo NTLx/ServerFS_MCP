@@ -280,6 +280,12 @@ class TestAgentConfig:
         assert parse_agent_runtimes(1, " codex,claude,qoder ") == frozenset(
             {"codex", "claude", "qoder"}
         )
+        assert parse_agent_runtimes(1, "acp-opencode") == frozenset({"acp-opencode"})
+
+    @pytest.mark.parametrize("runtime", ["acp-", "acp-UPPER", "acp-" + "a" * 29])
+    def test_malformed_acp_runtime_id_fails(self, runtime: str) -> None:
+        with pytest.raises(WorkdirError, match="unknown WORKDIR_01_AGENT_RUNTIMES"):
+            parse_agent_runtimes(1, runtime)
 
     def test_unknown_agent_runtime_fails(self) -> None:
         with pytest.raises(WorkdirError, match="unknown"):

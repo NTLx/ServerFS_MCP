@@ -31,6 +31,16 @@ _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 _AGENT_MODES = {"disabled", "review", "workspace-write"}
 _RUNTIMES = {"codex", "claude", "qoder"}
+_ACP_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,27}$")
+_ACP_FIELDS = {
+    "id",
+    "command",
+    "args",
+    "use_proxy",
+    "probe_timeout_seconds",
+    "shutdown_timeout_seconds",
+}
+_ACP_MAX_JSON_BYTES = 65_536
 _MAX_SPOOLED_RESULT_BYTES = 8 * 1024 * 1024
 
 _SHARED_PROXY_PATH = (
@@ -178,6 +188,83 @@ def _provider_binary(
     return str(path)
 
 
+def _acp_timeout(profile: dict[str, Any], key: str, default: float) -> float:
+    value = profile.get(key, default)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0 < value <= 60
+        or not math.isfinite(value)
+    ):
+        raise ConfigRenderError(f"ACP {key} must be a finite number greater than 0 and at most 60")
+    return float(value)
+
+
+def _acp_profiles(raw: str) -> list[dict[str, Any]]:
+    if not raw.strip():
+        return []
+    if len(raw.encode("utf-8")) > _ACP_MAX_JSON_BYTES:
+        raise ConfigRenderError("SERVERFS_ACP_PROFILES_JSON exceeds size limit")
+    try:
+
+        def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ConfigRenderError(
+                        "SERVERFS_ACP_PROFILES_JSON contains duplicate object keys"
+                    )
+                result[key] = value
+            return result
+
+        profiles = json.loads(raw, object_pairs_hook=reject_duplicate_keys)
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ConfigRenderError("SERVERFS_ACP_PROFILES_JSON must be valid JSON") from exc
+    if not isinstance(profiles, list) or len(profiles) > 16:
+        raise ConfigRenderError(
+            "SERVERFS_ACP_PROFILES_JSON must be an array of at most 16 profiles"
+        )
+    result: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, profile in enumerate(profiles):
+        label = f"SERVERFS_ACP_PROFILES_JSON[{index}]"
+        if not isinstance(profile, dict) or set(profile) - _ACP_FIELDS:
+            raise ConfigRenderError(f"{label} has invalid fields")
+        identifier = profile.get("id")
+        if not isinstance(identifier, str) or not _ACP_ID_RE.fullmatch(identifier):
+            raise ConfigRenderError(f"{label}.id is invalid")
+        if identifier in seen or identifier in _RUNTIMES:
+            raise ConfigRenderError(f"{label}.id duplicates or collides with a reserved runtime")
+        seen.add(identifier)
+        command = profile.get("command")
+        if not isinstance(command, str) or not command.startswith("/") or "\x00" in command:
+            raise ConfigRenderError(f"{label}.command must be an absolute POSIX path")
+        path = Path(command)
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise ConfigRenderError(f"{label}.command must exist as a regular executable file")
+        args = profile.get("args", [])
+        if (
+            not isinstance(args, list)
+            or len(args) > 32
+            or any(not isinstance(arg, str) or len(arg) > 4096 or "\x00" in arg for arg in args)
+        ):
+            raise ConfigRenderError(f"{label}.args must be at most 32 bounded strings")
+        use_proxy = profile.get("use_proxy", False)
+        if not isinstance(use_proxy, bool):
+            raise ConfigRenderError(f"{label}.use_proxy must be boolean")
+        result.append(
+            {
+                "id": identifier,
+                "command": str(path),
+                "args": args,
+                "use_proxy": use_proxy,
+                "probe_timeout_seconds": _acp_timeout(profile, "probe_timeout_seconds", 5.0),
+                "shutdown_timeout_seconds": _acp_timeout(profile, "shutdown_timeout_seconds", 5.0),
+            }
+        )
+    return result
+
+
 def build_config(values: dict[str, str]) -> dict[str, Any]:
     if not _bool(
         values.get("SERVERFS_AGENT_BRIDGE_ENABLED", ""),
@@ -226,6 +313,8 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
     )
     socket_path = str(socket_dir / "bridge.sock")
 
+    acp_profiles = _acp_profiles(values.get("SERVERFS_ACP_PROFILES_JSON", ""))
+    acp_ids = {f"acp-{profile['id']}" for profile in acp_profiles}
     workdirs: list[dict[str, Any]] = []
     enabled_runtimes: set[str] = set()
     seen_aliases: set[str] = set()
@@ -241,7 +330,13 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         )
         mode = values.get(f"{prefix}_AGENT_MODE", "disabled").strip().lower()
         raw_runtimes = values.get(f"{prefix}_AGENT_RUNTIMES", "")
-        runtimes = [item.strip().lower() for item in raw_runtimes.split(",") if item.strip()]
+        runtimes = []
+        for item in raw_runtimes.split(","):
+            runtime = item.strip()
+            if not runtime:
+                continue
+            normalized_native = runtime.lower()
+            runtimes.append(normalized_native if normalized_native in _RUNTIMES else runtime)
 
         if not alias and not host_path_raw:
             if not read_only:
@@ -262,7 +357,7 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
             raise ConfigRenderError(f"{prefix}_AGENT_MODE is invalid")
         if len(runtimes) != len(set(runtimes)):
             raise ConfigRenderError(f"{prefix}_AGENT_RUNTIMES contains duplicates")
-        unknown = set(runtimes) - _RUNTIMES
+        unknown = set(runtimes) - _RUNTIMES - acp_ids
         if unknown:
             raise ConfigRenderError(
                 f"{prefix}_AGENT_RUNTIMES contains unknown runtimes: " + ", ".join(sorted(unknown))
@@ -274,7 +369,7 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         if mode == "workspace-write" and read_only:
             raise ConfigRenderError(f"{prefix}: workspace-write requires READ_ONLY=false")
         if runtimes and mode != "workspace-write":
-            raise ConfigRenderError(f"{prefix}: native Codex/Claude/Qoder require workspace-write")
+            raise ConfigRenderError(f"{prefix}: Agent runtimes require workspace-write")
 
         host_path = Path(host_path_raw)
         if not host_path.is_absolute():
@@ -299,9 +394,7 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         enabled_runtimes.update(runtimes)
 
     if not enabled_runtimes:
-        raise ConfigRenderError(
-            "at least one workdir must explicitly enable codex, claude or qoder"
-        )
+        raise ConfigRenderError("at least one workdir must explicitly enable an Agent runtime")
 
     codex_enabled = "codex" in enabled_runtimes
     claude_enabled = "claude" in enabled_runtimes
@@ -336,13 +429,14 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         False,
     )
     shared_proxy = None
-    if agent_use_proxy or jev_use_proxy:
+    acp_use_proxy = any(profile["use_proxy"] for profile in acp_profiles)
+    if agent_use_proxy or jev_use_proxy or acp_use_proxy:
         shared_proxy = _shared_proxy.parse_shared_proxy(values, error_type=ConfigRenderError)
         if shared_proxy is None:
             raise ConfigRenderError(
                 "shared proxy HOST/PORT are required when Agent or Jev proxy is enabled"
             )
-        if agent_use_proxy and shared_proxy.authenticated:
+        if (agent_use_proxy or acp_use_proxy) and shared_proxy.authenticated:
             raise ConfigRenderError(
                 "Agent runtime proxy must be credentialless; use a credentialless local broker"
             )
@@ -438,6 +532,8 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
             "url": shared_proxy.url,
             "authenticated": shared_proxy.authenticated,
         }
+    if acp_profiles:
+        config["acp_profiles"] = acp_profiles
     if jev_api_key is not None or jev_use_proxy:
         config["jev"] = {"use_proxy": jev_use_proxy}
         if jev_api_key is not None:

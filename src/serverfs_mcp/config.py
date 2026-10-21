@@ -7,6 +7,7 @@ this container's environment — Compose maps them to /workdirs/XX bind mounts i
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -103,6 +104,7 @@ def _get_bool(env: Mapping[str, str], key: str, default: bool) -> bool:
 
 _TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
 _FALSE_VALUES = frozenset({"false", "0", "no", "off"})
+_ACP_RUNTIME_ID_RE = re.compile(r"^acp-[a-z][a-z0-9_-]{0,27}$")
 
 
 def _get_strict_bool(env: Mapping[str, str], key: str, default: bool) -> bool:
@@ -274,8 +276,18 @@ def _get_agent_runtimes(
     env: Mapping[str, str], key: str = "SERVERFS_AGENT_RUNTIMES"
 ) -> frozenset[str]:
     raw = env.get(key, "")
-    values = [item.strip().lower() for item in raw.split(",") if item.strip()]
-    if len(values) != len(set(values)) or set(values) - {"codex", "claude", "qoder"}:
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    values = [
+        value.lower() if value.lower() in {"codex", "claude", "qoder"} else value
+        for value in values
+    ]
+    known_native = {"codex", "claude", "qoder"}
+    unknown = {
+        value
+        for value in values
+        if value not in known_native and not _ACP_RUNTIME_ID_RE.fullmatch(value)
+    }
+    if len(values) != len(set(values)) or unknown:
         raise ValueError(f"invalid {key} value {raw!r}")
     return frozenset(values)
 

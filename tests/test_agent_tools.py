@@ -188,6 +188,7 @@ def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
             "task_id",
             "request_id",
             "decision",
+            "option_id",
             "granted_permission_ids",
         },
         "answer_agent_question": {"task_id", "request_id", "answers"},
@@ -218,6 +219,14 @@ def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
             assert tool.annotations.destructive_hint is destructive
         if idempotent is not None:
             assert tool.annotations.idempotent_hint is idempotent
+
+    approval_schema = tools["respond_agent_approval"].input_schema
+    assert "decision" not in approval_schema.get("required", [])
+    assert "option_id" not in approval_schema.get("required", [])
+
+    runtime_schema = tools["submit_agent_task"].input_schema["properties"]["runtime"]
+    assert runtime_schema["type"] == "string"
+    assert runtime_schema["maxLength"] == 32
 
 
 def test_submit_agent_task_guides_atomic_authorized_delegation(tmp_path: Path) -> None:
@@ -315,6 +324,81 @@ def test_list_agent_models_maps_discovery_and_advice_to_bridge_rpc(tmp_path: Pat
             "profile": "workspace-write",
         },
     )
+
+
+def test_configured_acp_runtime_is_authorized_for_models_and_submit(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    client.responses["runtime.models"] = {"runtime": "acp-grok-build", "status": "ok", "models": []}
+    original = agent_workdir(tmp_path)
+    wd = dataclasses.replace(
+        original,
+        policy=dataclasses.replace(original.policy, agent_runtimes=frozenset({"acp-grok-build"})),
+    )
+    server = server_with_client(tmp_path, client, workdirs=[wd])
+
+    call_success(server, "list_agent_models", {"runtime": "acp-grok-build"})
+    call_success(
+        server,
+        "submit_agent_task",
+        {"runtime": "acp-grok-build", "workdir": "repo", "prompt": "Do work"},
+    )
+    assert client.calls[-2:] == [
+        ("runtime.models", {"runtime": "acp-grok-build"}),
+        (
+            "task.submit",
+            {
+                "runtime": "acp-grok-build",
+                "workdir": "repo",
+                "path": "",
+                "profile": "workspace-write",
+                "prompt": "Do work",
+            },
+        ),
+    ]
+
+
+@pytest.mark.parametrize("runtime", ["ACP-x", "acp-", "acp-Upper", "acp-a;id"])
+def test_malformed_runtime_ids_fail_before_bridge_rpc(tmp_path: Path, runtime: str) -> None:
+    client = FakeAgentClient()
+    server = server_with_client(tmp_path, client)
+    for tool, args in [
+        ("list_agent_models", {"runtime": runtime}),
+        ("submit_agent_task", {"runtime": runtime, "workdir": "repo", "prompt": "Do work"}),
+    ]:
+        assert error_code(call_error(server, tool, args)) == "INVALID_REQUEST"
+    assert client.calls == []
+
+
+def test_oversized_runtime_id_is_rejected_by_bounded_schema(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    server = server_with_client(tmp_path, client)
+    message = call_error(
+        server,
+        "list_agent_models",
+        {"runtime": "acp-" + "a" * 29},
+    )
+    assert "at most 32 characters" in message
+    assert client.calls == []
+
+
+def test_syntactically_valid_unknown_acp_runtime_is_not_allowed(tmp_path: Path) -> None:
+    client = FakeAgentClient()
+    server = server_with_client(tmp_path, client)
+    assert (
+        error_code(call_error(server, "list_agent_models", {"runtime": "acp-unknown"}))
+        == "AGENT_RUNTIME_NOT_ALLOWED"
+    )
+    assert (
+        error_code(
+            call_error(
+                server,
+                "submit_agent_task",
+                {"runtime": "acp-unknown", "workdir": "repo", "prompt": "Do work"},
+            )
+        )
+        == "AGENT_RUNTIME_NOT_ALLOWED"
+    )
+    assert client.calls == []
 
 
 def test_list_agent_models_rejects_partial_advice_context_before_rpc(tmp_path: Path) -> None:
@@ -632,6 +716,11 @@ def test_read_and_interaction_tools_map_to_expected_rpc_methods(tmp_path: Path) 
     )
     call_success(
         server,
+        "respond_agent_approval",
+        {"task_id": "agt_test", "request_id": "req_2", "option_id": "opaque-option"},
+    )
+    call_success(
+        server,
         "answer_agent_question",
         {
             "task_id": "agt_test",
@@ -657,15 +746,18 @@ def test_read_and_interaction_tools_map_to_expected_rpc_methods(tmp_path: Path) 
         "task.events",
         "task.result.read",
         "task.approval.respond",
+        "task.approval.respond",
         "task.question.answer",
         "task.message.send",
         "task.cancel",
     ]
-    assert client.calls[4][1]["answers"][0] == {
+    assert client.calls[5][1]["answers"][0] == {
         "question_id": "q0",
         "selected_option_ids": ["B"],
         "text": "details",
     }
+    assert client.calls[3][1]["decision"] == "approve_once"
+    assert client.calls[4][1]["option_id"] == "opaque-option"
 
 
 def test_bridge_remote_error_is_preserved_as_coded_tool_error(tmp_path: Path) -> None:

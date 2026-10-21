@@ -143,6 +143,13 @@ class TaskStore:
 
                 CREATE INDEX IF NOT EXISTS pending_requests_task
                 ON pending_requests(task_id, status);
+
+                CREATE TABLE IF NOT EXISTS runtime_capabilities (
+                    runtime_id TEXT NOT NULL,
+                    profile_fingerprint TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    PRIMARY KEY (runtime_id, profile_fingerprint)
+                );
                 """
             )
             columns = {row[1] for row in con.execute("PRAGMA table_info(tasks)").fetchall()}
@@ -181,12 +188,46 @@ class TaskStore:
                 WHERE idempotency_key IS NOT NULL
                 """
             )
-
             request_columns = {
                 row[1] for row in con.execute("PRAGMA table_info(pending_requests)").fetchall()
             }
             if "expires_at" not in request_columns:
                 con.execute("ALTER TABLE pending_requests ADD COLUMN expires_at TEXT")
+
+    def load_runtime_capabilities(self, runtime_id: str, fingerprint: str) -> dict[str, Any] | None:
+        with self._connect() as con:
+            row = con.execute(
+                """SELECT payload_json FROM runtime_capabilities
+                   WHERE runtime_id = ? AND profile_fingerprint = ?""",
+                (runtime_id, fingerprint),
+            ).fetchone()
+        if row is None or len(row["payload_json"].encode("utf-8")) > 2048:
+            return None
+        try:
+            payload = json.loads(row["payload_json"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def save_runtime_capabilities(
+        self, runtime_id: str, fingerprint: str, payload: dict[str, Any]
+    ) -> None:
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        if len(encoded.encode("utf-8")) > 2048:
+            raise ValueError("runtime capability snapshot exceeds 2048 bytes")
+        with self._connect() as con:
+            con.execute(
+                """DELETE FROM runtime_capabilities
+                   WHERE runtime_id = ? AND profile_fingerprint != ?""",
+                (runtime_id, fingerprint),
+            )
+            con.execute(
+                """INSERT INTO runtime_capabilities(runtime_id, profile_fingerprint, payload_json)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(runtime_id, profile_fingerprint)
+                   DO UPDATE SET payload_json = excluded.payload_json""",
+                (runtime_id, fingerprint, encoded),
+            )
 
     def create_task(
         self,

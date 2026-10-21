@@ -19,6 +19,19 @@ class TestDefaults:
 
 
 class TestRobustParsing:
+    def test_bounded_acp_runtime_ids_are_accepted(self) -> None:
+        settings = settings_from_env(
+            {"SERVERFS_AGENT_MODE": "workspace-write", "SERVERFS_AGENT_RUNTIMES": "acp-grok-build"}
+        )
+        assert settings.agent_runtimes == frozenset({"acp-grok-build"})
+
+    @pytest.mark.parametrize("runtime", ["acp-", "acp-Upper", "acp-" + "a" * 29, "acp-a;id"])
+    def test_malformed_acp_runtime_ids_fail_closed(self, runtime: str) -> None:
+        with pytest.raises(ValueError, match="SERVERFS_AGENT_RUNTIMES"):
+            settings_from_env(
+                {"SERVERFS_AGENT_MODE": "workspace-write", "SERVERFS_AGENT_RUNTIMES": runtime}
+            )
+
     def test_invalid_policy_int_fails_closed(self) -> None:
         with pytest.raises(ValueError):
             settings_from_env({"SERVERFS_MAX_READ_BYTES": "not-a-number"})

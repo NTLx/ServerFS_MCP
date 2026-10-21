@@ -124,7 +124,25 @@ def render_request_from_config(workdirs, settings) -> dict:
                 "use_proxy": agent.runtime_use_proxy(name),
             }
             for name in sorted(agent.enabled_runtimes)
+            if not name.startswith("acp-")
         },
+        **(
+            {
+                "acp_profiles": [
+                    {
+                        "id": profile.id,
+                        "command": profile.command,
+                        "args": list(profile.args),
+                        "use_proxy": profile.use_proxy,
+                        "probe_timeout_seconds": profile.probe_timeout_seconds,
+                        "shutdown_timeout_seconds": profile.shutdown_timeout_seconds,
+                    }
+                    for profile in agent.acp_profiles
+                ]
+            }
+            if agent.acp_profiles
+            else {}
+        ),
         "limits": {
             "task_timeout_seconds": agent.task_timeout_seconds,
             "interaction_timeout_seconds": agent.interaction_timeout_seconds,

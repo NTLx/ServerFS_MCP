@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import re
 import socket
@@ -94,6 +95,159 @@ def test_build_config_uses_same_user_identity_and_user_paths(tmp_path: Path) -> 
             "agent_runtimes": ["codex"],
         }
     ]
+
+
+def _acp_values(tmp_path: Path, profile: dict[str, object]) -> dict[str, str]:
+    values = valid_env(tmp_path)
+    values["WORKDIR_01_AGENT_RUNTIMES"] = f"acp-{profile['id']}"
+    values["SERVERFS_ACP_PROFILES_JSON"] = json.dumps([profile])
+    return values
+
+
+def test_acp_missing_or_empty_preserves_v018_output(tmp_path: Path) -> None:
+    values = valid_env(tmp_path)
+    expected = render.build_config(values)
+    values["SERVERFS_ACP_PROFILES_JSON"] = ""
+    assert render.build_config(values) == expected
+    assert "acp_profiles" not in expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "{",
+        "{}",
+        "[{}]",
+        '[{"id":"x","command":"/bin/true","env":{}}]',
+        '[{"id":"x","id":"y","command":"/bin/true"}]',
+    ],
+)
+def test_acp_rejects_malformed_json_and_schema(tmp_path: Path, raw: str) -> None:
+    values = valid_env(tmp_path)
+    values["SERVERFS_ACP_PROFILES_JSON"] = raw
+    with pytest.raises(render.ConfigRenderError):
+        render.build_config(values)
+
+
+def test_acp_allowlist_requires_configured_profile_and_workspace_write(tmp_path: Path) -> None:
+    values = valid_env(tmp_path)
+    values["WORKDIR_01_AGENT_RUNTIMES"] = "acp-missing"
+    with pytest.raises(render.ConfigRenderError, match="unknown runtimes"):
+        render.build_config(values)
+
+    executable = make_executable(tmp_path / "acp-agent")
+    values["SERVERFS_ACP_PROFILES_JSON"] = json.dumps([{"id": "agent", "command": str(executable)}])
+    values["WORKDIR_01_AGENT_RUNTIMES"] = "acp-agent"
+    values["WORKDIR_01_AGENT_MODE"] = "review"
+    with pytest.raises(render.ConfigRenderError, match="workspace-write"):
+        render.build_config(values)
+
+
+@pytest.mark.parametrize("command", ["relative", "/definitely/missing/serverfs-acp", "/tmp"])
+def test_acp_command_must_be_existing_executable_file(tmp_path: Path, command: str) -> None:
+    profile = {"id": "agent", "command": command}
+    with pytest.raises(render.ConfigRenderError, match="command"):
+        render.build_config(_acp_values(tmp_path, profile))
+
+
+def test_acp_proxy_requires_valid_shared_credentialless_proxy(tmp_path: Path) -> None:
+    executable = make_executable(tmp_path / "acp-agent")
+    values = _acp_values(tmp_path, {"id": "agent", "command": str(executable), "use_proxy": True})
+    with pytest.raises(render.ConfigRenderError, match="shared proxy"):
+        render.build_config(values)
+    values.update({"SERVERFS_PROXY_HOST": "proxy.internal", "SERVERFS_PROXY_PORT": "7890"})
+    config = render.build_config(values)
+    assert config["proxy"]["url"] == "http://proxy.internal:7890"
+    assert config["acp_profiles"][0]["use_proxy"] is True
+    values["SERVERFS_PROXY_USERNAME"] = "user"
+    values["SERVERFS_PROXY_PASSWORD"] = "secret"
+    with pytest.raises(render.ConfigRenderError, match="credentialless"):
+        render.build_config(values)
+
+
+def test_acp_profile_renders_normalized_configuration(tmp_path: Path) -> None:
+    executable = make_executable(tmp_path / "acp-agent")
+    values = _acp_values(
+        tmp_path,
+        {
+            "id": "agent",
+            "command": str(executable),
+            "args": ["serve", "--stdio"],
+            "probe_timeout_seconds": 12,
+            "shutdown_timeout_seconds": 30,
+        },
+    )
+    config = render.build_config(values)
+    assert config["acp_profiles"] == [
+        {
+            "id": "agent",
+            "command": str(executable),
+            "args": ["serve", "--stdio"],
+            "use_proxy": False,
+            "probe_timeout_seconds": 12,
+            "shutdown_timeout_seconds": 30,
+        }
+    ]
+
+
+def test_acp_runtime_ids_are_case_sensitive(tmp_path: Path) -> None:
+    executable = make_executable(tmp_path / "acp-agent")
+    values = _acp_values(tmp_path, {"id": "agent", "command": str(executable)})
+    values["WORKDIR_01_AGENT_RUNTIMES"] = "acp-AGENT"
+
+    with pytest.raises(render.ConfigRenderError, match="unknown runtimes"):
+        render.build_config(values)
+
+
+def test_acp_args_allow_4096_characters_and_reject_4097(tmp_path: Path) -> None:
+    executable = make_executable(tmp_path / "acp-agent")
+    profile = {"id": "agent", "command": str(executable), "args": ["x" * 4096]}
+    values = _acp_values(tmp_path, profile)
+    config = render.build_config(values)
+    assert len(config["acp_profiles"][0]["args"][0]) == 4096
+
+    values["SERVERFS_ACP_PROFILES_JSON"] = json.dumps(
+        [{"id": "agent", "command": str(executable), "args": ["x" * 4097]}]
+    )
+    with pytest.raises(render.ConfigRenderError, match="args"):
+        render.build_config(values)
+
+
+def test_acp_timeout_defaults_and_float_values_match_bridge_contract(tmp_path: Path) -> None:
+    executable = make_executable(tmp_path / "acp-agent")
+    values = _acp_values(tmp_path, {"id": "agent", "command": str(executable)})
+    defaults = render.build_config(values)["acp_profiles"][0]
+    assert defaults["probe_timeout_seconds"] == 5.0
+    assert defaults["shutdown_timeout_seconds"] == 5.0
+
+    values["SERVERFS_ACP_PROFILES_JSON"] = json.dumps(
+        [
+            {
+                "id": "agent",
+                "command": str(executable),
+                "probe_timeout_seconds": 2.5,
+                "shutdown_timeout_seconds": 60.0,
+            }
+        ]
+    )
+    rendered = render.build_config(values)["acp_profiles"][0]
+    assert rendered["probe_timeout_seconds"] == 2.5
+    assert rendered["shutdown_timeout_seconds"] == 60.0
+
+
+@pytest.mark.parametrize("timeout", [True, "5", 0, -1, 60.1, float("inf")])
+def test_acp_timeouts_reject_invalid_values(tmp_path: Path, timeout: object) -> None:
+    executable = make_executable(tmp_path / "acp-agent")
+    values = _acp_values(
+        tmp_path,
+        {
+            "id": "agent",
+            "command": str(executable),
+            "probe_timeout_seconds": timeout,
+        },
+    )
+    with pytest.raises(render.ConfigRenderError, match="probe_timeout_seconds"):
+        render.build_config(values)
 
 
 def test_build_config_enables_qoder_with_absolute_host_binary(tmp_path: Path) -> None:

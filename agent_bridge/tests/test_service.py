@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -8,11 +10,12 @@ import pytest
 import serverfs_agent_bridge.service as service_module
 from platform_contract import WINDOWS
 from serverfs_agent_bridge.adapters import FakeAdapter
+from serverfs_agent_bridge.adapters.acp import AcpAdapter
 from serverfs_agent_bridge.adapters.base import AdapterResult, ReconcileResult
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.lease_identity import alias_lease_id, slot_lease_id
 from serverfs_agent_bridge.leases import LeaseManager
-from serverfs_agent_bridge.models import AgentMode, ReconciliationStatus
+from serverfs_agent_bridge.models import AcpProfile, AgentMode, ReconciliationStatus
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
 from serverfs_agent_bridge.service import (
     BridgeLimits,
@@ -142,6 +145,13 @@ class CatalogFakeAdapter(FakeAdapter):
         }
 
 
+class ModelOverrideFakeAdapter(FakeAdapter):
+    async def probe(self):
+        from dataclasses import replace
+
+        return replace(await super().probe(), model_override=True)
+
+
 async def wait_for_status(service: BridgeService, task_id: str, *statuses: str) -> dict:
     for _ in range(500):
         task = service.get_task(task_id)
@@ -149,6 +159,95 @@ async def wait_for_status(service: BridgeService, task_id: str, *statuses: str) 
             return task
         await asyncio.sleep(0.01)
     raise AssertionError(f"task did not reach {statuses}: {service.get_task(task_id)}")
+
+
+@pytest.mark.asyncio
+async def test_acp_stop_unknown_releases_writer_lease_but_keeps_recovery_guard(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from serverfs_agent_bridge.adapters import acp as acp_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    policy = WorkdirAgentPolicy(
+        slot=None if WINDOWS else 1,
+        alias="repo",
+        host_path=repo,
+        mode=AgentMode.WORKSPACE_WRITE,
+        runtimes=frozenset({"acp-fixture"}),
+        read_only=False,
+    )
+    fixture = Path(__file__).parent / "fixtures" / "acp_stdio_agent.py"
+    adapter = AcpAdapter(
+        AcpProfile(
+            "fixture",
+            sys.executable,
+            (str(fixture), "normal"),
+            probe_timeout_seconds=0.5,
+            shutdown_timeout_seconds=0.5,
+        )
+    )
+    service = BridgeService(
+        store=TaskStore(tmp_path / "state"),
+        policies=PolicyRegistry([policy]),
+        adapters={"acp-fixture": adapter},
+        lease_manager=LeaseManager(tmp_path / "locks", lease_ids=[policy.lease_id]),
+        limits=BridgeLimits(task_timeout_seconds=3),
+    )
+
+    real_stop = acp_module.stop_acp_child
+
+    async def stop_unproven(child, timeout: float) -> bool:
+        # Let the fixture process exit cleanly, then simulate the seam withholding proof.
+        await real_stop(child, timeout)
+        return False
+
+    monkeypatch.setattr(acp_module, "stop_acp_child", stop_unproven)
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="acp-fixture",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="complete deterministically",
+        )
+        task = await asyncio.wait_for(
+            wait_for_status(service, submitted["task_id"], "failed", "interrupted"),
+            timeout=2.0,
+        )
+        assert task["error_code"] == "AGENT_PROVIDER_STOP_UNKNOWN"
+        assert service.guard_manager.read(policy.lease_id) is not None
+
+        async def wait_for_released_lease() -> None:
+            deadline = asyncio.get_running_loop().time() + 1.0
+            while True:
+                try:
+                    lease = service.lease_manager.acquire_exclusive(policy.lease_id)
+                except BridgeError:
+                    if asyncio.get_running_loop().time() >= deadline:
+                        raise AssertionError("writer lease was not released") from None
+                    await asyncio.sleep(0.01)
+                else:
+                    lease.release()
+                    return
+
+        await asyncio.wait_for(wait_for_released_lease(), timeout=1.1)
+        with pytest.raises(BridgeError) as blocked:
+            await asyncio.wait_for(
+                service.submit_task(
+                    runtime="acp-fixture",
+                    workdir="repo",
+                    path="",
+                    profile="workspace-write",
+                    prompt="must remain blocked",
+                ),
+                timeout=1.0,
+            )
+        assert blocked.value.code == "WORKDIR_RECOVERY_REQUIRED"
+        assert service.guard_manager.read(policy.lease_id) is not None
+    finally:
+        await asyncio.wait_for(service.close(), timeout=2.0)
 
 
 @pytest.mark.asyncio
@@ -202,6 +301,7 @@ async def test_list_models_with_optional_jev_advice_is_pre_submit_only(tmp_path:
 @pytest.mark.asyncio
 async def test_requested_model_is_persisted_and_part_of_idempotency(tmp_path: Path) -> None:
     service = make_service(tmp_path)
+    service.adapters["fake"] = ModelOverrideFakeAdapter()
     await service.start()
     try:
         first = await service.submit_task(
@@ -237,6 +337,41 @@ async def test_requested_model_is_persisted_and_part_of_idempotency(tmp_path: Pa
                 idempotency_key="model-key",
             )
         assert exc.value.code == "AGENT_IDEMPOTENCY_CONFLICT"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_submit_rejects_model_when_runtime_does_not_support_override(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        with pytest.raises(BridgeError) as exc:
+            await service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="workspace-write",
+                prompt="complete:model",
+                model="model-a",
+            )
+        assert exc.value.to_dict() == {
+            "code": "AGENT_MODEL_OVERRIDE_UNSUPPORTED",
+            "message": "runtime does not support model override",
+        }
+        assert service.store.list_nonterminal_tasks() == []
+
+        accepted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:no-override",
+            model=None,
+        )
+        assert accepted["status"] == "queued"
     finally:
         await service.close()
 
@@ -651,6 +786,84 @@ async def test_approval_round_trip(tmp_path: Path) -> None:
     finished = await wait_for_status(service, task["task_id"], "succeeded")
     assert finished["final_response"] == "approval=approve_once"
     await service.close()
+
+
+@pytest.mark.asyncio
+async def test_acp_option_selection_requires_exact_single_offered_option(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="approval:permission",
+        )
+        task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request = task["pending_request"]
+        payload = dict(request["payload"])
+        payload.pop("available_decisions", None)
+        payload["response_options"] = [
+            {"option_id": "opaque-allow", "label": "Allow", "kind": "allow_once"},
+            {"option_id": "opaque-reject", "label": "Reject", "kind": "reject_always"},
+        ]
+        with service.store._connect() as con:
+            con.execute(
+                "UPDATE pending_requests SET payload_json = ? WHERE request_id = ?",
+                (json.dumps(payload), request["request_id"]),
+            )
+        base = {"task_id": submitted["task_id"], "request_id": request["request_id"]}
+        for args, expected in [
+            ({}, "INVALID_APPROVAL_DECISION"),
+            ({"option_id": "forged"}, "PERMISSION_OUTSIDE_POLICY"),
+            ({"option_id": "opaque-allow", "decision": "deny"}, "INVALID_APPROVAL_DECISION"),
+        ]:
+            with pytest.raises(BridgeError) as error:
+                await service.respond_approval(**base, **args)
+            assert error.value.code == expected
+        await service.respond_approval(**base, option_id="opaque-reject")
+        assert service.store.get_request(request["request_id"]).resolution == {
+            "option_id": "opaque-reject"
+        }
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_acp_cancel_task_cancels_pending_interaction(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="approval:permission",
+        )
+        task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request = task["pending_request"]
+        payload = dict(request["payload"])
+        payload["response_options"] = [
+            {"option_id": "opaque", "label": "Allow", "kind": "allow_once"}
+        ]
+        with service.store._connect() as con:
+            con.execute(
+                "UPDATE pending_requests SET payload_json = ? WHERE request_id = ?",
+                (json.dumps(payload), request["request_id"]),
+            )
+        await service.respond_approval(
+            task_id=submitted["task_id"],
+            request_id=request["request_id"],
+            decision="cancel_task",
+        )
+        assert service.get_task(submitted["task_id"])["status"] == "cancelled"
+        assert service.store.get_request(request["request_id"]).resolution == {
+            "decision": "cancel_task"
+        }
+    finally:
+        await service.close()
 
 
 @pytest.mark.asyncio

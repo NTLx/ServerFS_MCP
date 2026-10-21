@@ -407,6 +407,11 @@ class BridgeService:
             runtime_info = None
         if runtime_info is None:
             raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", f"runtime is unavailable: {runtime}")
+        if requested_model is not None and not runtime_info.model_override:
+            raise BridgeError(
+                "AGENT_MODEL_OVERRIDE_UNSUPPORTED",
+                "runtime does not support model override",
+            )
 
         preflight_result: dict[str, Any] | None = None
         routing_advice: dict[str, Any] | None = None
@@ -894,7 +899,8 @@ class BridgeService:
         *,
         task_id: str,
         request_id: str,
-        decision: str,
+        decision: str | None = None,
+        option_id: str | None = None,
         granted_permission_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         _require_identifier(task_id, "task_id")
@@ -914,18 +920,49 @@ class BridgeService:
             raise BridgeError("REQUEST_STALE", "approval request expired")
         if request.kind != RequestKind.APPROVAL.value:
             raise BridgeError("INVALID_APPROVAL_DECISION", "request is not an approval")
+        if decision is not None and not isinstance(decision, str):
+            raise BridgeError("INVALID_APPROVAL_DECISION", "decision must be a string")
+        if option_id is not None and not isinstance(option_id, str):
+            raise BridgeError("INVALID_APPROVAL_DECISION", "option_id must be a string")
 
-        try:
-            normalized = ApprovalDecision(decision)
-        except ValueError as exc:
-            raise BridgeError("INVALID_APPROVAL_DECISION", "unsupported approval decision") from exc
+        options = request.payload.get("response_options")
+        is_acp_options = isinstance(options, list)
+        if is_acp_options:
+            if granted_permission_ids is not None:
+                raise BridgeError("INVALID_APPROVAL_DECISION", "permission ids are native-only")
+            if (option_id is None) == (decision is None):
+                raise BridgeError("INVALID_APPROVAL_DECISION", "select exactly one approval option")
+            if option_id is not None:
+                offered = {item.get("option_id") for item in options if isinstance(item, dict)}
+                if option_id not in offered:
+                    raise BridgeError(
+                        "PERMISSION_OUTSIDE_POLICY", "permission option was not offered"
+                    )
+                resolution = {"option_id": option_id}
+                normalized = None
+            else:
+                if decision != ApprovalDecision.CANCEL_TASK.value:
+                    raise BridgeError("INVALID_APPROVAL_DECISION", "unsupported approval decision")
+                resolution = {"decision": ApprovalDecision.CANCEL_TASK.value}
+                normalized = ApprovalDecision.CANCEL_TASK
+        else:
+            if option_id is not None:
+                raise BridgeError("INVALID_APPROVAL_DECISION", "option_id is ACP-only")
+            if decision is None:
+                raise BridgeError("INVALID_APPROVAL_DECISION", "decision is required")
+            try:
+                normalized = ApprovalDecision(decision)
+            except ValueError as exc:
+                raise BridgeError(
+                    "INVALID_APPROVAL_DECISION", "unsupported approval decision"
+                ) from exc
 
-        available = set(request.payload.get("available_decisions", []))
-        if available and normalized.value not in available:
-            raise BridgeError(
-                "INVALID_APPROVAL_DECISION",
-                "approval decision was not offered by the runtime",
-            )
+            available = set(request.payload.get("available_decisions", []))
+            if available and normalized.value not in available:
+                raise BridgeError(
+                    "INVALID_APPROVAL_DECISION",
+                    "approval decision was not offered by the runtime",
+                )
 
         if granted_permission_ids is not None and (
             not isinstance(granted_permission_ids, list)
@@ -944,13 +981,17 @@ class BridgeService:
                 "granted permission was not part of the pending request",
             )
 
-        resolution = {"decision": normalized.value, "granted_permission_ids": granted}
+        if not is_acp_options:
+            resolution = {"decision": normalized.value, "granted_permission_ids": granted}
         self._ensure_interaction_size(resolution)
         self.store.resolve_request(request_id, resolution)
         waiter = self._pending_waiters.pop(request_id, None)
         if waiter is not None and not waiter.done():
             waiter.set_result(resolution)
-        self._try_append_event(task_id, "approval.resolved", {"decision": normalized.value})
+        event_payload = (
+            {"option_id": option_id} if option_id is not None else {"decision": decision}
+        )
+        self._try_append_event(task_id, "approval.resolved", event_payload)
         if normalized is ApprovalDecision.CANCEL_TASK:
             await self.cancel_task(task_id)
         return {
