@@ -62,6 +62,7 @@ def test_main_wires_streamable_http_transport_security(monkeypatch) -> None:
     assert captured["host"] == "0.0.0.0"
     assert captured["port"] == 8000
     assert captured["streamable_http_path"] == "/mcp"
+    assert captured["stateless_http"] is False
     assert captured["max_request_body_size"] == main_module.DEFAULT_MAX_REQUEST_BODY_SIZE
     security = captured["transport_security"]
     assert security.enable_dns_rebinding_protection is True
@@ -103,6 +104,7 @@ def test_main_wires_configured_streamable_http_listener(monkeypatch) -> None:
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 9000
     assert captured["streamable_http_path"] == "/serverfs"
+    assert captured["stateless_http"] is False
     security = captured["transport_security"]
     assert security.enable_dns_rebinding_protection is True
     assert security.allowed_hosts == ["mcp.example.com", "mcp.example.com:*"]
@@ -215,6 +217,7 @@ def test_api_key_runner_disables_uvicorn_access_log(monkeypatch) -> None:
     assert config_kwargs["access_log"] is False
     app_kwargs = captured["app_kwargs"]
     assert app_kwargs["streamable_http_path"] == "/serverfs"
+    assert app_kwargs["stateless_http"] is False
     assert app_kwargs["host"] == "127.0.0.1"
     security = app_kwargs["transport_security"]
     assert security.enable_dns_rebinding_protection is True

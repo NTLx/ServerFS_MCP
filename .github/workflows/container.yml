@@ -94,6 +94,144 @@ jobs:
       - name: Test
         run: uv run pytest
 
+  mcp-conformance:
+    name: MCP conformance
+    needs:
+      - test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ServerFS
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Checkout MCP conformance
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: modelcontextprotocol/conformance
+          ref: 232a9014457eaf4c59559916e3d616d2f7f28f05
+          path: .mcp-conformance
+          persist-credentials: false
+
+      - name: Verify conformance revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C .mcp-conformance rev-parse HEAD)"
+          test "$actual" = "232a9014457eaf4c59559916e3d616d2f7f28f05"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: .mcp-conformance/package-lock.json
+
+      - name: Build conformance CLI
+        working-directory: .mcp-conformance
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+
+      - name: Run full reports and frozen hard gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_conformance() {
+            node "${GITHUB_WORKSPACE}/.mcp-conformance/dist/index.js" "$@"
+          }
+          results="${RUNNER_TEMP}/mcp-conformance-results"
+          mkdir -p "$results"
+          uv run python deployment/conformance_target.py --host 127.0.0.1 --port 8765 --path /mcp &
+          target_pid=$!
+          cleanup() {
+            kill "$target_pid" 2>/dev/null || true
+            wait "$target_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if ! kill -0 "$target_pid" 2>/dev/null; then
+              echo "Conformance target exited before becoming ready" >&2
+              exit 1
+            fi
+            if python -c 'import socket; s=socket.socket(); s.settimeout(0.2); result=s.connect_ex(("127.0.0.1", 8765)); s.close(); raise SystemExit(result)' 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Timed out waiting for conformance target TCP readiness" >&2
+            exit 1
+          fi
+
+          full_run_failed=0
+          for revision in 2025-11-25 2026-07-28; do
+            output="$results/full-$revision"
+            mkdir -p "$output"
+            set +e
+            run_conformance server --url http://127.0.0.1:8765/mcp --requirements "$revision" --output-dir "$output"
+            exit_code=$?
+            set -e
+            printf '%s\n' "$exit_code" > "$output/exit-code.txt"
+            if ! find "$output" -name checks.json -type f -print -quit | grep -q .; then
+              echo "Full run $revision produced no checks.json" >&2
+              full_run_failed=1
+            fi
+          done
+
+          hard_gate_failed=0
+          run_hard_gate() {
+            revision="$1"
+            scenario="$2"
+            output="$results/hard-gate-$revision-$scenario"
+            mkdir -p "$output"
+            set +e
+            run_conformance server --url http://127.0.0.1:8765/mcp --scenario "$scenario" --spec-version "$revision" --output-dir "$output"
+            exit_code=$?
+            set -e
+            printf '%s\n' "$exit_code" > "$output/exit-code.txt"
+            if [ "$exit_code" -ne 0 ]; then
+              echo "Hard-gate scenario $scenario ($revision) exited $exit_code" >&2
+              hard_gate_failed=1
+            fi
+            if ! find "$output" -name checks.json -type f -print -quit | grep -q .; then
+              echo "Hard-gate scenario $scenario ($revision) is not measured: no checks.json" >&2
+              hard_gate_failed=1
+            fi
+          }
+
+          for scenario in server-initialize ping tools-list tools-call-simple-text tools-call-error server-sse-multiple-streams resources-list dns-rebinding-protection; do
+            run_hard_gate 2025-11-25 "$scenario"
+          done
+          for scenario in tools-list tools-call-simple-text tools-call-error server-sse-multiple-streams resources-list sep-2164-resource-not-found caching input-required-result-missing-input-response input-required-result-unsupported-methods input-required-result-ignore-extra-params input-required-result-validate-input dns-rebinding-protection; do
+            run_hard_gate 2026-07-28 "$scenario"
+          done
+
+          if [ "$full_run_failed" -ne 0 ] || [ "$hard_gate_failed" -ne 0 ]; then
+            echo "Conformance requirement report or hard-gate scenario failed" >&2
+            exit 1
+          fi
+
+      - name: Upload conformance reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mcp-conformance-results
+          path: ${{ runner.temp }}/mcp-conformance-results
+          if-no-files-found: warn
+
   # The root pytest configuration does not collect agent_bridge/tests, so the
   # standalone Bridge gate runs as its own job (see AGENTS.md → Change protocol).
   bridge-test:

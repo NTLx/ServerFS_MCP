@@ -12,7 +12,8 @@ The implementation starts from the v0.19.0 repository as checked out: Python MCP
 
 Frozen decisions:
 
-- Test the official MCP Conformance requirement sets for **2025-11-25** and **2026-07-28** independently. Preserve a modern/stateless path and a legacy/stateful path; do not infer their wire compatibility from shared SDK types or a successful initialize handshake.
+- Production Streamable HTTP uses one stateful SDK app (`stateless_http=False`): preserve the legacy `2025-11-25` session lifecycle, while serving modern `2026-07-28` requests on that same app using per-request `_meta`/headers without a session dependency. Do not design a second endpoint.
+- Stable Conformance release `v0.1.16` does not support `--requirements`; v0.20 selects official source commit `232a9014457eaf4c59559916e3d616d2f7f28f05`, which introduced the option, as its reproducible suite source. CI builds from that pinned source; never use floating `main`/`latest`.
 - Capture actual Streamable HTTP requests/responses at the socket boundary for both protocol families. SDK-only unit tests are insufficient wire evidence.
 - Keep stdio protocol-clean and separately tested. HTTP API Key and OAuth gates apply only to HTTP ingress; they must not become stdio authentication or alter stdio framing.
 - Prepare `server.json`, OCI identity metadata, schema/version checks and CI validation for the MCP Registry preview. Registry publication is optional and must not become the only way to obtain or run ServerFS.
@@ -27,7 +28,7 @@ Deliver a release whose protocol claims can be independently reproduced and whos
 
 Completion requires:
 
-1. official conformance requirements are run and reported separately for the two dated wire revisions, with no untriaged required failures;
+1. the formal Conformance gate is integrated from a confirmed immutable upstream revision, then both requirement sets are reported separately with no untriaged applicable required failures;
 2. captured HTTP exchanges prove headers, body, session/lifecycle behavior, authentication and errors for modern and legacy clients;
 3. stdio, API Key HTTP and OAuth HTTP behavior remain explicitly bounded and have independent deterministic coverage;
 4. the platform capability matrix is backed by matching tests and native acceptance, not inferred from a shared source tree;
@@ -69,19 +70,21 @@ Before editing, inspect actual MCP SDK transport construction and version negoti
 
 ### 4.1 Requirement-set baseline
 
-Use the official Conformance project's frozen requirement sets `2025-11-25` and `2026-07-28`, each with its own wire lifecycle and result artifact. Record the exact conformance package/CLI version or immutable source revision, command line, environment, server build identity, timestamp, scenario summary, raw report, and any skipped/inapplicable role. The suite evolves; the requirement set, not an unpinned “latest suite” run, defines the release claim.
+The stable official Conformance release `v0.1.16` does not support `--requirements`. v0.20 uses official immutable source commit `232a9014457eaf4c59559916e3d616d2f7f28f05`, which introduced the option, and builds the CLI from that checkout in CI. Do not use floating `main`/`latest`. Run complete `--requirements 2025-11-25` and `--requirements 2026-07-28` suites separately and preserve each report and exit code. Full-suite exit codes are report evidence, not hard gates: the sets include undeclared capabilities and fixed-fixture/Host assumptions. Never use `--expected-failures` to manufacture a passing score.
 
-The 2025-11-25 set exercises the initialize-negotiated, session-aware Streamable HTTP family. The 2026-07-28 set exercises the stateless request family. Treat protocol selection and transport behavior as explicit compatibility modes. Do not silently reinterpret a request that lacks the modern version marker as modern, or synthesize legacy session semantics for modern requests.
+The hard gate is the reviewed subset of scenarios applicable to ServerFS's declared capabilities and security boundaries, complemented by this repository's real-wire regressions. Use the pinned CLI command exit code as the scored-failure threshold and require `checks.json` to establish that a scenario was measured. Any newly observed applicable required failure blocks release/CI. A change in scenario applicability requires human review and updated versioned evidence; applicability must not be silently reclassified to clear a failure.
 
-**Probe before implementation:** confirm the official suite's exact CLI invocation, server/client roles, requirement-set availability, output format, expected endpoint setup, and whether its OAuth scenarios apply to this server role. Do not copy commands from an old release or assume an RC is the final 2026-07-28 wire contract. Pin the selected suite version/revision in CI and preserve the raw report as an artifact.
+The 2025-11-25 set exercises the initialize-negotiated, session-aware Streamable HTTP family. The 2026-07-28 set exercises modern requests with per-request `_meta`/headers and no session dependency. A real loopback probe confirmed both on one stateful SDK app (`stateless_http=False`); retain that single production app and legacy session lifecycle. Do not create a second endpoint or silently reinterpret protocol markers.
+
+**Conformance source decision:** stable `v0.1.16` lacks `--requirements`; CI builds the official source at immutable commit `232a9014457eaf4c59559916e3d616d2f7f28f05`, which provides the option. Verify roles, requirement-set availability, output format, endpoint setup and OAuth applicability against that pinned source. Preserve both full reports on each run.
 
 ### 4.2 Two-path architecture and negotiation
 
-Keep modern and legacy handling separated at the narrowest transport boundary the pinned `mcp==2.3.0` SDK supports. Reuse tool implementations and schemas only where the wire contract is identical. If the SDK cannot serve both revisions correctly without misleading negotiation, probe a supported upgrade or a small explicit transport adapter before choosing; do not add unverified SDK method calls.
+Keep modern and legacy wire behavior explicit within the single production Streamable HTTP SDK app (`stateless_http=False`), as confirmed by the real loopback probe. Reuse tool implementations and schemas where the wire contract is identical. Do not add a second endpoint; do not add unverified SDK calls.
 
 Required behavior:
 
-- valid modern requests receive modern stateless behavior, per-request metadata handling and no dependency on `Mcp-Session-Id`;
+- valid modern requests on the stateful app receive per-request `_meta`/header handling and have no dependency on `Mcp-Session-Id`;
 - valid legacy requests retain initialization, negotiated protocol version, session behavior and required subsequent-request headers;
 - mismatched or missing headers/body protocol markers are rejected according to the relevant spec instead of silently routed to the other implementation;
 - errors and JSON-RPC IDs remain bound to the originating exchange; no cross-request/session leakage;
@@ -202,9 +205,9 @@ Inspect v0.19 transport wiring, SDK negotiation behavior, CI jobs, release workf
 
 Define routing/compatibility behavior for both dated revisions using the pinned SDK's actual supported API. Add raw loopback Streamable HTTP test harness and sanitized request/response fixtures. Ensure shared tool logic and authorization remain downstream of protocol framing. **Gate:** modern and legacy fixtures prove distinct correct lifecycles; mixed/malformed requests fail closed.
 
-### Phase C — Official conformance
+### Phase C — Official conformance (pinned source integrated)
 
-Run the pinned official requirement sets separately against production-shaped server configurations. Capture reports for unauthenticated allowed test topology, API Key HTTP, and OAuth HTTP where official requirements apply. Triage failures against spec text and wire capture; no expected-failure masking for required scenarios. **Gate:** all required applicable scenarios pass, or release is blocked with a documented scope decision approved by maintainer.
+Stable release `v0.1.16` lacks `--requirements`; v0.20 uses official source commit `232a9014457eaf4c59559916e3d616d2f7f28f05`, builds it in CI, and runs both requirement sets against the production-shaped target. Preserve a report and exit code for each full set, even when one lacks `checks.json`, then assess report integrity after both attempts. Full-suite exit codes are report evidence; hard-gate reviewed applicable scenarios using the pinned CLI exit code and require `checks.json`, alongside repository real-wire regressions. Any new applicable required failure blocks; applicability changes require human review and versioned evidence. Never use floating `main`/`latest` or `--expected-failures`.
 
 ### Phase D — Registry-ready metadata and CI
 
@@ -244,7 +247,7 @@ Exact modern header requirements, conformance scenario applicability and Registr
 
 - Root: `uv sync --frozen`, Ruff lint/format, root pytest, relevant Compose render gates, scratch-tag container build.
 - Bridge: `agent_bridge` frozen sync, Ruff lint/format, Bridge pytest.
-- MCP conformance: pinned official CLI; run each applicable `--requirements` set independently against a local ephemeral HTTP target; upload sanitized raw reports. Required failures block merge. If OAuth conformance requires a separate server configuration, run it as an explicit job/config rather than conflating it with API Key.
+- MCP conformance: CI builds official source commit `232a9014457eaf4c59559916e3d616d2f7f28f05`, runs both sets independently and retains each report/exit code. Hard-gate reviewed applicable scenarios using the pinned CLI exit code and require `checks.json`; also run repository real-wire regressions. Preserve the measured scenario results and `SKIPPED`/`SHOULD` distinctions in `docs/v0.20.0-phase-a-probes-2026-10-21.md`; do not describe SHOULD warnings as mandatory behavior passing. Construct the no-workdir target directly, use exact test-only Host/Origin values, and do not relax production defaults. Never use `--expected-failures`. Run OAuth as a separate configuration where applicable.
 - Registry metadata: offline schema and consistency validation; inspect built OCI config/labels. Do not call authenticated publish APIs.
 - Native workflow jobs: preserve existing macOS 27 arm64 assertions and Windows native artifact/runtime gates; add wire/stdio checks only to actual supported native transports.
 - Site workflow: `npm ci` + `npm run build` for site changes; source English/Chinese current-state alignment review and stale scan for release-state changes.
@@ -263,7 +266,7 @@ Exact modern header requirements, conformance scenario applicability and Registr
 
 ### Linux
 
-Use the current Linux OCI deployment. Acceptance must run the modern and legacy HTTP wire/conformance cases on the actual container port through loopback or the documented generic HTTP override, with production Host/Origin controls enabled. Exercise API Key and OAuth as separate configurations where supported. Confirm base Compose still publishes no MCP port, HTTP exposure remains opt-in, and Tunnel topology is unaffected. Build the release image under a scratch tag, inspect labels and `amd64`/`arm64` manifest, and verify no conformance tooling entered the image/runtime dependency set. Existing root and Bridge full suites remain mandatory.
+Use the current Linux OCI deployment. Acceptance must run the modern and legacy HTTP wire/conformance cases on the actual container port through loopback or the documented generic HTTP override, with production Host/Origin controls enabled. Exercise API Key and OAuth as separate configurations where supported. Retain complete reports from the pinned official requirement sets as evidence; hard-gate only reviewed applicable scenarios/checks plus repository real-wire regressions. For the DNS scenario, use a test-only allowlist that includes the suite positive Host authority; do not relax production defaults. Confirm base Compose still publishes no MCP port, HTTP exposure remains opt-in, and Tunnel topology is unaffected. Build the release image under a scratch tag, inspect labels and `amd64`/`arm64` manifest, and verify no conformance tooling entered the image/runtime dependency set. Existing root and Bridge full suites remain mandatory.
 
 ### macOS
 
@@ -323,7 +326,7 @@ For a release regression, publish a new patch release through the existing immut
 v0.20.0 is complete only when all are true:
 
 1. No implementation detail depends on an unverified API/header/schema; all Phase A probes are resolved and recorded.
-2. Official required applicable Conformance scenarios pass separately for `2025-11-25` and `2026-07-28`; reports identify role, auth mode, exact suite revision and any inapplicable scenarios. No required failure is hidden by expected-failure baselines.
+2. CI builds the official immutable Conformance source commit `232a9014457eaf4c59559916e3d616d2f7f28f05` because stable `v0.1.16` lacks `--requirements`; every run retains both reports/exit codes and passes the reviewed applicable hard-gate scenarios plus repository real-wire regressions. Any newly applicable required failure blocks, applicability changes receive human review plus versioned evidence, and no expected-failures baseline manufactures a passing score.
 3. Real loopback wire evidence demonstrates both HTTP lifecycles and deterministic malformed/mismatch behavior; stdio has native subprocess evidence and remains protocol-clean.
 4. API Key and OAuth HTTP boundaries are tested independently; neither changes stdio behavior or bypasses production transport protections.
 5. Linux/macOS/Windows acceptance is complete within the exact boundaries in §13, or any unsupported cell remains explicitly unsupported in release copy.

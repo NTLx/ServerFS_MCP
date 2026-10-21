@@ -177,6 +177,7 @@ def run_api_key_streamable_http(mcp: MCPServer, settings: Settings, registry) ->
 
     app = mcp.streamable_http_app(
         streamable_http_path=settings.http_path,
+        stateless_http=False,
         max_request_body_size=streamable_http_max_request_body_size(registry),
         transport_security=streamable_http_transport_security(settings),
         host=settings.http_host,
@@ -233,6 +234,7 @@ def main() -> int:
             host=settings.http_host,
             port=settings.http_port,
             streamable_http_path=settings.http_path,
+            stateless_http=False,
             max_request_body_size=streamable_http_max_request_body_size(registry),
             transport_security=streamable_http_transport_security(settings),
         )
