@@ -32,7 +32,7 @@ from pathlib import Path
 
 from . import SERVER_VERSION
 from .native_config import NativeConfigError, load_native_config
-from .native_tunnel import NativeTunnelError, parse_proxy_env_file, proxy_url
+from .native_tunnel import NativeTunnelError, parse_env_value, parse_proxy_env_file, proxy_url
 
 OK = "OK"
 FAIL = "FAIL"
@@ -511,6 +511,44 @@ def _resolve_env_file(env_file: Path | None, config_path: Path) -> Path | None:
     return sibling if sibling.exists() else None
 
 
+_AGENT_DOCTOR_ENV_KEYS = frozenset(
+    {
+        "SERVERFS_BRIDGE_PYTHON",
+        "SERVERFS_AGENT_PROXY_URL",
+        "SERVERFS_AGENT_NO_PROXY",
+        "SERVERFS_AGENT_BRIDGE_SOCKET",
+    }
+)
+
+
+def _agent_doctor_env(path: Path | None) -> dict[str, str] | None:
+    """Read only the environment keys consumed by static Agent diagnostics."""
+    if path is None:
+        return None
+    try:
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise NativeTunnelError("cannot read Agent diagnostic env file") from exc
+
+    values: dict[str, str] = {}
+    for line_number, line in enumerate(lines, 1):
+        candidate = line.strip()
+        if not candidate or candidate.startswith("#"):
+            continue
+        if candidate.startswith("export "):
+            candidate = candidate[7:].lstrip()
+        key, sep, raw = candidate.partition("=")
+        key = key.strip()
+        if key not in _AGENT_DOCTOR_ENV_KEYS:
+            continue
+        if key in values:
+            raise NativeTunnelError(f"duplicate {key} at line {line_number}")
+        if not sep:
+            raise NativeTunnelError(f"invalid {key} assignment at line {line_number}")
+        values[key] = parse_env_value(raw.strip(), key, line_number)
+    return values
+
+
 def _proxy_probe(report: _Report, env_path: Path | None) -> None:
     if env_path is None:
         report.note("proxy", "disabled (no env file; direct connectivity)")
@@ -649,11 +687,19 @@ def run_doctor(
     # a supported default and is reported as a single informational line.
     from .agent_doctor import report_agent
 
-    report_agent(report, workdirs, settings)
+    env_path = _resolve_env_file(env_file, config_path)
+    try:
+        agent_env = _agent_doctor_env(env_path)
+    except NativeTunnelError as exc:
+        # Parsing errors identify only a relevant key and line; discard all file values and mask
+        # ambient values so the rest of the diagnostics remain deterministic and redacted.
+        report.status("agent env", FAIL, str(exc))
+        agent_env = dict.fromkeys(_AGENT_DOCTOR_ENV_KEYS, "")
+    report_agent(report, workdirs, settings, env=agent_env)
     _darwin_service_probe(report)
 
     _tunnel_probe(report, tunnel_client)
-    _proxy_probe(report, _resolve_env_file(env_file, config_path))
+    _proxy_probe(report, env_path)
 
     report.say(f"summary: {report.fail_count} FAIL, {report.warn_count} WARN")
     return 1 if report.fail_count else 0

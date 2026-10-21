@@ -287,3 +287,81 @@ class TestProxyProbe:
             code, lines = _run(_config(tmp_path, {"wd": (wd, True)}), env_file=env)
         assert code == 0
         assert any("TCP connect" in line and "OK" in line for line in lines)
+
+
+class TestAgentDoctorEnvFile:
+    def _agent_config(self, tmp_path: Path) -> Path:
+        workdir = tmp_path / "workdir"
+        workdir.mkdir()
+        config = tmp_path / "serverfs.toml"
+        config.write_text(
+            f'[[workdirs]]\nalias = "repo"\npath = "{workdir.as_posix()}"\n'
+            'read_only = false\nagent_mode = "workspace-write"\nagent_runtimes = ["codex"]\n\n'
+            "[agent]\nenabled = true\n\n"
+            "[agent.codex]\nenabled = true\nuse_proxy = true\n\n"
+            '[agent.proxy]\nenabled = true\nsource = "env"\n',
+            encoding="utf-8",
+        )
+        return config
+
+    @pytest.mark.parametrize("explicit", [False, True])
+    def test_agent_diagnostics_receive_only_selected_env_file_keys(
+        self, tmp_path: Path, isolated_data_home: Path, monkeypatch, explicit: bool
+    ) -> None:
+        config = self._agent_config(tmp_path)
+        env_path = tmp_path / "agent.env" if explicit else tmp_path / ".env"
+        env_path.write_text(
+            "export SERVERFS_BRIDGE_PYTHON='" + sys.executable + "'\n"
+            "SERVERFS_AGENT_PROXY_URL=not-a-valid-url-secret\n"
+            "SERVERFS_AGENT_NO_PROXY=localhost,127.0.0.1,::1\n"
+            "UNRELATED_SECRET=unpropagated-secret\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("SERVERFS_AGENT_PROXY_URL", "http://ambient-secret.invalid")
+        captured: list[dict[str, str] | None] = []
+        import serverfs_mcp.agent_doctor as agent_doctor
+
+        monkeypatch.setattr(agent_doctor, "_probe_darwin_policy_sync", lambda *_args: None)
+
+        original = agent_doctor.report_agent
+
+        def capture(report, workdirs, settings, *, env=None):
+            captured.append(env)
+            return original(report, workdirs, settings, env=env)
+
+        monkeypatch.setattr(agent_doctor, "report_agent", capture)
+        lines: list[str] = []
+        kwargs = {"env_file": env_path} if explicit else {}
+        run_doctor(config, writer=lines.append, **kwargs)
+
+        assert len(captured) == 1
+        assert captured[0] == {
+            "SERVERFS_BRIDGE_PYTHON": sys.executable,
+            "SERVERFS_AGENT_PROXY_URL": "not-a-valid-url-secret",
+            "SERVERFS_AGENT_NO_PROXY": "localhost,127.0.0.1,::1",
+        }
+        text = "\n".join(lines)
+        assert "unpropagated-secret" not in text
+        assert "not-a-valid-url-secret" not in text
+        assert "ambient-secret.invalid" not in text
+        assert "agent proxy" in text
+        assert os.environ["SERVERFS_AGENT_PROXY_URL"] == "http://ambient-secret.invalid"
+
+    def test_duplicate_agent_key_fails_redacted(
+        self, tmp_path: Path, isolated_data_home: Path, monkeypatch
+    ) -> None:
+        config = self._agent_config(tmp_path)
+        import serverfs_mcp.agent_doctor as agent_doctor
+
+        monkeypatch.setattr(agent_doctor, "_probe_darwin_policy_sync", lambda *_args: None)
+        env_path = tmp_path / ".env"
+        env_path.write_text(
+            "SERVERFS_AGENT_PROXY_URL=first-secret\nSERVERFS_AGENT_PROXY_URL=second-secret\n",
+            encoding="utf-8",
+        )
+        lines: list[str] = []
+        run_doctor(config, writer=lines.append)
+        text = "\n".join(lines)
+        assert "agent env: FAIL -- duplicate SERVERFS_AGENT_PROXY_URL at line 2" in text
+        assert "first-secret" not in text
+        assert "second-secret" not in text
