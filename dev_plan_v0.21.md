@@ -1,5 +1,7 @@
 # ServerFS v0.21.0 Development Plan
 
+Status: **Phase A complete; Phase B ready to implement.** The v0.20.0 implementation prerequisite is accepted. Existing operational surfaces are inventoried in [`docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md`](docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md). Phase B is frozen to an internal-only, versioned, redacted observation contract with no new MCP tool, listener, exporter dependency, or authority expansion. Performance baseline remains Not measured and must be established before Phase D hot-path instrumentation.
+
 ## 0. Decision summary
 
 - **Frozen theme:** Operational Maturity — Observability & Contract Convergence.
@@ -196,11 +198,13 @@ CI records repeatable before/after benchmark evidence for the changed hot paths.
 
 ## 10. Phased implementation sequence
 
-### Phase A — Prerequisite and surface inventory
+### Phase A — Prerequisite and surface inventory — **COMPLETE**
 
-Confirm v0.20 acceptance and inspect the resulting current implementation. Inventory status/doctor/service status, Tunnel diagnostics, host-observability recipe, Bridge state/RPC and task lifecycle, current logs, deployment health checks, platform commands, and existing tests. Capture schemas, output, ownership, auth/bind behavior and measured cost. Mark every unsupported/unobservable domain explicitly. Probe uncertain interface shape here instead of assuming an API. Produce the observation schema draft, component applicability matrix, metric catalog draft, compatibility map and baseline measurements.
+Completed in [`docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md`](docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md). The inventory maps the actual `doctor`, Agent doctor/private-state inspector, Windows/macOS native service status, Tunnel health layers, Bridge task/event store, writer lease/recovery seams, structured logs and read-only host-observability recipe. Each candidate signal has an owner, observed-vs-configured provenance, sensitivity/redaction boundary, platform applicability and include/exclude decision.
 
-**Gate:** every proposed field and signal has a verified source, owner, sensitivity classification and consumer; no duplicate status API or exporter assumption remains.
+Phase A froze these implementation constraints for Phase B: internal model first; no new public MCP tool/listener; configured is not healthy; explicit `observed` / `configured` / `not_checked` / `stale`; no task/workdir/user/path/model/provider identifiers in common status or metric dimensions; native lifecycle adapters remain platform-specific; exporter choice is deferred. Unsupported or unobservable domains remain explicit rather than inheriting another platform's claim.
+
+**Gate: PASS.** No duplicate status service or exporter assumption is required. Reliable reproducible performance baselines were not established in Phase A and are explicitly **Not measured**; they remain a prerequisite before Phase D hot-path instrumentation, not a fabricated Phase A result.
 
 ### Phase B — Internal observation contract
 
