@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -24,6 +25,7 @@ from .models import (
     RequestStatus,
     TaskStatus,
 )
+from .observability import BridgeObservationMetrics
 from .policy import PolicyRegistry, redact_host_path
 from .preflight import TaskPreflight
 from .recovery import ActiveGuardManager
@@ -119,11 +121,13 @@ class BridgeService:
         limits: BridgeLimits | None = None,
         preflight: TaskPreflight | None = None,
         prior_bridge_execution_stopped: bool = False,
+        observation_metrics: BridgeObservationMetrics | None = None,
     ):
         self.store = store
         self.policies = policies
         self.adapters = dict(adapters)
         self.lease_manager = lease_manager
+        self.observation_metrics = observation_metrics or BridgeObservationMetrics()
         self.limits = limits or BridgeLimits()
         self.preflight = preflight
         #: The supervisor's proof that the previous generation's *execution* has stopped: true only
@@ -150,6 +154,21 @@ class BridgeService:
         self._gc_retained()
         return await self._reconcile_startup()
 
+    def observability_snapshot(self) -> dict[str, Any]:
+        return self.observation_metrics.snapshot(self.store, self.adapters.keys())
+
+    def _transition_terminal(self, task_id: str, status: TaskStatus, **kwargs: Any) -> bool:
+        current = self.store.get_task(task_id)
+        if TaskStatus(current.status) in TERMINAL_STATUSES:
+            return False
+        terminal = self.store.transition_task(task_id, status, **kwargs)
+        try:
+            self.observation_metrics.observe_terminal(terminal)
+        except (TypeError, ValueError):
+            # Observability is derived evidence, never part of the task-state authority path.
+            pass
+        return True
+
     async def close(self) -> None:
         if self._closed:
             return
@@ -174,7 +193,7 @@ class BridgeService:
                 self._release_lease(task_id)
                 continue
             if TaskStatus(task.status) not in TERMINAL_STATUSES:
-                self.store.transition_task(
+                self._transition_terminal(
                     task_id,
                     TaskStatus.INTERRUPTED,
                     error_code="BRIDGE_SHUTDOWN",
@@ -472,7 +491,17 @@ class BridgeService:
                         continue
                 if not locally_leased:
                     await self._reconcile_guard(policy.lease_id)
-                lease = self.lease_manager.acquire_exclusive(policy.lease_id)
+                started = time.perf_counter()
+                try:
+                    lease = self.lease_manager.acquire_exclusive(policy.lease_id)
+                except BridgeError as exc:
+                    outcome = "busy" if exc.code == "WORKDIR_BUSY" else "failure"
+                    self.observation_metrics.observe_lease(outcome, time.perf_counter() - started)
+                    raise
+                except Exception:
+                    self.observation_metrics.observe_lease("failure", time.perf_counter() - started)
+                    raise
+                self.observation_metrics.observe_lease("acquired", time.perf_counter() - started)
 
             task_id = new_id("agt")
             try:
@@ -525,7 +554,7 @@ class BridgeService:
                 if lease is not None:
                     lease.release()
                 if "task" in locals():
-                    self.store.transition_task(
+                    self._transition_terminal(
                         task_id,
                         TaskStatus.INTERRUPTED,
                         error_code="BRIDGE_SCHEDULING_FAILED",
@@ -667,6 +696,7 @@ class BridgeService:
         label = describe_lease(lease_id)
         task_id = guard.payload.get("task_id")
         if not isinstance(task_id, str):
+            self.observation_metrics.observe_recovery("guard", "failure", "invalid_configuration")
             raise BridgeError(
                 "WORKDIR_RECOVERY_REQUIRED",
                 f"{label} has invalid recovery state",
@@ -674,6 +704,7 @@ class BridgeService:
         try:
             task = self.store.get_task(task_id)
         except BridgeError as exc:
+            self.observation_metrics.observe_recovery("guard", "failure", "invalid_configuration")
             raise BridgeError(
                 "WORKDIR_RECOVERY_REQUIRED",
                 f"{label} has orphaned recovery state",
@@ -691,10 +722,11 @@ class BridgeService:
             },
         )
         if active is False:
+            self.observation_metrics.observe_recovery("guard", "success", "ok")
             current = self.store.get_task(task_id)
             if TaskStatus(current.status) not in TERMINAL_STATUSES:
                 error_code = "AGENT_PROVIDER_INACTIVE"
-                self.store.transition_task(
+                self._transition_terminal(
                     current.task_id,
                     TaskStatus.INTERRUPTED,
                     error_code=error_code,
@@ -707,6 +739,9 @@ class BridgeService:
                 )
             self.guard_manager.remove(lease_id=lease_id, task_id=task.task_id)
             return result
+        self.observation_metrics.observe_recovery(
+            "guard", "unknown", "recovery_guard" if active is True else "stop_unproven"
+        )
         raise BridgeError(
             "WORKDIR_RECOVERY_REQUIRED",
             f"{label} still has unresolved provider state",
@@ -720,6 +755,7 @@ class BridgeService:
             result = await self._probe_reconciliation(task.task_id)
             timed_out = is_expired(task.deadline_at)
             if result.status is ReconciliationStatus.REATTACHED and not timed_out:
+                self.observation_metrics.observe_recovery("resume", "success", "ok")
                 self._try_append_event(
                     task.task_id,
                     "task.reconciled",
@@ -739,11 +775,20 @@ class BridgeService:
             active = effective_provider_active(
                 result, prior_bridge_execution_stopped=self._prior_bridge_execution_stopped
             )
-            self.store.transition_task(
+            self._transition_terminal(
                 task.task_id,
                 TaskStatus.INTERRUPTED,
                 error_code=error_code,
                 error_message=error_message,
+            )
+            self.observation_metrics.observe_recovery(
+                "interrupt",
+                "success" if active is False else "unknown",
+                "ok"
+                if active is False
+                else "recovery_guard"
+                if active is True
+                else "stop_unproven",
             )
             self._try_append_event(
                 task.task_id,
@@ -857,7 +902,7 @@ class BridgeService:
             or current.pending_request_id != request.request_id
         ):
             return False
-        self.store.transition_task(
+        self._transition_terminal(
             task_id,
             TaskStatus.INTERRUPTED,
             error_code="AGENT_INTERACTION_TIMED_OUT",
@@ -1084,7 +1129,7 @@ class BridgeService:
             first_cancel = task_id not in self._user_cancelled
             self._user_cancelled.add(task_id)
             pending_request_id = task.pending_request_id
-            self.store.transition_task(task_id, TaskStatus.CANCELLED)
+            self._transition_terminal(task_id, TaskStatus.CANCELLED)
             self._try_append_event(task_id, "task.cancelled", {})
             if pending_request_id is not None:
                 waiter = self._pending_waiters.pop(pending_request_id, None)
@@ -1194,10 +1239,10 @@ class BridgeService:
             if task_id in self._user_cancelled:
                 current = self.store.get_task(task_id)
                 if TaskStatus(current.status) not in TERMINAL_STATUSES:
-                    self.store.transition_task(task_id, TaskStatus.CANCELLED)
+                    self._transition_terminal(task_id, TaskStatus.CANCELLED)
                     self._try_append_event(task_id, "task.cancelled", {})
             elif self._closed:
-                self.store.transition_task(
+                self._transition_terminal(
                     task_id,
                     TaskStatus.INTERRUPTED,
                     error_code="BRIDGE_SHUTDOWN",
@@ -1216,7 +1261,7 @@ class BridgeService:
                     )
                 digest = hashlib.sha256(encoded).hexdigest()
                 if len(encoded) <= self.limits.max_final_response_bytes:
-                    self.store.transition_task(
+                    self._transition_terminal(
                         task_id,
                         TaskStatus.SUCCEEDED,
                         final_response=final_response,
@@ -1232,7 +1277,7 @@ class BridgeService:
                 else:
                     metadata = self.result_spool.write(task_id, final_response)
                     preview = utf8_prefix(final_response, self.limits.result_preview_bytes)
-                    self.store.transition_task(
+                    self._transition_terminal(
                         task_id,
                         TaskStatus.SUCCEEDED,
                         final_response=preview,
@@ -1260,7 +1305,7 @@ class BridgeService:
             current = self.store.get_task(task_id)
             if TaskStatus(current.status) not in TERMINAL_STATUSES:
                 self.store.stale_task_request(task_id)
-                self.store.transition_task(
+                self._transition_terminal(
                     task_id,
                     TaskStatus.INTERRUPTED,
                     error_code="AGENT_TASK_TIMED_OUT",
@@ -1286,10 +1331,10 @@ class BridgeService:
             current = self.store.get_task(task_id)
             if TaskStatus(current.status) not in TERMINAL_STATUSES:
                 if task_id in self._user_cancelled:
-                    self.store.transition_task(task_id, TaskStatus.CANCELLED)
+                    self._transition_terminal(task_id, TaskStatus.CANCELLED)
                     self._try_append_event(task_id, "task.cancelled", {})
                 else:
-                    self.store.transition_task(
+                    self._transition_terminal(
                         task_id,
                         TaskStatus.INTERRUPTED,
                         error_code="BRIDGE_SHUTDOWN",
@@ -1306,7 +1351,7 @@ class BridgeService:
                 TaskStatus.WAITING_FOR_APPROVAL,
                 TaskStatus.WAITING_FOR_QUESTION,
             ):
-                self.store.transition_task(
+                self._transition_terminal(
                     task_id,
                     TaskStatus.INTERRUPTED,
                     error_code=exc.code,
@@ -1314,7 +1359,7 @@ class BridgeService:
                 )
                 self._try_append_event(task_id, "task.interrupted", {"error_code": exc.code})
             elif TaskStatus(current.status) not in TERMINAL_STATUSES:
-                self.store.transition_task(
+                self._transition_terminal(
                     task_id,
                     TaskStatus.FAILED,
                     error_code=exc.code,
@@ -1327,7 +1372,7 @@ class BridgeService:
                 TaskStatus.WAITING_FOR_APPROVAL,
                 TaskStatus.WAITING_FOR_QUESTION,
             ):
-                self.store.transition_task(
+                self._transition_terminal(
                     task_id,
                     TaskStatus.INTERRUPTED,
                     error_code="AGENT_PROVIDER_ERROR",
@@ -1337,7 +1382,7 @@ class BridgeService:
                     task_id, "task.interrupted", {"error_code": "AGENT_PROVIDER_ERROR"}
                 )
             elif TaskStatus(current.status) not in TERMINAL_STATUSES:
-                self.store.transition_task(
+                self._transition_terminal(
                     task_id,
                     TaskStatus.FAILED,
                     error_code="AGENT_PROVIDER_ERROR",
@@ -1356,6 +1401,20 @@ class BridgeService:
                     reconciliation = None
                 if reconciliation is not None and reconciliation.provider_active is False:
                     clear_guard = True
+                if reconciliation is None or reconciliation.detail in {
+                    "runtime is unavailable during reconciliation",
+                    "runtime reconciliation failed",
+                }:
+                    self.observation_metrics.observe_recovery("guard", "failure", "probe_failed")
+                elif reconciliation.provider_active is False:
+                    self.observation_metrics.observe_recovery("guard", "success", "ok")
+                else:
+                    reason = (
+                        "recovery_guard"
+                        if reconciliation.provider_active is True
+                        else "stop_unproven"
+                    )
+                    self.observation_metrics.observe_recovery("guard", "unknown", reason)
             self._release_lease(task_id, clear_guard=clear_guard)
             self._gc_retained()
             for request_id, waiter in list(self._pending_waiters.items()):
