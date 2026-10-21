@@ -14,6 +14,8 @@ Expose only the directories you choose. Keep them read-only by default. Opt into
 
 **Current stable release: v0.19.0**
 
+**v0.20.0: implemented release candidate, not released.** Linux Streamable HTTP uses one stateful endpoint for both the legacy `2025-11-25` session lifecycle and modern `2026-07-28` per-request metadata. The pinned-source MCP conformance gate is integrated. Linux OCI `server.json` / Registry metadata is preview-era; OCI + Streamable HTTP installer interoperability is **Not verified**. The Registry is not required to run or install ServerFS. See the [v0.20.0 acceptance record](docs/v0.20.0-release-acceptance-2026-10-22.md).
+
 v0.19.0 adds generic ACP v1 profiles to the Agent Bridge alongside native Codex, Claude Code, and Qoder runtimes. Operators configure an absolute executable path and fixed argv for each profile; ACP runtimes require `workspace-write`, and tasks cannot override command, argv, or environment. ServerFS does not auto-install or trust Agents from the ACP Registry, and provider authentication remains provider-owned. Model discovery/override, elicitation, client filesystem, and terminal capabilities are unsupported; other capabilities are reported conservatively from measured behavior. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS, and Windows, covering prompts, persisted-session continuation, and active-tool cancellation/cleanup.
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·

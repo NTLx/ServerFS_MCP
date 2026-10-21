@@ -136,6 +136,57 @@ def _stateful_app():
     return server.streamable_http_app()
 
 
+def _raw_post(url: str, *, headers: dict[str, str], body: bytes):
+    async def run():
+        async with httpx2.AsyncClient(trust_env=False) as client:
+            return await client.post(url, headers=headers, content=body)
+
+    return asyncio.run(run())
+
+
+def test_raw_http_rejects_malformed_json() -> None:
+    with _serve(_stateful_app()) as (url, _):
+        response = _raw_post(
+            url,
+            headers={
+                "content-type": "application/json",
+                "accept": "application/json, text/event-stream",
+            },
+            body=b"{",
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == -32700
+
+
+def test_raw_http_rejects_invalid_jsonrpc_shape() -> None:
+    with _serve(_stateful_app()) as (url, _):
+        response = _raw_post(
+            url,
+            headers={
+                "content-type": "application/json",
+                "accept": "application/json, text/event-stream",
+            },
+            body=b'{"jsonrpc":"2.0","method":"tools/list"}',
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == -32600
+
+
+def test_raw_http_rejects_post_without_required_accept_types() -> None:
+    with _serve(_stateful_app()) as (url, _):
+        response = _raw_post(
+            url,
+            headers={"content-type": "application/json", "accept": "application/json"},
+            body=b'{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}',
+        )
+
+    assert response.status_code == 406
+    message = response.json()["error"]["message"]
+    assert "must accept both application/json and text/event-stream" in message
+
+
 def test_stateful_legacy_client_negotiates_and_closes_session() -> None:
     with _serve(_stateful_app()) as (url, recorder):
         protocol, tools, result = _client_roundtrip(url, "legacy")

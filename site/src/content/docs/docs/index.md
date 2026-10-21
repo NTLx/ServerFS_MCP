@@ -7,6 +7,8 @@ ServerFS MCP exposes explicitly configured directories — Linux containers, nat
 
 Current stable release: **v0.19.0**. ServerFS is now standards-first: compatible MCP hosts can use native stdio or standard Streamable HTTP, while the OpenAI Secure MCP Tunnel remains an optional ChatGPT ingress. The same filesystem, binary and Agent capability contracts remain shared across Linux, Windows and macOS.
 
+**v0.20.0 is an implemented release candidate, not released.** Linux Streamable HTTP uses one stateful app for legacy `2025-11-25` sessions and modern `2026-07-28` per-request metadata. Its pinned-source MCP conformance gate is integrated. Linux OCI `server.json` / Registry metadata is preview-era, and OCI + Streamable HTTP installer interoperability is **Not verified**. Registry access is not required to run or install ServerFS; v0.19.0 remains the stable release. See the [v0.20.0 acceptance record](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.20.0-release-acceptance-2026-10-22.md).
+
 It is **read-only by default**. Administrators can opt individual workdirs into narrow file mutations, bounded whole-file binary transfer, and an isolated, separately gated ChatGPT file-parameter ingress path. A host-side Agent Bridge remains optional; Native Codex, Claude and Qoder plus configurable ACP v1 profiles provide Agent delegation; provider-neutral model discovery and request-scoped overrides remain runtime-dependent, with advisory-only TypeSafe Jev support. Windows stays native: MCP stdio over a prebuilt Rust/NTFS kernel wheel, with no Docker, WSL or MSVC; v0.14.0 also removes terminal/session lifetime from the normal Windows lifecycle.
 
 ## Capability surfaces

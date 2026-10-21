@@ -7,6 +7,8 @@ ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux
 
 当前稳定版本：**v0.19.0**。ServerFS 现在以标准 MCP 为中心：兼容 MCP 的宿主可使用原生 stdio 或标准 Streamable HTTP；OpenAI Secure MCP Tunnel 继续作为可选的 ChatGPT 入口。Linux、Windows 与 macOS 继续共享同一套文件系统、二进制与 Agent 能力契约。
 
+**v0.20.0 已实现为候选版本，尚未发布。** Linux Streamable HTTP 使用单一有状态 app，同时支持 legacy `2025-11-25` session 与 modern `2026-07-28` 逐请求 metadata；pinned-source MCP conformance gate 已集成。Linux OCI `server.json` / Registry 元数据仍处于 preview 阶段，OCI + Streamable HTTP 安装器互操作**尚未验证**。运行或安装 ServerFS 不要求访问 Registry；当前稳定版本仍为 v0.19.0。详见 [v0.20.0 验收记录](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.20.0-release-acceptance-2026-10-22.md)。
+
 它**默认只读**。管理员可以按 workdir 显式启用受控文件写入、有界整文件二进制传输，以及隔离且独立门控的 ChatGPT 文件参数入口。宿主机 Agent Bridge 仍然是可选能力；Codex、Claude 和 Qoder 原生 runtime 及可配置 ACP v1 profile 提供 Agent 委托；provider-neutral 模型发现与单次任务模型覆盖仍取决于 runtime，同时可按需启用 advisory-only 的 TypeSafe Jev 支持。Windows 始终保持原生形态：预构建 Rust/NTFS 内核 wheel 之上的 MCP stdio 服务，无需 Docker、WSL 或 MSVC；v0.14.0 进一步让正常 Windows 生命周期不再依赖终端/会话存活。
 
 ## 能力面

@@ -1,6 +1,6 @@
 # ServerFS v0.20.0 Development Plan
 
-Status: **In progress.** Phases B and C were implemented and validated in baseline commit `840aae50`. Phase D local acceptance is complete: its initial direct MCP-over-HTTP smoke failure was traced to missing disabled-slot placeholders in `/workdirs/02..16`, fixed by image defaults, and the post-fix single direct MCP call returned the configured read-only `workspace`. Focused tests, root Ruff, full root pytest, scratch image build, version lock checks and `git diff --check` passed. Registry client interoperability is **Not verified**. Phases E and F remain outstanding.
+Status: **Implementation acceptance incomplete; v0.20.0 is not accepted or released.** Phases B/C/D are implemented and Phase D local acceptance passed. At exact commit `bc44e2bdf3d02627b494c158bf76da26b4ed4e55`, Container, Windows native, macOS Native, and Windows Agent CI passed. The §17 review found hard evidence blockers in criteria 3 (deterministic malformed/mismatch wire cases and native stdio subprocess framing) and 9 (explicit security/compatibility/rollback review verdict). Registry-client OCI + Streamable HTTP installer interoperability remains **Not verified**, a disclosed non-blocking preview limitation under criterion 7. See [`docs/v0.20.0-release-acceptance-2026-10-22.md`](docs/v0.20.0-release-acceptance-2026-10-22.md). v0.19.0 remains the current stable release.
 
 Planning date: 2026-10-21.
 
@@ -215,11 +215,11 @@ Implemented and locally accepted: added schema-validated `server.json`, OCI name
 
 ### Phase E — Cross-platform regression and stale-state cleanup
 
-Run root and Bridge gates on their existing Linux/macOS/Windows workflows; verify stdio on each native family and HTTP on each currently supported native server. Retain platform lifecycle assertions. Update only false current docs/comments/fixtures; align English and Simplified Chinese. **Gate:** capability matrix has direct evidence or explicit unsupported cells, and residual scan hits are classified.
+Exact-SHA CI evidence is recorded in [`docs/v0.20.0-release-acceptance-2026-10-22.md`](docs/v0.20.0-release-acceptance-2026-10-22.md): Container, Windows native, macOS Native, and Windows Agent all passed. Current-state README/site copy has been aligned for English and Simplified Chinese; the post-edit residual scan and site build are reported with the Phase E/F documentation change. Cross-platform CI criterion 5 is satisfied. The overall §17 gate remains open on criteria 3 and 9, as detailed in the acceptance record.
 
 ### Phase F — Release readiness
 
-Run all applicable CI gates, build and inspect artifacts, review release README/site copy and rollback instructions. Produce a release acceptance report with conformance summaries, raw evidence locations, Registry schema revision, image digest/labels, platform runs and known gaps. **Gate:** every completion criterion in §16 is met before v0.20.0 is called complete.
+Release-facing README/site copy and the acceptance report are prepared. Exact-SHA Container image manifest verification and all platform workflow results are summarized in [`docs/v0.20.0-release-acceptance-2026-10-22.md`](docs/v0.20.0-release-acceptance-2026-10-22.md). **Status: implementation acceptance and release readiness are blocked by §17 criteria 3 and 9.** The acceptance report states the missing evidence precisely. OCI + Streamable HTTP Registry client interoperability, official preview validation, and namespace claim remain Not verified; these are disclosed non-blocking Registry preview limitations under §17 criterion 7. v0.20.0 remains not accepted and not released; v0.19.0 remains current stable.
 
 ## 11. Deterministic test matrix
 

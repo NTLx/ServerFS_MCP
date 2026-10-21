@@ -14,6 +14,8 @@
 
 **当前稳定版本：v0.19.0**
 
+**v0.20.0：已实现的候选版本，尚未发布。** Linux Streamable HTTP 使用单一有状态端点，同时支持 legacy `2025-11-25` session 生命周期与 modern `2026-07-28` 的逐请求 metadata。Pinned-source MCP conformance gate 已集成。Linux OCI `server.json` / Registry 元数据处于 preview 阶段；OCI + Streamable HTTP 安装器互操作**尚未验证**。Registry 不是运行或安装 ServerFS 的前提。详见 [v0.20.0 验收记录](docs/v0.20.0-release-acceptance-2026-10-22.md)。
+
 v0.19.0 在 Agent Bridge 中加入通用 ACP v1 profile，与原生 Codex、Claude Code、Qoder runtime 并存。ACP profile 由运维人员配置绝对可执行文件路径和固定 argv；任务调用不能覆盖 command、argv 或 env，且 ACP runtime 要求 `workspace-write`。ServerFS 不会从 ACP Registry 自动安装或信任 Agent，Provider authentication 仍由 Provider 自己管理。模型发现/覆盖、elicitation、client filesystem 和 terminal 均不支持；能力只按实测结果保守报告。OpenCode 2.1.2 使用 `opencode/glm-5.3-flash-free` 已通过 Linux、macOS、Windows 的真实端到端验收，覆盖 prompt、持久 session continuation，以及 active-tool cancellation/cleanup。
 
 [项目网站](https://ntlx.github.io/ServerFS_MCP/) ·
