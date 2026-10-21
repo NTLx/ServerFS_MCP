@@ -11,10 +11,11 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 
 ## Current baseline
 
-- **Current stable release: v0.18.0.**
-- **v0.19.0 is an implemented ACP release candidate, not tagged or released; v0.18.0 remains the current published stable.** ACP Linux/macOS/Windows acceptance remains incomplete; see `dev_plan_v0.19.md`.
+- **Current stable release: v0.19.0.**
+- **v0.19.0 ships generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes.** OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real Linux/macOS/Windows end-to-end acceptance; see `dev_plan_v0.19.md` for scope and evidence.
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to each platform/runtime gate.
+- Generic ACP v1 profiles are also supported when operator-configured with an absolute executable and fixed argv; current OpenCode 2.1.2 acceptance covers Linux, macOS and Windows.
 - Windows v0.14.0 uses a strictly current-user and non-elevated lifecycle: Task Scheduler 2.0 owns a least-privilege watchdog through `InteractiveToken`, a logon trigger and an indefinite one-minute time-trigger heartbeat with `IgnoreNew`; the watchdog restarts the managed runner, and the runner restarts Tunnel generations. Do not replace this with SCM/LocalSystem, HKLM registration, stored credentials or another admin-required path.
 - macOS v0.13 support is intentionally narrow: Apple M-series, native arm64, macOS 27 Golden Gate. v0.13.2 uses an app-associated `SMAppService`/LaunchAgent lifecycle for the persistent Tunnel and Agent Bridge; no root LaunchDaemon or legacy hand-installed plist belongs in the normal path. Do not claim Intel, Rosetta, macOS 26/28 or `darwin-amd64` support without new measured evidence.
 - Historical `dev_plan_v*.md`, acceptance reports and audits preserve the facts of the release/development stage they describe. Fix stale present-tense status, but do not mechanically rewrite history.

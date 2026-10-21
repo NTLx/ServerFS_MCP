@@ -87,7 +87,8 @@ Host Agent Bridge
    │
    ├── Codex
    ├── Claude Code
-   └── Qoder
+   ├── Qoder
+   └── ACP v1 profiles (operator-configured)
 ```
 
 The Bridge runs as a user-scoped host service and owns its runtime socket, locks, installed releases, configuration, and state outside the repository checkout.
@@ -147,4 +148,4 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - structured Agent task RPC, model discovery and request-scoped model override
 - optional host-side Jev advisory decisions
 
-In the current **v0.18.0** stable release, the supported MCP surfaces remain 11 / 13 / 21 / 23 tools. Every optional capability is separately gated; v0.12's independent Tunnel/Agent/Jev proxy switches, v0.13's native macOS deployment and v0.14's Windows persistent lifecycle do not change the public tool counts. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.
+In the current **v0.19.0** stable release, the supported MCP surfaces remain 11 / 13 / 21 / 23 tools. Every optional capability is separately gated; v0.12's independent Tunnel/Agent/Jev proxy switches, v0.13's native macOS deployment and v0.14's Windows persistent lifecycle do not change the public tool counts. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.

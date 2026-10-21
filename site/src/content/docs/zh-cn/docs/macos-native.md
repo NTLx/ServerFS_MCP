@@ -1,9 +1,9 @@
 ---
 title: macOS 原生部署
-description: ServerFS v0.18.0 macOS 原生部署 —— Apple M 系列、macOS 27、Darwin FD 安全边界，以及基于 Apple SMAppService 的 Tunnel / Agent Bridge 持久化。
+description: ServerFS v0.19.0 macOS 原生部署 —— Apple M 系列、macOS 27、Darwin FD 安全边界，以及基于 Apple SMAppService 的 Tunnel / Agent Bridge 持久化。
 ---
 
-当前项目稳定版本为 **v0.18.0**；**v0.13.2** 引入的 macOS 原生支持形态保持不变。ServerFS 可在 **运行 macOS 27 Golden Gate 的 Apple M 系列 Mac** 上原生运行。支持边界保持严格：仅限原生 **arm64**，不支持 Rosetta/x86_64，仅支持 macOS 27.x 与**本地 APFS** workdir。Intel Mac、Hackintosh、macOS 26 及更早版本、macOS 28 及更新版本都会以 `NATIVE_PLATFORM_UNSUPPORTED` 失败关闭。
+当前项目稳定版本为 **v0.19.0**；**v0.13.2** 引入的 macOS 原生支持形态保持不变。ServerFS 可在 **运行 macOS 27 Golden Gate 的 Apple M 系列 Mac** 上原生运行。支持边界保持严格：仅限原生 **arm64**，不支持 Rosetta/x86_64，仅支持 macOS 27.x 与**本地 APFS** workdir。Intel Mac、Hackintosh、macOS 26 及更早版本、macOS 28 及更新版本都会以 `NATIVE_PLATFORM_UNSUPPORTED` 失败关闭。
 
 v0.13.2 保持 Darwin 文件系统和 Agent 协议实现为 Python，只将旧的手工 LaunchAgent 生命周期替换为 Apple 当前的 **ServiceManagement / `SMAppService`** 模式。一个极小的无界面 `ServerFSServiceManager.app` 负责两个每用户 LaunchAgent 的注册与状态：
 
@@ -77,7 +77,7 @@ serverfs service open-settings
 
 ## Agent Bridge policy
 
-v0.19.0 ACP release candidate 包含通用 POSIX process group 任务级子进程约束设计。目前没有真实的、支持 ACP 的本地 Agent 通过 macOS 验收，因此尚不宣称支持 macOS ACP 平台。
+v0.19.0 ACP profile 使用原生 POSIX process group 子进程约束机制。OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 已通过 macOS 端到端验收，覆盖 prompt、持久 session continuation 和 active-tool cancellation/cleanup。
 
 `serverfs.toml` 仍是 Agent workdir/runtime policy 的唯一用户配置来源。所有暴露 workdir 之外的私有 `bridge.json` 仍是派生状态，只保存 Bridge 所需的限定 Jev/proxy 私有材料。
 

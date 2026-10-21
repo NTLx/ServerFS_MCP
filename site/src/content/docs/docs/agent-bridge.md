@@ -1,12 +1,11 @@
 ---
 title: Agent Bridge
-description: Optional structured delegation to native Codex, Claude and Qoder runtimes.
+description: Optional structured delegation to native Codex, Claude and Qoder runtimes and configurable ACP v1 profiles.
 ---
 
-The Agent Bridge is an **optional host-side boundary**. It lets ServerFS expose structured Agent task tools without putting Codex, Claude or Qoder inside the MCP container. v0.18.0 is the current published stable release: it keeps the provider-neutral Agent contract while adding the current-user Windows Task Scheduler lifecycle around the native stack; the macOS persistent Tunnel/Bridge lifecycle remains Apple `SMAppService`-based.
+The Agent Bridge is an **optional host-side boundary**. It exposes structured Agent task tools without putting runtimes inside the MCP container. v0.19.0 ships generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes. Operators configure an absolute executable path and fixed argv for each profile; tasks cannot override command, argv or environment, and ACP tasks require `workspace-write`. ServerFS does not install Agents from the ACP Registry; authentication remains provider-owned. Capabilities are reported conservatively. ACP model discovery/override, elicitation, Client filesystem and terminal methods are unsupported.
 
-The implemented **v0.19.0 release candidate** adds generic ACP v1 profiles alongside the native Codex, Claude and Qoder runtimes; it is not released, and v0.18.0 remains stable. Each `acp-<id>` runtime is derived from an operator-configured profile with an absolute executable and fixed argv. ACP tasks require `workspace-write`; task callers cannot override the command, argv or environment. The ACP Registry is reference metadata, not an execution trust root, and provider authentication remains provider-owned. Capabilities are reported conservatively from measured peer behavior. ACP model discovery and model override, elicitation, and Client filesystem/terminal methods are unsupported. Linux real-Agent acceptance is still unmet; macOS and Windows ACP platform acceptance is not claimed.
-
+OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS and Windows, covering prompt, persisted-session continuation, and active-tool cancellation/cleanup.
 ```text
 ChatGPT
   │
@@ -20,7 +19,8 @@ Unix socket
 Host Agent Bridge
   ├── Codex
   ├── Claude Code
-  └── Qoder
+  ├── Qoder
+  └── ACP v1 profiles (operator-configured)
 ```
 
 ## Why it is separate

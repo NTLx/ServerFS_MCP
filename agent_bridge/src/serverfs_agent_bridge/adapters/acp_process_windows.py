@@ -78,21 +78,20 @@ def stop_windows_process_tree(root_pid: int, timeout: float) -> bool:
                 if handle is not None:
                     handles[pid] = handle
 
-            uncertain = False
             for handle in handles.values():
                 state = _wait_state(handle, 0)
                 if state is None:
-                    uncertain = True
-                    continue
+                    return False
                 if state:
                     continue
                 if not _kernel32.TerminateProcess(handle, 1):
-                    # A concurrent exit is success; any other state is uncertain.
+                    # Windows can refuse termination for a task-owned companion that is already
+                    # leaving with its parent. A zero-time check is too early to distinguish that
+                    # race from a genuinely unkillable process. Keep the handle and require it to
+                    # become signalled within the existing bounded timeout; otherwise fail closed.
                     state = _wait_state(handle, 0)
-                    if state is not True:
-                        uncertain = True
-            if uncertain:
-                return False
+                    if state is None:
+                        return False
 
             all_stopped = True
             for handle in handles.values():

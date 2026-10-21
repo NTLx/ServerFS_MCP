@@ -10,11 +10,11 @@
 
 **A secure, standards-first MCP filesystem server with scoped access and optional native Agent delegation.**
 
-Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured Codex / Claude Code / Qoder delegation only where you need them.
+Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured delegation to native Codex / Claude Code / Qoder runtimes and operator-configured ACP Agents only where you need them.
 
-**Current stable release: v0.18.0**
+**Current stable release: v0.19.0**
 
-v0.19.0 is an implemented ACP release candidate that has not been tagged or released; v0.18.0 remains the current published stable release. The candidate adds generic ACP v1 profiles alongside the native Codex, Claude Code, and Qoder runtimes. An operator configures an absolute executable path and fixed argv for each profile; ACP profiles require `workspace-write`, and tasks cannot override command, argv, or environment. ServerFS does not auto-install or trust Agents from the ACP Registry, and provider authentication remains provider-owned. ACP model discovery/override, elicitation, client filesystem, and terminal capabilities are unsupported; other runtime capabilities are reported conservatively from measured behavior. The Linux two-real-Agent core smoke has not passed, and macOS/Windows ACP platform support has not been accepted.
+v0.19.0 adds generic ACP v1 profiles to the Agent Bridge alongside native Codex, Claude Code, and Qoder runtimes. Operators configure an absolute executable path and fixed argv for each profile; ACP runtimes require `workspace-write`, and tasks cannot override command, argv, or environment. ServerFS does not auto-install or trust Agents from the ACP Registry, and provider authentication remains provider-owned. Model discovery/override, elicitation, client filesystem, and terminal capabilities are unsupported; other capabilities are reported conservatively from measured behavior. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS, and Windows, covering prompts, persisted-session continuation, and active-tool cancellation/cleanup.
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -44,9 +44,9 @@ ServerFS is built around that narrower boundary:
 
 | Platform | Supported shape | Filesystem boundary | Agent delegation |
 | --- | --- | --- | --- |
-| **Linux** | Docker Compose, `linux/amd64` and `linux/arm64` | Bind-mounted workdirs; container read-only by default | Optional host Agent Bridge |
-| **Windows** | Windows 11 x64, local NTFS, native stdio; current-user Task Scheduler persistence since v0.14.0 | Native HANDLE-relative Rust kernel over MCP stdio | Codex, Claude Code, Qoder |
-| **macOS** | Apple M-series, native arm64, macOS 27 Golden Gate | Native descriptor-relative Darwin backend over MCP stdio | Codex, Claude Code, Qoder |
+| **Linux** | Docker Compose, `linux/amd64` and `linux/arm64` | Bind-mounted workdirs; container read-only by default | Native Codex, Claude Code, Qoder; configurable ACP v1 profiles |
+| **Windows** | Windows 11 x64, local NTFS, native stdio; current-user Task Scheduler persistence since v0.14.0 | Native HANDLE-relative Rust kernel over MCP stdio | Native Codex, Claude Code, Qoder; configurable ACP v1 profiles |
+| **macOS** | Apple M-series, native arm64, macOS 27 Golden Gate | Native descriptor-relative Darwin backend over MCP stdio | Native Codex, Claude Code, Qoder; configurable ACP v1 profiles |
 
 The macOS v0.13 support boundary is intentionally strict: Intel Macs, Rosetta/x86_64 execution, macOS 26 or older, and macOS 28+ are not claimed as supported. **v0.13.2** adds Apple-native `SMAppService` persistence for the Tunnel and Agent Bridge, so the managed stack no longer depends on terminal/session lifetime. `SMAppService` owns user-login persistence; live reboot/re-login recovery validation is deferred beyond v0.13.2.
 
@@ -57,11 +57,11 @@ For native setup, use the dedicated guides:
 - [Windows Native](https://ntlx.github.io/ServerFS_MCP/docs/windows-native/)
 - [macOS Native](https://ntlx.github.io/ServerFS_MCP/docs/macos-native/)
 
-## Agent Skills (v0.18.0)
+## Agent Skills
 
 The repository now carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
 
-The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The v0.18.0 stable tag builds one `serverfs-plugin-v0.18.0.zip` GitHub Release asset containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
+The repository root also contains a portable skills-only [`plugin.json`](plugin.json). Since v0.18.0, each stable tag builds one version-named GitHub Release asset; the v0.19.0 asset is `serverfs-plugin-v0.19.0.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
 
 ## Quick start
 
@@ -197,9 +197,9 @@ For the actual trust boundaries and security contract, read the [Security Model]
 
 ## Optional Agent Bridge
 
-ServerFS can delegate bounded tasks to native **Codex**, **Claude Code**, and **Qoder** runtimes through a separate host-side Agent Bridge. The unreleased v0.19.0 candidate also implements generic ACP v1 profiles with runtime IDs such as `acp-<profile>`; these are not new native provider integrations or evidence of accepted platform support.
+ServerFS can delegate bounded tasks through a separate host-side Agent Bridge to native **Codex**, **Claude Code**, and **Qoder** runtimes, plus generic ACP v1 profiles with runtime IDs such as `acp-<profile>`. Operators configure each ACP profile with an absolute executable and fixed argv; these are not new native provider integrations.
 
-The Bridge adds structured task submission, status/events, cancellation, approvals/questions, model discovery where the provider exposes it, request-scoped model selection, result spooling, idempotent retries, and recovery semantics. Provider capabilities are reported per runtime rather than assumed to be uniform. ACP candidate runtimes do not support model discovery or override, elicitation, ACP client filesystem, or terminal capabilities; remaining capabilities are reported conservatively from measured behavior.
+The Bridge adds structured task submission, status/events, cancellation, approvals/questions, model discovery where the provider exposes it, request-scoped model selection, result spooling, idempotent retries, and recovery semantics. Provider capabilities are reported per runtime rather than assumed to be uniform. ACP runtimes do not support model discovery or override, elicitation, ACP client filesystem, or terminal capabilities; remaining capabilities are reported conservatively from measured behavior.
 
 Jev integration is optional and advisory only: it may provide task preflight, runtime/model advice, and approval context, but it never expands permissions or automatically overrides the caller's selected runtime/model/approval decision.
 
@@ -240,12 +240,12 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-The current stable release is **v0.18.0**.
+The current stable release is **v0.19.0**.
 
-- Linux images: `ghcr.io/ntlx/serverfs_mcp`
-- Stable release tag: `v0.18.0`
+- Linux images: `ghcr.io/ntlx/serverfs_mcp`; exact v0.19.0 pin: `ghcr.io/ntlx/serverfs_mcp:0.19.0`
+- Stable release tag: `v0.19.0`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
-- Portable Agent Plugin: one skills-only `serverfs-plugin-v0.18.0.zip` asset.
+- Portable Agent Plugin: one skills-only `serverfs-plugin-v0.19.0.zip` asset.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel. v0.13.2 locally builds the small bundled ServiceManagement companion used for persistent per-user services.
 

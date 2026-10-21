@@ -145,3 +145,43 @@ async def test_stop_kills_acp_tree_idempotently_and_preserves_unrelated_sibling(
         if sibling.poll() is None:
             sibling.terminate()
             sibling.wait(timeout=5)
+
+
+def test_stop_tree_waits_for_refused_process_to_finish(monkeypatch: pytest.MonkeyPatch) -> None:
+    from serverfs_agent_bridge.adapters import acp_process_windows as windows_process
+
+    snapshot_calls = 0
+    wait_calls = 0
+    terminate_calls: list[tuple[int, int]] = []
+    closed_handles: list[int] = []
+
+    def fake_snapshot() -> dict[int, int]:
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        return {200: 100} if snapshot_calls == 1 else {}
+
+    def fake_wait(handle: int, timeout_ms: int) -> bool | None:
+        nonlocal wait_calls
+        assert handle == 900
+        wait_calls += 1
+        return wait_calls >= 4
+
+    class FakeKernel32:
+        @staticmethod
+        def TerminateProcess(handle: int, exit_code: int) -> bool:
+            terminate_calls.append((handle, exit_code))
+            return False
+
+        @staticmethod
+        def CloseHandle(handle: int) -> bool:
+            closed_handles.append(handle)
+            return True
+
+    monkeypatch.setattr(windows_process, "_snapshot_parents", fake_snapshot)
+    monkeypatch.setattr(windows_process, "_open_for_stop", lambda pid: 900 if pid == 200 else None)
+    monkeypatch.setattr(windows_process, "_wait_state", fake_wait)
+    monkeypatch.setattr(windows_process, "_kernel32", FakeKernel32())
+
+    assert windows_process.stop_windows_process_tree(100, timeout=0.5)
+    assert terminate_calls == [(900, 1)]
+    assert closed_handles == [900]

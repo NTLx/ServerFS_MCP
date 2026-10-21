@@ -1,6 +1,6 @@
 ---
 title: Windows 原生部署
-description: Windows 11 x64 + 本地 NTFS 原生部署——预构建 Rust 内核、Codex/Claude/Qoder 委派，以及 v0.14.0 当前用户 Task Scheduler 持久生命周期。
+description: Windows 11 x64 + 本地 NTFS 原生部署——预构建 Rust 内核、Codex/Claude/Qoder 原生 runtime 与可配置 ACP 委派，以及 v0.14.0 当前用户 Task Scheduler 持久生命周期。
 ---
 
 自 v0.10.0 起，ServerFS 可以在 **Windows 11 x64 + 本地 NTFS** 上以 MCP **stdio** 服务原生运行。没有任何端口监听：官方 OpenAI `tunnel-client` 主动连出到控制面，并通过子进程的 stdin/stdout 传输 MCP 帧，因此默认原生 profile 不存在 localhost 监听器。Linux Docker 部署保持不变，仍是 Linux 的受支持形态。
@@ -89,7 +89,7 @@ Task Scheduler 同时使用用户登录触发器与无限期的每 1 分钟 `Tim
 
 ## Windows 上的 Agent 运行时
 
-v0.19.0 ACP release candidate 增加了通用配置型 `acp-<id>` profile，但 Windows ACP 实时验收仍未完成，尚不宣称支持 Windows ACP 平台。进程约束实现先以 `CREATE_SUSPENDED` 创建子进程，将其分配到现有 supervisor Job Object 后再恢复；任务级停止会终止 ACP 进程树，不会创建第二个 Job Object。
+v0.19.0 提供通用配置型 `acp-<id>` profile。OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 已通过 Windows 端到端验收，覆盖 prompt、持久 session continuation 和 active-tool cancellation/cleanup。进程约束实现先以 `CREATE_SUSPENDED` 创建子进程，将其分配到现有 supervisor Job Object 后再恢复；任务级停止会终止 ACP 进程树，不会创建第二个 Job Object。
 
 每个 runtime 都是一个真实的 provider 进程；能力按 runtime 逐一记录，不做统一宣传：
 

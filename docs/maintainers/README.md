@@ -4,9 +4,10 @@
 
 ## Current release
 
-- **v0.18.0 is the current stable release.**
+- **v0.19.0 is the current stable release.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
+- Generic ACP v1 profiles are also supported when operator-configured with an absolute executable and fixed argv; OpenCode 2.1.2 passed real end-to-end acceptance on Linux, macOS and Windows.
 - Windows v0.14.0 replaces the manual outer launcher with a current-user, least-privilege Task Scheduler 2.0 lifecycle: logon + repeating time triggers own a windowless watchdog, the watchdog restarts the managed runner, and the runner restarts Tunnel generations. Installation, runtime, maintenance and removal remain non-elevated.
 - macOS v0.13 support is intentionally narrow: Apple M-series, native arm64, macOS 27 Golden Gate; no Intel, Rosetta, macOS 26/28 or `darwin-amd64` tunnel asset is claimed. v0.13.2 moves persistent Tunnel/Bridge lifecycle to app-associated `SMAppService` LaunchAgents.
 - `dev_plan_v*.md`, acceptance reports and audits are historical records. Update a stale present-tense status when it becomes false, but do not mechanically rewrite historical evidence or milestone facts.
@@ -50,7 +51,7 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.17** — optional one-secret static API Key authentication for Streamable HTTP, with Bearer and DingTalk-style query-key interoperability; v0.17.1 adds Tunnel readiness/control-plane diagnostics, a read-only host-observability recipe, and restricted-network ARM64 deployment guidance.
 
 - **v0.18** — seven operational Agent Skills and one skills-only portable Agent Plugin release asset, `serverfs-plugin-v0.18.0.zip`.
-- **v0.19.0 (implemented release candidate, not tagged/released)** — generic ACP v1 profiles alongside the native Codex/Claude/Qoder baseline. v0.18.0 remains the current published stable release. Linux two-real-Agent smoke is unmet; macOS/Windows ACP platform support is not accepted. See [`dev_plan_v0.19.md`](../../dev_plan_v0.19.md) for implementation commits and blockers.
+- **v0.19.0** — generic ACP v1 profiles alongside the native Codex/Claude/Qoder baseline. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS and Windows. See [`dev_plan_v0.19.md`](../../dev_plan_v0.19.md) for scope and evidence.
 
 ## Keep this index small
 

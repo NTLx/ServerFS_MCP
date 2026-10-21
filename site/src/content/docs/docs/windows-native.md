@@ -1,6 +1,6 @@
 ---
 title: Windows Native
-description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, Codex/Claude/Qoder delegation, and the v0.14 current-user Task Scheduler lifecycle.
+description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, native Codex/Claude/Qoder and configurable ACP delegation, and the v0.14 current-user Task Scheduler lifecycle.
 ---
 
 Since v0.10.0 ServerFS runs natively on **Windows 11 x64 over local NTFS** as an MCP **stdio** service. Nothing listens on a port: the official OpenAI `tunnel-client` connects out to the control plane and speaks MCP through the child process's stdin/stdout, so the default native profile has no localhost listener. Linux Docker deployments are unchanged and remain the supported Linux shape.
@@ -84,7 +84,7 @@ Intentional lifecycle operations are explicit:
 
 ## Agent runtimes on Windows
 
-The v0.19.0 ACP release candidate adds configured generic `acp-<id>` profiles, but Windows ACP live acceptance remains outstanding and Windows ACP platform support is not claimed. The containment implementation creates the child with `CREATE_SUSPENDED`, assigns it to the existing supervisor Job Object, then resumes it; task-level stop terminates the ACP process tree without creating a second Job Object.
+v0.19.0 ships configured generic `acp-<id>` profiles. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed Windows end-to-end acceptance, including prompt, persisted-session continuation, and active-tool cancellation/cleanup. The containment implementation creates the child with `CREATE_SUSPENDED`, assigns it to the existing supervisor Job Object, then resumes it; task-level stop terminates the ACP process tree without creating a second Job Object.
 
 Each runtime is a real provider process; capabilities are recorded per runtime, not advertised uniformly:
 

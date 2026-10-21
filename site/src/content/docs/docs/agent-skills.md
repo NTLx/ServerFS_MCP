@@ -3,7 +3,7 @@ title: Agent Skills
 description: Use ServerFS repository skills to guide AI Agents through safe installation, configuration, upgrade, diagnosis and optional subsystem operations.
 ---
 
-> **Current release: v0.18.0.** ServerFS includes seven operational Agent Skills and one skills-only portable Agent Plugin.
+> **Current release: v0.19.0.** ServerFS includes seven operational Agent Skills and one skills-only portable Agent Plugin.
 
 ServerFS keeps operational Agent Skills in the repository [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) directory. They teach an Agent **how to use the existing ServerFS product interfaces safely**; they are not another configuration format or deployment implementation.
 
@@ -17,7 +17,7 @@ ServerFS keeps operational Agent Skills in the repository [`skills/`](https://gi
 | Read-first diagnosis and health verification | `serverfs-diagnose` |
 | OpenAI Secure MCP Tunnel | `serverfs-tunnel` |
 | Remote HTTP API Key / OAuth | `serverfs-auth` |
-| Agent Bridge / Codex / Claude / Qoder / Jev | `serverfs-agent-bridge` |
+| Agent Bridge / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
 The repository-level `AGENTS.md` contains only a thin index. An Agent should load the smallest matching `SKILL.md` rather than placing all operational procedures in its base context.
 
@@ -46,10 +46,10 @@ The skills preserve the same ServerFS invariants as manual operation:
 
 ## Portable Agent Plugin
 
-The repository root contains the portable Agent Plugins manifest `plugin.json`. The v0.18.0 release packages the seven runtime skills and their references into one GitHub Release asset:
+The repository root contains the portable Agent Plugins manifest `plugin.json`. The v0.19.0 release packages the seven runtime skills and their references into one GitHub Release asset:
 
 ```text
-serverfs-plugin-v0.18.0.zip
+serverfs-plugin-v0.19.0.zip
 ```
 
 The ZIP is a **skills-only** Plugin. It does not bundle `mcp.json`, a ServerFS instance URL, credentials, or provider-private settings. Plugin and skill content follow the ServerFS release version; there is no independent skill version lifecycle.

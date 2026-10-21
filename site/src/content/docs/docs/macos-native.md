@@ -1,9 +1,9 @@
 ---
 title: macOS Native
-description: ServerFS v0.18.0 native macOS deployment — Apple M-series, macOS 27, Darwin FD safety and Apple SMAppService persistence for Tunnel and Agent Bridge.
+description: ServerFS v0.19.0 native macOS deployment — Apple M-series, macOS 27, Darwin FD safety and Apple SMAppService persistence for Tunnel and Agent Bridge.
 ---
 
-The current stable project release is **v0.18.0**; the macOS native support shape introduced in **v0.13.2** remains unchanged. ServerFS runs natively on **Apple M-series Macs running macOS 27 Golden Gate**. The supported boundary remains exact: native **arm64** only, no Rosetta/x86_64, macOS 27.x only, and **local APFS** workdirs. Intel Macs, Hackintosh, macOS 26 or older and macOS 28 or newer fail closed with `NATIVE_PLATFORM_UNSUPPORTED`.
+The current stable project release is **v0.19.0**; the macOS native support shape introduced in **v0.13.2** remains unchanged. ServerFS runs natively on **Apple M-series Macs running macOS 27 Golden Gate**. The supported boundary remains exact: native **arm64** only, no Rosetta/x86_64, macOS 27.x only, and **local APFS** workdirs. Intel Macs, Hackintosh, macOS 26 or older and macOS 28 or newer fail closed with `NATIVE_PLATFORM_UNSUPPORTED`.
 
 v0.13.2 keeps the Darwin filesystem and Agent protocol implementation in Python, but replaces the old hand-installed LaunchAgent lifecycle with Apple's current **ServiceManagement / `SMAppService`** model. A small headless `ServerFSServiceManager.app` owns registration and status for two per-user LaunchAgents:
 
@@ -78,7 +78,7 @@ Approve the ServerFS background item under **System Settings > General > Login I
 
 ## Agent Bridge policy
 
-The v0.19.0 ACP release candidate includes a generic POSIX process-group design for task-level child containment. No real ACP-capable local Agent has passed macOS acceptance, so macOS ACP platform support is not claimed.
+The v0.19.0 ACP profile uses the native POSIX process-group containment seam. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed macOS end-to-end acceptance, including prompt, persisted-session continuation, and active-tool cancellation/cleanup.
 
 `serverfs.toml` remains the operator source of Agent workdir/runtime policy. The private `bridge.json` outside every exposed workdir remains derived state and may contain the narrow Jev/proxy material needed by the Bridge.
 

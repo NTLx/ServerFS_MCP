@@ -1,6 +1,6 @@
 # Phase E — user-scoped Agent Bridge deployment
 
-Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.18.0 is the current published stable release.** v0.12 kept the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling.
+Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.19.0 is the current published stable release.** v0.12 kept the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling. v0.19.0 adds operator-configured generic ACP v1 profiles alongside the native Codex, Claude and Qoder runtimes.
 
 The deployment has one non-negotiable rule:
 
@@ -166,11 +166,11 @@ WORKDIR_01_PATH=/srv/ServerFS_MCP
 WORKDIR_01_READ_ONLY=false
 WORKDIR_01_AGENT_MODE=workspace-write
 WORKDIR_01_AGENT_RUNTIMES=codex,claude,qoder
-# Optional v0.19.0 release-candidate ACP profiles; omit or use [] for none.
+# Optional v0.19.0 ACP profiles; omit or use [] for none.
 SERVERFS_ACP_PROFILES_JSON='[]'
 ```
 
-For an ACP profile, set `SERVERFS_ACP_PROFILES_JSON` to a JSON array of operator-owned profiles with `id`, `command`, fixed `args`, and optional `use_proxy`, `probe_timeout_seconds`, and `shutdown_timeout_seconds`. The renderer validates and copies these launch settings into private Bridge configuration. `command` must name an existing absolute executable path; task callers cannot override command, argv, or environment. Allow the derived `acp-<id>` runtime explicitly on a writable `workspace-write` workdir. This v0.19.0 candidate is not a published release. ACP model discovery/override, elicitation, client filesystem, and terminal are unsupported; capabilities are otherwise conservative and measured. Current Linux live smoke is blocked for Grok Build 0.2.114 (`auth_required` at `new_session`) and OpenCode 1.18.19 (initialize timeout); this does not meet the two-Agent gate.
+For an ACP profile, set `SERVERFS_ACP_PROFILES_JSON` to a JSON array of operator-owned profiles with `id`, `command`, fixed `args`, and optional `use_proxy`, `probe_timeout_seconds`, and `shutdown_timeout_seconds`. The renderer validates and copies these launch settings into private Bridge configuration. `command` must name an existing absolute executable path; task callers cannot override command, argv, or environment. Allow the derived `acp-<id>` runtime explicitly on a writable `workspace-write` workdir. ACP model discovery/override, elicitation, client filesystem, and terminal are unsupported; capabilities are otherwise conservative and measured. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real Linux, macOS and Windows end-to-end acceptance, including prompt completion, persisted-session continuation and active-tool cancellation/cleanup. Additional ACP implementations are optional interoperability follow-up rather than a release blocker.
 
 Native Codex/Claude/Qoder currently require `workspace-write`, therefore the same
 workdir must have `READ_ONLY=false`.

@@ -18,7 +18,7 @@ const copy = {
     nav: { docs: 'Docs', connect: 'Connect', architecture: 'Architecture', security: 'Security' },
     languageSwitch: '简中',
     languageLabel: '切换到简体中文',
-    release: 'v0.18.0',
+    release: 'v0.19.0',
     heroEyebrow: 'SECURE MCP FOR LINUX · WINDOWS · MACOS WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
@@ -176,7 +176,7 @@ const copy = {
     agentEyebrow: 'OPTIONAL AGENT BRIDGE',
     agentTitle: 'Native agents stay on the host.',
     agentBody:
-      'The optional Agent Bridge delegates structured tasks to Codex, Claude and Qoder across supported deployments through platform-native local IPC and lifecycle integration. Standards-based ACP v1 profiles are implemented in the unreleased v0.19.0 release candidate; platform acceptance is still pending. Windows v0.14.0 uses current-user Task Scheduler persistence with a windowless watchdog and layered recovery; macOS v0.13.2+ uses Apple SMAppService for persistent per-user lifecycle. Provider defaults stay native; request-scoped model overrides remain explicit, while optional Jev advisors can add pre-submit advice without becoming execution authority.',
+      'The optional Agent Bridge delegates structured tasks to native Codex, Claude and Qoder runtimes, plus operator-configured ACP v1 profiles using an absolute executable and fixed argv. OpenCode 2.1.2 with opencode/glm-5.3-flash-free passed real end-to-end acceptance on Linux, macOS and Windows, including prompts, persisted-session continuation, and active-tool cancellation/cleanup. ACP model discovery/override, elicitation, client filesystem and terminal are unsupported; capabilities remain conservative. Windows v0.14.0 uses current-user Task Scheduler persistence with a windowless watchdog and layered recovery; macOS v0.13.2+ uses Apple SMAppService for persistent per-user lifecycle. Provider defaults stay native; request-scoped model overrides remain explicit, while optional Jev advisors can add pre-submit advice without becoming execution authority.',
     exploreAgent: 'Explore Agent Bridge',
     exploreJev: 'Explore Jev Advisors',
     mcpContainer: 'MCP CONTAINER',
@@ -196,7 +196,7 @@ const copy = {
     skillsEyebrow: 'PORTABLE AGENT SKILLS',
     skillsTitle: 'Operational knowledge ships with the project.',
     skillsBody:
-      'v0.18.0 includes seven task-oriented Agent Skills for installation, configuration, upgrades, diagnostics, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. A skills-only portable plugin is published with the release.',
+      'v0.19.0 includes seven task-oriented Agent Skills for installation, configuration, upgrades, diagnostics, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. A skills-only portable plugin is published with the release.',
     exploreSkills: 'Explore Agent Skills',
     footer: 'Secure MCP access to explicitly configured workdirs on Linux, Windows, and macOS.',
     footerDocs: 'Docs',
@@ -211,7 +211,7 @@ const copy = {
     nav: { docs: '文档', connect: '接入', architecture: '架构', security: '安全' },
     languageSwitch: 'EN',
     languageLabel: 'Switch to English',
-    release: 'v0.18.0',
+    release: 'v0.19.0',
     heroEyebrow: '面向 Linux · Windows · macOS Workdir 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
@@ -368,7 +368,7 @@ const copy = {
     agentEyebrow: '可选 AGENT BRIDGE',
     agentTitle: '原生 Agent 留在宿主机。',
     agentBody:
-      '可选 Agent Bridge 在受支持的部署上通过平台原生本地 IPC 与生命周期集成，将结构化任务委托给 Codex、Claude 和 Qoder。基于标准的 ACP v1 profile 已在尚未发布的 v0.19.0 release candidate 中实现，平台验收仍待完成。Windows v0.14.0 使用当前用户 Task Scheduler、无窗口 watchdog 与分层恢复的持久生命周期；macOS v0.13.2+ 使用 Apple SMAppService 管理持久的用户级生命周期。Provider 默认配置保持原生；单次任务模型覆盖必须显式指定，可选 Jev Advisors 可在提交前提供建议，但不会获得执行权。',
+      '可选 Agent Bridge 通过平台原生本地 IPC 与生命周期集成，将结构化任务委托给 Codex、Claude、Qoder 原生 runtime，以及运维人员配置的通用 ACP v1 profile；每个 profile 固定绝对可执行文件与 argv。OpenCode 2.1.2 使用 opencode/glm-5.3-flash-free 已通过 Linux、macOS、Windows 真实端到端验收，覆盖 prompt、持久 session continuation 和 active-tool cancellation/cleanup。ACP 不支持模型发现/覆盖、elicitation、client filesystem 和 terminal；能力保持保守报告。Windows v0.14.0 使用当前用户 Task Scheduler、无窗口 watchdog 与分层恢复的持久生命周期；macOS v0.13.2+ 使用 Apple SMAppService 管理持久的用户级生命周期。Provider 默认配置保持原生；单次任务模型覆盖必须显式指定，可选 Jev Advisors 可在提交前提供建议，但不会获得执行权。',
     exploreAgent: '了解 Agent Bridge',
     exploreJev: '了解 Jev Advisors',
     mcpContainer: 'MCP 容器',
@@ -388,7 +388,7 @@ const copy = {
     skillsEyebrow: '可移植 AGENT SKILLS',
     skillsTitle: '让运维知识随项目一起交付。',
     skillsBody:
-      'v0.18.0 提供 7 个面向任务的 Agent Skills，覆盖安装、配置、升级、诊断、OpenAI Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维；Release 同时发布仅包含 Skills 的可移植 Plugin。',
+      'v0.19.0 提供 7 个面向任务的 Agent Skills，覆盖安装、配置、升级、诊断、OpenAI Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维；Release 同时发布仅包含 Skills 的可移植 Plugin。',
     exploreSkills: '了解 Agent Skills',
     footer: '让 MCP 在 Linux、Windows 和 macOS 上安全访问你明确配置的 workdir。',
     footerDocs: '文档',

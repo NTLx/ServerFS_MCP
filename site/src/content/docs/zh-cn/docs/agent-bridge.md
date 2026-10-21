@@ -1,12 +1,11 @@
 ---
 title: Agent Bridge
-description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时委派。
+description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时及可配置 ACP v1 profile 委派。
 ---
 
-Agent Bridge 是一个**可选的宿主机边界**。它让 ServerFS 可以暴露结构化 Agent 任务工具，而无需把 Codex、Claude 或 Qoder 放进 MCP 容器。v0.18.0 是当前已发布稳定版本：保持同一套 provider-neutral Agent 契约，同时为 Windows 原生栈增加当前用户 Task Scheduler 持久生命周期；macOS 的持久 Tunnel/Bridge 生命周期继续使用 Apple `SMAppService`。
+Agent Bridge 是一个**可选的宿主机边界**。它暴露结构化 Agent 任务工具，不会把 runtime 放进 MCP 容器。v0.19.0 在原生 Codex、Claude 和 Qoder runtime 之外提供通用 ACP v1 profile。运维人员为每个 profile 配置绝对可执行文件路径和固定 argv；任务调用不能覆盖 command、argv 或环境变量，ACP 任务必须使用 `workspace-write`。ServerFS 不会从 ACP Registry 安装 Agent；认证仍由 Provider 管理。能力保守报告。ACP 模型发现/覆盖、elicitation、Client 文件系统和 terminal 方法均不支持。
 
-已实现的 **v0.19.0 release candidate** 在 Codex、Claude、Qoder 原生 runtime 之外增加通用 ACP v1 profile；该版本尚未发布，v0.18.0 仍是稳定版。每个 `acp-<id>` runtime 都由运营者配置的 profile 派生，profile 使用绝对可执行文件路径和固定 argv。ACP 任务必须使用 `workspace-write`；任务调用方不能覆盖命令、argv 或环境变量。ACP Registry 只是参考元数据，不是执行信任根；Provider 认证仍由 Provider 自行管理。能力仅依据实测的 peer 行为保守报告。ACP 模型发现与模型覆盖、elicitation，以及 Client 文件系统/终端方法均不支持。Linux 真实 Agent 验收仍未达成；macOS 和 Windows 的 ACP 平台验收尚未获认可。
-
+OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 已通过 Linux、macOS 和 Windows 的真实端到端验收，覆盖 prompt、持久 session continuation 和 active-tool cancellation/cleanup。
 ```text
 ChatGPT
   │
@@ -20,7 +19,8 @@ Unix socket
 宿主机 Agent Bridge
   ├── Codex
   ├── Claude Code
-  └── Qoder
+  ├── Qoder
+  └── ACP v1 profiles（运维配置）
 ```
 
 ## 为什么要独立存在

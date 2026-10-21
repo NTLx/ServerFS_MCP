@@ -10,11 +10,11 @@
 
 **一个安全、标准优先、按范围授权的 MCP 文件系统服务器，并可选支持原生 AI Agent 委托。**
 
-只暴露你明确选择的目录，并默认保持只读。仅在需要的位置按需开启受限文件修改、基于 revision 的并发保护、有限制的二进制传输，以及结构化的 Codex / Claude Code / Qoder Agent 委托能力。
+只暴露你明确选择的目录，并默认保持只读。仅在需要的位置按需开启受限文件修改、基于 revision 的并发保护、有限制的二进制传输，以及结构化的 Codex / Claude Code / Qoder 原生 runtime 或运维配置 ACP Agent 委托能力。
 
-**当前稳定版本：v0.18.0**
+**当前稳定版本：v0.19.0**
 
-v0.19.0 是尚未打标签或发布的 ACP release candidate；当前发布的稳定版本仍为 v0.18.0。候选版本在 Agent Bridge 中加入通用 ACP v1 profile，与原生 Codex、Claude Code、Qoder runtime 并存。ACP profile 使用运维人员配置的绝对可执行文件路径和固定 argv，仅支持 `workspace-write`；任务调用不能覆盖 command、argv 或 env。ServerFS 不会从 ACP Registry 自动安装或信任 Agent，Provider authentication 仍由 Provider 自己管理。ACP 的模型发现/覆盖、elicitation、client filesystem 和 terminal 均不支持；能力只按实测结果保守报告。Linux 两个真实 Agent 的核心 smoke 尚未通过，macOS/Windows ACP 平台支持也尚未获验收。
+v0.19.0 在 Agent Bridge 中加入通用 ACP v1 profile，与原生 Codex、Claude Code、Qoder runtime 并存。ACP profile 由运维人员配置绝对可执行文件路径和固定 argv；任务调用不能覆盖 command、argv 或 env，且 ACP runtime 要求 `workspace-write`。ServerFS 不会从 ACP Registry 自动安装或信任 Agent，Provider authentication 仍由 Provider 自己管理。模型发现/覆盖、elicitation、client filesystem 和 terminal 均不支持；能力只按实测结果保守报告。OpenCode 2.1.2 使用 `opencode/glm-5.3-flash-free` 已通过 Linux、macOS、Windows 的真实端到端验收，覆盖 prompt、持久 session continuation，以及 active-tool cancellation/cleanup。
 
 [项目网站](https://ntlx.github.io/ServerFS_MCP/) ·
 [文档](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -44,9 +44,9 @@ ServerFS 围绕这一更窄、更明确的安全边界设计：
 
 | 平台 | 支持形态 | 文件系统边界 | Agent 委托 |
 | --- | --- | --- | --- |
-| **Linux** | Docker Compose，支持 `linux/amd64` 与 `linux/arm64` | Bind mount Workdir；容器默认只读 | 可选 Host Agent Bridge |
-| **Windows** | Windows 11 x64、本地 NTFS、原生 stdio；自 v0.14.0 起支持当前用户 Task Scheduler 持久化 | MCP stdio 上的原生 HANDLE-relative Rust 内核 | Codex、Claude Code、Qoder |
-| **macOS** | Apple M 系列、原生 arm64、macOS 27 Golden Gate | MCP stdio 上基于 descriptor-relative 的 Darwin 原生后端 | Codex、Claude Code、Qoder |
+| **Linux** | Docker Compose，支持 `linux/amd64` 与 `linux/arm64` | Bind mount Workdir；容器默认只读 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
+| **Windows** | Windows 11 x64、本地 NTFS、原生 stdio；自 v0.14.0 起支持当前用户 Task Scheduler 持久化 | MCP stdio 上的原生 HANDLE-relative Rust 内核 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
+| **macOS** | Apple M 系列、原生 arm64、macOS 27 Golden Gate | MCP stdio 上基于 descriptor-relative 的 Darwin 原生后端 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
 
 macOS v0.13 的支持边界有意保持严格：目前不声明支持 Intel Mac、Rosetta/x86_64、macOS 26 及更早版本，以及 macOS 28+。**v0.13.2** 使用 Apple 原生 `SMAppService` 为 Tunnel 与 Agent Bridge 提供持久化，使托管服务不再依赖终端或会话生命周期。`SMAppService` 负责当前用户登录后的持久化；真实重启/重新登录恢复验证未纳入 v0.13.2 的发布验收范围。
 
@@ -57,11 +57,11 @@ macOS v0.13 的支持边界有意保持严格：目前不声明支持 Intel Mac�
 - [Windows Native](https://ntlx.github.io/ServerFS_MCP/docs/windows-native/)
 - [macOS Native](https://ntlx.github.io/ServerFS_MCP/docs/macos-native/)
 
-## Agent Skills（v0.18.0）
+## Agent Skills
 
 仓库现已提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
 
-仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。v0.18.0 稳定标签会构建一个 `serverfs-plugin-v0.18.0.zip` GitHub Release 资产，其中包含 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
+仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。从 v0.18.0 开始，稳定标签会构建一个随版本命名的 GitHub Release 资产；v0.19.0 资产为 `serverfs-plugin-v0.19.0.zip`，其中包含 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
 
 ## 快速开始
 
@@ -199,9 +199,9 @@ ServerFS 假设文件内容均为不可信数据，并通过多个独立防线�
 
 ## 可选 Agent Bridge
 
-ServerFS 可通过独立的 Host-side Agent Bridge，将受限任务委托给原生 **Codex**、**Claude Code** 和 **Qoder** Runtime。未发布的 v0.19.0 候选版本还实现了通用 ACP v1 profiles，公开 runtime ID 形如 `acp-<profile>`；它们不代表新原生 Provider 集成或已验收的平台支持。
+ServerFS 可通过独立的 Host-side Agent Bridge，将受限任务委托给原生 **Codex**、**Claude Code**、**Qoder** Runtime，以及公开 runtime ID 形如 `acp-<profile>` 的通用 ACP v1 profiles。ACP profile 由运维人员配置绝对可执行文件与固定 argv；这不是新的原生 Provider 集成。
 
-Agent Bridge 提供结构化任务提交、状态/事件、取消、审批/提问、Provider 支持时的模型发现、请求级模型选择、结果 spool、幂等重试以及恢复语义。Provider 能力按 Runtime 实际上报，不假设不同 Provider 具有完全一致的功能。v0.19.0 ACP 候选 runtime 不支持模型发现或覆盖、elicitation、ACP client filesystem 或 terminal；其余 runtime capabilities 也仅按实测结果保守报告。
+Agent Bridge 提供结构化任务提交、状态/事件、取消、审批/提问、Provider 支持时的模型发现、请求级模型选择、结果 spool、幂等重试以及恢复语义。Provider 能力按 Runtime 实际上报，不假设不同 Provider 具有完全一致的功能。ACP runtime 不支持模型发现或覆盖、elicitation、ACP client filesystem 或 terminal；其余 runtime capabilities 也仅按实测结果保守报告。
 
 Jev 集成为可选且仅提供建议：它可以提供任务 preflight、Runtime/模型建议和审批上下文，但不会扩展权限，也不会自动覆盖调用方选择的 Runtime、模型或审批决定。
 
@@ -242,12 +242,12 @@ ChatGPT 文件参数通过可选的隔离 ingress helper 处理，而不是让 M
 
 ## 发布版本
 
-当前稳定版本为 **v0.18.0**。
+当前稳定版本为 **v0.19.0**。
 
-- Linux 镜像：`ghcr.io/ntlx/serverfs_mcp`
-- 稳定版本标签：`v0.18.0`
+- Linux 镜像：`ghcr.io/ntlx/serverfs_mcp`；v0.19.0 精确 pin：`ghcr.io/ntlx/serverfs_mcp:0.19.0`
+- 稳定版本标签：`v0.19.0`
 - 生产部署应固定到明确版本，不建议使用 `latest` 或 `edge`。
-- 可移植 Agent Plugin：一个仅包含 Skills 的 `serverfs-plugin-v0.18.0.zip` Release 资产。
+- 可移植 Agent Plugin：一个仅包含 Skills 的 `serverfs-plugin-v0.19.0.zip` Release 资产。
 - Windows Release 资产包含产品本体、Agent Bridge 与原生 kernel wheel。
 - macOS 直接使用产品与 Agent Bridge 的 Python distribution；v0.13 不提供单独的 macOS native wheel。v0.13.2 会在本地构建用于当前用户持久化服务的轻量 ServiceManagement companion。
 

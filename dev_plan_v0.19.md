@@ -1,6 +1,6 @@
 # ServerFS v0.19.0 Development Plan
 
-Status: **implemented release candidate; not tagged or released**. The current published stable release remains **v0.18.0**. v0.19.0 must not be described as released until an explicitly authorized release is published.
+Status: **v0.19.0 release acceptance is complete; this plan records the implementation and acceptance evidence.** OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed cross-platform real ACP end-to-end acceptance. The maintainer has decided that one independent real ACP implementation passing the Linux, macOS and Windows acceptance flow satisfies the v0.19 release gate; a second implementation is optional interoperability follow-up.
 
 Planning date: 2026-10-21.
 
@@ -723,16 +723,16 @@ Implementation commits in this checkout:
 - `3867b889 fix(rc): stabilize macOS validation` — removes the ACP cancellation-test PID-file race and forwards only the bounded Agent-doctor env allowlist from the selected env file.
 - `2aadf517 test(rc): cover doctor agent env parsing` — adds regression coverage for bounded Agent-doctor env parsing and redacted failure behavior.
 
-Measured acceptance and current blockers:
+Original candidate-stage observations (historical checkpoint; these do not describe the current release gate):
 
-- Linux two-real-Agent core smoke is **not met**. Grok Build `0.2.114` completed ACP initialize/load, but `new_session` returned `auth_required`; the production adapter correctly mapped the real response to `AGENT_AUTH_REQUIRED`. OpenCode `1.18.19` timed out during initialize within the bounded 10-second acceptance window. Neither has passed the required core live smoke.
-- macOS code/native acceptance at `2aadf517` is **passed** on native arm64 macOS 27: root **1477 passed / 392 skipped**; Agent Bridge **385 passed / 42 skipped**; Ruff/format passed; the official platform assertions passed; ServiceManager build, `codesign --verify`, plist lint and both 0.19.0 wheels passed; bare `serverfs doctor --config serverfs.toml` returned `summary: 0 FAIL, 0 WARN`. The operator's pre-existing `.workbuddy/memory/2026-10-10.md` modification remained byte-for-byte unchanged throughout. No ACP-capable local Agent was available, so **real macOS ACP Agent smoke remains outstanding** even though the platform implementation itself is accepted.
-- Windows platform implementation remains accepted from the earlier WorkPC native evidence: ACP argv round-trip, task-level descendant termination, unrelated sibling preservation, idempotent stop, existing-Job inheritance and suspended Bridge launch all passed; `cargo metadata --locked` resolved `serverfs-windows-native` as 0.19.0 and `cargo test --locked` completed successfully. The WorkPC checkout could not yet fast-forward from `e678a86` to `2aadf517` because an unrelated active writer lease repeatedly returned `WORKDIR_BUSY`; the lease was not bypassed or cancelled. This local synchronization gap is mitigated by exact-SHA CI evidence: at `2aadf517`, both **Windows native** and **Windows Agent** GitHub Actions completed successfully. **Real Windows ACP Agent smoke remains outstanding.**
+- At the original candidate checkpoint, Linux two-real-Agent core smoke was **not met**. Grok Build `0.2.114` completed ACP initialize/load, but `new_session` returned `auth_required`; OpenCode `1.18.19` timed out during initialize within the bounded 10-second acceptance window. Those observations describe that earlier test state and are superseded by the acceptance below.
+- At that checkpoint, macOS code/native acceptance at `2aadf517` had passed on native arm64 macOS 27: root **1477 passed / 392 skipped**; Agent Bridge **385 passed / 42 skipped**; Ruff/format passed; official platform assertions passed; ServiceManager build, `codesign --verify`, plist lint and both 0.19.0 wheels passed; the doctor check returned `summary: 0 FAIL, 0 WARN`. No ACP-capable local Agent was then available; the real ACP acceptance status was superseded by the current evidence below.
+- At that checkpoint, Windows platform implementation evidence passed for argv round-trip, task-level descendant termination, unrelated sibling preservation, idempotent stop, existing-Job inheritance and suspended Bridge launch; native and Agent exact-SHA CI also passed. Real ACP Agent smoke was then outstanding; that observation is superseded by the current evidence below.
 - Exact-SHA CI at `2aadf517` is green across all four push workflows: **macOS Native**, **Container**, **Windows native** and **Windows Agent** all completed successfully.
 - ACP model discovery and override are unsupported in this candidate. ACP elicitation, Client filesystem, and Client terminal methods are not advertised. Runtime capabilities are conservative and may be claimed only from measured peer behavior.
 - Linux RC regression after the macOS/doctor follow-up commits remains green: Agent Bridge **413 passed / 14 skipped**; five doctor regression files **29 passed / 67 skipped**; root/Bridge Ruff and format checks and `git diff --check` passed. A bare `--config serverfs.toml` doctor invocation is not an applicable VPS deployment gate because this Linux checkout intentionally has no root `serverfs.toml`; the failure was exactly `configuration file not found`, before any Agent-doctor logic. The earlier full Linux RC gate at `e678a86` remains valid for unchanged areas: root **1664 passed / 317 skipped**, Agent Skills **29 passed**, Plugin `v0.19.0` validation, **5/5** Compose renders, Docker image build, 35-page site production build, and both 0.19.0 wheels all passed.
 
-v0.19.0 remains an implemented release candidate. Platform code/native gates are now green on Linux/macOS and exact-SHA CI is green on Windows, but the release must remain blocked until the planned real-ACP-Agent acceptance gates are satisfied. Do not infer real Agent compatibility from implementation, deterministic fixtures, native platform tests or CI alone.
+Current release acceptance: OpenCode **2.1.2**, configured as `opencode` with model `opencode/glm-5.3-flash-free`, passed real end-to-end ACP acceptance on **Linux, macOS and Windows**. Each platform covered prompt completion, continuation of a persisted ACP session, and cancellation during an active tool call with process cleanup. This evidence satisfies the v0.19 release gate. Grok Build returning `auth_required` in the earlier observation is not a blocker; any additional ACP implementation is optional interoperability follow-up. ACP model discovery/override, elicitation, Client filesystem and Client terminal remain unsupported.
 
 ### Planned phase record (scope and gates)
 
@@ -864,7 +864,7 @@ This phase may produce a documented negative result; it must not invent a heuris
 
 ### Phase 8 — Linux deployment + real ACP reference acceptance
 
-Integrate Linux renderer/doctor/docs and test **at least two** materially different ACP implementations when they are already installed/authenticated or can be installed explicitly by the maintainer. A third implementation is a stretch/diagnostic target, not a release blocker.
+Original design intent (superseded for release acceptance): integrate Linux renderer/doctor/docs and test **at least two** materially different ACP implementations when available. The maintainer later decided that one independent implementation passing the complete cross-platform real E2E flow is sufficient for v0.19. A second implementation is optional interoperability follow-up, not a release blocker.
 
 Preferred reference set:
 
@@ -888,7 +888,7 @@ For each tested Agent record:
 - cleanup evidence;
 - any unsupported capability.
 
-At least two different implementations must pass core ServerFS live smoke before generic ACP is considered release-ready on Linux.
+Historical design gate: at least two different implementations were expected to pass core ServerFS live smoke before generic ACP was considered release-ready on Linux. **Superseded for v0.19 release acceptance** by the maintainer decision recorded in §17: one independent real ACP implementation must pass the specified end-to-end flow on Linux, macOS and Windows.
 
 ### Phase 9 — macOS native integration/acceptance
 
@@ -1115,10 +1115,10 @@ v0.19.0 is complete only when all applicable criteria are evidenced:
 6. Exact ACP permission option selection is human-controlled and validated.
 7. Cancellation/process-stop semantics are fail-closed on Linux, macOS and Windows where ACP support is claimed.
 8. Runtime capability reporting is conservative and evidence-backed.
-9. At least two materially different real ACP implementations pass the Linux core live acceptance; representative native macOS/Windows ACP smoke passes before those platforms are claimed.
+9. One independent real ACP implementation passes prompt, persisted-session continuation and active-tool cancellation/cleanup end-to-end acceptance on Linux, macOS and Windows. A second implementation is optional interoperability follow-up.
 10. Existing Codex/Claude/Qoder full relevant regressions remain green.
 11. Documentation clearly distinguishes native adapters from standards-based ACP profiles and does not imply Registry entries are automatically trusted/supported.
-12. Root, Bridge, deployment and site gates required by `docs/maintainers/workflow.md` pass on the release candidate.
+12. Root, Bridge, deployment and site gates required by `docs/maintainers/workflow.md` pass for the release.
 13. Any unverified optional capability is documented as unsupported/not verified rather than inferred.
 14. No unrelated refactor, auth redesign or lifecycle redesign is bundled into the release.
 
