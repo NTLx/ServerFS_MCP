@@ -1,6 +1,6 @@
 # ServerFS v0.21.0 Development Plan
 
-Status: **Phase A complete; Phase B ready to implement.** The v0.20.0 implementation prerequisite is accepted. Existing operational surfaces are inventoried in [`docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md`](docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md). Phase B is frozen to an internal-only, versioned, redacted observation contract with no new MCP tool, listener, exporter dependency, or authority expansion. Performance baseline remains Not measured and must be established before Phase D hot-path instrumentation.
+Status: **Phases A–B complete; Phase C ready to implement.** The v0.20.0 implementation prerequisite is accepted. Phase A inventories existing operational surfaces in [`docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md`](docs/v0.21.0-phase-a-observability-inventory-2026-10-22.md); Phase B implements the internal-only observation contract and bounded metric catalog recorded in [`docs/v0.21.0-phase-b-observation-contract-2026-10-22.md`](docs/v0.21.0-phase-b-observation-contract-2026-10-22.md). No new MCP tool, listener, exporter dependency, collector, or authority was added. Performance baseline remains Not measured and must be established before Phase D hot-path instrumentation.
 
 ## 0. Decision summary
 
@@ -206,11 +206,11 @@ Phase A froze these implementation constraints for Phase B: internal model first
 
 **Gate: PASS.** No duplicate status service or exporter assumption is required. Reliable reproducible performance baselines were not established in Phase A and are explicitly **Not measured**; they remain a prerequisite before Phase D hot-path instrumentation, not a fabricated Phase A result.
 
-### Phase B — Internal observation contract
+### Phase B — Internal observation contract — **COMPLETE**
 
-Implement the versioned internal model, normalization, bounded reason vocabulary, aggregation and redaction helpers. Add shared contract tests and platform adapter fixtures. Keep output internal; do not add exporter dependencies or new listeners.
+Implemented in `src/serverfs_mcp/observability.py` with focused contract tests in `tests/test_observability_contract.py`; design and evidence are recorded in [`docs/v0.21.0-phase-b-observation-contract-2026-10-22.md`](docs/v0.21.0-phase-b-observation-contract-2026-10-22.md). The standard-library immutable model freezes bounded component/applicability/health/provenance/reason vocabularies, snapshot schema v1, deterministic liveness/readiness/health aggregation, unknown-future fail-closed behavior, and the transport-neutral metric catalog/cardinality ceiling. It adds no collector, public projection, MCP schema, listener, exporter dependency, network I/O, persistence, or authority.
 
-**Gate:** contract and cardinality/redaction tests pass; unavailable/unknown sources cannot become healthy by default; all platform mappings are explicit.
+**Gate: PASS.** Focused validation: `uv run pytest tests/test_observability_contract.py` → 16 passed. Full root regression: `uv run pytest` → 1724 passed, 317 skipped; `uv run ruff check .`, `uv run ruff format --check .`, and `git diff --check` → PASS. Configured/not-checked/stale evidence cannot assert healthy, disabled optional components do not degrade the role, and arbitrary/high-cardinality metric label values are rejected. Platform mappings remain an explicit Phase C adapter responsibility rather than being invented in the shared contract.
 
 ### Phase C — Structured status and operator convergence
 
