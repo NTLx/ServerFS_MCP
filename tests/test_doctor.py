@@ -312,6 +312,7 @@ class TestAgentDoctorEnvFile:
         env_path = tmp_path / "agent.env" if explicit else tmp_path / ".env"
         env_path.write_text(
             "export SERVERFS_BRIDGE_PYTHON='" + sys.executable + "'\n"
+            "SERVERFS_AGENT_BRIDGE_SOCKET='/tmp/serverfs-agent.sock'\n"
             "SERVERFS_AGENT_PROXY_URL=not-a-valid-url-secret\n"
             "SERVERFS_AGENT_NO_PROXY=localhost,127.0.0.1,::1\n"
             "UNRELATED_SECRET=unpropagated-secret\n",
@@ -337,6 +338,7 @@ class TestAgentDoctorEnvFile:
         assert len(captured) == 1
         assert captured[0] == {
             "SERVERFS_BRIDGE_PYTHON": sys.executable,
+            "SERVERFS_AGENT_BRIDGE_SOCKET": "/tmp/serverfs-agent.sock",
             "SERVERFS_AGENT_PROXY_URL": "not-a-valid-url-secret",
             "SERVERFS_AGENT_NO_PROXY": "localhost,127.0.0.1,::1",
         }
@@ -346,6 +348,54 @@ class TestAgentDoctorEnvFile:
         assert "ambient-secret.invalid" not in text
         assert "agent proxy" in text
         assert os.environ["SERVERFS_AGENT_PROXY_URL"] == "http://ambient-secret.invalid"
+
+    @pytest.mark.parametrize(
+        ("assignment", "failure"),
+        [
+            ("SERVERFS_AGENT_PROXY_URL", "invalid SERVERFS_AGENT_PROXY_URL assignment at line 1"),
+            (
+                'SERVERFS_AGENT_PROXY_URL="unterminated-secret',
+                "unterminated quoted SERVERFS_AGENT_PROXY_URL at line 1",
+            ),
+        ],
+    )
+    def test_malformed_agent_key_fails_redacted(
+        self,
+        tmp_path: Path,
+        isolated_data_home: Path,
+        monkeypatch,
+        assignment: str,
+        failure: str,
+    ) -> None:
+        config = self._agent_config(tmp_path)
+        import serverfs_mcp.agent_doctor as agent_doctor
+
+        monkeypatch.setattr(agent_doctor, "_probe_darwin_policy_sync", lambda *_args: None)
+        env_path = tmp_path / ".env"
+        env_path.write_text(assignment + "\n", encoding="utf-8")
+        lines: list[str] = []
+        run_doctor(config, writer=lines.append)
+        text = "\n".join(lines)
+        assert f"agent env: FAIL -- {failure}" in text
+        assert "unterminated-secret" not in text
+
+    def test_absent_agent_env_file_passes_none(
+        self, tmp_path: Path, isolated_data_home: Path, monkeypatch
+    ) -> None:
+        config = self._agent_config(tmp_path)
+        import serverfs_mcp.agent_doctor as agent_doctor
+
+        monkeypatch.setattr(agent_doctor, "_probe_darwin_policy_sync", lambda *_args: None)
+        captured: list[dict[str, str] | None] = []
+        monkeypatch.setattr(
+            agent_doctor,
+            "report_agent",
+            lambda _report, _workdirs, _settings, *, env=None: captured.append(env),
+        )
+
+        run_doctor(config, writer=lambda _line: None)
+
+        assert captured == [None]
 
     def test_duplicate_agent_key_fails_redacted(
         self, tmp_path: Path, isolated_data_home: Path, monkeypatch
