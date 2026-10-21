@@ -126,7 +126,8 @@ async def test_cancel_unblocks_prompt_and_child_is_cleaned_up(tmp_path: Path) ->
         prompt = asyncio.create_task(
             connection.prompt(session.session_id, [acp.text_block("wait")])
         )
-        assert await asyncio.wait_for(process.stderr.readline(), TIMEOUT) == b"prompt-blocked\n"
+        blocked_line = await asyncio.wait_for(process.stderr.readline(), TIMEOUT)
+        assert blocked_line in {b"prompt-blocked\n", b"prompt-blocked\r\n"}
         await asyncio.wait_for(connection.cancel(session.session_id), TIMEOUT)
         result = await asyncio.wait_for(prompt, TIMEOUT)
         assert result.stop_reason == "cancelled"

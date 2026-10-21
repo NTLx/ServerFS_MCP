@@ -19,9 +19,13 @@ from pathlib import Path
 
 import pytest
 
+from serverfs_mcp.agent_lifecycle import spawn_bridge
 from serverfs_mcp.windows_job import WINDOWS, JobObjectError, WindowsJob
 
 pytestmark = pytest.mark.skipif(not WINDOWS, reason="Windows Job Object containment")
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BRIDGE_PYTHON = REPO_ROOT / "agent_bridge" / ".venv" / "Scripts" / "python.exe"
 
 #: A child that waits for a go-ahead, then starts a grandchild and records both PIDs.
 #:
@@ -44,11 +48,47 @@ time.sleep(120)
 """
 
 
+_ACP_TREE_SCRIPT = """
+import asyncio, os, sys, time
+from pathlib import Path
+
+from serverfs_agent_bridge.adapters.acp_process import spawn_acp_child
+
+async def main():
+    pidfile, gofile = Path(sys.argv[1]), Path(sys.argv[2])
+    deadline = time.time() + 60
+    while not gofile.exists() and time.time() < deadline:
+        await asyncio.sleep(0.02)
+    python = getattr(sys, "_base_executable", sys.executable)
+    child = await spawn_acp_child(
+        python,
+        ("-c", "import time; time.sleep(120)"),
+        cwd=pidfile.parent,
+        env=os.environ.copy(),
+    )
+    pidfile.write_text(f"{os.getpid()}\\n{child.process.pid}\\n", encoding="utf-8")
+    await child.process.wait()
+
+asyncio.run(main())
+"""
+
+
 def _spawn_tree(pidfile: Path, gofile: Path) -> subprocess.Popen:
     return subprocess.Popen(
         [sys.executable, "-c", _TREE_SCRIPT, str(pidfile), str(gofile)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+    )
+
+
+def _spawn_acp_tree(pidfile: Path, gofile: Path, job: WindowsJob) -> subprocess.Popen:
+    if not BRIDGE_PYTHON.exists():
+        pytest.skip(f"bridge virtualenv interpreter is missing at {BRIDGE_PYTHON}")
+    return spawn_bridge(
+        config_path=pidfile.parent / "unused-bridge.json",
+        child_env=os.environ.copy(),
+        job=job,
+        argv=[str(BRIDGE_PYTHON), "-c", _ACP_TREE_SCRIPT, str(pidfile), str(gofile)],
     )
 
 
@@ -275,6 +315,27 @@ class TestContainment:
 
         assert _wait_gone(child_pid), "the assigned child survived job close"
         assert _wait_gone(grandchild_pid), "the inherited grandchild survived job close"
+
+    def test_acp_child_inherits_the_existing_job(self, tmp_path: Path) -> None:
+        """An ACP child launched by the contained Bridge process must inherit its existing Job."""
+        pidfile, gofile = tmp_path / "acp-tree.pids", tmp_path / "acp-go"
+        job = WindowsJob()
+        bridge: subprocess.Popen | None = None
+        try:
+            job.open()
+            bridge = _spawn_acp_tree(pidfile, gofile, job)
+            gofile.write_text("go", encoding="utf-8")
+            bridge_pid, acp_pid = _pids(pidfile)
+            assert _alive(bridge_pid), "the real Bridge interpreter never became live"
+            assert _alive(acp_pid), "the ACP child never became live"
+            job.close()
+            assert _wait_gone(bridge_pid), "the contained Bridge interpreter survived job close"
+            assert _wait_gone(acp_pid), "the inherited ACP child survived job close"
+        finally:
+            job.close()
+            if bridge is not None and bridge.poll() is None:
+                bridge.kill()
+                bridge.wait(timeout=15)
 
     def test_unrelated_process_survives_job_close(self, tmp_path: Path) -> None:
         """Over-reach would kill the operator's own session, so this is asserted explicitly."""

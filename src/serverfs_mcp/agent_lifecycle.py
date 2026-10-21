@@ -232,21 +232,39 @@ def spawn_bridge(
         str(config_path),
         "--supervised",
     ]
+    creationflags = 0
+    suspended = False
+    if os.name == "nt":
+        creationflags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if job is not None:
+            # A venv/uv python.exe can be a launcher that creates the real interpreter immediately.
+            # Start it suspended so assignment happens before that first descendant can exist.
+            creationflags |= getattr(subprocess, "CREATE_SUSPENDED", 0x00000004)
+            suspended = True
     try:
         process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
             env=dict(child_env),
-            creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0),
+            creationflags=creationflags,
         )
     except OSError as exc:
         # The message names the failure class only; the environment is never echoed.
         raise AgentLifecycleError(
             f"the Agent Bridge could not be started ({type(exc).__name__})"
         ) from exc
-    if job is not None:
-        # Containment before any material: if assignment fails, nothing was ever sent to the child.
-        job.assign(process)
+    try:
+        if job is not None:
+            # Containment before any material and, on Windows, before the child executes at all.
+            job.assign(process)
+            if suspended:
+                job.resume(process)
+    except Exception:
+        # A suspended child that could not be contained/resumed must never be left behind.
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=15)
+        raise
     return process
 
 

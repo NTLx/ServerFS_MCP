@@ -62,6 +62,26 @@ async def stop_acp_child(child: AcpChild, timeout: float) -> bool:
                 await asyncio.sleep(min(0.02, timeout))
             child.stopped = process.returncode is not None and not _group_exists(child.pgid)
             return child.stopped
+        if os.name == "nt":
+            if process.returncode is None:
+                try:
+                    await asyncio.wait_for(process.wait(), timeout)
+                except TimeoutError:
+                    pass
+            from .acp_process_windows import stop_windows_process_tree
+
+            tree_stopped = await asyncio.to_thread(
+                stop_windows_process_tree,
+                process.pid,
+                timeout,
+            )
+            if process.returncode is None:
+                try:
+                    await asyncio.wait_for(process.wait(), timeout)
+                except TimeoutError:
+                    return False
+            child.stopped = process.returncode is not None and tree_stopped
+            return child.stopped
         if process.returncode is None:
             try:
                 await asyncio.wait_for(process.wait(), timeout)

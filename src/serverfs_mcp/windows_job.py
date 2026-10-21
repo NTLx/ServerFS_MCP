@@ -111,6 +111,24 @@ class WindowsJob:
                 f"the Bridge process could not be assigned ({type(exc).__name__})"
             ) from exc
 
+    def resume(self, process: subprocess.Popen[Any]) -> None:
+        """Resume a child created with ``CREATE_SUSPENDED`` after assignment.
+
+        Suspending before assignment closes the only process-creation race that matters here: a
+        launcher such as a venv/uv ``python.exe`` must not be able to create the real Bridge before
+        the launcher itself is inside the Job. Once resumed, every descendant inherits containment.
+        """
+        if self._handle is None:
+            raise JobObjectError("the job object is not open")
+        try:
+            _resume_process(process)
+        except JobObjectError:
+            raise
+        except OSError as exc:
+            raise JobObjectError(
+                f"the Bridge process could not be resumed ({type(exc).__name__})"
+            ) from exc
+
     def close(self) -> None:
         """Close the job handle. On Windows this is the kill: the tree dies with the handle."""
         if self._handle is None or self._closed:
@@ -265,6 +283,79 @@ def _assign_process(handle: int, process: subprocess.Popen[Any]) -> None:
     finally:
         if opened_here and target is not None:
             _close_handle(int(target))
+
+
+def _resume_process(process: subprocess.Popen[Any]) -> None:
+    """Resume every initial thread owned by a newly suspended process."""
+    import ctypes
+    from ctypes import wintypes
+
+    pid = getattr(process, "pid", None)
+    if not isinstance(pid, int) or pid <= 0:
+        raise JobObjectError("the suspended Bridge process has no usable pid")
+
+    TH32CS_SNAPTHREAD = 0x00000004
+    THREAD_SUSPEND_RESUME = 0x0002
+    INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+    ERROR_NO_MORE_FILES = 18
+    RESUME_FAILED = 0xFFFFFFFF
+
+    class _ThreadEntry32(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ThreadID", wintypes.DWORD),
+            ("th32OwnerProcessID", wintypes.DWORD),
+            ("tpBasePri", wintypes.LONG),
+            ("tpDeltaPri", wintypes.LONG),
+            ("dwFlags", wintypes.DWORD),
+        ]
+
+    kernel32 = _kernel32()
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.Thread32First.restype = wintypes.BOOL
+    kernel32.Thread32First.argtypes = [wintypes.HANDLE, ctypes.POINTER(_ThreadEntry32)]
+    kernel32.Thread32Next.restype = wintypes.BOOL
+    kernel32.Thread32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(_ThreadEntry32)]
+    kernel32.OpenThread.restype = wintypes.HANDLE
+    kernel32.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.ResumeThread.restype = wintypes.DWORD
+    kernel32.ResumeThread.argtypes = [wintypes.HANDLE]
+
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)
+    if not snapshot or int(snapshot) == INVALID_HANDLE_VALUE:
+        raise JobObjectError("the suspended Bridge thread snapshot could not be created")
+    resumed = 0
+    try:
+        entry = _ThreadEntry32()
+        entry.dwSize = ctypes.sizeof(_ThreadEntry32)
+        if not kernel32.Thread32First(snapshot, ctypes.byref(entry)):
+            error = ctypes.get_last_error()
+            if error != ERROR_NO_MORE_FILES:
+                raise JobObjectError("the suspended Bridge threads could not be enumerated")
+        else:
+            while True:
+                if int(entry.th32OwnerProcessID) == pid:
+                    thread = kernel32.OpenThread(THREAD_SUSPEND_RESUME, False, entry.th32ThreadID)
+                    if not thread:
+                        raise JobObjectError("the suspended Bridge thread could not be opened")
+                    try:
+                        if kernel32.ResumeThread(thread) == RESUME_FAILED:
+                            raise JobObjectError("the suspended Bridge thread could not be resumed")
+                        resumed += 1
+                    finally:
+                        kernel32.CloseHandle(thread)
+                if kernel32.Thread32Next(snapshot, ctypes.byref(entry)):
+                    continue
+                error = ctypes.get_last_error()
+                if error != ERROR_NO_MORE_FILES:
+                    raise JobObjectError("the suspended Bridge threads could not be enumerated")
+                break
+    finally:
+        kernel32.CloseHandle(snapshot)
+    if resumed == 0:
+        raise JobObjectError("the suspended Bridge process exposed no resumable thread")
 
 
 def _close_handle(handle: int) -> None:
