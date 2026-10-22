@@ -55,6 +55,47 @@ def test_agent_bridge_client_round_trip(tmp_path: Path) -> None:
 
 
 @linux_only("the Bridge client transport is a Unix socket")
+@pytest.mark.parametrize(
+    ("method", "params"),
+    [
+        ("diagnostics.snapshot", {}),
+        ("diagnostics.task", {"task_id": "agt_local"}),
+    ],
+)
+def test_agent_bridge_client_calls_private_diagnostics_rpc(
+    tmp_path: Path, method: str, params: dict
+) -> None:
+    async def scenario() -> None:
+        socket_path = tmp_path / "diagnostics.sock"
+        seen: dict = {}
+
+        async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            request = json.loads(await reader.readline())
+            seen.update(request)
+            response = {
+                "request_id": request["request_id"],
+                "ok": True,
+                "result": {"catalog_version": 1, "disposition": "unknown_task"},
+            }
+            writer.write(json.dumps(response).encode() + b"\n")
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_unix_server(handler, path=str(socket_path))
+        try:
+            result = await AgentBridgeClient(socket_path, timeout_seconds=1).call(method, params)
+        finally:
+            server.close()
+            await server.wait_closed()
+        assert result == {"catalog_version": 1, "disposition": "unknown_task"}
+        assert seen["method"] == method
+        assert seen["params"] == params
+
+    asyncio.run(scenario())
+
+
+@linux_only("the Bridge client transport is a Unix socket")
 def test_agent_bridge_remote_error_preserves_code(tmp_path: Path) -> None:
     async def scenario() -> None:
         socket_path = tmp_path / "bridge.sock"

@@ -271,6 +271,202 @@ async def test_submit_returns_before_completion_and_finishes(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+async def test_diagnostics_terminal_matches_metric_and_idempotent_retry(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    boundaries: list[tuple[str, float, float]] = []
+    seal_boundaries: list[float] = []
+    original_record = service._diagnostic_record
+    original_diagnostic_call = service._diagnostic_call
+
+    def capture_record(task_id, kind, started, ended, **fields):
+        boundaries.append((kind, started, ended))
+        original_record(task_id, kind, started, ended, **fields)
+
+    def capture_diagnostic_call(method, *args, **kwargs):
+        if method == "seal_task":
+            seal_boundaries.append(kwargs["completed_at"])
+        return original_diagnostic_call(method, *args, **kwargs)
+
+    service._diagnostic_record = capture_record
+    service._diagnostic_call = capture_diagnostic_call
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:diagnostic",
+        idempotency_key="diagnostic-idempotency",
+    )
+    task_id = submitted["task_id"]
+    await wait_for_status(service, task_id, "succeeded")
+    initial = service.diagnostic_recorder.task_projection(task_id)
+    operations = len(initial["operations"])
+    repeated = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:diagnostic",
+        idempotency_key="diagnostic-idempotency",
+    )
+    assert repeated["task_id"] == task_id
+    assert len(service.diagnostic_recorder.task_projection(task_id)["operations"]) == operations
+    assert initial["terminal_seal"]["outcome"] == "succeeded"
+    kinds = [operation["kind"] for operation in initial["operations"]]
+    runtime_index = kinds.index("agent.runtime_start")
+    execution_index = kinds.index("agent.execution")
+    finalization_index = kinds.index("agent.finalization")
+    assert runtime_index < execution_index < finalization_index
+    assert initial["operations"][finalization_index]["duration_seconds"] >= 0
+    captured = {kind: (started, ended) for kind, started, ended in boundaries}
+    assert captured["agent.runtime_start"][1] == captured["agent.execution"][0]
+    assert captured["agent.execution"][1] == captured["agent.finalization"][0]
+    assert initial["terminal_seal"]["terminal_completed_at"] == seal_boundaries[0]
+    counters = service.observation_metrics.counters
+    assert any(
+        labels[0] == ("outcome", "succeeded")
+        for (name, labels) in counters
+        if name == "serverfs_agent_tasks_total"
+    )
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_bookkeeping_is_cleared_for_many_terminal_tasks(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    for index in range(30):
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt=f"complete:{index}",
+        )
+        await wait_for_status(service, submitted["task_id"], "succeeded")
+        assert not service._diagnostic_sequences
+        assert not service._diagnostic_queued_at
+        assert not service._diagnostic_execution_started
+        assert not service._diagnostic_wait_started
+    assert service.diagnostic_recorder.snapshot()["terminal_task_count"] == 30
+    await service.close()
+
+
+def test_rejected_diagnostic_record_does_not_advance_service_sequence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service.diagnostic_recorder, "record", lambda *_args: False)
+    for _index in range(1000):
+        service._diagnostic_record("active-task", "agent.execution", 0.0, 0.1)
+        assert service._diagnostic_sequences.get("active-task", 0) == 0
+    assert len(service._diagnostic_sequences) == 0
+
+
+@pytest.mark.asyncio
+async def test_startup_reconciliation_records_restarted_diagnostic_activity(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path)
+    task_id = "preexisting-task"
+    service.store.create_task(
+        task_id=task_id,
+        runtime="fake",
+        workdir_alias="repo",
+        workdir_slot=1,
+        relative_cwd="",
+        profile="review",
+        continue_from_task_id=None,
+    )
+    await service.start()
+    projection = service.diagnostic_recorder.task_projection(task_id)
+    assert projection["completeness"] == "restarted"
+    assert projection["terminal_seal"]["outcome"] == "interrupted"
+    assert [op["kind"] for op in projection["operations"]] == ["agent.recovery"]
+    assert projection["operations"][0]["outcome"] == "success"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_observability_projection_exceptions_do_not_change_task_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = make_service(tmp_path)
+
+    def fail_projection(*args, **kwargs):
+        raise RuntimeError("injected projection failure")
+
+    monkeypatch.setattr(service.observation_metrics, "observe_terminal", fail_projection)
+    monkeypatch.setattr(service.diagnostic_recorder, "record", fail_projection)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake", workdir="repo", path="", profile="review", prompt="complete:still-ok"
+    )
+    task = await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert task["status"] == "succeeded"
+    assert service.store.get_task(submitted["task_id"]).status == "succeeded"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_identity_stays_bridge_local(tmp_path: Path) -> None:
+    class ContextCaptureAdapter(FakeAdapter):
+        context_repr = ""
+
+        async def run_task(self, context):
+            self.context_repr = repr(context.__dict__)
+            return await super().run_task(context)
+
+    service = make_service(tmp_path)
+    adapter = ContextCaptureAdapter()
+    service.adapters = {"fake": adapter}
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake", workdir="repo", path="", profile="review", prompt="complete:private"
+    )
+    task = await wait_for_status(service, submitted["task_id"], "succeeded")
+    context = service.diagnostic_recorder._slots[submitted["task_id"]].context
+    visible = repr(task) + repr(service.store.list_events(submitted["task_id"], limit=100))
+    with service.store._connect() as connection:
+        manifest = connection.execute(
+            "SELECT manifest_json FROM tasks WHERE task_id = ?", (submitted["task_id"],)
+        ).fetchone()["manifest_json"]
+    visible += repr(manifest)
+    visible += adapter.context_repr
+    visible += repr(service.get_task(submitted["task_id"]))
+    durable_bytes = b"".join(
+        path.read_bytes() for path in service.store.state_dir.iterdir() if path.is_file()
+    )
+    for diagnostic_id in (context.trace_id, context.root_span_id):
+        assert diagnostic_id not in visible
+        assert diagnostic_id.encode() not in durable_bytes
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_identity_is_absent_from_durable_pending_interaction(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake", workdir="repo", path="", profile="review", prompt="question:private"
+    )
+    task = await wait_for_status(service, submitted["task_id"], "waiting_for_question")
+    context = service.diagnostic_recorder._slots[submitted["task_id"]].context
+    pending = task["pending_request"]
+    state_bytes = b"".join(
+        path.read_bytes() for path in service.store.state_dir.iterdir() if path.is_file()
+    )
+    assert pending["kind"] == "question"
+    for diagnostic_id in (context.trace_id, context.root_span_id):
+        assert diagnostic_id not in repr(pending)
+        assert diagnostic_id.encode() not in state_bytes
+    await service.close()
+
+
+@pytest.mark.asyncio
 async def test_list_models_with_optional_jev_advice_is_pre_submit_only(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     service.adapters["fake"] = CatalogFakeAdapter()
@@ -599,6 +795,9 @@ async def test_expired_response_terminalizes_interaction_before_watchdog_fires(
         interrupted = await wait_for_status(service, submitted["task_id"], "interrupted")
         assert interrupted["error_code"] == "AGENT_INTERACTION_TIMED_OUT"
         assert service.store.get_request(request_id).status == "stale"
+        timeout_trace = service.diagnostic_recorder.task_projection(submitted["task_id"])
+        assert timeout_trace["terminal_seal"]["outcome"] == "interrupted"
+        assert timeout_trace["operations"][-1]["kind"] == "agent.waiting_external"
     finally:
         await service.close()
 
@@ -948,6 +1147,9 @@ async def test_identical_approval_advice_is_cached_per_task(tmp_path: Path) -> N
     )
     finished = await wait_for_status(service, submitted["task_id"], "succeeded")
     assert finished["final_response"] == "approvals=approve_once,approve_once"
+    projection = service.diagnostic_recorder.task_projection(submitted["task_id"])
+    assert sum(op["kind"] == "agent.waiting_external" for op in projection["operations"]) == 2
+    assert sum(op["kind"] == "agent.execution" for op in projection["operations"]) == 3
     assert submitted["task_id"] not in service._approval_advice_cache
     await service.close()
 
@@ -1009,6 +1211,10 @@ async def test_question_round_trip(tmp_path: Path) -> None:
     )
     finished = await wait_for_status(service, task["task_id"], "succeeded")
     assert '"b"' in finished["final_response"]
+    projection = service.diagnostic_recorder.task_projection(task["task_id"])
+    waiting = [op for op in projection["operations"] if op["kind"] == "agent.waiting_external"]
+    assert len(waiting) == 1
+    assert waiting[0]["interaction_class"] == "question"
     await service.close()
 
 
@@ -1034,6 +1240,18 @@ async def test_workspace_write_busy_is_rejected_at_submit(tmp_path: Path) -> Non
             prompt="complete:second",
         )
     assert exc.value.code == "WORKDIR_BUSY"
+    assert len(service.diagnostic_recorder._slots) == 1
+    assert (
+        sum(
+            value
+            for (name, labels), value in service.observation_metrics.counters.items()
+            if name == "serverfs_agent_lease_acquisitions_total"
+            and dict(labels)["outcome"] == "busy"
+        )
+        == 1
+    )
+    first_trace = service.diagnostic_recorder.task_projection(first["task_id"])
+    assert first_trace["rollups"]["acquired_lease_wait_seconds"] > 0
 
     await service.cancel_task(first["task_id"])
     await wait_for_status(service, first["task_id"], "cancelled")
@@ -1112,6 +1330,10 @@ async def test_cancel_waiting_task_stales_request(tmp_path: Path) -> None:
 
     await service.cancel_task(submitted["task_id"])
     await wait_for_status(service, submitted["task_id"], "cancelled")
+    projection = service.diagnostic_recorder.task_projection(submitted["task_id"])
+    assert projection["terminal_seal"]["outcome"] == "cancelled"
+    assert projection["operations"][-1]["kind"] == "agent.waiting_external"
+    assert sum(op["kind"] == "agent.waiting_external" for op in projection["operations"]) == 1
     assert service.store.get_request(request_id).status == "stale"
     assert not service._pending_waiters
     await service.cancel_task(submitted["task_id"])
@@ -1191,6 +1413,9 @@ async def test_provider_exception_fails_task(tmp_path: Path) -> None:
     )
     failed = await wait_for_status(service, submitted["task_id"], "failed")
     assert failed["error_code"] == "AGENT_PROVIDER_ERROR"
+    failure_trace = service.diagnostic_recorder.task_projection(submitted["task_id"])
+    assert failure_trace["terminal_seal"]["outcome"] == "failed"
+    assert failure_trace["operations"][-1]["kind"] == "agent.execution"
     lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
     lease.release()
     await service.close()
@@ -1245,6 +1470,9 @@ async def test_cancel_is_terminal_before_slow_provider_cleanup_releases_lease(
     cancelled = await service.cancel_task(submitted["task_id"])
     assert cancelled["status"] == "cancelled"
     assert service.get_task(submitted["task_id"])["status"] == "cancelled"
+    cancel_trace = service.diagnostic_recorder.task_projection(submitted["task_id"])
+    assert cancel_trace["terminal_seal"]["outcome"] == "cancelled"
+    assert cancel_trace["operations"][-1]["kind"] == "agent.execution"
 
     with pytest.raises(BridgeError) as busy:
         service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
@@ -1356,7 +1584,6 @@ async def test_pending_request_payload_and_final_response_redact_host_root(tmp_p
         decision="approve_once",
     )
     await wait_for_status(service, submitted["task_id"], "succeeded")
-
     final = await service.submit_task(
         runtime="fake",
         workdir="repo",

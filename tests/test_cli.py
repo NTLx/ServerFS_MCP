@@ -136,6 +136,85 @@ class TestParser:
             main([])
         assert excinfo.value.code != 0
 
+
+class TestDiagnostics:
+    def test_snapshot_json_is_stdout_only_and_unavailable_is_explicit(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from serverfs_mcp.agent_client import AgentBridgeUnavailable
+
+        class Client:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def call(self, method, params):
+                assert method == "diagnostics.snapshot"
+                assert params == {}
+                raise AgentBridgeUnavailable("offline")
+
+        monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_SOCKET", str(tmp_path / "bridge.sock"))
+        monkeypatch.setattr("serverfs_mcp.agent_client.AgentBridgeClient", Client)
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(["diagnostics", "snapshot", "--format", "json"])
+        assert code == 1
+        assert out.getvalue() == '{"catalog_version":1,"disposition":"bridge_unavailable"}\n'
+        assert err.getvalue() == ""
+
+    def test_task_human_rendering_uses_returned_json_only(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        expected = {"catalog_version": 1, "disposition": "not_retained", "reason": "evicted"}
+
+        class Client:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def call(self, method, params):
+                assert method == "diagnostics.task"
+                assert params == {"task_id": "agt_local"}
+                return expected
+
+        monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_SOCKET", str(tmp_path / "bridge.sock"))
+        monkeypatch.setattr("serverfs_mcp.agent_client.AgentBridgeClient", Client)
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = main(["diagnostics", "task", "agt_local"])
+        assert code == 0
+        assert out.getvalue().splitlines() == [
+            "catalog_version: 1",
+            'disposition: "not_retained"',
+            'reason: "evicted"',
+        ]
+        assert err.getvalue() == ""
+
+    def test_available_human_output_preserves_completeness_and_negative_unaccounted(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        projection = {
+            "catalog_version": 1,
+            "disposition": "available",
+            "task_id": "agt_local",
+            "completeness": "restarted_truncated_prefix",
+            "rollups": {"unaccounted_seconds": -0.25},
+        }
+
+        class Client:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def call(self, _method, _params):
+                return projection
+
+        monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_SOCKET", str(tmp_path / "bridge.sock"))
+        monkeypatch.setattr("serverfs_mcp.agent_client.AgentBridgeClient", Client)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            assert main(["diagnostics", "task", "agt_local"]) == 0
+        rendered = out.getvalue()
+        assert 'completeness: "restarted_truncated_prefix"' in rendered
+        assert "rollups.unaccounted_seconds: -0.25" in rendered
+
     def test_requires_config(self) -> None:
         with pytest.raises(SystemExit) as excinfo:
             main(["serve"])

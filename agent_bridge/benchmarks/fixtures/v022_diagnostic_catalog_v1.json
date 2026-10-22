@@ -1,0 +1,110 @@
+{
+  "catalog_version": 1,
+  "operation_kinds": [
+    "agent.queue_wait",
+    "agent.lease_acquire",
+    "agent.runtime_start",
+    "agent.execution",
+    "agent.waiting_external",
+    "agent.finalization",
+    "agent.recovery"
+  ],
+  "summary_only_kinds": ["agent.task"],
+  "runtime_families": ["codex", "claude", "qoder", "acp", "unknown"],
+  "task_outcomes": ["succeeded", "failed", "cancelled", "interrupted"],
+  "recovery_outcomes": ["success", "failure", "unknown"],
+  "seal_reason_by_outcome": {
+    "succeeded": "ok",
+    "failed": "degraded",
+    "cancelled": "safe",
+    "interrupted": "unavailable"
+  },
+  "completeness": [
+    "complete",
+    "truncated_prefix",
+    "restarted",
+    "restarted_truncated_prefix"
+  ],
+  "query_dispositions": [
+    "available",
+    "unknown_task",
+    "not_retained",
+    "bridge_unavailable"
+  ],
+  "not_retained_reasons": [
+    "evicted",
+    "bridge_restarted",
+    "capacity_exhausted",
+    "recording_unavailable"
+  ],
+  "interaction_classes": ["approval", "question"],
+  "lease_outcomes": ["acquired", "busy", "failure"],
+  "limits": {
+    "max_diagnostic_records": 2048,
+    "max_diagnostic_bytes": 1048576,
+    "max_task_diagnostic_records": 64,
+    "max_task_diagnostic_bytes": 32768,
+    "max_diagnostic_operation_bytes": 1024,
+    "terminal_seal_reserved_bytes": 512
+  },
+  "timing_rules": {
+    "clock": "bridge_local_monotonic",
+    "accounted": "sum_retained_leaf_phase_durations_only",
+    "active_execution": "sum_agent.execution_durations",
+    "external_wait": "sum_agent.waiting_external_durations",
+    "lease_wait": "sum_agent.lease_acquire_durations_where_outcome_is_acquired",
+    "unaccounted": "diagnostic_wall_clock_minus_accounted; may_be_negative",
+    "busy_is_lease_wait": false
+  },
+  "example_operations": [
+    {
+      "kind": "agent.queue_wait",
+      "duration_seconds": 0.012,
+      "outcome": "started",
+      "sequence": 0
+    },
+    {
+      "kind": "agent.lease_acquire",
+      "duration_seconds": 0.001,
+      "outcome": "acquired",
+      "sequence": 1
+    },
+    {
+      "kind": "agent.execution",
+      "duration_seconds": 0.025,
+      "runtime_family": "acp",
+      "sequence": 2
+    },
+    {
+      "kind": "agent.waiting_external",
+      "duration_seconds": 0.5,
+      "interaction_class": "approval",
+      "sequence": 3
+    },
+    {
+      "kind": "agent.execution",
+      "duration_seconds": 0.018,
+      "runtime_family": "acp",
+      "sequence": 4
+    },
+    {
+      "kind": "agent.finalization",
+      "duration_seconds": 0.002,
+      "outcome": "succeeded",
+      "sequence": 5
+    }
+  ],
+  "example_terminal_seal": {
+    "outcome": "succeeded",
+    "reason_code": "ok",
+    "wall_clock_seconds": 0.558,
+    "completeness": "complete"
+  },
+  "benchmark_scenarios": [
+    "ordinary_non_evicting_record",
+    "terminal_seal_write",
+    "whole_completed_task_eviction_then_record",
+    "saturated_snapshot",
+    "maximum_retained_task_json_projection"
+  ]
+}

@@ -11,11 +11,16 @@ import pytest
 
 from platform_contract import linux_only
 from serverfs_agent_bridge.adapters import FakeAdapter
+from serverfs_agent_bridge.diagnostics import DiagnosticOperation
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.leases import LeaseManager
 from serverfs_agent_bridge.models import AgentMode
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
-from serverfs_agent_bridge.protocol import MAX_REQUEST_BYTES, BridgeProtocolServer
+from serverfs_agent_bridge.protocol import (
+    MAX_REQUEST_BYTES,
+    MAX_RESPONSE_BYTES,
+    BridgeProtocolServer,
+)
 from serverfs_agent_bridge.service import BridgeService
 from serverfs_agent_bridge.store import TaskStore
 
@@ -156,6 +161,103 @@ async def test_runtime_list_over_unix_socket(tmp_path: Path) -> None:
     finally:
         await server.close()
         await service.close()
+
+
+@pytest.mark.asyncio
+async def test_private_diagnostics_rpc_is_bounded_and_not_an_mcp_surface(tmp_path: Path) -> None:
+    service = make_protocol_service(tmp_path)
+    server = BridgeProtocolServer(service=service, socket_path=tmp_path / "bridge.sock")
+    snapshot = await server._dispatch("diagnostics.snapshot", {})
+    assert snapshot["catalog_version"] == 1
+    assert len(json.dumps(snapshot, separators=(",", ":")).encode() + b"\n") < MAX_RESPONSE_BYTES
+    assert not {"task_id", "trace_id", "span_id", "correlation_id"} & snapshot.keys()
+    assert (await server._dispatch("diagnostics.task", {"task_id": "unknown"})) == {
+        "catalog_version": 1,
+        "disposition": "unknown_task",
+    }
+    with pytest.raises(BridgeError, match="parameters"):
+        await server._dispatch("diagnostics.snapshot", {"task_id": "extra"})
+    with pytest.raises(BridgeError, match="parameters"):
+        await server._dispatch("diagnostics.task", {"task_id": "x", "reason": "extra"})
+    with pytest.raises(BridgeError, match="bounded"):
+        await server._dispatch("diagnostics.task", {"task_id": "x" * 257})
+    with pytest.raises(BridgeError, match="UTF-8"):
+        await server._dispatch("diagnostics.task", {"task_id": "\ud800"})
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_rpc_task_projection_redacts_and_preserves_dispositions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = make_protocol_service(tmp_path)
+    recorder = service.diagnostic_recorder
+    recorder.admit_task("retained", "codex")
+    recorder.record(
+        "retained",
+        DiagnosticOperation("agent.execution", 0.2, 0),
+    )
+    recorder.seal_task("retained", "succeeded")
+    projection = await BridgeProtocolServer(
+        service=service, socket_path=tmp_path / "unused.sock"
+    )._dispatch("diagnostics.task", {"task_id": "retained"})
+    assert projection["disposition"] == "available"
+    assert projection["completeness"] == "complete"
+    assert projection["task_id"] == "retained"
+    forbidden = {
+        "correlation_id",
+        "workdir",
+        "path",
+        "native_session_id",
+        "native_turn_id",
+        "model",
+        "prompt",
+        "result",
+        "trace_id",
+        "span_id",
+        "provider_payload",
+    }
+    assert forbidden.isdisjoint(projection)
+    assert forbidden.isdisjoint(str(projection).split())
+
+    monkeypatch.setattr(
+        service.store,
+        "get_task",
+        lambda _task_id: (_ for _ in ()).throw(BridgeError("AGENT_TASK_NOT_FOUND", "unknown")),
+    )
+    assert service.diagnostics_task("missing")["disposition"] == "unknown_task"
+    monkeypatch.setattr(service.store, "get_task", lambda _task_id: object())
+    assert service.diagnostics_task("not-retained")["disposition"] == "not_retained"
+    await service.close()
+
+
+def test_evicted_diagnostics_task_remains_durable_and_queries_not_retained(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from serverfs_agent_bridge import diagnostics
+
+    monkeypatch.setattr(diagnostics, "MAX_DIAGNOSTIC_RECORDS", 1)
+    service = make_protocol_service(tmp_path)
+    for task_id in ("durable-evicted", "durable-current"):
+        service.store.create_task(
+            task_id=task_id,
+            runtime="fake",
+            workdir_alias="repo",
+            workdir_slot=1,
+            relative_cwd="",
+            profile="workspace-write",
+            continue_from_task_id=None,
+        )
+    recorder = service.diagnostic_recorder
+    assert recorder.admit_task("durable-evicted", "fake")
+    assert recorder.seal_task("durable-evicted", "succeeded")
+    assert recorder.admit_task("durable-current", "fake")
+    assert service.diagnostics_task("durable-evicted") == {
+        "catalog_version": 1,
+        "disposition": "not_retained",
+        "reason": "evicted",
+    }
+    assert service.store.get_task("durable-evicted").status == "queued"
 
 
 @pytest.mark.asyncio

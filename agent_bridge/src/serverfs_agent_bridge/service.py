@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .adapters.base import AgentAdapter, ReconcileResult, TaskContext
+from .diagnostics import DiagnosticOperation, DiagnosticRecorder
 from .errors import BridgeError
 from .lease_identity import NO_LEGACY_SLOT
 from .lease_identity import describe as describe_lease
@@ -25,7 +26,7 @@ from .models import (
     RequestStatus,
     TaskStatus,
 )
-from .observability import BridgeObservationMetrics
+from .observability import BridgeObservationMetrics, normalize_runtime_family
 from .policy import PolicyRegistry, redact_host_path
 from .preflight import TaskPreflight
 from .recovery import ActiveGuardManager
@@ -122,12 +123,18 @@ class BridgeService:
         preflight: TaskPreflight | None = None,
         prior_bridge_execution_stopped: bool = False,
         observation_metrics: BridgeObservationMetrics | None = None,
+        diagnostic_recorder: DiagnosticRecorder | None = None,
     ):
         self.store = store
         self.policies = policies
         self.adapters = dict(adapters)
         self.lease_manager = lease_manager
         self.observation_metrics = observation_metrics or BridgeObservationMetrics()
+        self.diagnostic_recorder = diagnostic_recorder or DiagnosticRecorder()
+        self._diagnostic_sequences: dict[str, int] = {}
+        self._diagnostic_execution_started: dict[str, float] = {}
+        self._diagnostic_wait_started: dict[str, tuple[float, str]] = {}
+        self._diagnostic_queued_at: dict[str, float] = {}
         self.limits = limits or BridgeLimits()
         self.preflight = preflight
         #: The supervisor's proof that the previous generation's *execution* has stopped: true only
@@ -154,6 +161,35 @@ class BridgeService:
         self._gc_retained()
         return await self._reconcile_startup()
 
+    def _diagnostic_call(self, method: str, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return getattr(self.diagnostic_recorder, method)(*args, **kwargs)
+        except Exception:
+            return None
+
+    def _observe_metric(self, method: str, *args: Any) -> None:
+        try:
+            getattr(self.observation_metrics, method)(*args)
+        except Exception:
+            pass
+
+    def _diagnostic_record(
+        self, task_id: str, kind: str, started: float, ended: float, **fields: Any
+    ) -> None:
+        try:
+            sequence = self._diagnostic_sequences.get(task_id, 0)
+            operation = DiagnosticOperation(
+                kind=kind,
+                duration_seconds=max(0.0, ended - started),
+                sequence=sequence,
+                **fields,
+            )
+            recorded = self._diagnostic_call("record", task_id, operation)
+            if recorded is True:
+                self._diagnostic_sequences[task_id] = sequence + 1
+        except Exception:
+            pass
+
     def observability_snapshot(self) -> dict[str, Any]:
         return self.observation_metrics.snapshot(self.store, self.adapters.keys())
 
@@ -161,13 +197,51 @@ class BridgeService:
         current = self.store.get_task(task_id)
         if TaskStatus(current.status) in TERMINAL_STATUSES:
             return False
+        boundary = time.perf_counter()
         terminal = self.store.transition_task(task_id, status, **kwargs)
         try:
-            self.observation_metrics.observe_terminal(terminal)
-        except (TypeError, ValueError):
-            # Observability is derived evidence, never part of the task-state authority path.
-            pass
+            self._close_diagnostic_segments(task_id, boundary)
+            self._observe_metric("observe_terminal", terminal)
+            self._diagnostic_call(
+                "seal_task",
+                task_id,
+                TaskStatus(terminal.status).value,
+                completed_at=boundary,
+            )
+        finally:
+            self._clear_diagnostic_bookkeeping(task_id)
         return True
+
+    def _clear_diagnostic_bookkeeping(self, task_id: str) -> None:
+        self._diagnostic_sequences.pop(task_id, None)
+        self._diagnostic_queued_at.pop(task_id, None)
+        self._diagnostic_execution_started.pop(task_id, None)
+        self._diagnostic_wait_started.pop(task_id, None)
+
+    def _close_diagnostic_segments(self, task_id: str, boundary: float) -> None:
+        execution_started = self._diagnostic_execution_started.pop(task_id, None)
+        if execution_started is not None:
+            self._diagnostic_record(task_id, "agent.execution", execution_started, boundary)
+        waiting = self._diagnostic_wait_started.pop(task_id, None)
+        if waiting is not None:
+            self._diagnostic_record(
+                task_id,
+                "agent.waiting_external",
+                waiting[0],
+                boundary,
+                interaction_class=waiting[1],
+            )
+
+    def _close_diagnostic_wait(self, task_id: str) -> None:
+        waiting = self._diagnostic_wait_started.pop(task_id, None)
+        if waiting is not None:
+            self._diagnostic_record(
+                task_id,
+                "agent.waiting_external",
+                waiting[0],
+                time.perf_counter(),
+                interaction_class=waiting[1],
+            )
 
     async def close(self) -> None:
         if self._closed:
@@ -478,7 +552,10 @@ class BridgeService:
                 if existing is not None:
                     return _idempotent_submission_result(existing, request_fingerprint)
 
+            staging = self._diagnostic_call("stage_submission")
+
             lease: LeaseHandle | None = None
+            lease_observation: tuple[float, float, str] | None = None
             guard_created = False
             if requested_profile is AgentProfile.WORKSPACE_WRITE:
                 locally_leased = False
@@ -496,12 +573,21 @@ class BridgeService:
                     lease = self.lease_manager.acquire_exclusive(policy.lease_id)
                 except BridgeError as exc:
                     outcome = "busy" if exc.code == "WORKDIR_BUSY" else "failure"
-                    self.observation_metrics.observe_lease(outcome, time.perf_counter() - started)
+                    lease_ended = time.perf_counter()
+                    elapsed = lease_ended - started
+                    self._observe_metric("observe_lease", outcome, elapsed)
+                    lease_observation = (started, lease_ended, outcome)
                     raise
                 except Exception:
-                    self.observation_metrics.observe_lease("failure", time.perf_counter() - started)
+                    lease_ended = time.perf_counter()
+                    elapsed = lease_ended - started
+                    self._observe_metric("observe_lease", "failure", elapsed)
+                    lease_observation = (started, lease_ended, "failure")
                     raise
-                self.observation_metrics.observe_lease("acquired", time.perf_counter() - started)
+                lease_ended = time.perf_counter()
+                elapsed = lease_ended - started
+                self._observe_metric("observe_lease", "acquired", elapsed)
+                lease_observation = (started, lease_ended, "acquired")
 
             task_id = new_id("agt")
             try:
@@ -522,6 +608,20 @@ class BridgeService:
                     manifest_sha256=manifest_sha256,
                     max_active_tasks=self.limits.max_active_tasks,
                 )
+                self._diagnostic_queued_at[task_id] = time.perf_counter()
+                admitted = self._diagnostic_call(
+                    "admit_task",
+                    task_id,
+                    normalize_runtime_family(runtime),
+                    staging=staging,
+                )
+                if admitted and lease_observation is not None:
+                    self._diagnostic_record(
+                        task_id,
+                        "agent.lease_acquire",
+                        *lease_observation[:2],
+                        outcome=lease_observation[2],
+                    )
                 if lease is not None:
                     self.guard_manager.create(
                         lease_id=policy.lease_id,
@@ -680,7 +780,11 @@ class BridgeService:
         return result
 
     async def _reconcile_guard(
-        self, lease_id: str, *, prior_bridge_execution_stopped: bool = False
+        self,
+        lease_id: str,
+        *,
+        prior_bridge_execution_stopped: bool = False,
+        diagnostic_restarted: bool = False,
     ) -> ReconcileResult | None:
         """Decide whether one workdir's recovery guard may be cleared.
 
@@ -696,7 +800,7 @@ class BridgeService:
         label = describe_lease(lease_id)
         task_id = guard.payload.get("task_id")
         if not isinstance(task_id, str):
-            self.observation_metrics.observe_recovery("guard", "failure", "invalid_configuration")
+            self._observe_metric("observe_recovery", "guard", "failure", "invalid_configuration")
             raise BridgeError(
                 "WORKDIR_RECOVERY_REQUIRED",
                 f"{label} has invalid recovery state",
@@ -704,14 +808,35 @@ class BridgeService:
         try:
             task = self.store.get_task(task_id)
         except BridgeError as exc:
-            self.observation_metrics.observe_recovery("guard", "failure", "invalid_configuration")
+            self._observe_metric("observe_recovery", "guard", "failure", "invalid_configuration")
             raise BridgeError(
                 "WORKDIR_RECOVERY_REQUIRED",
                 f"{label} has orphaned recovery state",
             ) from exc
+        diagnostic_started = time.perf_counter()
         result = await self._probe_reconciliation(task_id)
         active = effective_provider_active(
             result, prior_bridge_execution_stopped=prior_bridge_execution_stopped
+        )
+        if diagnostic_restarted:
+            self._diagnostic_call(
+                "admit_task",
+                task.task_id,
+                normalize_runtime_family(task.runtime),
+                restarted=True,
+            )
+        diagnostic_ended = time.perf_counter()
+        recovery_outcome = "success" if active is False else "unknown"
+        recovery_reason = (
+            "ok" if active is False else "recovery_guard" if active is True else "stop_unproven"
+        )
+        self._diagnostic_record(
+            task.task_id,
+            "agent.recovery",
+            diagnostic_started,
+            diagnostic_ended,
+            outcome=recovery_outcome,
+            reason_code=recovery_reason,
         )
         self._try_append_event(
             task_id,
@@ -722,7 +847,7 @@ class BridgeService:
             },
         )
         if active is False:
-            self.observation_metrics.observe_recovery("guard", "success", "ok")
+            self._observe_metric("observe_recovery", "guard", recovery_outcome, recovery_reason)
             current = self.store.get_task(task_id)
             if TaskStatus(current.status) not in TERMINAL_STATUSES:
                 error_code = "AGENT_PROVIDER_INACTIVE"
@@ -738,10 +863,27 @@ class BridgeService:
                     {"error_code": error_code},
                 )
             self.guard_manager.remove(lease_id=lease_id, task_id=task.task_id)
+            if diagnostic_restarted and TaskStatus(current.status) in TERMINAL_STATUSES:
+                self._diagnostic_call(
+                    "seal_task",
+                    task.task_id,
+                    TaskStatus(current.status).value,
+                    completed_at=diagnostic_ended,
+                )
             return result
-        self.observation_metrics.observe_recovery(
-            "guard", "unknown", "recovery_guard" if active is True else "stop_unproven"
+        self._observe_metric(
+            "observe_recovery",
+            "guard",
+            recovery_outcome,
+            recovery_reason,
         )
+        if diagnostic_restarted and TaskStatus(task.status) in TERMINAL_STATUSES:
+            self._diagnostic_call(
+                "seal_task",
+                task.task_id,
+                TaskStatus(task.status).value,
+                completed_at=diagnostic_ended,
+            )
         raise BridgeError(
             "WORKDIR_RECOVERY_REQUIRED",
             f"{label} still has unresolved provider state",
@@ -752,10 +894,26 @@ class BridgeService:
         handled: set[str] = set()
         for task in self.store.list_nonterminal_tasks():
             handled.add(task.task_id)
+            recovery_started = time.perf_counter()
             result = await self._probe_reconciliation(task.task_id)
+            recovery_ended = time.perf_counter()
+            self._diagnostic_call(
+                "admit_task",
+                task.task_id,
+                normalize_runtime_family(task.runtime),
+                restarted=True,
+            )
             timed_out = is_expired(task.deadline_at)
             if result.status is ReconciliationStatus.REATTACHED and not timed_out:
-                self.observation_metrics.observe_recovery("resume", "success", "ok")
+                self._diagnostic_record(
+                    task.task_id,
+                    "agent.recovery",
+                    recovery_started,
+                    recovery_ended,
+                    outcome="success",
+                    reason_code="ok",
+                )
+                self._observe_metric("observe_recovery", "resume", "success", "ok")
                 self._try_append_event(
                     task.task_id,
                     "task.reconciled",
@@ -775,20 +933,29 @@ class BridgeService:
             active = effective_provider_active(
                 result, prior_bridge_execution_stopped=self._prior_bridge_execution_stopped
             )
+            recovery_outcome = "success" if active is False else "unknown"
+            recovery_reason = (
+                "ok" if active is False else "recovery_guard" if active is True else "stop_unproven"
+            )
+            self._diagnostic_record(
+                task.task_id,
+                "agent.recovery",
+                recovery_started,
+                recovery_ended,
+                outcome=recovery_outcome,
+                reason_code=recovery_reason,
+            )
             self._transition_terminal(
                 task.task_id,
                 TaskStatus.INTERRUPTED,
                 error_code=error_code,
                 error_message=error_message,
             )
-            self.observation_metrics.observe_recovery(
+            self._observe_metric(
+                "observe_recovery",
                 "interrupt",
-                "success" if active is False else "unknown",
-                "ok"
-                if active is False
-                else "recovery_guard"
-                if active is True
-                else "stop_unproven",
+                recovery_outcome,
+                recovery_reason,
             )
             self._try_append_event(
                 task.task_id,
@@ -819,6 +986,7 @@ class BridgeService:
                 await self._reconcile_guard(
                     guard.lease_id,
                     prior_bridge_execution_stopped=self._prior_bridge_execution_stopped,
+                    diagnostic_restarted=True,
                 )
             except BridgeError:
                 pass
@@ -846,6 +1014,28 @@ class BridgeService:
         if pending_id:
             result["pending_request"] = self.store.get_request(pending_id).to_dict()
         return result
+
+    def diagnostics_snapshot(self) -> dict[str, Any]:
+        """Return the process-local diagnostic recorder's bounded public projection."""
+        return self.diagnostic_recorder.snapshot()
+
+    def diagnostics_task(self, task_id: str) -> dict[str, Any]:
+        """Project one durable task's diagnostics without exposing its stored task record."""
+        if not isinstance(task_id, str) or not task_id:
+            raise BridgeError("INVALID_REQUEST", "task_id must be a non-empty bounded string")
+        try:
+            task_id_bytes = len(task_id.encode("utf-8"))
+        except UnicodeEncodeError as exc:
+            raise BridgeError("INVALID_REQUEST", "task_id must be valid UTF-8") from exc
+        if task_id_bytes > 256:
+            raise BridgeError("INVALID_REQUEST", "task_id must be a non-empty bounded string")
+        try:
+            self.store.get_task(task_id)
+        except BridgeError as exc:
+            if exc.code == "AGENT_TASK_NOT_FOUND":
+                return self.diagnostic_recorder.task_projection(task_id, durable_exists=False)
+            raise
+        return self.diagnostic_recorder.task_projection(task_id, durable_exists=True)
 
     def read_result(
         self,
@@ -1030,6 +1220,7 @@ class BridgeService:
             resolution = {"decision": normalized.value, "granted_permission_ids": granted}
         self._ensure_interaction_size(resolution)
         self.store.resolve_request(request_id, resolution)
+        self._close_diagnostic_wait(task_id)
         waiter = self._pending_waiters.pop(request_id, None)
         if waiter is not None and not waiter.done():
             waiter.set_result(resolution)
@@ -1073,6 +1264,7 @@ class BridgeService:
         resolution = {"answers": normalized}
         self._ensure_interaction_size(resolution)
         self.store.resolve_request(request_id, resolution)
+        self._close_diagnostic_wait(task_id)
         waiter = self._pending_waiters.pop(request_id, None)
         if waiter is not None and not waiter.done():
             waiter.set_result(resolution)
@@ -1168,10 +1360,14 @@ class BridgeService:
         provider_task: asyncio.Task[Any] | None = None
         clear_guard = True
         try:
+            run_started = time.perf_counter()
             self.store.transition_task(task_id, TaskStatus.STARTING)
             self._append_event(task_id, "task.started", {"runtime": task.runtime})
 
             self.store.transition_task(task_id, TaskStatus.RUNNING)
+            queue_started = self._diagnostic_queued_at.pop(task_id, None)
+            if queue_started is not None:
+                self._diagnostic_record(task_id, "agent.queue_wait", queue_started, run_started)
 
             context = TaskContext(
                 task_id=task_id,
@@ -1215,6 +1411,16 @@ class BridgeService:
                 run,
                 name=f"serverfs-provider-{task_id}",
             )
+            execution_boundary = time.perf_counter()
+            self._diagnostic_record(
+                task_id,
+                "agent.runtime_start",
+                run_started,
+                execution_boundary,
+                outcome="started",
+                runtime_family=normalize_runtime_family(task.runtime),
+            )
+            self._diagnostic_execution_started[task_id] = execution_boundary
             remaining = seconds_until(task.deadline_at) if task.deadline_at else 0.0
             if remaining <= 0:
                 done: set[asyncio.Task[Any]] = set()
@@ -1226,6 +1432,13 @@ class BridgeService:
                 await asyncio.gather(provider_task, return_exceptions=True)
                 raise TimeoutError
             result = provider_task.result()
+            provider_completed_at = time.perf_counter()
+            execution_started = self._diagnostic_execution_started.pop(task_id, None)
+            if execution_started is not None:
+                self._diagnostic_record(
+                    task_id, "agent.execution", execution_started, provider_completed_at
+                )
+            finalization_started = provider_completed_at
             clear_guard = True
             await self._record_native_ids(
                 task_id,
@@ -1239,6 +1452,9 @@ class BridgeService:
             if task_id in self._user_cancelled:
                 current = self.store.get_task(task_id)
                 if TaskStatus(current.status) not in TERMINAL_STATUSES:
+                    self._diagnostic_record(
+                        task_id, "agent.finalization", finalization_started, time.perf_counter()
+                    )
                     self._transition_terminal(task_id, TaskStatus.CANCELLED)
                     self._try_append_event(task_id, "task.cancelled", {})
             elif self._closed:
@@ -1261,6 +1477,9 @@ class BridgeService:
                     )
                 digest = hashlib.sha256(encoded).hexdigest()
                 if len(encoded) <= self.limits.max_final_response_bytes:
+                    self._diagnostic_record(
+                        task_id, "agent.finalization", finalization_started, time.perf_counter()
+                    )
                     self._transition_terminal(
                         task_id,
                         TaskStatus.SUCCEEDED,
@@ -1277,6 +1496,9 @@ class BridgeService:
                 else:
                     metadata = self.result_spool.write(task_id, final_response)
                     preview = utf8_prefix(final_response, self.limits.result_preview_bytes)
+                    self._diagnostic_record(
+                        task_id, "agent.finalization", finalization_started, time.perf_counter()
+                    )
                     self._transition_terminal(
                         task_id,
                         TaskStatus.SUCCEEDED,
@@ -1392,6 +1614,8 @@ class BridgeService:
                     task_id, "task.failed", {"error_code": "AGENT_PROVIDER_ERROR"}
                 )
         finally:
+            self._diagnostic_execution_started.pop(task_id, None)
+            self._diagnostic_wait_started.pop(task_id, None)
             self._user_cancelled.discard(task_id)
             self._approval_advice_cache.pop(task_id, None)
             if not clear_guard and task.profile == AgentProfile.WORKSPACE_WRITE.value:
@@ -1405,16 +1629,16 @@ class BridgeService:
                     "runtime is unavailable during reconciliation",
                     "runtime reconciliation failed",
                 }:
-                    self.observation_metrics.observe_recovery("guard", "failure", "probe_failed")
+                    self._observe_metric("observe_recovery", "guard", "failure", "probe_failed")
                 elif reconciliation.provider_active is False:
-                    self.observation_metrics.observe_recovery("guard", "success", "ok")
+                    self._observe_metric("observe_recovery", "guard", "success", "ok")
                 else:
                     reason = (
                         "recovery_guard"
                         if reconciliation.provider_active is True
                         else "stop_unproven"
                     )
-                    self.observation_metrics.observe_recovery("guard", "unknown", reason)
+                    self._observe_metric("observe_recovery", "guard", "unknown", reason)
             self._release_lease(task_id, clear_guard=clear_guard)
             self._gc_retained()
             for request_id, waiter in list(self._pending_waiters.items()):
@@ -1621,6 +1845,14 @@ class BridgeService:
             waiting_status=waiting_status,
             expires_at=expires_at,
         )
+        execution_started = self._diagnostic_execution_started.pop(task_id, None)
+        boundary = time.perf_counter()
+        if execution_started is not None:
+            self._diagnostic_record(task_id, "agent.execution", execution_started, boundary)
+        self._diagnostic_wait_started[task_id] = (
+            boundary,
+            "approval" if kind is RequestKind.APPROVAL else "question",
+        )
         self._append_event(
             task_id,
             f"{kind.value}.requested",
@@ -1644,11 +1876,15 @@ class BridgeService:
                 waiter.cancel()
         try:
             if not interaction_deadline_is_authoritative:
-                return await waiter
+                answer = await waiter
+                self._start_diagnostic_execution(task_id)
+                return answer
             timeout_seconds = max(0.0, seconds_until(expires_at))
             try:
                 async with asyncio.timeout(timeout_seconds):
-                    return await waiter
+                    answer = await waiter
+                    self._start_diagnostic_execution(task_id)
+                    return answer
             except TimeoutError as exc:
                 await self._interrupt_for_interaction_timeout(
                     task_id,
@@ -1660,6 +1896,14 @@ class BridgeService:
                 ) from exc
         finally:
             self._pending_waiters.pop(request_id, None)
+
+    def _start_diagnostic_execution(self, task_id: str) -> None:
+        try:
+            current = self.store.get_task(task_id)
+        except BridgeError:
+            return
+        if TaskStatus(current.status) is TaskStatus.RUNNING:
+            self._diagnostic_execution_started[task_id] = time.perf_counter()
 
 
 def _normalize_submission_path(path: str) -> str:

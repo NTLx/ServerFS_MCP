@@ -35,6 +35,8 @@ def test_modern_protocol_uses_portable_serverfs_surface() -> None:
     assert "list_workdirs" in tools
     assert "upload_binary_file" not in tools
     assert "submit_agent_task" not in tools
+    assert "diagnostics.snapshot" not in tools
+    assert "diagnostics.task" not in tools
     assert content == {"workdirs": []}
 
 

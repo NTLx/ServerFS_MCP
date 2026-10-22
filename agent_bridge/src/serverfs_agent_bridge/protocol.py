@@ -388,6 +388,19 @@ class BridgeProtocolServer:
             return _error_response(request_id, "BRIDGE_PROTOCOL_ERROR", "protocol failure")
 
     async def _dispatch(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        if method == "diagnostics.snapshot":
+            _require_keys(params, set())
+            return self.service.diagnostics_snapshot()
+        if method == "diagnostics.task":
+            _require_keys(params, {"task_id"})
+            _require_types(params, {"task_id": str})
+            try:
+                task_id_bytes = len(params["task_id"].encode("utf-8"))
+            except UnicodeEncodeError as exc:
+                raise BridgeError("INVALID_REQUEST", "task_id must be valid UTF-8") from exc
+            if not params["task_id"] or task_id_bytes > 256:
+                raise BridgeError("INVALID_REQUEST", "task_id must be a non-empty bounded string")
+            return self.service.diagnostics_task(params["task_id"])
         if method == "bridge.ping":
             # Internal liveness RPC for the supervisor watchdog. Handled here, never in
             # BridgeService: a wedged event loop answers nothing, which is exactly the

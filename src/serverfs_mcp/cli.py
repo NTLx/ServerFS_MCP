@@ -12,13 +12,15 @@ Docker service. Agent Bridge and file ingress remain disabled in this native
 profile.
 
 Output discipline (§27): MCP frames only on stdout; all structured logs go
-to stderr. Doctor and bootstrap diagnostics print to stderr so stdout stays
-reserved for protocol use even in diagnostic runs.
+to stderr. Doctor and bootstrap diagnostics print to stderr. The standalone
+``diagnostics`` command writes its explicitly requested local report to stdout;
+it is not registered with or reachable through the MCP server.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import sys
@@ -53,6 +55,16 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument(
         "--tunnel-client", type=Path, help="tunnel-client.exe to probe (default: bootstrap dir)"
     )
+
+    diagnostics = sub.add_parser("diagnostics", help="Read local Agent Bridge diagnostics")
+    diagnostics_sub = diagnostics.add_subparsers(dest="diagnostics_command", required=True)
+    for name in ("snapshot", "task"):
+        diagnostic = diagnostics_sub.add_parser(name)
+        diagnostic.add_argument(
+            "--format", choices=("json", "human"), default="human", dest="diagnostics_format"
+        )
+        if name == "task":
+            diagnostic.add_argument("task_id")
 
     tunnel = sub.add_parser("tunnel", help="Run the official tunnel-client with native ServerFS")
     tunnel.add_argument("--config", required=True, type=Path, help="Path to serverfs.toml")
@@ -427,6 +439,52 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     )
 
 
+def _diagnostics_human(value: dict) -> str:
+    lines: list[str] = []
+
+    def visit(item, prefix: str) -> None:
+        if isinstance(item, dict):
+            for key in sorted(item):
+                visit(item[key], f"{prefix}.{key}" if prefix else key)
+        elif isinstance(item, list):
+            lines.append(f"{prefix}: {json.dumps(item, ensure_ascii=False, separators=(',', ':'))}")
+        else:
+            lines.append(f"{prefix}: {json.dumps(item, ensure_ascii=False)}")
+
+    visit(value, "")
+    return "\n".join(lines)
+
+
+def cmd_diagnostics(args: argparse.Namespace) -> int:
+    from .agent_client import AgentBridgeClient, AgentBridgeUnavailable
+    from .native_endpoint import NativeEndpointError, resolve_native_agent_wiring
+
+    if sys.platform.startswith("linux"):
+        endpoint = os.environ.get(
+            "SERVERFS_AGENT_BRIDGE_SOCKET", "/run/serverfs-agent-bridge/bridge.sock"
+        ).strip()
+        if not endpoint:
+            endpoint = "/run/serverfs-agent-bridge/bridge.sock"
+    else:
+        try:
+            endpoint, _lock_dir = resolve_native_agent_wiring()
+        except NativeEndpointError as exc:
+            return _fail(f"agent endpoint unavailable: {exc}")
+    method = (
+        "diagnostics.snapshot" if args.diagnostics_command == "snapshot" else "diagnostics.task"
+    )
+    params = {} if method.endswith("snapshot") else {"task_id": args.task_id}
+    try:
+        result = asyncio.run(AgentBridgeClient(Path(endpoint)).call(method, params))
+    except AgentBridgeUnavailable:
+        result = {"catalog_version": 1, "disposition": "bridge_unavailable"}
+    if args.diagnostics_format == "json":
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+    else:
+        print(_diagnostics_human(result))
+    return 1 if result.get("disposition") == "bridge_unavailable" else 0
+
+
 def cmd_bootstrap(args: argparse.Namespace) -> int:
     from .tunnel_bootstrap import (
         TESTED_TUNNEL_CLIENT_VERSION,
@@ -748,6 +806,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_serve(args)
     if args.command == "doctor":
         return cmd_doctor(args)
+    if args.command == "diagnostics":
+        return cmd_diagnostics(args)
     if args.command == "tunnel":
         return cmd_tunnel(args)
     if args.command == "bootstrap":
