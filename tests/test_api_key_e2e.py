@@ -24,7 +24,6 @@ from serverfs_mcp.http_auth import StaticAPIKeyMiddleware
 from serverfs_mcp.main import create_server, streamable_http_transport_security
 
 API_KEY = "api-key-e2e-sentinel-9F33A53D"
-_HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def _bound_listener() -> socket.socket:
@@ -66,25 +65,13 @@ def _http(
     headers: dict[str, str] | None = None,
     body: bytes | None = None,
 ) -> tuple[int, dict[str, str], bytes]:
-    request = urllib.request.Request(
-        url,
-        data=body,
-        method="POST",
-        headers=headers or {},
+    with httpx2.Client(trust_env=False, timeout=3) as client:
+        response = client.post(url, headers=headers or {}, content=body)
+    return (
+        response.status_code,
+        {key.lower(): value for key, value in response.headers.items()},
+        response.content,
     )
-    try:
-        with _HTTP.open(request, timeout=3) as response:
-            return (
-                response.status,
-                {key.lower(): value for key, value in response.headers.items()},
-                response.read(),
-            )
-    except urllib.error.HTTPError as exc:
-        return (
-            exc.code,
-            {key.lower(): value for key, value in exc.headers.items()},
-            exc.read(),
-        )
 
 
 def _json_rpc(

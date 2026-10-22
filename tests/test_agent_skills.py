@@ -194,9 +194,14 @@ def test_packaged_references_resolve_without_checkout(tmp_path: Path) -> None:
         for name in references:
             expected_files.add(Path("skills") / skill / "references" / f"{name}.md")
         for path in skill_root.rglob("*.md"):
-            PACKAGE_API["_validate_markdown_links"](skill_root, path, path.read_text())
+            PACKAGE_API["_validate_markdown_links"](
+                skill_root, path, path.read_text(encoding="utf-8")
+            )
     assert {p.relative_to(root) for p in root.rglob("*") if p.is_file()} == expected_files
-    assert json.loads((root / "plugin.json").read_text())["version"] == _project_version()
+    assert (
+        json.loads((root / "plugin.json").read_text(encoding="utf-8"))["version"]
+        == _project_version()
+    )
 
 
 @pytest.mark.parametrize(
@@ -255,15 +260,31 @@ def test_missing_skill_entry_fails(plugin_source: Path) -> None:
         PACKAGE_API["validate"](plugin_source)
 
 
+def _symlink_or_skip(target: Path, link: Path, *, target_is_directory: bool = False) -> None:
+    """Create the symlink the case needs, or skip where the host refuses to create one.
+
+    A non-elevated Windows session can be denied link creation outright (WinError 1314,
+    ``ERROR_PRIVILEGE_NOT_HELD``). That is a capability of the test host, not a change in the
+    packaged content, so the case is reported as skipped instead of requiring elevation. Where the
+    link can be created, the fail-closed assertion below runs unchanged.
+    """
+    try:
+        link.symlink_to(target, target_is_directory=target_is_directory)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:  # ERROR_PRIVILEGE_NOT_HELD
+            pytest.skip("this Windows session lacks the privilege to create symlinks")
+        raise
+
+
 @pytest.mark.parametrize("directory", [False, True])
 def test_symlinks_fail_closed(plugin_source: Path, directory: bool) -> None:
     skill = plugin_source / "skills/serverfs-install"
     if directory:
         shutil.rmtree(skill)
-        skill.symlink_to(REPO_ROOT / "skills/serverfs-install", target_is_directory=True)
+        _symlink_or_skip(REPO_ROOT / "skills/serverfs-install", skill, target_is_directory=True)
     else:
         (skill / "references").mkdir()
-        (skill / "references/external.md").symlink_to(REPO_ROOT / "README.md")
+        _symlink_or_skip(REPO_ROOT / "README.md", skill / "references/external.md")
     with pytest.raises(PACKAGE_API["ValidationError"], match="symlink"):
         PACKAGE_API["validate"](plugin_source)
 

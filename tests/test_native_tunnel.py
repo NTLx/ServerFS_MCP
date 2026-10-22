@@ -250,6 +250,9 @@ def test_tunnel_gets_proxy_only_in_internal_env_not_argv(tmp_path: Path, monkeyp
             tunnel_client=client,
             tunnel_id="tunnel_" + "a" * 32,
             api_key_file=key,
+            # This case asserts env/argv construction, not single ownership: taking the real
+            # instance lock would make a running production Tunnel fail an unrelated unit test.
+            instance_lock_held=True,
         )
         == 0
     )
@@ -575,6 +578,8 @@ def _launcher_capture(tmp_path, monkeypatch, **kwargs):
         tunnel_client=client,
         tunnel_id="tunnel_" + "b" * 32,
         api_key_file=key,
+        # Launcher env/argv cases: the ownership lock is not what is under test here.
+        instance_lock_held=True,
         **kwargs,
     )
     assert code == 0

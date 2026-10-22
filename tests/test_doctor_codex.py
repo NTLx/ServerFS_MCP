@@ -94,6 +94,11 @@ class _Runtime:
 
 
 class _Agent:
+    # The current settings contract carries generic ACP profiles alongside the three native
+    # runtimes; doctor iterates them. An empty tuple is the Codex-only configuration these
+    # cases describe, so the profile loop contributes nothing to the report.
+    acp_profiles: tuple = ()
+
     def __init__(self, codex_bin: str) -> None:
         self._runtimes = {
             name: _Runtime(codex_bin if name == "codex" else "unused")

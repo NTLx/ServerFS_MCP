@@ -96,6 +96,24 @@ def _wiring(monkeypatch, tmp_path) -> dict:
     return values
 
 
+#: A canonical SID that cannot name a real interactive user. The endpoint substituted below is the
+#: pipe the real derivation produces for it, never an invented pipe name.
+SYNTHETIC_SID = "S-1-5-21-0000000000-0000000000-0000000000-1001"
+
+
+def _no_live_bridge(monkeypatch) -> None:
+    """Address a derived test pipe instead of the operator's real Bridge endpoint.
+
+    The endpoint is derived from the current user, so on a maintainer machine whose production
+    Bridge is running the "no Bridge is listening" cases would be answered by that live Bridge and
+    observe a success. Only the identity is moved here: the derivation, the injected-value parity
+    check and the server-SID assertion all keep running against the substituted SID.
+    """
+    from serverfs_mcp import native_endpoint
+
+    monkeypatch.setattr(native_endpoint, "current_user_sid", lambda: SYNTHETIC_SID)
+
+
 def _write(tmp_path: Path, template: str, root: Path) -> Path:
     config = tmp_path / "serverfs.toml"
     config.write_text(template.format(root=str(root).replace("\\", "\\\\")), encoding="utf-8")
@@ -212,6 +230,9 @@ class TestAgentEnabledSurface:
     ):
         """A direct serve starts no Bridge, so calls fail via the frozen unavailable path."""
         # The derived endpoint has no Bridge listening, so the tool registers and the call fails.
+        # Substituted first, so the derivation below produces the test pipe rather than addressing
+        # a production Bridge that happens to be running for this user.
+        _no_live_bridge(monkeypatch)
         _wiring(monkeypatch, tmp_path)
         config = _write(tmp_path, AGENT_CONFIG, workdir)
         settings, client = _native_agent_settings(_settings_for(config))
