@@ -7,6 +7,7 @@ stdout/stderr discipline — doctor diagnostics never enter protocol stdout.
 from __future__ import annotations
 
 import io
+import sys
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -31,6 +32,15 @@ def config_path(tmp_path: Path) -> Path:
     config = tmp_path / "serverfs.toml"
     config.write_text(CONFIG, encoding="utf-8")
     return config
+
+
+def _set_diagnostics_test_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    if sys.platform == "win32":
+        # Native diagnostics must use the SID-derived Named Pipe; a temporary socket path is
+        # intentionally rejected by resolve_native_agent_wiring on Windows.
+        monkeypatch.delenv("SERVERFS_AGENT_BRIDGE_SOCKET", raising=False)
+    else:
+        monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_SOCKET", str(tmp_path / "bridge.sock"))
 
 
 class TestServe:
@@ -152,7 +162,7 @@ class TestDiagnostics:
                 assert params == {}
                 raise AgentBridgeUnavailable("offline")
 
-        monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_SOCKET", str(tmp_path / "bridge.sock"))
+        _set_diagnostics_test_endpoint(monkeypatch, tmp_path)
         monkeypatch.setattr("serverfs_mcp.agent_client.AgentBridgeClient", Client)
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
@@ -175,7 +185,7 @@ class TestDiagnostics:
                 assert params == {"task_id": "agt_local"}
                 return expected
 
-        monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_SOCKET", str(tmp_path / "bridge.sock"))
+        _set_diagnostics_test_endpoint(monkeypatch, tmp_path)
         monkeypatch.setattr("serverfs_mcp.agent_client.AgentBridgeClient", Client)
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
@@ -206,7 +216,7 @@ class TestDiagnostics:
             async def call(self, _method, _params):
                 return projection
 
-        monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_SOCKET", str(tmp_path / "bridge.sock"))
+        _set_diagnostics_test_endpoint(monkeypatch, tmp_path)
         monkeypatch.setattr("serverfs_mcp.agent_client.AgentBridgeClient", Client)
         out = io.StringIO()
         with redirect_stdout(out):
