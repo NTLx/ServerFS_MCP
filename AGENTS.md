@@ -11,8 +11,8 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 
 ## Current baseline
 
-- **Current stable release: v0.19.0.**
-- **v0.19.0 ships generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes.** OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real Linux/macOS/Windows end-to-end acceptance; see `dev_plan_v0.19.md` for scope and evidence.
+- **Current stable release: v0.20.0.**
+- **v0.19.0 introduced generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes.** OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real Linux/macOS/Windows end-to-end acceptance; see `dev_plan_v0.19.md` for scope and evidence.
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to each platform/runtime gate.
 - Generic ACP v1 profiles are also supported when operator-configured with an absolute executable and fixed argv; current OpenCode 2.1.2 acceptance covers Linux, macOS and Windows.

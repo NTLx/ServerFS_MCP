@@ -12,9 +12,9 @@
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured delegation to native Codex / Claude Code / Qoder runtimes and operator-configured ACP Agents only where you need them.
 
-**Current stable release: v0.19.0**
+**Current stable release: v0.20.0**
 
-**The v0.21.0 implementation is accepted as a release-ready candidate; it is NOT RELEASED.** v0.19.0 remains the stable released version; v0.20.0 is an accepted but unreleased implementation baseline. v0.21 adds an internal secret-safe observation contract, bounded process-local Bridge task/queue/lease/recovery metrics, and an explicitly selected sanitized common status projection on native macOS/Windows only. It adds no exporter, network listener, MCP tool, telemetry egress, or authority. Default `service status` output is unchanged; Linux Compose has no native service status projection. Deployed Linux v0.21 runtime health and macOS/Windows RSS are **Not verified**; see [Phase G release acceptance](docs/v0.21.0-release-acceptance-2026-10-22.md) and [Phase F native evidence](docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md). No v0.21.0 tag or GitHub Release exists.
+**v0.21.0 is accepted and release-ready, but NOT RELEASED.** v0.20.0 is the current stable released version. v0.21.0 has no tag or GitHub Release. v0.21 adds an internal secret-safe observation contract, bounded process-local Bridge task/queue/lease/recovery metrics, and an explicitly selected sanitized common status projection on native macOS/Windows only. It adds no exporter, network listener, MCP tool, telemetry egress, or authority. Default `service status` output is unchanged; Linux Compose has no native service status projection. Deployed Linux v0.21 runtime health and macOS/Windows RSS are **Not verified**; see [Phase G release acceptance](docs/v0.21.0-release-acceptance-2026-10-22.md) and [Phase F native evidence](docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md). No v0.21.0 tag or GitHub Release exists.
 
 v0.19.0 adds generic ACP v1 profiles to the Agent Bridge alongside native Codex, Claude Code, and Qoder runtimes. Operators configure an absolute executable path and fixed argv for each profile; ACP runtimes require `workspace-write`, and tasks cannot override command, argv, or environment. ServerFS does not auto-install or trust Agents from the ACP Registry, and provider authentication remains provider-owned. Model discovery/override, elicitation, client filesystem, and terminal capabilities are unsupported; other capabilities are reported conservatively from measured behavior. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS, and Windows, covering prompts, persisted-session continuation, and active-tool cancellation/cleanup.
 
@@ -63,7 +63,7 @@ For native setup, use the dedicated guides:
 
 The repository now carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
 
-The repository root also contains a portable skills-only [`plugin.json`](plugin.json). Since v0.18.0, each stable tag builds one version-named GitHub Release asset; the v0.19.0 asset is `serverfs-plugin-v0.19.0.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
+The repository root also contains a portable skills-only [`plugin.json`](plugin.json). Since v0.18.0, each stable tag builds one version-named GitHub Release asset; the current v0.20.0 asset is `serverfs-plugin-v0.20.0.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
 
 ## Quick start
 
@@ -242,12 +242,12 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-The current stable release is **v0.19.0**.
+The current stable release is **v0.20.0**.
 
-- Linux images: `ghcr.io/ntlx/serverfs_mcp`; exact v0.19.0 pin: `ghcr.io/ntlx/serverfs_mcp:0.19.0`
-- Stable release tag: `v0.19.0`
+- Linux images: `ghcr.io/ntlx/serverfs_mcp`; exact v0.20.0 pin: `ghcr.io/ntlx/serverfs_mcp:0.20.0`
+- Stable release tag: `v0.20.0`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
-- Portable Agent Plugin: one skills-only `serverfs-plugin-v0.19.0.zip` asset.
+- Portable Agent Plugin: one skills-only `serverfs-plugin-v0.20.0.zip` asset.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel. v0.13.2 locally builds the small bundled ServiceManagement companion used for persistent per-user services.
 

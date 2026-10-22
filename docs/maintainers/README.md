@@ -4,7 +4,7 @@
 
 ## Current release
 
-- **v0.19.0 is the current stable release.**
+- **v0.20.0 is the current stable release.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
 - Generic ACP v1 profiles are also supported when operator-configured with an absolute executable and fixed argv; OpenCode 2.1.2 passed real end-to-end acceptance on Linux, macOS and Windows.
@@ -51,7 +51,7 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.17** — optional one-secret static API Key authentication for Streamable HTTP, with Bearer and DingTalk-style query-key interoperability; v0.17.1 adds Tunnel readiness/control-plane diagnostics, a read-only host-observability recipe, and restricted-network ARM64 deployment guidance.
 
 - **v0.18** — seven operational Agent Skills and one skills-only portable Agent Plugin release asset, `serverfs-plugin-v0.18.0.zip`.
-- **v0.19.0** — generic ACP v1 profiles alongside the native Codex/Claude/Qoder baseline. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS and Windows. See [`dev_plan_v0.19.md`](../../dev_plan_v0.19.md) for scope and evidence.
+- **v0.19.0** — introduced generic ACP v1 profiles alongside the native Codex/Claude/Qoder baseline. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS and Windows. See [`dev_plan_v0.19.md`](../../dev_plan_v0.19.md) for scope and evidence.
 
 ## Keep this index small
 
