@@ -39,6 +39,14 @@ def _set_diagnostics_test_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         # Native diagnostics must use the SID-derived Named Pipe; a temporary socket path is
         # intentionally rejected by resolve_native_agent_wiring on Windows.
         monkeypatch.delenv("SERVERFS_AGENT_BRIDGE_SOCKET", raising=False)
+    elif sys.platform == "darwin":
+        # Keep the production-derived endpoint contract, but isolate its path from the user's
+        # runtime directory so the test cannot touch a real Bridge socket.
+        monkeypatch.delenv("SERVERFS_AGENT_BRIDGE_SOCKET", raising=False)
+        monkeypatch.setattr(
+            "serverfs_mcp.darwin_libc.darwin_bridge_socket_path",
+            lambda: tmp_path / "bridge.sock",
+        )
     else:
         monkeypatch.setenv("SERVERFS_AGENT_BRIDGE_SOCKET", str(tmp_path / "bridge.sock"))
 
