@@ -41,12 +41,14 @@ SMAppService / launchd
 ```bash
 uv sync --frozen
 uv sync --project agent_bridge --frozen
-serverfs bootstrap tunnel-client   # 默认使用 ServerFS 实测的 v0.0.16
+serverfs bootstrap tunnel-client   # 默认使用 ServerFS 实测的 v0.0.17
 serverfs doctor --config serverfs.toml
 
 # 如需使用其他官方版本，需同时提供版本号和该版本官方 SHA256SUMS.txt 的 SHA-256：
 # serverfs bootstrap tunnel-client --version vX.Y.Z --manifest-sha256 <sha256>
 ```
+
+该实测版本是默认基线，不是兼容性锁定。
 
 然后安装持久化的用户服务：
 

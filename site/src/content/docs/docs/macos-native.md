@@ -41,13 +41,15 @@ Install the normal Python environments and official tunnel client first:
 ```bash
 uv sync --frozen
 uv sync --project agent_bridge --frozen
-serverfs bootstrap tunnel-client   # defaults to the ServerFS-tested v0.0.16 release
+serverfs bootstrap tunnel-client   # defaults to the ServerFS-tested v0.0.17 release
 serverfs doctor --config serverfs.toml
 
 # To use another official release, provide both its tag and the SHA-256 of
 # that release's official SHA256SUMS.txt:
 # serverfs bootstrap tunnel-client --version vX.Y.Z --manifest-sha256 <sha256>
 ```
+
+The tested release is the default baseline, not a compatibility lock.
 
 Then install the persistent user services:
 

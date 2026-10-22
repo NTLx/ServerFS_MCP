@@ -62,7 +62,7 @@ docker compose exec openai-tunnel \
   wget -qO- 'http://127.0.0.1:8080/health/response-delivery'
 ```
 
-较旧的 tunnel-client 版本可能没有全部详细 component route。ServerFS v0.20.0 默认使用仓库实测基线 v0.0.16，除非显式覆盖 `OPENAI_TUNNEL_IMAGE`。
+较旧的 tunnel-client 版本可能没有全部详细 component route。ServerFS v0.20.0 默认使用仓库实测基线 v0.0.17；这是测试默认值，不是兼容性锁定，除非显式覆盖 `OPENAI_TUNNEL_IMAGE`。
 
 ## 排障顺序
 

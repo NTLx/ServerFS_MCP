@@ -32,8 +32,8 @@ def make_release_bundle() -> tuple[bytes, dict[str, bytes]]:
         bundle.writestr("cloudflared-manifest.json", b"{}")
         bundle.writestr("LICENSE", b"mit")
         bundle.writestr("NOTICE", b"notice")
-        bundle.writestr("tunnel-client-v0.0.16-windows-amd64-licenses.txt", b"provenance")
-        bundle.writestr("tunnel-client-v0.0.16-windows-amd64.spdx.json", b"{}")
+        bundle.writestr("tunnel-client-v0.0.17-windows-amd64-licenses.txt", b"provenance")
+        bundle.writestr("tunnel-client-v0.0.17-windows-amd64.spdx.json", b"{}")
     archive = inner.getvalue()
     tag = tb.detect_platform_tag()
     asset = f"tunnel-client-{tb.TESTED_TUNNEL_CLIENT_VERSION}-{tag}.zip"
@@ -67,13 +67,14 @@ def data_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 class TestManifest:
     def test_tested_release_constants_are_wellformed(self) -> None:
-        assert tb.TESTED_TUNNEL_CLIENT_VERSION == "v0.0.16"
+        assert tb.TESTED_TUNNEL_CLIENT_VERSION == "v0.0.17"
+        assert tb.TESTED_MANIFEST_SHA256 == "0517f68dab700b86b89fa4ca6de8e8f7140fbf7920d552ad444bb107d7664ef8"
         assert re.fullmatch(r"[0-9a-f]{64}", tb.TESTED_MANIFEST_SHA256)
         assert tb.release_base_url(tb.TESTED_TUNNEL_CLIENT_VERSION).startswith(
             "https://github.com/openai/tunnel-client/"
         )
 
-    @pytest.mark.parametrize(("raw", "normalized"), [("0.0.16", "v0.0.16"), ("v1.2.3", "v1.2.3")])
+    @pytest.mark.parametrize(("raw", "normalized"), [("0.0.17", "v0.0.17"), ("v1.2.3", "v1.2.3")])
     def test_version_normalization(self, raw: str, normalized: str) -> None:
         assert tb.normalize_tunnel_client_version(raw) == normalized
 
@@ -217,13 +218,13 @@ class TestDefaultPathDiscovery:
 
     def test_highest_semver_wins(self, data_home: Path) -> None:
         tag = tb.detect_platform_tag()
-        for version in ("v0.0.9", "v0.0.16"):
+        for version in ("v0.0.9", "v0.0.16", "v0.0.17"):
             install = data_home / "bin" / f"tunnel-client-{version}-{tag}"
             install.mkdir(parents=True)
             (install / CLIENT).write_bytes(b"x")
         found = tb.default_tunnel_client_path()
         assert found is not None
-        assert "v0.0.16" in found.parent.name
+        assert "v0.0.17" in found.parent.name
 
     def test_partial_install_without_executable_ignored(self, data_home: Path) -> None:
         install = data_home / "bin" / "tunnel-client-v9.9.9-linux-amd64"

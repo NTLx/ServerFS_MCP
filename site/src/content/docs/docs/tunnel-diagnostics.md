@@ -62,7 +62,7 @@ docker compose exec openai-tunnel \
   wget -qO- 'http://127.0.0.1:8080/health/response-delivery'
 ```
 
-Older tunnel-client releases may not expose every detailed component route. ServerFS v0.20.0 uses the repository-tested v0.0.16 baseline unless `OPENAI_TUNNEL_IMAGE` is explicitly overridden.
+Older tunnel-client releases may not expose every detailed component route. ServerFS v0.20.0 uses the repository-tested v0.0.17 baseline as its tested default unless `OPENAI_TUNNEL_IMAGE` is explicitly overridden; this is not a compatibility lock.
 
 ## Troubleshooting sequence
 

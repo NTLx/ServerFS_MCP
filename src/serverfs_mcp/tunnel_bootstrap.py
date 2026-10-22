@@ -37,12 +37,12 @@ import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
-TESTED_TUNNEL_CLIENT_VERSION = "v0.0.16"
+TESTED_TUNNEL_CLIENT_VERSION = "v0.0.17"
 MANIFEST_NAME = "SHA256SUMS.txt"
 # ServerFS' currently tested baseline. Operators may select another official
 # release, but must provide that release manifest's SHA-256 explicitly so the
 # double-anchor verification chain is preserved.
-TESTED_MANIFEST_SHA256 = "fcce864a5935655534cc3d981257509579dbb5c71dbaec64c17a157ca9d65e56"
+TESTED_MANIFEST_SHA256 = "0517f68dab700b86b89fa4ca6de8e8f7140fbf7920d552ad444bb107d7664ef8"
 
 
 def normalize_tunnel_client_version(version: str) -> str:

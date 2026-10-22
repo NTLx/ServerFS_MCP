@@ -244,7 +244,7 @@ Important properties:
 
 ## OpenAI Secure MCP Tunnel
 
-OAuth-disabled Tunnel operation remains supported and regression-tested with the repository-tested `tunnel-client v0.0.16`.
+OAuth-disabled Tunnel operation remains supported and regression-tested with the repository-tested `tunnel-client v0.0.17` baseline. This is the tested default, not a compatibility lock.
 
 When OAuth uses a different authorization-server origin from the MCP resource origin, configure the Tunnel's official trusted-origin setting in `.env`:
 

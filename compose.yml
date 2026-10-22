@@ -407,7 +407,7 @@ services:
       start_period: 5s
 
   openai-tunnel:
-    image: ${OPENAI_TUNNEL_IMAGE:-ghcr.io/openai/tunnel-client:v0.0.16}
+    image: ${OPENAI_TUNNEL_IMAGE:-ghcr.io/openai/tunnel-client:v0.0.17}
 
     restart: unless-stopped
 

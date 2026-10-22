@@ -182,7 +182,7 @@ ServerFS 签发自己的不透明 access/refresh token；SQLite 中只存摘要�
 
 ## OpenAI Secure MCP Tunnel
 
-关闭 OAuth 时，现有 Tunnel 路径仍受支持，并已用仓库测试基线 `tunnel-client v0.0.16` 做回归。
+关闭 OAuth 时，现有 Tunnel 路径仍受支持，并已用仓库测试基线 `tunnel-client v0.0.17` 做回归。它是测试默认值，不是兼容性锁定。
 
 如果 `serverfs-auth` 与 MCP resource 不是同一个 origin，需要显式信任精确的 auth origin：
 

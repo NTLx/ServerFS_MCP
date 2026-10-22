@@ -182,7 +182,7 @@ ServerFS issues opaque access/refresh tokens and stores only digests, not raw cr
 
 ## OpenAI Secure MCP Tunnel
 
-OAuth-disabled Tunnel operation remains supported with the repository-tested `tunnel-client v0.0.16`.
+OAuth-disabled Tunnel operation remains supported with the repository-tested `tunnel-client v0.0.17` baseline. This is the tested default, not a compatibility lock.
 
 If `serverfs-auth` uses a separate origin, explicitly trust that exact origin:
 
