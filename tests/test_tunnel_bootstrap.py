@@ -68,7 +68,10 @@ def data_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 class TestManifest:
     def test_tested_release_constants_are_wellformed(self) -> None:
         assert tb.TESTED_TUNNEL_CLIENT_VERSION == "v0.0.17"
-        assert tb.TESTED_MANIFEST_SHA256 == "0517f68dab700b86b89fa4ca6de8e8f7140fbf7920d552ad444bb107d7664ef8"
+        assert (
+            tb.TESTED_MANIFEST_SHA256
+            == "0517f68dab700b86b89fa4ca6de8e8f7140fbf7920d552ad444bb107d7664ef8"
+        )
         assert re.fullmatch(r"[0-9a-f]{64}", tb.TESTED_MANIFEST_SHA256)
         assert tb.release_base_url(tb.TESTED_TUNNEL_CLIENT_VERSION).startswith(
             "https://github.com/openai/tunnel-client/"
