@@ -12,9 +12,9 @@
 
 只暴露你明确选择的目录，并默认保持只读。仅在需要的位置按需开启受限文件修改、基于 revision 的并发保护、有限制的二进制传输，以及结构化的 Codex / Claude Code / Qoder 原生 runtime 或运维配置 ACP Agent 委托能力。
 
-**当前稳定版本：v0.20.0**
+**当前稳定版本：v0.21.0**
 
-**v0.21.0 已验收并达到 release-ready 状态，但尚未发布。** v0.20.0 是当前稳定已发布版本；v0.21.0 尚未发布，也没有 tag 或 GitHub Release。v0.21 增加 secret-safe 内部观测契约、有界的进程内 Bridge task/queue/lease/recovery 指标，以及仅限原生 macOS/Windows、显式选择的脱敏 common status projection；不增加 exporter、网络监听、MCP tool、telemetry egress 或 authority。默认 `service status` 输出不变；Linux Compose 不提供原生 service status projection。部署中的 Linux v0.21 runtime health 与 macOS/Windows RSS 仍**尚未验证**。详见 [Phase G 验收记录](docs/v0.21.0-release-acceptance-2026-10-22.md)及 [Phase F 原生平台证据](docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md)。
+v0.21.0 已发布，tag `v0.21.0` 指向提交 `87494c41c9b98f70dd089223cd152132208d918d`。本版加入 secret-safe 内部观测契约、有界的进程内 Bridge task/queue/lease/recovery 指标，以及仅限原生 macOS/Windows、显式选择的脱敏 common status projection；不增加 exporter、网络监听、MCP tool、telemetry egress 或 authority。默认 `service status` 输出不变；Linux Compose 不提供原生 service status projection。GitHub Release 提供三个 Windows 安装 wheel 与 portable Agent Plugin。详见 [Phase G 验收记录](docs/v0.21.0-release-acceptance-2026-10-22.md)及 [Phase F 原生平台证据](docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md)。
 
 v0.19.0 在 Agent Bridge 中加入通用 ACP v1 profile，与原生 Codex、Claude Code、Qoder runtime 并存。ACP profile 由运维人员配置绝对可执行文件路径和固定 argv；任务调用不能覆盖 command、argv 或 env，且 ACP runtime 要求 `workspace-write`。ServerFS 不会从 ACP Registry 自动安装或信任 Agent，Provider authentication 仍由 Provider 自己管理。模型发现/覆盖、elicitation、client filesystem 和 terminal 均不支持；能力只按实测结果保守报告。OpenCode 2.1.2 使用 `opencode/glm-5.3-flash-free` 已通过 Linux、macOS、Windows 的真实端到端验收，覆盖 prompt、持久 session continuation，以及 active-tool cancellation/cleanup。
 
@@ -244,12 +244,12 @@ ChatGPT 文件参数通过可选的隔离 ingress helper 处理，而不是让 M
 
 ## 发布版本
 
-当前稳定版本为 **v0.20.0**。
+当前稳定版本为 **v0.21.0**；v0.20.0 是此前发布的稳定版本。
 
-- Linux 镜像：`ghcr.io/ntlx/serverfs_mcp`；v0.20.0 精确 pin：`ghcr.io/ntlx/serverfs_mcp:0.20.0`
-- 稳定版本标签：`v0.20.0`
+- Linux 镜像：`ghcr.io/ntlx/serverfs_mcp`；v0.21.0 精确 pin：`ghcr.io/ntlx/serverfs_mcp:0.21.0`
+- 稳定版本标签：`v0.21.0`
 - 生产部署应固定到明确版本，不建议使用 `latest` 或 `edge`。
-- 可移植 Agent Plugin：一个仅包含 Skills 的 `serverfs-plugin-v0.20.0.zip` Release 资产。
+- 可移植 Agent Plugin：一个仅包含 Skills 的 `serverfs-plugin-v0.21.0.zip` Release 资产。
 - Windows Release 资产包含产品本体、Agent Bridge 与原生 kernel wheel。
 - macOS 直接使用产品与 Agent Bridge 的 Python distribution；v0.13 不提供单独的 macOS native wheel。v0.13.2 会在本地构建用于当前用户持久化服务的轻量 ServiceManagement companion。
 

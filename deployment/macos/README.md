@@ -1,6 +1,6 @@
-# macOS Native Deployment (v0.20.0)
+# macOS Native Deployment (v0.21.0)
 
-ServerFS v0.20.0 is the current published stable release. The macOS deployment shape introduced
+ServerFS v0.21.0 is the current published stable release; v0.20.0 is the previous released stable version. The macOS deployment shape introduced
 in v0.13.2 remains pure Python over POSIX/Darwin primitives (`fcopyfile`, `getpeereid`, `confstr`
 via narrow ctypes bindings); v0.13.2 adds a small headless Swift ServiceManagement companion solely for persistent
 per-user service registration. There is still no `serverfs-macos-native` wheel, Docker/VM,
@@ -59,7 +59,7 @@ serverfs service stop
 serverfs service uninstall
 ```
 
-In the unreleased v0.21.0 candidate, the default `service status` detail/JSON is unchanged. For a bounded, sanitized common projection, explicitly select `--format common-json` or `--format common-human`; it omits paths, PIDs, task names and private IDs, and reports `unknown`/`not-checked` rather than inferring health. Use `serverfs doctor` for deeper platform/configuration diagnostics. Phase F acceptance limits: [v0.21.0 native acceptance](../../docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md).
+In v0.21.0, the default `service status` detail/JSON is unchanged. For a bounded, sanitized common projection, explicitly select `--format common-json` or `--format common-human`; it omits paths, PIDs, task names and private IDs, and reports `unknown`/`not-checked` rather than inferring health. Use `serverfs doctor` for deeper platform/configuration diagnostics. Phase F acceptance limits: [v0.21.0 native acceptance](../../docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md).
 
 `uninstall` removes only v0.13.2-owned registration/runtime artifacts; operator configuration and
 normal ServerFS data are preserved.

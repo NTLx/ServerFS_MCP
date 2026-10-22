@@ -4,7 +4,8 @@
 
 ## Current release
 
-- **v0.20.0 is the current stable release.**
+- **v0.21.0 is the current stable release.**
+- v0.20.0 is the previous released stable version.
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
 - Generic ACP v1 profiles are also supported when operator-configured with an absolute executable and fixed argv; OpenCode 2.1.2 passed real end-to-end acceptance on Linux, macOS and Windows.
