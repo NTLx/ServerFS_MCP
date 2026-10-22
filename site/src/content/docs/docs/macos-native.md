@@ -68,6 +68,10 @@ serverfs service stop
 serverfs service uninstall
 ```
 
+### Common status formats (v0.21.0 candidate)
+
+The default `service status` detail/JSON is unchanged. Operators may explicitly run `serverfs service status --format common-json` or `serverfs service status --format common-human` for a bounded, sanitized projection. It omits paths, PIDs, task names and private IDs, and uses `unknown`/`not-checked` rather than inventing health. Use `serverfs doctor` for deeper platform/configuration diagnostics. See [Phase F acceptance and limits](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md).
+
 If macOS reports `requires-approval`, ServerFS respects that user decision. Open the exact settings pane with:
 
 ```bash

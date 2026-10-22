@@ -11,6 +11,8 @@ host collectors -> sanitized status directory -> read-only ServerFS workdir -> M
 
 这样可以向 AI 客户端提供可检查的运维上下文，同时不增加 shell、Docker socket 或 Agent Bridge 权限。
 
+这仍是互补的外部 Linux 模式，不会授予 Docker 或 shell 权限。v0.21 的 opt-in 通用 `service status` 投影仅适用于原生 macOS/Windows，不会取代此 Linux 模式；Linux Compose 不提供虚构的原生 service status 投影。
+
 ## 安全边界
 
 把状态目录视为一个发布边界，只采集明确允许公开的字段。

@@ -14,7 +14,7 @@
 
 **当前稳定版本：v0.19.0**
 
-**v0.20.0：已实现的候选版本，尚未发布。** Linux Streamable HTTP 使用单一有状态端点，同时支持 legacy `2025-11-25` session 生命周期与 modern `2026-07-28` 的逐请求 metadata。Pinned-source MCP conformance gate 已集成。Linux OCI `server.json` / Registry 元数据处于 preview 阶段；OCI + Streamable HTTP 安装器互操作**尚未验证**。Registry 不是运行或安装 ServerFS 的前提。详见 [v0.20.0 验收记录](docs/v0.20.0-release-acceptance-2026-10-22.md)。
+**v0.21.0 候选版本尚未发布；Phases A–F 完成，Phase G release readiness 尚待完成。** v0.20.0 实现已验收但未发布，是 v0.21 的协议与分发基线。v0.21 增加 secret-safe 内部观测契约、有界的进程内 Bridge task/queue/lease/recovery 指标，以及仅限原生 macOS/Windows、显式选择的脱敏 common status projection；不增加 exporter、网络监听、MCP tool、telemetry egress 或 authority。默认 `service status` 输出不变；Linux Compose 不提供原生 service status projection。部署中的 Linux v0.21 runtime、Windows exact-target full suites/workflow，以及 macOS/Windows RSS 均**尚未验证**；详见 [Phase F 验收记录](docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md)。
 
 v0.19.0 在 Agent Bridge 中加入通用 ACP v1 profile，与原生 Codex、Claude Code、Qoder runtime 并存。ACP profile 由运维人员配置绝对可执行文件路径和固定 argv；任务调用不能覆盖 command、argv 或 env，且 ACP runtime 要求 `workspace-write`。ServerFS 不会从 ACP Registry 自动安装或信任 Agent，Provider authentication 仍由 Provider 自己管理。模型发现/覆盖、elicitation、client filesystem 和 terminal 均不支持；能力只按实测结果保守报告。OpenCode 2.1.2 使用 `opencode/glm-5.3-flash-free` 已通过 Linux、macOS、Windows 的真实端到端验收，覆盖 prompt、持久 session continuation，以及 active-tool cancellation/cleanup。
 

@@ -11,6 +11,8 @@ host collectors -> sanitized status directory -> read-only ServerFS workdir -> M
 
 This gives an AI client inspectable operational context without adding shell access, Docker socket access or Agent Bridge authority.
 
+This remains a complementary external Linux pattern: it grants no Docker or shell authority. v0.21's opt-in common `service status` projection is limited to native macOS/Windows and does not replace this Linux pattern; Linux Compose has no fabricated native service status projection.
+
 ## Security boundary
 
 Treat the status directory as a publication boundary. Collect only an allowlisted set of facts that you are willing to expose.

@@ -67,6 +67,10 @@ serverfs service stop
 serverfs service uninstall
 ```
 
+### 通用状态格式（v0.21.0 候选版本）
+
+默认 `service status` detail/JSON 保持不变。运营者可显式运行 `serverfs service status --format common-json` 或 `serverfs service status --format common-human` 请求有界、脱敏的通用投影。输出不包含路径、PID、任务名或私有 ID；无法确认时使用 `unknown`/`not-checked`，不会臆测健康状态。更深入的平台与配置诊断请使用 `serverfs doctor`。详见 [Phase F 验收与限制](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md)。
+
 如果 macOS 返回 `requires-approval`，ServerFS 会尊重用户授权状态，不绕过系统设置。可直接打开对应设置页：
 
 ```bash

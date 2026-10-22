@@ -59,6 +59,8 @@ serverfs service stop
 serverfs service uninstall
 ```
 
+In the unreleased v0.21.0 candidate, the default `service status` detail/JSON is unchanged. For a bounded, sanitized common projection, explicitly select `--format common-json` or `--format common-human`; it omits paths, PIDs, task names and private IDs, and reports `unknown`/`not-checked` rather than inferring health. Use `serverfs doctor` for deeper platform/configuration diagnostics. Phase F acceptance limits: [v0.21.0 native acceptance](../../docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md).
+
 `uninstall` removes only v0.13.2-owned registration/runtime artifacts; operator configuration and
 normal ServerFS data are preserved.
 
