@@ -175,6 +175,7 @@ Do **not** commit, push, create/move tags or publish a release unless the user e
 - Windows development/deployment work belongs on the Windows-native workflow; macOS work belongs on the macOS-native workflow. Do not use one host to infer another host's live state.
 - Windows v0.14.0+ uses `serverfs service ...` backed by the current user's Task Scheduler 2.0 task. `deployment/windows/start-native.ps1` is compatibility/emergency material, not the intended v0.14+ operator path; do not replace the scheduled task with an SCM/LocalSystem service or another elevation-dependent mechanism.
 - macOS v0.13.2 persistent deployment uses `serverfs service ...`/`SMAppService`; raw `launchctl` mutation is limited to the bounded v0.13.0/v0.13.1 migration helper, not normal operations.
+- Never use a persistent or `KeepAlive` `launchctl submit` job as a one-shot delayed maintenance handoff. Temporary macOS maintenance actions must be bounded, and completion evidence must include verification that the temporary launchd job/artifact no longer exists.
 
 ## 8. Reporting completion
 

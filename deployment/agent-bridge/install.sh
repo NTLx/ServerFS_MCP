@@ -171,7 +171,7 @@ fi
 chmod 600 "$PROVIDER_ENV"
 
 CONFIG_NEXT="$CONFIG_DIR/.config.next.json"
-if ! python3 "$SCRIPT_DIR/render_config.py" \
+if ! "$RELEASE_DIR/.venv/bin/python" "$SCRIPT_DIR/render_config.py" \
   --env-file "$ENV_FILE" \
   --output "$CONFIG_NEXT"
 then
@@ -430,7 +430,7 @@ Runtime lock dir:
 No sudo/root operation was performed.
 
 Next validate:
-  python3 $SCRIPT_DIR/verify_host.py
+  $CURRENT_LINK/.venv/bin/python $SCRIPT_DIR/verify_host.py
 
 Then validate the Compose overlay:
   docker compose --env-file "$ENV_FILE" -f compose.yml -f compose.agent.yml config

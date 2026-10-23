@@ -985,7 +985,7 @@ def install(
 def register_service(service: str) -> dict[str, str]:
     if service not in ALL_SERVICES:
         raise DarwinServiceError("unknown persistent service")
-    return _register(service)
+    return _register_and_wait(service)
 
 
 def unregister_service(service: str) -> dict[str, str]:
@@ -994,16 +994,34 @@ def unregister_service(service: str) -> dict[str, str]:
     return _unregister_and_wait(service)
 
 
+def _register_and_wait(service: str) -> dict[str, str]:
+    states = _register(service)
+    state = states.get(service)
+    if state == "requires-approval":
+        label = "Agent Bridge" if service == BRIDGE_SERVICE else service
+        raise DarwinServiceError(
+            f"{label} requires approval in System Settings > General > Login Items"
+        )
+    if state != "enabled":
+        raise DarwinServiceError(f"{service} did not become enabled")
+    _wait_managed_job(service)
+    if service == BRIDGE_SERVICE:
+        _wait_bridge_health()
+    return states
+
+
 def restart_service(service: str) -> dict[str, str]:
-    unregister_service(service)
-    return register_service(service)
+    if service not in ALL_SERVICES:
+        raise DarwinServiceError("unknown persistent service")
+    _unregister_and_wait(service)
+    return _register_and_wait(service)
 
 
 def start() -> dict[str, str]:
     manifest = _load_manifest_document()
     states: dict[str, str] = {}
     for service in manifest["services"]:
-        states.update(_register(service))
+        states.update(_register_and_wait(service))
     return states
 
 
@@ -1020,8 +1038,14 @@ def stop() -> dict[str, str]:
 
 
 def restart() -> dict[str, str]:
-    stop()
-    return start()
+    manifest = _load_manifest_document()
+    services = list(manifest["services"])
+    states: dict[str, str] = {}
+    for service in services:
+        _unregister_and_wait(service)
+    for service in services:
+        states.update(_register_and_wait(service))
+    return states
 
 
 def uninstall() -> None:

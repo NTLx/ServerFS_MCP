@@ -1008,7 +1008,16 @@ exit 0
 _FAKE_UV = """#!/usr/bin/env bash
 set -euo pipefail
 mkdir -p .venv/bin
-for name in python serverfs-agent-bridge; do
+cat >.venv/bin/python <<'INNER'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-c" ]]; then
+  exit 0
+fi
+export PYTHONPATH="$PWD/src"
+exec "${FAKE_STAGED_PYTHON:?}" "$@"
+INNER
+chmod 755 .venv/bin/python
+for name in serverfs-agent-bridge; do
   cat >".venv/bin/$name" <<'INNER'
 #!/usr/bin/env bash
 exit 0
@@ -1041,6 +1050,7 @@ def _fake_deployment_harness(
 ) -> dict[str, object]:
     home = tmp_path / "home"
     (home / ".config/serverfs-agent-bridge").mkdir(parents=True)
+    (home / ".codex").mkdir()
     unit_dir = home / ".config/systemd/user"
     unit_dir.mkdir(parents=True)
     data_root = home / ".local/share/serverfs-agent-bridge"
@@ -1060,6 +1070,7 @@ def _fake_deployment_harness(
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "FAKE_SYSTEMCTL_LOG": str(log),
         "FAKE_SYSTEMCTL_STATE": str(state),
+        "FAKE_STAGED_PYTHON": sys.executable,
     }
     if fail_enable_now:
         environment["FAKE_SYSTEMCTL_FAIL_ENABLE_NOW"] = "1"
@@ -1077,6 +1088,38 @@ def _fake_deployment_harness(
         "env": environment,
         "uv_bin": _write_script(fake_bin / "uv", _FAKE_UV),
     }
+
+
+@linux_only("Phase E Linux deployment script")
+def test_installer_uses_staged_python_when_ambient_python3_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    harness = _fake_deployment_harness(tmp_path)
+    fake_bin = tmp_path / "fake-bin"
+    _write_script(
+        fake_bin / "python3",
+        "#!/usr/bin/env bash\necho incompatible ambient python3 >&2\nexit 42\n",
+    )
+
+    result = _run_deployment_script(
+        harness,
+        [
+            "bash",
+            str(_REPO_ROOT / "deployment/agent-bridge/install.sh"),
+            "--env-file",
+            str(_deployment_env_file(tmp_path)),
+            "--uv-bin",
+            str(harness["uv_bin"]),
+            "--no-start",
+        ],
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "incompatible ambient python3" not in result.stderr
+    data_root = harness["data_root"]
+    assert isinstance(data_root, Path)
+    current_link = data_root / "current"
+    assert f"{current_link}/.venv/bin/python" in result.stdout
 
 
 def _set_service_state(harness: dict[str, object], *, enabled: bool, active: bool) -> None:
