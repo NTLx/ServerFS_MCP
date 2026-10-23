@@ -7,7 +7,7 @@ description: Enable workdir Agent delegation; operate Bridge lifecycle, native C
 
 Agent delegation is an explicit optional capability. Preserve the two-process security boundary, per-workdir authorization, provider-native ownership and current-user lifecycle.
 
-The current published stable is v0.22.0. Generic ACP v1 profiles were introduced in v0.19.0 and remain distinct from native `codex`, `claude` and `qoder` adapters. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete configuration and operations.
+The current published stable is v0.22.0; v0.22.1 is the prepared next maintenance release candidate and is not published. Generic ACP v1 profiles were introduced in v0.19.0 and remain distinct from native `codex`, `claude` and `qoder` adapters. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete configuration and operations.
 
 ## When to use
 

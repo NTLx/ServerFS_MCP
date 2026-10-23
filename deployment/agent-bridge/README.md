@@ -1,6 +1,6 @@
 # Phase E — user-scoped Agent Bridge deployment
 
-Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.22.0 is the current published stable release; v0.21.0 is the previous released stable version.** v0.12 kept the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling. v0.19.0 adds operator-configured generic ACP v1 profiles alongside the native Codex, Claude and Qoder runtimes.
+Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.22.1 is the prepared next maintenance release candidate and is not published; v0.22.0 remains the current published stable version.** v0.12 kept the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling. v0.19.0 adds operator-configured generic ACP v1 profiles alongside the native Codex, Claude and Qoder runtimes.
 
 ServerFS v0.22.0 adds bounded process-local Agent diagnostics over the existing private Bridge RPC only. Operators can run `serverfs diagnostics snapshot --format json` for a Bridge-wide diagnostic snapshot or `serverfs diagnostics task <task-id> --format json` for one retained task; omit `--format json` for human rendering. These commands do not add an MCP tool, network listener, persistent trace store or OpenTelemetry exporter. A task may report `available`, `unknown_task`, `not_retained`, or CLI-level `bridge_unavailable`; after a Bridge restart, diagnostics never fabricate pre-restart history.
 
@@ -151,7 +151,7 @@ Agent settings into the container, so these values remain inert without
 Provider secrets and shell-only environment are intentionally **not** stored in
 `.env`; they remain in the user-owned `provider.env` described in step 4. The experimental
 Jev advisory features are the one explicit exception: `SERVERFS_JEV_API_KEY` is their opt-in
-master gate carried through the current v0.22.0 stable release. Leave it empty to disable Preflight,
+master gate carried through the prepared v0.22.1 release candidate. Leave it empty to disable Preflight,
 Runtime Router, Model Advisor, and Approval Advisor functionality. In v0.12, `SERVERFS_JEV_USE_PROXY` selects the shared proxy explicitly without changing Jev's advisory-only authority. When non-empty, the installer renders
 the key only into the user-owned
 `0600` Bridge `config.json`; it is never passed into the MCP container.
@@ -510,7 +510,7 @@ Before host acceptance, run both independent code gates: the repository-root gat
 `bash -n deployment/agent-bridge/*.sh` for deployment shell syntax. Root `pytest`
 collects only `tests/` and does not validate `agent_bridge/tests/`.
 
-For the current v0.22.0 stable package, verify the target host proves:
+For the prepared v0.22.1 package, verify the target host proves:
 
 - install/update/rollback require no sudo/root;
 - real peer UID/GID equal the current login user;
@@ -547,7 +547,7 @@ to the default 11-tool surface. Workdir `AGENT_MODE/RUNTIMES` values in
 container.
 
 If post-release verification fails, use the documented rollback script to restore the
-previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The current v0.22.0 stable release uses an immutable
+previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The prepared v0.22.1 release candidate uses an immutable
 tag; earlier release tags remain immutable as well. The v0.13.2 release passed the unified Linux + Windows + macOS release gates before publication.
 
 

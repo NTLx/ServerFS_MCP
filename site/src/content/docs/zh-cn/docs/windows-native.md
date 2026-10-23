@@ -87,7 +87,7 @@ Task Scheduler 同时使用用户登录触发器与无限期的每 1 分钟 `Tim
 
 ### 通用状态格式（v0.22.0）
 
-v0.22.0 已发布，是当前稳定版本。默认 `service status` detail/JSON 保持不变。运营者可显式运行 `serverfs service status --format common-json` 或 `serverfs service status --format common-human` 请求有界、脱敏的通用投影。输出不包含路径、PID、任务名或私有 ID；无法确认时使用 `unknown`/`not-checked`，不会臆测健康状态。更深入的平台与配置诊断请使用 `serverfs doctor`。详见 [Phase F 验收与限制](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-windows-acceptance-2026-10-22.md)。
+准备中的 v0.22.1 维护版本候选保留此行为；当前已发布稳定版本仍为 v0.22.0。默认 `service status` detail/JSON 保持不变。运营者可显式运行 `serverfs service status --format common-json` 或 `serverfs service status --format common-human` 请求有界、脱敏的通用投影。输出不包含路径、PID、任务名或私有 ID；无法确认时使用 `unknown`/`not-checked`，不会臆测健康状态。更深入的平台与配置诊断请使用 `serverfs doctor`。详见 [Phase F 验收与限制](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-windows-acceptance-2026-10-22.md)。
 
 `service stop` 会先 disable 计划任务，再结束当前 action，因此 heartbeat 不会把人为停止的服务重新拉起。v0.14.0 还支持从旧 v0.13.x 手工 launcher 受控 hand-over：先冻结并再次验证精确进程身份，再切换到 managed lifecycle，绝不会只按可执行文件名杀进程。`deployment\windows\start-native.ps1` 仅保留为兼容/应急路径，不能与 managed service 并行运行。
 

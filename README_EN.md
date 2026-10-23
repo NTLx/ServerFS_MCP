@@ -12,7 +12,7 @@
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured delegation to native Codex / Claude Code / Qoder runtimes and operator-configured ACP Agents only where you need them.
 
-**Current stable release: v0.22.0**
+**Current stable release: v0.22.0; next maintenance release candidate: v0.22.1 (not published)**
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -57,7 +57,7 @@ For native setup, use the dedicated guides:
 
 The repository carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
 
-The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The current v0.22.0 GitHub Release asset is `serverfs-plugin-v0.22.0.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
+The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The planned v0.22.1 asset is named `serverfs-plugin-v0.22.1.zip` and contains the seven runtime skills and their packaged references; this expected publication artifact does not yet exist in a GitHub Release. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
 
 ## Quick start
 
@@ -81,8 +81,9 @@ chmod 600 .env
 
 Edit `.env` to pin the image, allow the local client Host values, and configure at least one workdir:
 
+# Prepared next maintenance release candidate example (v0.22.1; not published):
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.22.0
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.22.1
 SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
 WORKDIR_01_ALIAS=projects
 WORKDIR_01_PATH=/srv/projects
@@ -236,10 +237,10 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-- Linux images: `ghcr.io/ntlx/serverfs_mcp`; exact v0.22.0 pin: `ghcr.io/ntlx/serverfs_mcp:0.22.0`
-- Stable release tag: `v0.22.0`
+- Linux images: `ghcr.io/ntlx/serverfs_mcp`; current published stable pin: `ghcr.io/ntlx/serverfs_mcp:0.22.0`; prepared next-release candidate example (not published): `ghcr.io/ntlx/serverfs_mcp:0.22.1`
+- Current stable release tag: `v0.22.0`; next maintenance release candidate: `v0.22.1` (not published)
 - Production deployments should pin an exact release rather than `latest` or `edge`.
-- Portable Agent Plugin: one skills-only `serverfs-plugin-v0.22.0.zip` asset.
+- Portable Agent Plugin: expected skills-only `serverfs-plugin-v0.22.1.zip` publication artifact (not yet released).
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; there is no separate macOS native wheel. Installation locally builds the small bundled ServiceManagement companion used for persistent per-user services.
 

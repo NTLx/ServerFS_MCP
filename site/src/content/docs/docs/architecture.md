@@ -148,4 +148,4 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - structured Agent task RPC, model discovery and request-scoped model override
 - optional host-side Jev advisory decisions
 
-In the current **v0.22.0** stable release, the supported MCP surfaces remain 11 / 13 / 21 / 23 tools. Every optional capability is separately gated; v0.12's independent Tunnel/Agent/Jev proxy switches, v0.13's native macOS deployment and v0.14's Windows persistent lifecycle do not change the public tool counts. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.
+In the prepared **v0.22.1** maintenance release candidate (not yet published), the supported MCP surfaces remain 11 / 13 / 21 / 23 tools. Every optional capability is separately gated; v0.12's independent Tunnel/Agent/Jev proxy switches, v0.13's native macOS deployment and v0.14's Windows persistent lifecycle do not change the public tool counts. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.
