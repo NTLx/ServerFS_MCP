@@ -1,9 +1,9 @@
 ---
 title: macOS 原生部署
-description: ServerFS v0.21.0 macOS 原生部署 —— Apple M 系列、macOS 27、Darwin FD 安全边界，以及基于 Apple SMAppService 的 Tunnel / Agent Bridge 持久化。
+description: ServerFS v0.22.0 macOS 原生部署 —— Apple M 系列、macOS 27、Darwin FD 安全边界，以及基于 Apple SMAppService 的 Tunnel / Agent Bridge 持久化。
 ---
 
-当前项目稳定版本为 **v0.21.0**；**v0.13.2** 引入的 macOS 原生支持形态保持不变。ServerFS 可在 **运行 macOS 27 Golden Gate 的 Apple M 系列 Mac** 上原生运行。支持边界保持严格：仅限原生 **arm64**，不支持 Rosetta/x86_64，仅支持 macOS 27.x 与**本地 APFS** workdir。Intel Mac、Hackintosh、macOS 26 及更早版本、macOS 28 及更新版本都会以 `NATIVE_PLATFORM_UNSUPPORTED` 失败关闭。
+当前项目稳定版本为 **v0.22.0**；**v0.13.2** 引入的 macOS 原生支持形态保持不变。ServerFS 可在 **运行 macOS 27 Golden Gate 的 Apple M 系列 Mac** 上原生运行。支持边界保持严格：仅限原生 **arm64**，不支持 Rosetta/x86_64，仅支持 macOS 27.x 与**本地 APFS** workdir。Intel Mac、Hackintosh、macOS 26 及更早版本、macOS 28 及更新版本都会以 `NATIVE_PLATFORM_UNSUPPORTED` 失败关闭。
 
 v0.13.2 保持 Darwin 文件系统和 Agent 协议实现为 Python，只将旧的手工 LaunchAgent 生命周期替换为 Apple 当前的 **ServiceManagement / `SMAppService`** 模式。一个极小的无界面 `ServerFSServiceManager.app` 负责两个每用户 LaunchAgent 的注册与状态：
 
@@ -69,9 +69,9 @@ serverfs service stop
 serverfs service uninstall
 ```
 
-### 通用状态格式（v0.21.0）
+### 通用状态格式（v0.22.0）
 
-默认 `service status` detail/JSON 保持不变。运营者可显式运行 `serverfs service status --format common-json` 或 `serverfs service status --format common-human` 请求有界、脱敏的通用投影。输出不包含路径、PID、任务名或私有 ID；无法确认时使用 `unknown`/`not-checked`，不会臆测健康状态。更深入的平台与配置诊断请使用 `serverfs doctor`。详见 [Phase F 验收与限制](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md)。
+默认 `service status` detail/JSON 保持不变。运营者可显式运行 `serverfs service status --format common-json` 或 `serverfs service status --format common-human` 请求有界、脱敏的通用投影。输出不包含路径、PID、任务名或私有 ID；无法确认时使用 `unknown`/`not-checked`，不会臆测健康状态。更深入的平台与配置诊断请使用 `serverfs doctor`。详见 [Phase F 验收与限制](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-macos-acceptance-2026-10-22.md)。
 
 如果 macOS 返回 `requires-approval`，ServerFS 会尊重用户授权状态，不绕过系统设置。可直接打开对应设置页：
 

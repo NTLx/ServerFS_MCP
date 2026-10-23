@@ -7,9 +7,9 @@ Agent Bridge 是一个**可选的宿主机边界**。它暴露结构化 Agent �
 
 OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 已通过 Linux、macOS 和 Windows 的真实端到端验收，覆盖 prompt、持久 session continuation 和 active-tool cancellation/cleanup。
 
-## 关联式 Agent 诊断（v0.22+，尚未发布）
+## 关联式 Agent 诊断（v0.22+）
 
-尚未发布的 v0.22 checkout 通过既有 Bridge 私有 RPC 提供有界、进程内的 Agent diagnostics。仅当目标安装版本明确提供这些命令时才可使用；先检查版本或运行 `serverfs diagnostics --help` 做 capability 检测。使用 `serverfs diagnostics snapshot --format json` 获取 Bridge 范围诊断快照，使用 `serverfs diagnostics task <task-id> --format json` 获取单个已保留任务的诊断投影；省略 `--format json` 可使用 human rendering。这些命令不新增公开 MCP tool、监听端口、持久 trace store、OpenTelemetry 依赖或 telemetry egress。任务诊断可区分 `available`、`unknown_task`、`not_retained` 与 CLI 层的 `bridge_unavailable`；Bridge 重启后不会伪造重启前历史。这不是 v0.21 的能力保证。
+ServerFS v0.22.0 通过既有 Bridge 私有 RPC 提供有界、进程内的 Agent diagnostics。仅当目标安装版本明确提供这些命令时才可使用；先检查版本或运行 `serverfs diagnostics --help` 做 capability 检测。使用 `serverfs diagnostics snapshot --format json` 获取 Bridge 范围诊断快照，使用 `serverfs diagnostics task <task-id> --format json` 获取单个已保留任务的诊断投影；省略 `--format json` 可使用 human rendering。这些命令不新增公开 MCP tool、监听端口、持久 trace store、OpenTelemetry 依赖或 telemetry egress。任务诊断可区分 `available`、`unknown_task`、`not_retained` 与 CLI 层的 `bridge_unavailable`；Bridge 重启后不会伪造重启前历史。该能力包含在 v0.22.0 中。
 
 ```text
 ChatGPT

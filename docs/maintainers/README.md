@@ -4,9 +4,8 @@
 
 ## Current release
 
-- **v0.21.0 is the current stable release.**
-- **v0.22.0 is implemented; Phase F is accepted on Linux/VPS, supported macOS and supported Windows, and Phase G release-readiness acceptance is PASS. It is release-ready but not yet released.**
-- v0.20.0 is the previous released stable version.
+- **v0.22.0 is the current stable release.**
+- **v0.21.0 is the previous released stable version.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
 - Generic ACP v1 profiles are also supported when operator-configured with an absolute executable and fixed argv; OpenCode 2.1.2 passed real end-to-end acceptance on Linux, macOS and Windows.
@@ -55,8 +54,8 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.18** — seven operational Agent Skills and one skills-only portable Agent Plugin release asset, `serverfs-plugin-v0.18.0.zip`.
 - **v0.19.0** — introduced generic ACP v1 profiles alongside the native Codex/Claude/Qoder baseline. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS and Windows. See [`dev_plan_v0.19.md`](../../dev_plan_v0.19.md) for scope and evidence.
 - **v0.20.0** — completed the next post-ACP platform/reliability milestone; see [`dev_plan_v0.20.md`](../../dev_plan_v0.20.md) and its release acceptance evidence.
-- **v0.21.0** — introduced the secret-safe observation contract, bounded process-local Bridge metrics, and the opt-in sanitized common native status projection while keeping diagnostics/exporters outside the public MCP surface.
-- **v0.22.0 (release-ready, unreleased)** — adds bounded process-local Correlated Agent Diagnostics through private Bridge RPC only: `diagnostics snapshot` and per-task diagnostics, with no new MCP tool, listener, trace persistence, OpenTelemetry dependency or telemetry egress. Phase F is accepted on Linux/VPS, supported macOS and supported Windows, and Phase G release-readiness acceptance is PASS; see [`dev_plan_v0.22.md`](../../dev_plan_v0.22.md) and the v0.22 acceptance evidence.
+- **v0.21.0** — previous stable release; introduced the secret-safe observation contract, bounded process-local Bridge metrics, and the opt-in sanitized common native status projection while keeping diagnostics/exporters outside the public MCP surface.
+- **v0.22.0** — current stable release; adds bounded process-local Correlated Agent Diagnostics through private Bridge RPC only: `diagnostics snapshot` and per-task diagnostics, with no new MCP tool, listener, trace persistence, OpenTelemetry dependency or telemetry egress. Phase F is accepted on Linux/VPS, supported macOS and supported Windows, and Phase G release-readiness acceptance is PASS; see [`dev_plan_v0.22.md`](../../dev_plan_v0.22.md) and the v0.22 acceptance evidence.
 
 ## Keep this index small
 

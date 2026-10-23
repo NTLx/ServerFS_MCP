@@ -3,7 +3,7 @@ title: Agent Skills
 description: Use ServerFS repository skills to guide AI Agents through safe installation, configuration, upgrade, diagnosis and optional subsystem operations.
 ---
 
-> **Current release: v0.21.0.** ServerFS includes seven operational Agent Skills and one skills-only portable Agent Plugin.
+> **Current release: v0.22.0.** ServerFS includes seven operational Agent Skills and one skills-only portable Agent Plugin.
 
 ServerFS keeps operational Agent Skills in the repository [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) directory. They teach an Agent **how to use the existing ServerFS product interfaces safely**; they are not another configuration format or deployment implementation.
 
@@ -46,10 +46,10 @@ The skills preserve the same ServerFS invariants as manual operation:
 
 ## Portable Agent Plugin
 
-The repository root contains the portable Agent Plugins manifest `plugin.json`. The current v0.21.0 release packages the seven runtime skills and their references into one GitHub Release asset:
+The repository root contains the portable Agent Plugins manifest `plugin.json`. The current v0.22.0 release packages the seven runtime skills and their references into one GitHub Release asset:
 
 ```text
-serverfs-plugin-v0.21.0.zip
+serverfs-plugin-v0.22.0.zip
 ```
 
 The ZIP is a **skills-only** Plugin. It does not bundle `mcp.json`, a ServerFS instance URL, credentials, or provider-private settings. Plugin and skill content follow the ServerFS release version; there is no independent skill version lifecycle.

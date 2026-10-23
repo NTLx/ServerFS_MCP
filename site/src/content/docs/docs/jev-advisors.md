@@ -9,7 +9,7 @@ Jev is a System One model: instead of generating prose, it evaluates typed quest
 
 The integration is **opt-in, advisory-only, and fail-open**. Jev is not an Agent runtime, authorization source, or security boundary.
 
-> **Status:** this opt-in experimental capability was introduced in v0.6.0, extended with Model Advisor in v0.9.0, and remains included in the current v0.21.0 stable release. v0.12 added an independent explicit Jev proxy switch; v0.13 carried that contract into the native macOS Bridge; v0.13.2 changed the macOS service lifecycle; and v0.14.0 adds the Windows persistent lifecycle without changing Jev's advisory authority. Jev remains an internal host-Bridge advisor and never gains execution authority.
+> **Status:** this opt-in experimental capability was introduced in v0.6.0, extended with Model Advisor in v0.9.0, and remains included in the current v0.22.0 stable release. v0.12 added an independent explicit Jev proxy switch; v0.13 carried that contract into the native macOS Bridge; v0.13.2 changed the macOS service lifecycle; and v0.14.0 adds the Windows persistent lifecycle without changing Jev's advisory authority. Jev remains an internal host-Bridge advisor and never gains execution authority.
 
 ## Enable it
 

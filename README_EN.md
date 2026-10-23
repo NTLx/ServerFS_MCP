@@ -12,11 +12,11 @@
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured delegation to native Codex / Claude Code / Qoder runtimes and operator-configured ACP Agents only where you need them.
 
-**Current stable release: v0.21.0**
+**Current stable release: v0.22.0**
 
 v0.21.0 is released, and tag `v0.21.0` points to commit `87494c41c9b98f70dd089223cd152132208d918d`. It adds an internal secret-safe observation contract, bounded process-local Bridge task/queue/lease/recovery metrics, and an explicitly selected sanitized common status projection on native macOS/Windows only. It adds no exporter, network listener, MCP tool, telemetry egress, or authority. Default `service status` output is unchanged; Linux Compose has no native service status projection. The GitHub Release includes three Windows installation wheels and the portable Agent Plugin. See [Phase G release acceptance](docs/v0.21.0-release-acceptance-2026-10-22.md) and [Phase F native evidence](docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md).
 
-**v0.22.0 is currently in release readiness and is not yet published.** The current checkout implements Correlated Agent Diagnostics: `serverfs diagnostics snapshot` provides a bounded Bridge snapshot without task identity, while `serverfs diagnostics task <task-id>` provides a local diagnostic projection for one task. Both reuse the existing private Agent Bridge RPC transports and add no MCP tool, network listener, persistent trace store, OpenTelemetry dependency, or telemetry egress. Diagnostic state stays bounded and process-local inside the Bridge. Phase F acceptance now passes on Linux/VPS, supported macOS, and supported Windows. See the [v0.22 development and acceptance plan](dev_plan_v0.22.md) and the platform Phase F evidence.
+**v0.22.0 is the released current stable version.** It adds Correlated Agent Diagnostics: `serverfs diagnostics snapshot` provides a bounded Bridge snapshot without task identity, while `serverfs diagnostics task <task-id>` provides a local diagnostic projection for one task. Both reuse the existing private Agent Bridge RPC transports and add no MCP tool, network listener, persistent trace store, OpenTelemetry dependency, or telemetry egress. Diagnostic state stays bounded and process-local inside the Bridge. Phase F acceptance passed on Linux/VPS, supported macOS, and supported Windows; Phase G release-readiness acceptance is PASS. See the [v0.22 development and acceptance plan](dev_plan_v0.22.md) and platform Phase F evidence.
 
 v0.19.0 adds generic ACP v1 profiles to the Agent Bridge alongside native Codex, Claude Code, and Qoder runtimes. Operators configure an absolute executable path and fixed argv for each profile; ACP runtimes require `workspace-write`, and tasks cannot override command, argv, or environment. ServerFS does not auto-install or trust Agents from the ACP Registry, and provider authentication remains provider-owned. Model discovery/override, elicitation, client filesystem, and terminal capabilities are unsupported; other capabilities are reported conservatively from measured behavior. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS, and Windows, covering prompts, persisted-session continuation, and active-tool cancellation/cleanup.
 
@@ -65,7 +65,7 @@ For native setup, use the dedicated guides:
 
 The repository now carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
 
-The repository root also contains a portable skills-only [`plugin.json`](plugin.json). Since v0.18.0, each stable tag builds one version-named GitHub Release asset; the current v0.21.0 asset is `serverfs-plugin-v0.21.0.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
+The repository root also contains a portable skills-only [`plugin.json`](plugin.json). Since v0.18.0, each stable tag builds one version-named GitHub Release asset; the current v0.22.0 asset is `serverfs-plugin-v0.22.0.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
 
 ## Quick start
 
@@ -244,12 +244,12 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-The current stable release is **v0.21.0**; v0.20.0 is the previous released stable version.
+The current stable release is **v0.22.0**; v0.21.0 is the previous released stable version.
 
-- Linux images: `ghcr.io/ntlx/serverfs_mcp`; exact v0.21.0 pin: `ghcr.io/ntlx/serverfs_mcp:0.21.0`
-- Stable release tag: `v0.21.0`
+- Linux images: `ghcr.io/ntlx/serverfs_mcp`; exact v0.22.0 pin: `ghcr.io/ntlx/serverfs_mcp:0.22.0`
+- Stable release tag: `v0.22.0`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
-- Portable Agent Plugin: one skills-only `serverfs-plugin-v0.21.0.zip` asset.
+- Portable Agent Plugin: one skills-only `serverfs-plugin-v0.22.0.zip` asset.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; v0.13 has no separate macOS native wheel. v0.13.2 locally builds the small bundled ServiceManagement companion used for persistent per-user services.
 

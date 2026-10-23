@@ -1,6 +1,6 @@
 # ServerFS v0.22.0 Development Plan
 
-Status: **IMPLEMENTED / PHASE F ACCEPTED / PHASE G ACCEPTED / RELEASE READY (UNRELEASED).** v0.21.0 remains the current stable release until an explicit v0.22.0 release action. This document began as the frozen v0.22.0 design and acceptance contract and now also records implementation/acceptance progress without rewriting its original design decisions.
+Status: **IMPLEMENTED / PHASE F ACCEPTED / PHASE G ACCEPTED / RELEASED / CURRENT STABLE.** v0.22.0 is the current stable release. This document began as the frozen v0.22.0 design and acceptance contract and now also records implementation/acceptance progress without rewriting its original design decisions.
 
 Planning date: 2026-10-22. Acceptance update: 2026-10-23.
 
@@ -9,7 +9,7 @@ Current acceptance state:
 - Linux/VPS Phase F: **PASS**. The latest root suite recorded 1,735 passed and 317 skipped; root Ruff and format checks passed. Agent Bridge Ruff/format and pytest passed (459 passed, 15 skipped). Live diagnostics, MCP compatibility, Compose and scratch-image gates passed; Phase E performance evidence remains in its report.
 - Supported macOS Phase F: **PASS**. The accepted full run recorded 1,540 passed and 394 skipped in root, and 428 passed and 46 skipped in Agent Bridge. The later isolated cross-platform test-only checks passed Ruff/format and six affected modules (86 passed, 48 skipped); live AF_UNIX diagnostics snapshot/task acceptance passed.
 - Supported Windows Phase F: **PASS**. Final Windows evidence includes root non-D9 pytest (`1,754 passed, 220 skipped`), root Ruff/format, Agent Bridge pytest (`600 passed, 52 skipped`) plus Bridge Ruff/format, and isolated D9 native lifecycle pytest (`30 passed`) after a zero-active-task proof and temporary release of the production Tunnel mutex. The installed current-user service was restored to enabled/running state.
-- Phase G: **PASS**. Release-facing README/operator/maintainer/site alignment, final stale-current-state and diff checks, and the exact-copy static site build are complete. v0.22.0 is release-ready but remains unreleased; no tag or release is implied by this status.
+- Phase G: **PASS**. Release-facing README/operator/maintainer/site alignment, final stale-current-state and diff checks, and the exact-copy static site build are complete. v0.22.0 is released and current stable.
 
 ## 0. Decision summary
 
