@@ -1,6 +1,6 @@
 # ServerFS v0.22.0 Development Plan
 
-Status: **PLANNED / NOT STARTED.** v0.21.0 is the current stable release. This document freezes the v0.22.0 design and acceptance contract before source implementation begins.
+Status: **INTERNAL ACCEPTANCE IN PROGRESS / NOT RELEASED.** Phase F Linux, macOS, and Windows diagnostics acceptance is recorded. Phase G is not final: Windows D9 is the sole remaining blocker and requires an out-of-band current-user service window. v0.21.0 remains the current stable release; no v0.22.0 tag or release exists.
 
 Planning date: 2026-10-22.
 
@@ -599,6 +599,17 @@ Update current-state README/maintainer/operator/website documentation only after
 ### Phase G — Release readiness
 
 Run all required root/Bridge/platform/site gates, compatibility review, secret/sensitive-output review, stale-current-state scan, and produce a v0.22 acceptance record mapping every frozen criterion in §15 to direct evidence.
+
+Current evidence: Linux and Windows root Ruff/format gates pass at `c1f98b7`; Linux
+full root pytest passes, and Windows non-D9 full root pytest and Bridge gates pass.
+macOS cross-platform test-only Ruff/format and affected-module gates pass at the same
+checkpoint; its previously accepted full Phase F and live AF_UNIX evidence remain valid.
+Windows D9 is the only blocker. The production persistent tunnel owns the single-instance
+mutex, and stopping/restarting the service terminates the Tunnel→supervisor→Bridge/MCP
+chain. No supported Windows current-user command stops only Tunnel while keeping Agent
+Bridge alive. D9 therefore requires an out-of-band current-user service window and
+cannot run from the current ChatGPT→Tunnel→Agent Bridge control path. Phase G remains
+not final until D9 passes; v0.22.0 must remain unreleased and untagged.
 
 No tag/release is created merely by completing this plan. Release remains an explicit maintainer action.
 
