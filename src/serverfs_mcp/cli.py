@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import atexit
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from . import SERVER_VERSION
@@ -163,6 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="also refresh private Agent/Jev/proxy settings from this file before restart",
     )
+    ar.add_argument("--_handover-child", action="store_true", help=argparse.SUPPRESS)
     async_parser = agent_sub.add_parser(
         "sync",
         help="Synchronize serverfs.toml-owned policy into the private Bridge config",
@@ -208,7 +211,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="native",
     )
     service_sub.add_parser("start", help="Register configured persistent services")
-    service_sub.add_parser("restart", help="Unregister then register configured services")
+    service_restart = service_sub.add_parser(
+        "restart", help="Unregister then register configured services"
+    )
+    service_restart.add_argument("--_handover-child", action="store_true", help=argparse.SUPPRESS)
     service_sub.add_parser("stop", help="Unregister configured persistent services")
     service_sub.add_parser(
         "uninstall",
@@ -221,6 +227,7 @@ def build_parser() -> argparse.ArgumentParser:
     service_run = service_sub.add_parser("_run", help=argparse.SUPPRESS)
     service_run.add_argument("--config", required=True, type=Path, help=argparse.SUPPRESS)
     service_run.add_argument("--env-file", required=True, type=Path, help=argparse.SUPPRESS)
+    service_sub.add_parser("_handover-cleanup", help=argparse.SUPPRESS)
     return parser
 
 
@@ -228,6 +235,18 @@ def _fail(message: str) -> int:
     sys.stderr.write(f"serverfs: {message}\n")
     jsonlog.error("cli_failed", reason=message)
     return 2
+
+
+def _register_handover_finalizer(darwin_service) -> None:
+    """Schedule verified cleanup at process exit for every handover-child return path."""
+
+    def finalize() -> None:
+        try:
+            darwin_service.schedule_handover_cleanup()
+        except darwin_service.DarwinServiceError:
+            pass  # schedule_handover_cleanup persists final failure evidence.
+
+    atexit.register(finalize)
 
 
 def _load(path: Path):
@@ -599,7 +618,21 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
                         configure_policy(workdirs, native_settings, env_file=args.env_file)
                 except DarwinBridgePolicyError as exc:
                     return _fail(f"Agent Bridge policy sync failed: {exc}")
-            darwin_service.restart_service(darwin_service.BRIDGE_SERVICE)
+            if bool(getattr(args, "_handover_child", False)):
+                _register_handover_finalizer(darwin_service)
+                try:
+                    darwin_service.restart_service(darwin_service.BRIDGE_SERVICE)
+                except DarwinServiceError as exc:
+                    darwin_service.write_handover_result(ok=False, detail=str(exc), complete=False)
+                    raise
+                darwin_service.write_handover_result(
+                    ok=True, detail="agent-bridge restarted", complete=False
+                )
+            else:
+                darwin_service.schedule_handover("bridge-restart")
+                sys.stderr.write(
+                    "controlled macOS Agent Bridge restart hand-over scheduled via launchd\n"
+                )
             return 0
         if command == "stop":
             darwin_service.unregister_service(darwin_service.BRIDGE_SERVICE)
@@ -701,6 +734,8 @@ def cmd_service(args: argparse.Namespace) -> int:
                 return _fail("service install requires --env-file or a sibling .env")
             env_file = env_file.resolve()
             handover_child = bool(getattr(args, "_handover_child", False))
+            if handover_child:
+                _register_handover_finalizer(darwin_service)
             expected_roots: list[int] | None = None
             if handover_child:
                 raw_roots = (getattr(args, "_handover_roots", None) or "").strip()
@@ -710,12 +745,12 @@ def cmd_service(args: argparse.Namespace) -> int:
                     )
                 except ValueError:
                     darwin_service.write_handover_result(
-                        ok=False, detail="invalid frozen Tunnel root PID list"
+                        ok=False, detail="invalid frozen Tunnel root PID list", complete=False
                     )
                     return _fail("invalid frozen Tunnel root PID list")
                 if any(pid <= 0 for pid in expected_roots):
                     darwin_service.write_handover_result(
-                        ok=False, detail="invalid frozen Tunnel root PID list"
+                        ok=False, detail="invalid frozen Tunnel root PID list", complete=False
                     )
                     return _fail("invalid frozen Tunnel root PID list")
             else:
@@ -736,7 +771,9 @@ def cmd_service(args: argparse.Namespace) -> int:
                     configure_policy(workdirs, native_settings, env_file=env_file)
                 except DarwinBridgePolicyError as exc:
                     if handover_child:
-                        darwin_service.write_handover_result(ok=False, detail=str(exc))
+                        darwin_service.write_handover_result(
+                            ok=False, detail=str(exc), complete=False
+                        )
                     return _fail(f"Agent Bridge configuration failed: {exc}")
             states = darwin_service.install(
                 config_path,
@@ -747,7 +784,7 @@ def cmd_service(args: argparse.Namespace) -> int:
             for service, state in sorted(states.items()):
                 sys.stderr.write(f"{service}: {state}\n")
             if handover_child:
-                darwin_service.write_handover_result(ok=True, detail="installed")
+                darwin_service.write_handover_result(ok=True, detail="installed", complete=False)
             return 0
         if command == "status":
             snapshot = darwin_service.status()
@@ -773,9 +810,29 @@ def cmd_service(args: argparse.Namespace) -> int:
                 sys.stderr.write(f"{service}: {state}\n")
             return 0
         if command == "restart":
-            states = darwin_service.restart()
+            handover_child = bool(getattr(args, "_handover_child", False))
+            if handover_child:
+                _register_handover_finalizer(darwin_service)
+            if not handover_child:
+                manifest = darwin_service._load_manifest_document()
+                if darwin_service.BRIDGE_SERVICE in manifest["services"]:
+                    darwin_service.schedule_handover("restart")
+                    sys.stderr.write("controlled macOS restart hand-over scheduled via launchd\n")
+                    return 0
+            try:
+                states = darwin_service.restart()
+            except DarwinServiceError as exc:
+                if handover_child:
+                    darwin_service.write_handover_result(ok=False, detail=str(exc), complete=False)
+                raise
             for service, state in sorted(states.items()):
                 sys.stderr.write(f"{service}: {state}\n")
+            if handover_child:
+                darwin_service.write_handover_result(ok=True, detail="restarted", complete=False)
+            return 0
+        if command == "_handover-cleanup":
+            time.sleep(1)
+            darwin_service.cleanup_handover_job()
             return 0
         if command == "stop":
             states = darwin_service.stop()
@@ -792,7 +849,12 @@ def cmd_service(args: argparse.Namespace) -> int:
     except DarwinServiceError as exc:
         if command == "install" and bool(getattr(args, "_handover_child", False)):
             try:
-                darwin_service.write_handover_result(ok=False, detail=str(exc))
+                darwin_service.write_handover_result(ok=False, detail=str(exc), complete=False)
+            except DarwinServiceError:
+                pass
+        if command == "restart" and bool(getattr(args, "_handover_child", False)):
+            try:
+                darwin_service.write_handover_result(ok=False, detail=str(exc), complete=False)
             except DarwinServiceError:
                 pass
         return _fail(str(exc))

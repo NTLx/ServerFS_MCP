@@ -1,6 +1,6 @@
 # ServerFS MCP v0.22.1 Maintenance Release Plan
 
-Status: VPS implementation complete; supported-Mac native acceptance pending; not released
+Status: implementation and supported-Mac positive-path acceptance complete; not released
 Baseline: current clean `main` after v0.22.0
 Scope: Linux Agent Bridge installer compatibility, macOS native restart reliability, and maintainer safety guidance
 
@@ -15,6 +15,7 @@ Success means:
 3. Restart failures fail closed instead of being converted into a superficially successful lifecycle result.
 4. Maintainer guidance explicitly forbids using persistent/keepalive `launchctl submit` jobs as one-shot delayed maintenance handoffs and requires bounded one-shot mechanisms plus post-operation cleanup verification.
 5. Linux regression tests and source-level macOS lifecycle tests pass on the VPS; real `SMAppService`/launchd acceptance is performed separately on the supported Mac before release.
+6. When Tunnel+Bridge restart is requested, a launchd-owned one-shot child completes the strict restart and health closure independently of the Bridge-owned caller; final evidence is written only after verified cleanup.
 
 ## 2. Non-goals
 
@@ -89,8 +90,10 @@ Acceptance on VPS:
 Required final macOS acceptance before release:
 
 - build/validate the ServiceManagement companion;
-- run the supported-Mac native lifecycle acceptance for `service restart` with Tunnel-only and Tunnel+Agent-Bridge configurations;
-- verify old PIDs terminate, replacement PIDs appear, Bridge health is usable, no duplicate managed/unmanaged Tunnel tree remains, and failure is surfaced when readiness/health is deliberately withheld.
+- run the supported-Mac positive-path lifecycle acceptance for the changed self-restart boundaries: Bridge-only hand-over and Tunnel+Agent-Bridge hand-over;
+- verify old managed PIDs are replaced where applicable, Bridge health is usable after reconnect, no duplicate managed/unmanaged Tunnel tree remains, and final hand-over success is published only after temporary job/plist cleanup;
+- keep the unchanged Tunnel-only synchronous branch under deterministic regression coverage rather than modifying an active Bridge-enabled installation solely to manufacture a Tunnel-only manifest;
+- cover readiness/health failure propagation deterministically; do not intentionally destabilize the active management path solely for live fault injection when the same fail-closed contract is already exercised by source-level tests.
 
 Linux/VPS evidence must not be presented as real macOS `SMAppService` acceptance.
 
@@ -104,7 +107,7 @@ A one-shot delayed maintenance handoff was mistakenly implemented with a `launch
 
 - Add a durable macOS invariant: normal maintenance must not use persistent/keepalive `launchctl submit` jobs as one-shot delayed actions.
 - In maintainer workflow guidance, require bounded one-shot mechanisms for temporary handoff work and explicit verification that any temporary launchd job/artifact is gone after completion.
-- Preserve the existing rule that raw `launchctl` mutation is limited to narrowly implemented migration/diagnostic code paths rather than ordinary service ownership.
+- Preserve the rule that direct operator/maintainer `launchctl` mutation is not an ordinary service-ownership path; project-owned launchd mutation is limited to the bounded one-shot migration/self-restart hand-over implemented by ServerFS.
 - Keep `AGENTS.md` concise; add only a short repository-wide pointer/rule if needed so delegated maintainers see the hazard without duplicating the detailed procedure.
 
 Acceptance:
@@ -112,7 +115,31 @@ Acceptance:
 - Maintainer docs are internally consistent with the existing macOS platform invariant.
 - No product code is added solely to support temporary `launchctl submit` jobs.
 
-## 6. Implementation order
+## 6. Fix D — Tunnel+Bridge restart handover
+
+### Live acceptance evidence
+
+During supported-Mac v0.22.1 live acceptance, `serverfs service restart` with the managed Agent Bridge registered interrupted its Bridge-owned caller while unregistering the Bridge. The CLI never completed its synchronous restart/readiness/Bridge-health closure. Tunnel-only restart remains synchronous and is not implicated.
+
+### Implementation contract
+
+- Reuse the existing `KeepAlive=false`, `RunAtLoad=false` launchd handover job for Tunnel+Bridge restart. Its arguments are only `serverfs service restart --_handover-child`; it reads the installed private manifest and never guesses config or env paths.
+- Apply the same handover to `serverfs agent-bridge restart` after any requested policy/config synchronization has finished. That child restarts only the Agent Bridge; it does not restart the Tunnel. Its working directory is the product-owned service-manager directory.
+- The child skips handover scheduling, performs the existing strict unregister/register/readiness/Bridge-health closure, and records a private pending result (`complete=false`). A failed operation also records its failure before cleanup.
+- An independent detached cleanup process waits for the operation child, boots out the temporary job, verifies `launchctl print` fails and removes/verifies the temporary plist. Only then may it publish the final result (`complete=true`). Cleanup failure produces final failure evidence while preserving the operation failure. Failure to start cleanup must never produce success.
+- Tunnel-only restart remains direct and synchronous. The temporary job remains one-shot; no `launchctl submit`, `nohup`, root operation, repeating job or recursive handover is introduced.
+- Central child finalization schedules cleanup on every normal child exit, including validation/configuration early returns.
+- Native `serverfs service status` exposes the bounded final handover evidence and whether the temporary job/plist remain; common status projection stays unchanged.
+
+### Regression tests
+
+Cover Bridge restart scheduling without config/env argv, one-shot plist flags, child closure and pending evidence, Tunnel-only direct restart, early-failure cleanup scheduling, operation-failure preservation, final-evidence ordering, and launchd/plist cleanup verification.
+
+### Acceptance boundary
+
+VPS mocked/source-level tests prove orchestration contracts only. Repeat live acceptance on the supported Mac for the changed Bridge-only and Tunnel+Bridge hand-over paths; verify final result is complete only after the temporary launchd job and plist are absent. Keep the unchanged Tunnel-only synchronous branch under deterministic regression coverage unless a Tunnel-only installation is naturally available. Do not claim the interrupted acceptance as a pass.
+
+## 7. Implementation order
 
 1. Freeze this plan and confirm clean baseline.
 2. Implement Fix A with focused regression tests; run the Linux installer gates.
@@ -121,10 +148,11 @@ Acceptance:
 5. Run the combined affected validation set and `git diff --check`.
 6. Review final diff for scope creep and unresolved dirty state.
 7. Hand off only the real native acceptance portion to the Mac environment.
+8. Implement Fix D after the newly observed live-acceptance interruption; rerun focused source-level checks, then repeat the Tunnel+Bridge native acceptance before release.
 
 Each phase stops on a failing gate. Diagnose the demonstrated failure before proceeding; do not weaken tests or invariants to obtain green status.
 
-## 7. Validation gates
+## 8. Validation gates
 
 During implementation use focused tests first. Before declaring the VPS portion complete, run the smallest complete affected set:
 
@@ -157,7 +185,7 @@ uv build --wheel --out-dir /tmp/serverfs-wheel-check
 
 and live current-user `SMAppService` lifecycle acceptance.
 
-## 8. VPS implementation evidence
+## 9. VPS implementation evidence
 
 Implementation and Linux/VPS validation completed on 2026-10-23 with the following measured evidence:
 
@@ -171,16 +199,42 @@ Implementation and Linux/VPS validation completed on 2026-10-23 with the followi
 - `git diff --check` — PASS.
 - Final working-tree review found exactly seven v0.22.1 files and no staged or unrelated dirty state: `dev_plan_v0.22.1.md`, `deployment/agent-bridge/install.sh`, `tests/test_agent_deployment.py`, `src/serverfs_mcp/darwin_service.py`, `tests/test_darwin_service_lifecycle.py`, `docs/maintainers/invariants.md`, and `docs/maintainers/workflow.md`.
 
-These results prove the Linux installer regression fix and source-level macOS lifecycle contract only. Real macOS `SMAppService`, Login Items, launchd process replacement and live Tunnel/Bridge behavior remain **Not verified** until the supported-Mac acceptance above is executed.
+These results were the pre-Fix-D Linux/VPS evidence. The supported-Mac implementation and acceptance evidence is recorded below.
 
-## 9. Completion contract
+## 10. Supported-Mac implementation and acceptance evidence
+
+Fix D was implemented and validated on the supported Apple Silicon/macOS 27 environment on 2026-10-23.
+
+Source/build gates:
+
+- macOS ServiceManagement companion build and signature validation — PASS.
+- `uv build --wheel --out-dir /tmp/serverfs-wheel-check` — PASS; produced `serverfs_mcp-0.22.0-py3-none-any.whl` for source validation without changing release metadata.
+- Final Darwin-focused suite (`test_darwin_lifecycle.py`, `test_darwin_service.py`, `test_darwin_service_lifecycle.py`, `test_darwin_cli.py`) — **65 passed**.
+- Root `uv run ruff check .` — PASS.
+- Root `uv run ruff format --check .` — PASS; **452 files already formatted**.
+- Root `uv run pytest` after repairing the macOS test-isolation boundary — **1566 passed, 395 skipped, 1 warning** in 65.18s.
+- `git diff --check` — PASS.
+
+The first full-root pytest attempt exposed a test-isolation defect: two legacy `agent-bridge restart` tests still mocked the old inline `restart_service()` boundary, so the new parent path could schedule a real hand-over on the developer Mac. `tests/test_darwin_lifecycle.py` was updated to mock `schedule_handover()` and explicitly fail if the parent attempts an inline Bridge restart. The subsequent full-root suite reached 100% without another Bridge shutdown.
+
+Live hand-over evidence:
+
+- A Bridge-only hand-over completed with native status evidence `complete=true`, `ok=true`, `job_loaded=false`, `plist_exists=false`, detail `agent-bridge restarted`; the Bridge was usable again through a new Agent task after replacement.
+- Before the explicit Tunnel+Bridge restart, managed PIDs were Tunnel **70792** and Agent Bridge **77811**.
+- `serverfs service restart` intentionally interrupted its Bridge-owned caller while the launchd-owned one-shot child continued the operation.
+- After reconnection, managed PIDs were Tunnel **79300** and Agent Bridge **79297**; both registration states were `enabled`, `unmanaged_tunnel_pids=[]`, and a new Agent task executed successfully.
+- Final native hand-over evidence was `complete=true`, `ok=true`, detail `restarted`, `job_loaded=false`, `plist_exists=false`. The hand-over introduced no additional repository files.
+
+This proves the positive-path self-restart hand-over and verified cleanup on the supported Mac. Deliberately withholding live Bridge readiness/health was not performed because that would intentionally destabilize the active management path; deterministic regression tests cover readiness/health failure propagation and cleanup-failure evidence instead.
+
+## 11. Completion contract
 
 The VPS implementation phase is complete only when:
 
-- every changed line is traceable to Fix A, B, or C;
+- every changed line is traceable to Fix A, B, C, or D;
 - focused tests and applicable lint/format/shell checks pass;
 - final diff contains no unrelated cleanup;
 - documentation explicitly distinguishes VPS source/test evidence from unexecuted Mac native acceptance;
 - the remaining Mac acceptance steps are concrete and reproducible.
 
-Release status remains **not released** until the separate Mac acceptance and normal release workflow are explicitly authorized and completed.
+Release status remains **not released** until the normal release workflow is explicitly authorized and completed.

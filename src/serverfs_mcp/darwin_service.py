@@ -780,14 +780,31 @@ def _bootout_handover_job() -> None:
             timeout=10,
             check=False,
         )
-    except (OSError, subprocess.SubprocessError):
-        pass
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DarwinServiceError("temporary macOS hand-over job could not be unloaded") from exc
+    probe = subprocess.run(
+        ["launchctl", "print", _handover_label_target()],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    if probe.returncode == 0:
+        raise DarwinServiceError("temporary macOS hand-over job remains loaded")
 
 
-def write_handover_result(*, ok: bool, detail: str) -> None:
+def _remove_handover_artifacts() -> None:
+    _bootout_handover_job()
+    handover_plist_path().unlink(missing_ok=True)
+    if handover_plist_path().exists():
+        raise DarwinServiceError("temporary macOS hand-over plist remains")
+
+
+def write_handover_result(*, ok: bool, detail: str, complete: bool = True) -> None:
     payload = {
         "schema_version": HANDOVER_SCHEMA_VERSION,
         "ok": ok,
+        "complete": complete,
         "detail": detail,
         "timestamp": time.time(),
     }
@@ -797,13 +814,19 @@ def write_handover_result(*, ok: bool, detail: str) -> None:
     )
 
 
-def schedule_handover_install(config_path: Path, env_file: Path, root_pids: list[int]) -> None:
-    """Run a lifecycle-sensitive install in a one-shot launchd job.
+def schedule_handover(
+    operation: str,
+    config_path: Path | None = None,
+    env_file: Path | None = None,
+    root_pids: list[int] | None = None,
+) -> None:
+    """Run a lifecycle-sensitive operation in an independent one-shot launchd job.
 
-    ``root_pids`` may be empty when only the legacy Agent Bridge needs to be replaced. The
-    launchd-owned child is still required so booting out the old Bridge cannot terminate the
-    process that is performing the migration.
+    An install may provide frozen unmanaged Tunnel roots. Restart is scheduled only when the
+    managed Agent Bridge is present, so Bridge unregister cannot terminate its caller.
     """
+    if operation not in {"install", "restart", "bridge-restart"}:
+        raise DarwinServiceError("unsupported macOS hand-over operation")
     _ensure_private_dir(service_home())
     _ensure_private_dir(service_log_dir())
     _bootout_handover_job()
@@ -811,29 +834,37 @@ def schedule_handover_install(config_path: Path, env_file: Path, root_pids: list
         handover_result_path().unlink()
     except FileNotFoundError:
         pass
+    command = (
+        ["service", "restart"]
+        if operation == "restart"
+        else ["agent-bridge", "restart"]
+        if operation == "bridge-restart"
+        else ["service", "install"]
+    )
+    arguments = [str(Path(sys.executable).absolute()), "-m", "serverfs_mcp.cli", *command]
+    if operation == "install":
+        if config_path is None or env_file is None:
+            raise DarwinServiceError("install hand-over requires config and env paths")
+        arguments.extend(
+            ["--config", str(config_path.resolve()), "--env-file", str(env_file.resolve())]
+        )
+    arguments.append("--_handover-child")
     document = {
         "Label": HANDOVER_LABEL,
-        "ProgramArguments": [
-            str(Path(sys.executable).absolute()),
-            "-m",
-            "serverfs_mcp.cli",
-            "service",
-            "install",
-            "--config",
-            str(config_path.resolve()),
-            "--env-file",
-            str(env_file.resolve()),
-            "--_handover-child",
-            "--_handover-roots",
-            ",".join(str(pid) for pid in root_pids),
-        ],
-        "WorkingDirectory": str(config_path.resolve().parent),
+        "ProgramArguments": arguments,
+        "WorkingDirectory": str(
+            config_path.resolve().parent if config_path else service_home().resolve()
+        ),
         "RunAtLoad": False,
         "KeepAlive": False,
         "ProcessType": "Background",
         "StandardOutPath": str(service_log_dir() / "handover.stdout.log"),
         "StandardErrorPath": str(service_log_dir() / "handover.stderr.log"),
     }
+    if operation == "install":
+        document["ProgramArguments"].extend(
+            ["--_handover-roots", ",".join(str(pid) for pid in (root_pids or []))]
+        )
     _atomic_private_write(handover_plist_path(), plistlib.dumps(document, fmt=plistlib.FMT_XML))
     domain = f"gui/{os.getuid()}"
     try:
@@ -845,6 +876,10 @@ def schedule_handover_install(config_path: Path, env_file: Path, root_pids: list
             check=False,
         )
         if bootstrapped.returncode != 0:
+            _remove_handover_artifacts()
+            write_handover_result(
+                ok=False, detail="temporary macOS hand-over job could not be bootstrapped"
+            )
             raise DarwinServiceError("temporary macOS hand-over job could not be bootstrapped")
         started = subprocess.run(
             ["launchctl", "kickstart", _handover_label_target()],
@@ -854,13 +889,81 @@ def schedule_handover_install(config_path: Path, env_file: Path, root_pids: list
             check=False,
         )
         if started.returncode != 0:
-            _bootout_handover_job()
+            _remove_handover_artifacts()
+            write_handover_result(
+                ok=False, detail="temporary macOS hand-over job could not be started"
+            )
             raise DarwinServiceError("temporary macOS hand-over job could not be started")
     except (OSError, subprocess.SubprocessError) as exc:
-        _bootout_handover_job()
+        try:
+            _remove_handover_artifacts()
+        except DarwinServiceError as cleanup_exc:
+            write_handover_result(
+                ok=False,
+                detail=(
+                    f"handover scheduling failed ({type(exc).__name__}); "
+                    f"cleanup failed: {cleanup_exc}"
+                ),
+            )
+            raise
+        write_handover_result(ok=False, detail=f"handover scheduling failed ({type(exc).__name__})")
         raise DarwinServiceError(
             f"temporary macOS hand-over job failed ({type(exc).__name__})"
         ) from exc
+
+
+def schedule_handover_install(config_path: Path, env_file: Path, root_pids: list[int]) -> None:
+    """Compatibility wrapper for the install hand-over path."""
+    schedule_handover("install", config_path, env_file, root_pids)
+
+
+def cleanup_handover_job() -> None:
+    """Unload the one-shot job, verify cleanup, and publish final operation evidence."""
+    pending_ok = False
+    pending_detail = "operation child produced no pending result"
+    try:
+        pending = json.loads(handover_result_path().read_text(encoding="utf-8"))
+        if pending.get("complete") is False and isinstance(pending.get("ok"), bool):
+            pending_ok = pending["ok"]
+            pending_detail = str(pending.get("detail", "operation completed"))
+    except (OSError, ValueError, AttributeError):
+        pass
+    try:
+        _remove_handover_artifacts()
+    except (OSError, subprocess.SubprocessError, DarwinServiceError) as exc:
+        detail = f"{pending_detail}; cleanup failed: {exc}"
+        write_handover_result(ok=False, detail=detail)
+        if isinstance(exc, DarwinServiceError):
+            raise
+        raise DarwinServiceError("temporary macOS hand-over cleanup could not be verified") from exc
+    write_handover_result(ok=pending_ok, detail=pending_detail)
+
+
+def schedule_handover_cleanup() -> None:
+    """Start an independent bounded process to unload the completed launchd job."""
+    try:
+        subprocess.Popen(
+            [
+                str(Path(sys.executable).absolute()),
+                "-m",
+                "serverfs_mcp.cli",
+                "service",
+                "_handover-cleanup",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except OSError as exc:
+        try:
+            pending = json.loads(handover_result_path().read_text(encoding="utf-8"))
+            previous = str(pending.get("detail", "operation result unavailable"))
+        except (OSError, ValueError, AttributeError):
+            previous = "operation result unavailable"
+        write_handover_result(ok=False, detail=f"{previous}; cleanup helper could not start")
+        raise DarwinServiceError("temporary macOS hand-over cleanup could not be started") from exc
 
 
 def _terminate_frozen_unmanaged_tunnel(root_pids: list[int]) -> None:
@@ -1096,6 +1199,7 @@ def status() -> dict[str, object]:
         "unmanaged_tunnel_pids": find_unmanaged_tunnel_pids(),
         "processes": {service: {"pid": _managed_job_pid(service)} for service in ALL_SERVICES},
         "log_dir": str(service_log_dir()),
+        "handover": _handover_status(),
         "build_tools": {
             tool: shutil.which(tool) is not None for tool in ("xcrun", "codesign", "plutil")
         },
@@ -1124,3 +1228,33 @@ def status() -> dict[str, object]:
         result["services"] = {service: "not-installed" for service in ALL_SERVICES}
         result["bundle_version"] = ""
     return result
+
+
+def _handover_status() -> dict[str, object]:
+    try:
+        document = json.loads(handover_result_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        document = {}
+    if not isinstance(document, dict):
+        document = {}
+    try:
+        loaded = (
+            subprocess.run(
+                ["launchctl", "print", _handover_label_target()],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.SubprocessError):
+        loaded = None
+    return {
+        "complete": document.get("complete"),
+        "ok": document.get("ok"),
+        "detail": document.get("detail"),
+        "timestamp": document.get("timestamp"),
+        "job_loaded": loaded,
+        "plist_exists": handover_plist_path().exists(),
+    }

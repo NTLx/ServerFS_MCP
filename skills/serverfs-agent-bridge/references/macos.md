@@ -13,6 +13,8 @@ serverfs doctor --config serverfs.toml
 
 Persistent Bridge ownership is through the app-associated current-user ServiceManagement lifecycle. Do not resurrect the retired `serverfs agent-bridge install` path or hand-install legacy LaunchAgent plists.
 
+On current macOS lifecycle builds, `serverfs agent-bridge restart` completes any requested policy/private-state synchronization in the caller and then schedules a bounded one-shot hand-over to restart only the Bridge. The caller may lose its current Agent session while the Bridge is replaced. Reconnect and use native `serverfs service status`; treat the restart as complete only when `handover.complete=true`, `handover.ok=true`, `handover.job_loaded=false`, and `handover.plist_exists=false`.
+
 Respect Login Items/TCC user decisions; do not bypass them.
 
 ACP v1 profiles are included in released v0.19.0. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for the full workflow. Profiles are operator-owned absolute executable paths with fixed argv, configured through `[[agent.acp_profiles]]`; task callers cannot override command/argv/environment. Require explicit `workspace-write` workdir authorization. Runtime listing/probe must not launch the Agent. ACP task children use POSIX process-group stop semantics; retain the recovery guard and writer lease if stopping the group cannot be proven. OpenCode 2.1.2 acceptance is recorded across Linux, macOS, and Windows; do not generalize that evidence to all ACP Agents or versions.

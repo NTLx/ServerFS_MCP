@@ -69,9 +69,11 @@ serverfs service stop
 serverfs service uninstall
 ```
 
-### 通用状态格式（v0.22.0）
+当已安装 manifest 包含 Agent Bridge 时，`service restart` 会使用有界、一次性的 launchd hand-over，使 Bridge 注销不会终止负责完成重启的进程。初始命令只表示 hand-over 已调度；重新连接后应运行 `serverfs service status`，并要求原生 `handover` 证据达到 `complete=true`、`ok=true`、`job_loaded=false`、`plist_exists=false`。仅 Tunnel 的重启仍保持同步执行。`serverfs agent-bridge restart` 在完成所请求的 policy/private-state 同步后使用同一有界 hand-over，并且只重启 Bridge。
 
-默认 `service status` detail/JSON 保持不变。运营者可显式运行 `serverfs service status --format common-json` 或 `serverfs service status --format common-human` 请求有界、脱敏的通用投影。输出不包含路径、PID、任务名或私有 ID；无法确认时使用 `unknown`/`not-checked`，不会臆测健康状态。更深入的平台与配置诊断请使用 `serverfs doctor`。详见 [Phase F 验收与限制](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-macos-acceptance-2026-10-22.md)。
+### 通用状态格式
+
+默认原生 `service status` JSON 会包含有界的 hand-over 证据。运营者可显式运行 `serverfs service status --format common-json` 或 `serverfs service status --format common-human` 请求脱敏的通用投影。输出不包含路径、PID、任务名、私有 ID 或原生 hand-over 细节；无法确认时使用 `unknown`/`not-checked`，不会臆测健康状态。更深入的平台与配置诊断请使用 `serverfs doctor`。详见 [Phase F 验收与限制](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-macos-acceptance-2026-10-22.md)。
 
 如果 macOS 返回 `requires-approval`，ServerFS 会尊重用户授权状态，不绕过系统设置。可直接打开对应设置页：
 

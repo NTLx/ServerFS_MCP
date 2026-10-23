@@ -59,7 +59,9 @@ serverfs service stop
 serverfs service uninstall
 ```
 
-In v0.21.0, the default `service status` detail/JSON is unchanged. For a bounded, sanitized common projection, explicitly select `--format common-json` or `--format common-human`; it omits paths, PIDs, task names and private IDs, and reports `unknown`/`not-checked` rather than inferring health. Use `serverfs doctor` for deeper platform/configuration diagnostics. Phase F acceptance limits: [v0.21.0 native acceptance](../../docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md).
+When the installed manifest includes Agent Bridge, `service restart` uses a product-owned, one-shot launchd hand-over so unregistering the Bridge cannot terminate the process that must finish the restart. The parent command reports that the hand-over was scheduled; reconnect and run `serverfs service status` to verify the native `handover` evidence reaches `complete=true`, `ok=true`, `job_loaded=false` and `plist_exists=false`. Tunnel-only restart remains synchronous. `serverfs agent-bridge restart` uses the same bounded hand-over after any requested policy/private-state synchronization and restarts only the Bridge.
+
+The default native `service status` JSON includes this bounded hand-over evidence. For a sanitized common projection, explicitly select `--format common-json` or `--format common-human`; it omits paths, PIDs, task names, private IDs and the native hand-over detail, and reports `unknown`/`not-checked` rather than inferring health. Use `serverfs doctor` for deeper platform/configuration diagnostics. Phase F acceptance limits: [v0.21.0 native acceptance](../../docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md).
 
 `uninstall` removes only v0.13.2-owned registration/runtime artifacts; operator configuration and
 normal ServerFS data are preserved.

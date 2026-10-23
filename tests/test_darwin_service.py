@@ -235,6 +235,82 @@ def test_schedule_handover_allows_bridge_only_transition(
     assert document["ProgramArguments"][-2:] == ["--_handover-roots", ""]
 
 
+def test_schedule_restart_handover_has_no_config_or_env_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(darwin_service, "service_home", lambda: tmp_path / "service-manager")
+    python = tmp_path / "python"
+    python.write_text("", encoding="utf-8")
+    monkeypatch.setattr(darwin_service.sys, "executable", str(python))
+    monkeypatch.setattr(darwin_service, "_bootout_handover_job", lambda: None)
+    monkeypatch.setattr(
+        darwin_service.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, stdout="", stderr=""),
+    )
+
+    darwin_service.schedule_handover("restart")
+
+    document = darwin_service.plistlib.loads(darwin_service.handover_plist_path().read_bytes())
+    assert document["KeepAlive"] is False
+    assert document["ProgramArguments"][-3:] == ["service", "restart", "--_handover-child"]
+    assert "--config" not in document["ProgramArguments"]
+    assert "--env-file" not in document["ProgramArguments"]
+
+
+def test_cleanup_publishes_success_only_after_job_and_plist_are_gone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "service-manager"
+    monkeypatch.setattr(darwin_service, "service_home", lambda: home)
+    home.mkdir()
+    darwin_service.write_handover_result(ok=True, detail="restarted", complete=False)
+    darwin_service.handover_plist_path().write_text("plist", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def run(command, **_kwargs):
+        calls.append(list(command))
+        if command[1] == "print":
+            return subprocess.CompletedProcess(command, 113, stdout="", stderr="not found")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(darwin_service.subprocess, "run", run)
+
+    darwin_service.cleanup_handover_job()
+
+    result = json.loads(darwin_service.handover_result_path().read_text(encoding="utf-8"))
+    assert result["complete"] is True
+    assert result["ok"] is True
+    assert calls == [
+        ["launchctl", "bootout", darwin_service._handover_label_target()],
+        ["launchctl", "print", darwin_service._handover_label_target()],
+    ]
+    assert not darwin_service.handover_plist_path().exists()
+
+
+def test_cleanup_preserves_operation_failure_and_records_cleanup_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "service-manager"
+    monkeypatch.setattr(darwin_service, "service_home", lambda: home)
+    home.mkdir()
+    darwin_service.write_handover_result(ok=False, detail="bridge health failed", complete=False)
+    darwin_service.handover_plist_path().write_text("plist", encoding="utf-8")
+
+    def run(command, **_kwargs):
+        return subprocess.CompletedProcess(command, 0, stdout="loaded", stderr="")
+
+    monkeypatch.setattr(darwin_service.subprocess, "run", run)
+    with pytest.raises(darwin_service.DarwinServiceError, match="remains loaded"):
+        darwin_service.cleanup_handover_job()
+
+    result = json.loads(darwin_service.handover_result_path().read_text(encoding="utf-8"))
+    assert result["complete"] is True
+    assert result["ok"] is False
+    assert "bridge health failed" in result["detail"]
+    assert "cleanup failed" in result["detail"]
+
+
 def test_bridge_only_handover_prepares_without_terminating_tunnel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

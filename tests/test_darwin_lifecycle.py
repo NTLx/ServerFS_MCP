@@ -116,14 +116,19 @@ class TestBridgePolicyLifecycle:
         )
         monkeypatch.setattr(
             darwin_service,
+            "schedule_handover",
+            lambda operation: calls.append(f"handover:{operation}"),
+        )
+        monkeypatch.setattr(
+            darwin_service,
             "restart_service",
-            lambda _service: calls.append("restart"),
+            lambda _service: pytest.fail("parent restart must hand over before stopping Bridge"),
         )
 
         code = cli.main(["agent-bridge", "restart", "--config", str(config)])
 
         assert code == 0
-        assert calls == ["sync", "restart"]
+        assert calls == ["sync", "handover:bridge-restart"]
 
     def test_restart_with_env_file_configures_private_state_before_restart(
         self, tmp_path, monkeypatch
@@ -141,8 +146,13 @@ class TestBridgePolicyLifecycle:
         monkeypatch.setattr(darwin_bridge_policy, "configure_policy", configure)
         monkeypatch.setattr(
             darwin_service,
+            "schedule_handover",
+            lambda operation: calls.append((f"handover:{operation}", None)),
+        )
+        monkeypatch.setattr(
+            darwin_service,
             "restart_service",
-            lambda _service: calls.append(("restart", None)),
+            lambda _service: pytest.fail("parent restart must hand over before stopping Bridge"),
         )
 
         code = cli.main(
@@ -157,4 +167,4 @@ class TestBridgePolicyLifecycle:
         )
 
         assert code == 0
-        assert calls == [("configure", env_file), ("restart", None)]
+        assert calls == [("configure", env_file), ("handover:bridge-restart", None)]

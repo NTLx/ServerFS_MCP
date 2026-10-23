@@ -70,9 +70,11 @@ serverfs service stop
 serverfs service uninstall
 ```
 
-### Common status formats (v0.22.0)
+When Agent Bridge is part of the installed manifest, `service restart` uses a bounded one-shot launchd hand-over so the Bridge can be unregistered without terminating the process responsible for completing the restart. The initial command reports that the hand-over was scheduled. After reconnecting, run `serverfs service status` and require the native `handover` evidence to show `complete=true`, `ok=true`, `job_loaded=false` and `plist_exists=false`. Tunnel-only restart remains synchronous. `serverfs agent-bridge restart` uses the same bounded hand-over after requested policy/private-state synchronization and restarts only the Bridge.
 
-The default `service status` detail/JSON is unchanged. Operators may explicitly run `serverfs service status --format common-json` or `serverfs service status --format common-human` for a bounded, sanitized projection. It omits paths, PIDs, task names and private IDs, and uses `unknown`/`not-checked` rather than inventing health. Use `serverfs doctor` for deeper platform/configuration diagnostics. See [Phase F acceptance and limits](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-macos-acceptance-2026-10-22.md).
+### Common status formats
+
+The default native `service status` JSON includes bounded hand-over evidence. Operators may explicitly run `serverfs service status --format common-json` or `serverfs service status --format common-human` for a sanitized projection. It omits paths, PIDs, task names, private IDs and native hand-over detail, and uses `unknown`/`not-checked` rather than inventing health. Use `serverfs doctor` for deeper platform/configuration diagnostics. See [Phase F acceptance and limits](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-macos-acceptance-2026-10-22.md).
 
 If macOS reports `requires-approval`, ServerFS respects that user decision. Open the exact settings pane with:
 
