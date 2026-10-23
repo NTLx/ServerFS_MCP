@@ -7,7 +7,7 @@ description: Enable workdir Agent delegation; operate Bridge lifecycle, native C
 
 Agent delegation is an explicit optional capability. Preserve the two-process security boundary, per-workdir authorization, provider-native ownership and current-user lifecycle.
 
-The current published stable is v0.19.0, including generic ACP v1 profiles. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete configuration and operations. Native `codex`, `claude` and `qoder` adapters remain distinct from operator-configured `acp-<id>` profiles.
+The current published stable is v0.21.0. Generic ACP v1 profiles were introduced in v0.19.0 and remain distinct from native `codex`, `claude` and `qoder` adapters. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete configuration and operations.
 
 ## When to use
 
@@ -90,6 +90,14 @@ Load only the matching branch after identifying the deployment and requested mod
 - Linux / Docker + host Bridge: read [linux branch](references/linux.md) before platform/mode-specific changes.
 - Windows native: read [windows branch](references/windows.md) before platform/mode-specific changes.
 - macOS native: read [macos branch](references/macos.md) before platform/mode-specific changes.
+
+## Correlated Agent Diagnostics (v0.22+ / feature-detect)
+
+These diagnostics are available only in versions that implement the v0.22 feature; they are not a v0.21 capability. First check the installed version or inspect `serverfs diagnostics --help` (or the equivalent CLI capability listing). Proceed only when the commands are advertised by the target installation.
+
+When supported, use `serverfs diagnostics snapshot --format json` for a bounded Bridge snapshot and `serverfs diagnostics task <task-id> --format json` for one retained task. Omitting `--format json` selects human rendering. The CLI uses the existing private Bridge RPC; this does not add a public MCP tool or listener. Diagnostic state is bounded and process-local. Task disposition distinguishes `available`, `unknown_task`, `not_retained`, and CLI-level `bridge_unavailable`. A Bridge restart does not fabricate pre-restart history; unavailable prior state remains unavailable.
+
+Treat these outputs as diagnostic evidence, not persistent task history. If capability detection fails, use the target version's supported status/runtime surfaces and continue with the matching diagnostic workflow; do not invoke commands absent from its help.
 
 ## Safety / stop conditions
 

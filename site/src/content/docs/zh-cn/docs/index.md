@@ -7,7 +7,7 @@ ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux
 
 当前稳定版本：**v0.21.0**。ServerFS 现在以标准 MCP 为中心：兼容 MCP 的宿主可使用原生 stdio 或标准 Streamable HTTP；OpenAI Secure MCP Tunnel 继续作为可选的 ChatGPT 入口。Linux、Windows 与 macOS 继续共享同一套文件系统、二进制与 Agent 能力契约。
 
-v0.21.0 是当前稳定版本，v0.20.0 是此前发布的稳定版本。v0.21 增加 secret-safe 观测契约、有界的进程内 Bridge 指标，以及仅限原生 macOS/Windows、显式启用的脱敏 common status projection；不增加 exporter、监听端口、MCP tool、telemetry egress 或 authority。默认原生 `service status` 输出不变，Linux Compose 不会伪造原生生命周期状态。详见 [Phase G 验收记录](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.21.0-release-acceptance-2026-10-22.md)和 [Phase F 原生平台证据](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md)。
+v0.21.0 是当前稳定版本，v0.20.0 是此前发布的稳定版本。v0.21 增加 secret-safe 观测契约、有界的进程内 Bridge 指标，以及仅限原生 macOS/Windows、显式启用的脱敏 common status projection；不增加 exporter、监听端口、MCP tool、telemetry egress 或 authority。默认原生 `service status` 输出不变，Linux Compose 不会伪造原生生命周期状态。v0.22.0 的 Phase G 发布就绪验收已通过（PASS），但该版本尚未发布，当前稳定版仍为 v0.21.0。详见 [v0.22 Phase G 预检](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-g-preflight-2026-10-22.md)、[v0.21 Phase G 验收记录](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.21.0-release-acceptance-2026-10-22.md)和 [v0.21 Phase F 原生平台证据](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.21.0-phase-f-native-acceptance-2026-10-22.md)。
 
 **v0.22.0 当前处于发布准备阶段，尚未发布。** 当前 checkout 通过既有 Agent Bridge 私有 RPC 增加 Correlated Agent Diagnostics：`serverfs diagnostics snapshot` 提供有界的 Bridge 诊断快照，`serverfs diagnostics task <task-id>` 提供单个已保留任务的本地诊断投影。诊断状态仅驻留于 Bridge 进程内并保持有界；不新增 MCP tool、监听端口、持久 trace store、OpenTelemetry 依赖或 telemetry egress。Linux/VPS、受支持 macOS 与受支持 Windows 的 Phase F 均已通过。
 

@@ -11,7 +11,7 @@ v0.13.2 保持 Darwin 文件系统和 Agent 协议实现为 Python，只将旧�
 SMAppService / launchd
   +-- com.ntlx.serverfs.tunnel
   |    -> serverfs tunnel
-  |         -> 固定版本 tunnel-client（darwin-arm64）
+  |         -> 默认使用实测版本的 tunnel-client（darwin-arm64）
   |              -> sanitizer supervisor
   |                   -> serverfs serve
   |                        -> Darwin FD 后端
@@ -48,7 +48,7 @@ serverfs doctor --config serverfs.toml
 # serverfs bootstrap tunnel-client --version vX.Y.Z --manifest-sha256 <sha256>
 ```
 
-该实测版本是默认基线，不是兼容性锁定。
+默认使用实测版本作为基线，这不是兼容性锁定。
 
 然后安装持久化的用户服务：
 

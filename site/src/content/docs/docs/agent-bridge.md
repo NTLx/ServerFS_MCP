@@ -7,7 +7,9 @@ The Agent Bridge is an **optional host-side boundary**. It exposes structured Ag
 
 OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS and Windows, covering prompt, persisted-session continuation, and active-tool cancellation/cleanup.
 
-The unreleased v0.22 checkout also adds bounded process-local Agent diagnostics over the existing private Bridge RPC. Use `serverfs diagnostics snapshot --format json` for a Bridge-wide snapshot and `serverfs diagnostics task <task-id> --format json` for one retained task; omit `--format json` for human rendering. These commands add no public MCP tool, listener, persistent trace store, OpenTelemetry dependency, or telemetry egress. Task diagnostics can distinguish `available`, `unknown_task`, `not_retained`, and CLI-level `bridge_unavailable`; a Bridge restart never fabricates pre-restart history.
+## Correlated Agent Diagnostics (v0.22+, unreleased)
+
+The unreleased v0.22 checkout adds bounded process-local Agent diagnostics over the existing private Bridge RPC. These commands are available only when the installed version advertises them; feature-detect through the version or `serverfs diagnostics --help` before use. Use `serverfs diagnostics snapshot --format json` for a Bridge-wide snapshot and `serverfs diagnostics task <task-id> --format json` for one retained task; omit `--format json` for human rendering. These commands add no public MCP tool, listener, persistent trace store, OpenTelemetry dependency, or telemetry egress. Task diagnostics can distinguish `available`, `unknown_task`, `not_retained`, and CLI-level `bridge_unavailable`; a Bridge restart never fabricates pre-restart history. This is not a v0.21 capability guarantee.
 
 ```text
 ChatGPT

@@ -71,6 +71,7 @@ Historical `dev_plan_v*.md` files are evidence of past releases, not current-sta
    - Tunnel: route to `serverfs-tunnel` and use its layered health evidence;
    - API Key/OAuth: route to `serverfs-auth` after confirming the configured mode;
    - Agent tools/runtime: route to `serverfs-agent-bridge` after confirming Agent policy and Bridge status.
+   - For Agent problems, follow the **Correlated Agent Diagnostics (v0.22+ / feature-detect)** section in `skills/serverfs-agent-bridge/SKILL.md`: check the installed version or `serverfs diagnostics --help` (or equivalent capability listing) first. Only when advertised, use `serverfs diagnostics snapshot --format json` and `serverfs diagnostics task <task-id> --format json`. These are not v0.21 guarantees; fall back to the version-supported Agent status/runtime surfaces when absent.
 5. **Bound logs and redact.** Read only the recent logs needed to explain the failure. Never dump `.env`, provider environment, keys, bearer tokens or unrestricted logs. Retain only redacted evidence tied to the observed symptom.
 6. **Form one evidence-backed diagnosis.** If evidence supports multiple causes, state what would distinguish them before changing anything. Finish this step with a supported cause or a specific read-only check that distinguishes the remaining hypotheses.
 7. **Remediate only when authorized.** Apply the smallest correction using the subsystem's dedicated skill, then repeat the original failing check. Report the repeated check’s observed result; unresolved or unexecuted checks remain explicit blockers.
@@ -97,9 +98,11 @@ Run the ServerFS executable from the stable current-user connector environment a
 ```powershell
 & $serverfs doctor --config serverfs.toml
 & $serverfs service status
+& $serverfs service status --format common-json
+# Or: --format common-human
 ```
 
-The intended persistent owner is the current-user Task Scheduler lifecycle. Do not substitute SCM/LocalSystem, Administrator execution, a repository `.venv`, or the legacy manual launcher as a repair shortcut.
+The opt-in v0.21 `common-json`/`common-human` formats provide a bounded, sanitized status projection. They omit sensitive identifiers and use `unknown`/`not-checked` when a fact is unavailable; they do not replace `doctor` or its configuration-aware checks. The default status output remains unchanged. The intended persistent owner is the current-user Task Scheduler lifecycle. Do not substitute SCM/LocalSystem, Administrator execution, a repository `.venv`, or the legacy manual launcher as a repair shortcut.
 
 ### macOS native
 
@@ -108,7 +111,11 @@ Use the supported native CLI surfaces:
 ```bash
 serverfs doctor --config serverfs.toml
 serverfs service status
+serverfs service status --format common-json
+# Or: serverfs service status --format common-human
 ```
+
+The opt-in v0.21 `common-json`/`common-human` formats provide a bounded, sanitized status projection. They omit sensitive identifiers and use `unknown`/`not-checked` when a fact is unavailable; they do not replace `serverfs doctor` or its configuration-aware checks. The default status output remains unchanged.
 
 If status reports that background-item approval is required, that is a user-controlled macOS state. Use `serverfs service open-settings` only when remediation is requested; do not bypass approval with raw launchd/root mechanisms.
 

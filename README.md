@@ -65,7 +65,7 @@ macOS v0.13 的支持边界有意保持严格：目前不声明支持 Intel Mac�
 
 仓库现已提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
 
-仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。从 v0.18.0 开始，稳定标签会构建一个随版本命名的 GitHub Release 资产；v0.19.0 资产为 `serverfs-plugin-v0.19.0.zip`，其中包含 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
+仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。当前 v0.21.0 GitHub Release 资产为 `serverfs-plugin-v0.21.0.zip`，包含 7 个运行时 Skill 及其打包引用；v0.19.0 是历史版本。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
 
 ## 快速开始
 
