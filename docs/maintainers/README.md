@@ -4,7 +4,7 @@
 
 ## Current release
 
-- **v0.22.0 is the current stable release; v0.22.1 is the prepared next maintenance release and is not published.**
+- **v0.22.1 is the current stable release.**
 - **v0.22.0 is the previous released stable version.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
@@ -57,7 +57,7 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.21.0** — an earlier stable release; introduced the secret-safe observation contract, bounded process-local Bridge metrics, and the opt-in sanitized common native status projection while keeping diagnostics/exporters outside the public MCP surface.
 - **v0.22.0** — previous stable release; adds bounded process-local Correlated Agent Diagnostics through private Bridge RPC only: `diagnostics snapshot` and per-task diagnostics, with no new MCP tool, listener, trace persistence, OpenTelemetry dependency or telemetry egress. Phase F is accepted on Linux/VPS, supported macOS and supported Windows, and Phase G release-readiness acceptance is PASS; see [`dev_plan_v0.22.md`](../../dev_plan_v0.22.md) and the v0.22 acceptance evidence.
 
-- **v0.22.1 (prepared, not published)** — next maintenance release for the Linux Agent Bridge installer staged-Python fix, macOS restart readiness/health closure, one-shot self-restart hand-over with verified cleanup, and test-isolation regression fix; see [`dev_plan_v0.22.1.md`](../../dev_plan_v0.22.1.md) and [`v0.22.1-release-checklist-2026-10-23.md`](../v0.22.1-release-checklist-2026-10-23.md).
+- **v0.22.1** — current stable maintenance release for the Linux Agent Bridge installer staged-Python fix, macOS restart readiness/health closure, one-shot self-restart hand-over with verified cleanup, and test-isolation regression fix; see [`dev_plan_v0.22.1.md`](../../dev_plan_v0.22.1.md) and [`v0.22.1-release-checklist-2026-10-23.md`](../v0.22.1-release-checklist-2026-10-23.md) for release evidence.
 
 ## Keep this index small
 

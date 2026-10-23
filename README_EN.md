@@ -12,7 +12,7 @@
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured delegation to native Codex / Claude Code / Qoder runtimes and operator-configured ACP Agents only where you need them.
 
-**Current stable release: v0.22.0; next maintenance release candidate: v0.22.1 (not published)**
+**Current stable release: v0.22.1**
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -81,7 +81,7 @@ chmod 600 .env
 
 Edit `.env` to pin the image, allow the local client Host values, and configure at least one workdir:
 
-# Prepared next maintenance release candidate example (v0.22.1; not published):
+# Current stable release example (v0.22.1):
 ```env
 SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.22.1
 SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
@@ -237,10 +237,10 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-- Linux images: `ghcr.io/ntlx/serverfs_mcp`; current published stable pin: `ghcr.io/ntlx/serverfs_mcp:0.22.0`; prepared next-release candidate example (not published): `ghcr.io/ntlx/serverfs_mcp:0.22.1`
-- Current stable release tag: `v0.22.0`; next maintenance release candidate: `v0.22.1` (not published)
+- Linux images: `ghcr.io/ntlx/serverfs_mcp`; current stable release: `v0.22.1`
+- Current stable release tag: `v0.22.1`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
-- Portable Agent Plugin: expected skills-only `serverfs-plugin-v0.22.1.zip` publication artifact (not yet released).
+- Portable Agent Plugin: skills-only `serverfs-plugin-v0.22.1.zip` asset in the v0.22.1 GitHub Release.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; there is no separate macOS native wheel. Installation locally builds the small bundled ServiceManagement companion used for persistent per-user services.
 

@@ -82,7 +82,7 @@ Intentional lifecycle operations are explicit:
 
 ### Common status formats (v0.22.0)
 
-The prepared v0.22.1 maintenance release candidate retains this behavior; v0.22.0 remains the current published stable release. The default `service status` detail/JSON is unchanged. Operators may explicitly run `serverfs service status --format common-json` or `serverfs service status --format common-human` for a bounded, sanitized projection. It omits paths, PIDs, task names and private IDs, and uses `unknown`/`not-checked` rather than inventing health. Use `serverfs doctor` for deeper platform/configuration diagnostics. See [Phase F acceptance and limits](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-windows-acceptance-2026-10-22.md).
+The stable v0.22.1 release retains this behavior. The default `service status` detail/JSON is unchanged. Operators may explicitly run `serverfs service status --format common-json` or `serverfs service status --format common-human` for a bounded, sanitized projection. It omits paths, PIDs, task names and private IDs, and uses `unknown`/`not-checked` rather than inventing health. Use `serverfs doctor` for deeper platform/configuration diagnostics. See [Phase F acceptance and limits](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-windows-acceptance-2026-10-22.md).
 
 `service stop` disables the scheduled task before ending its current action, so the heartbeat cannot resurrect an intentional stop. v0.14.0 also performs a controlled hand-over from the legacy v0.13.x manual launcher when it can freeze and revalidate the exact legacy process identities; it never kills a tree by executable name alone.
 

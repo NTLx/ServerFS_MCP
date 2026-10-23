@@ -144,9 +144,9 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 引入的文件入口主机策略与网络边界详见[二进制传输](../binary-transfer/)和[安全模型](../security/)。
 
-## 当前稳定版本：v0.22.0；下一维护版本候选：v0.22.1（尚未发布）
+## 当前稳定版本：v0.22.1
 
-准备中的 v0.22.1 计划使用不可变标签 `v0.22.1`，并在发布后提供以下 GHCR 稳定标签：
+已发布的 v0.22.1 使用不可变标签 `v0.22.1`，并提供以下 GHCR 稳定标签：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
@@ -154,6 +154,6 @@ ghcr.io/ntlx/serverfs_mcp:0.22
 ghcr.io/ntlx/serverfs_mcp:0.22.1
 ```
 
-生产环境应固定使用当前已发布的 `0.22.0`，而不是长期跟随 `latest` 或 `edge`。v0.22.1 发布后，预计同一 tag 将提供三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）及其 SHA-256。同一 Release 计划提供 skills-only portable Agent Plugin：`serverfs-plugin-v0.22.1.zip`；这些是预期发布产物，目前尚不存在于 GitHub Release；见 [Agent Skills](../agent-skills/)。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.19.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](../windows-native/)和 [macOS 原生部署](../macos-native/)。
+生产环境应固定使用 `0.22.1`，而不是长期跟随 `latest` 或 `edge`。v0.22.1 GitHub Release 包含三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）以及 skills-only portable Agent Plugin `serverfs-plugin-v0.22.1.zip`；SHA-256 见[发布清单](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.1-release-checklist-2026-10-23.md)；见 [Agent Skills](../agent-skills/)。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.19.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](../windows-native/)和 [macOS 原生部署](../macos-native/)。
 
 ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](../acp/)。

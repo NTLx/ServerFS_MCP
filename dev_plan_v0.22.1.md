@@ -1,6 +1,6 @@
 # ServerFS MCP v0.22.1 Maintenance Release Plan
 
-Status: implementation and supported-Mac positive-path acceptance complete; not released
+Status: **released as stable v0.22.1**; see the [release checklist](docs/v0.22.1-release-checklist-2026-10-23.md) for tag, GitHub Release, Windows wheel workflow, and asset digest evidence.
 Baseline: current clean `main` after v0.22.0
 Scope: Linux Agent Bridge installer compatibility, macOS native restart reliability, and maintainer safety guidance
 
@@ -237,4 +237,4 @@ The VPS implementation phase is complete only when:
 - documentation explicitly distinguishes VPS source/test evidence from unexecuted Mac native acceptance;
 - the remaining Mac acceptance steps are concrete and reproducible.
 
-Release status remains **not released** until the normal release workflow is explicitly authorized and completed.
+The implementation and supported-Mac acceptance described in this plan preceded publication. The v0.22.1 release was subsequently published; exact release evidence is recorded in the release checklist.
