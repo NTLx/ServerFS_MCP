@@ -2,6 +2,8 @@
 
 Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.21.0 is the current published stable release; v0.20.0 is the previous released stable version.** v0.12 kept the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling. v0.19.0 adds operator-configured generic ACP v1 profiles alongside the native Codex, Claude and Qoder runtimes.
 
+The unreleased v0.22 checkout adds bounded process-local Agent diagnostics over the existing private Bridge RPC only. Operators can run `serverfs diagnostics snapshot --format json` for a Bridge-wide diagnostic snapshot or `serverfs diagnostics task <task-id> --format json` for one retained task; omit `--format json` for human rendering. These commands do not add an MCP tool, network listener, persistent trace store or OpenTelemetry exporter. A task may report `available`, `unknown_task`, `not_retained`, or CLI-level `bridge_unavailable`; after a Bridge restart, diagnostics never fabricate pre-restart history.
+
 The deployment has one non-negotiable rule:
 
 > **Everything supplied by this project runs in the current user's permission

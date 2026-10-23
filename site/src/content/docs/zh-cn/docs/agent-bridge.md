@@ -6,6 +6,9 @@ description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时及可�
 Agent Bridge 是一个**可选的宿主机边界**。它暴露结构化 Agent 任务工具，不会把 runtime 放进 MCP 容器。v0.19.0 在原生 Codex、Claude 和 Qoder runtime 之外提供通用 ACP v1 profile。运维人员为每个 profile 配置绝对可执行文件路径和固定 argv；任务调用不能覆盖 command、argv 或环境变量，ACP 任务必须使用 `workspace-write`。ServerFS 不会从 ACP Registry 安装 Agent；认证仍由 Provider 管理。能力保守报告。ACP 模型发现/覆盖、elicitation、Client 文件系统和 terminal 方法均不支持。
 
 OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 已通过 Linux、macOS 和 Windows 的真实端到端验收，覆盖 prompt、持久 session continuation 和 active-tool cancellation/cleanup。
+
+尚未发布的 v0.22 checkout 还通过既有 Bridge 私有 RPC 增加有界、进程内的 Agent diagnostics。使用 `serverfs diagnostics snapshot --format json` 获取 Bridge 范围诊断快照，使用 `serverfs diagnostics task <task-id> --format json` 获取单个已保留任务的诊断投影；省略 `--format json` 可使用 human rendering。这些命令不新增公开 MCP tool、监听端口、持久 trace store、OpenTelemetry 依赖或 telemetry egress。任务诊断可区分 `available`、`unknown_task`、`not_retained` 与 CLI 层的 `bridge_unavailable`；Bridge 重启后不会伪造重启前历史。
+
 ```text
 ChatGPT
   │

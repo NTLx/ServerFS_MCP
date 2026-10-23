@@ -6,6 +6,9 @@ description: Optional structured delegation to native Codex, Claude and Qoder ru
 The Agent Bridge is an **optional host-side boundary**. It exposes structured Agent task tools without putting runtimes inside the MCP container. v0.19.0 ships generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes. Operators configure an absolute executable path and fixed argv for each profile; tasks cannot override command, argv or environment, and ACP tasks require `workspace-write`. ServerFS does not install Agents from the ACP Registry; authentication remains provider-owned. Capabilities are reported conservatively. ACP model discovery/override, elicitation, Client filesystem and terminal methods are unsupported.
 
 OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS and Windows, covering prompt, persisted-session continuation, and active-tool cancellation/cleanup.
+
+The unreleased v0.22 checkout also adds bounded process-local Agent diagnostics over the existing private Bridge RPC. Use `serverfs diagnostics snapshot --format json` for a Bridge-wide snapshot and `serverfs diagnostics task <task-id> --format json` for one retained task; omit `--format json` for human rendering. These commands add no public MCP tool, listener, persistent trace store, OpenTelemetry dependency, or telemetry egress. Task diagnostics can distinguish `available`, `unknown_task`, `not_retained`, and CLI-level `bridge_unavailable`; a Bridge restart never fabricates pre-restart history.
+
 ```text
 ChatGPT
   │

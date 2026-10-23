@@ -12,6 +12,7 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 ## Current baseline
 
 - **Current stable release: v0.21.0.**
+- **v0.22.0 is implemented, Phase F is accepted on Linux/VPS, supported macOS and supported Windows, and Phase G release-readiness acceptance is PASS. It is release-ready but remains unreleased until an explicit maintainer release action.**
 - v0.20.0 is the previous released stable version.
 - **v0.19.0 introduced generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes.** OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real Linux/macOS/Windows end-to-end acceptance; see `dev_plan_v0.19.md` for scope and evidence.
 - Native deployment families: Linux, Windows and macOS.
@@ -75,8 +76,11 @@ See `docs/maintainers/invariants.md` before changing any of these boundaries.
 6. Site/docs changes must keep English and Simplified Chinese current-state copy semantically aligned and run the site gate.
 7. Release-state changes require a residual stale-string scan over managed docs/site while excluding generated/vendor/history-only trees such as `.git`, `.workbuddy`, `node_modules` and build output.
 8. A delegated verification-only/Git-only/deployment-only task may not edit source merely because it finds a problem; it reports evidence back to the orchestrator.
-9. Never encode, disguise, split or relocate instructions to evade provider safety checks.
-10. Do not commit, push, create/move tags or publish releases unless the user explicitly asks for those Git/GitHub actions.
+9. Windows pre-upgrade acceptance must not assume the live Agent Bridge already implements the checkout's newest private RPCs. If a new CLI probe receives the exact legacy `METHOD_NOT_FOUND` for that method, use a narrowly scoped, read-only compatibility proof from the installed service's durable state; any different or ambiguous failure must fail closed rather than being bypassed.
+10. In Windows PowerShell 5.1, native-process stderr may be surfaced as `NativeCommandError` and become terminating under `$ErrorActionPreference = 'Stop'` even when the native process exits successfully. For native CLI wrappers, temporarily use non-terminating handling, capture stdout/stderr, restore the prior preference, and decide success from `$LASTEXITCODE` plus explicit output validation.
+11. Do not pass multiline or quote-sensitive source through Windows PowerShell 5.1 native argv (for example `python -c $PythonCode`). PowerShell 5.1 may rewrite quoting before the child process sees it. Prefer stdin (`$PythonCode | python - ...`) or a controlled temporary file, with ordinary data passed as separate argv values.
+12. Never encode, disguise, split or relocate instructions to evade provider safety checks.
+13. Do not commit, push, create/move tags or publish releases unless the user explicitly asks for those Git/GitHub actions.
 
 Exact test/build commands and release/deployment procedures live in `docs/maintainers/workflow.md`.
 
