@@ -26,15 +26,7 @@ GitHub / DingTalk / Feishu / WeChat
 
 ## Deployment boundary
 
-OAuth is currently a Linux Docker Compose capability:
-
-```bash
-docker compose --env-file .env \
-  -f compose.yml \
-  -f compose.http.yml \
-  -f compose.oauth.yml \
-  up -d
-```
+OAuth is currently a Linux Docker Compose capability.
 
 Add `compose.agent.yml` only when Agent delegation is needed.
 
@@ -51,6 +43,7 @@ Minimal `.env` settings:
 
 ```text
 SERVERFS_OAUTH_ENABLED=true
+SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000,mcp.example.com
 SERVERFS_OAUTH_RESOURCE_URL=https://mcp.example.com/mcp
 SERVERFS_AUTH_PUBLIC_URL=https://auth.example.com
 SERVERFS_OAUTH_ISSUER_URL=https://auth.example.com
@@ -61,11 +54,32 @@ SERVERFS_AUTH_ALLOWED_PRINCIPALS=<provider:stable-subject,...>
 
 `SERVERFS_OAUTH_ISSUER_URL` must exactly equal `SERVERFS_AUTH_PUBLIC_URL`. Public URLs must use HTTPS outside explicit loopback tests.
 
-The auth state directory must exist before Compose starts and be writable by the configured non-root `SERVERFS_UID:GID`:
+The Host allowlist above preserves the internal and loopback paths and adds the public MCP authority in this example. Replace `mcp.example.com` with the actual Host authority preserved by your proxy; adjust ports if customized. Keep Host validation enabled.
+
+Before starting Compose, prepare the auth state directory for the configured `SERVERFS_UID:SERVERFS_GID`. With the default `10001:10001` and `SERVERFS_AUTH_STATE_HOST_DIR=./.serverfs-auth-state`, run from the checkout root:
 
 ```bash
-mkdir -p .serverfs-auth-state
-chmod 700 .serverfs-auth-state
+sudo install -d -m 700 -o 10001 -g 10001 -- .serverfs-auth-state
+```
+
+Assigning ownership to `10001:10001` normally requires `sudo` (or an administrator); the container still runs as that non-root identity. If you customize `SERVERFS_UID`, `SERVERFS_GID` or `SERVERFS_AUTH_STATE_HOST_DIR` in `.env`, replace the numeric IDs and path above with those actual values. Compose reads `.env`; these values are not automatically exported into your shell.
+
+For a current-user deployment, you may instead set `SERVERFS_UID` and `SERVERFS_GID` in `.env` to the outputs of `id -u` and `id -g`, provided that identity also suits the MCP workdir permissions. For a new directory owned by that user, no privilege is needed:
+
+```bash
+install -d -m 700 -- .serverfs-auth-state
+```
+
+Use the configured state path if customized. Mode `700` alone does not grant a different container UID write access; verify the directory owner matches the configured UID before starting. Keep the directory private; do not widen its permissions.
+
+After configuring the provider credentials and admission policy below, start OAuth:
+
+```bash
+docker compose --env-file .env \
+  -f compose.yml \
+  -f compose.http.yml \
+  -f compose.oauth.yml \
+  up -d
 ```
 
 ## Default-deny admission

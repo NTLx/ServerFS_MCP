@@ -36,7 +36,7 @@ The transport accepts only the fixed internal authority `serverfs-mcp:8000`, rej
 
 ## Static API Key boundary
 
-v0.17 can protect remote Streamable HTTP with one optional shared API Key. The key is checked before MCP dispatch, compared with a constant-time comparison, and does not create a user identity or alter workdir authorization. Header authentication (`Authorization: Bearer <key>`) is preferred. The compatibility `?key=` form is accepted for one-line MCP URLs, but ServerFS disables its own default Uvicorn access log in this mode because query credentials are more likely to leak through URL logs. Upstream proxies remain the operator's responsibility. Static API Key and built-in OAuth are mutually exclusive. See [Static API Key](./api-key/).
+v0.17 can protect remote Streamable HTTP with one optional shared API Key. The key is checked before MCP dispatch, compared with a constant-time comparison, and does not create a user identity or alter workdir authorization. Header authentication (`Authorization: Bearer <key>`) is preferred. The compatibility `?key=` form is accepted for one-line MCP URLs, but ServerFS disables its own default Uvicorn access log in this mode because query credentials are more likely to leak through URL logs. Upstream proxies remain the operator's responsibility. Static API Key and built-in OAuth are mutually exclusive. See [Static API Key](../api-key/).
 
 ## OAuth boundary
 
@@ -44,7 +44,7 @@ v0.16 can protect remote Streamable HTTP with an isolated `serverfs-auth` author
 
 Admission is default-deny and uses exact stable provider subjects. Provider-native tokens are never accepted at MCP. Authorization codes/provider state are single-use, refresh tokens rotate, raw bearer values are not persisted, and resource/audience validation remains strict. Existing workdir policy stays authoritative after identity admission; ServerFS does not duplicate workdir permissions into OAuth scopes.
 
-The OpenAI Tunnel OAuth path keeps the same validation. A known upstream resource-rewrite issue is documented rather than bypassed with wildcard audiences. See [OAuth 2.1](./oauth/) for deployment, revocation, backup and provider details.
+The OpenAI Tunnel OAuth path keeps the same validation. A known upstream resource-rewrite issue is documented rather than bypassed with wildcard audiences. See [OAuth 2.1](../oauth/) for deployment, revocation, backup and provider details.
 
 ## Agent boundary
 
@@ -58,6 +58,6 @@ Jev is optional and runs only from the host Agent Bridge. It is not part of the 
 
 The TypeSafe API key is rendered only into the user-owned Bridge config and is never passed to the MCP container. In v0.12, `SERVERFS_JEV_USE_PROXY` supplies the shared proxy through Jev's explicit HTTP client rather than mutating process-wide proxy variables. Approval Advisor sends a minimized, redacted approval state and applies an additional secret/token/password sanitizer before the external request. Identical approval advice may be cached only within the same task and never resolves the approval automatically.
 
-See [Jev Advisors](./jev-advisors/) for the complete advisory contract.
+See [Jev Advisors](../jev-advisors/) for the complete advisory contract.
 
-For adjacent trust-boundary detail, see [Architecture](./architecture/), [Configuration](./configuration/), [Static API Key](./api-key/) and [OAuth 2.1](./oauth/). Version-specific implementation evidence remains in the repository's phase acceptance records rather than the project README.
+For adjacent trust-boundary detail, see [Architecture](../architecture/), [Configuration](../configuration/), [Static API Key](../api-key/) and [OAuth 2.1](../oauth/). Version-specific implementation evidence remains in the repository's phase acceptance records rather than the project README.

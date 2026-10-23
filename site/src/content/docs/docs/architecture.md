@@ -53,7 +53,7 @@ Streamable HTTP MCP app
 existing ServerFS workdir policy
 ```
 
-The v0.17 API Key path is a small HTTP ingress wrapper around the SDK Streamable HTTP app. It creates no authorization service, database, user identity, scope model or provider egress. API Key and built-in OAuth are mutually exclusive. Query-key compatibility is supported, but the ServerFS runner disables its own default Uvicorn access log in this mode so a secret-bearing URL is not printed by ServerFS itself. See [Static API Key](./api-key/).
+The v0.17 API Key path is a small HTTP ingress wrapper around the SDK Streamable HTTP app. It creates no authorization service, database, user identity, scope model or provider egress. API Key and built-in OAuth are mutually exclusive. Query-key compatibility is supported, but the ServerFS runner disables its own default Uvicorn access log in this mode so a secret-bearing URL is not printed by ServerFS itself. See [Static API Key](../api-key/).
 
 ## Optional OAuth path
 
@@ -74,7 +74,7 @@ serverfs-auth
 
 `serverfs-auth` is a separately deployed, non-root service with its own writable SQLite state and OAuth-only egress network. Provider credentials never enter `serverfs-mcp`; the MCP container does not join the OAuth egress network. The Resource Server accepts only ServerFS-issued opaque tokens bound to the configured MCP resource. Admission is exact and default-deny, then the existing workdir policy applies unchanged.
 
-OAuth is Linux remote-HTTP deployment state, not part of native Windows/macOS stdio. See [OAuth 2.1](./oauth/) for the public TLS/reverse-proxy shape, provider callbacks, client registration and Tunnel compatibility boundary.
+OAuth is Linux remote-HTTP deployment state, not part of native Windows/macOS stdio. See [OAuth 2.1](../oauth/) for the public TLS/reverse-proxy shape, provider callbacks, client registration and Tunnel compatibility boundary.
 
 ## Optional Agent path
 

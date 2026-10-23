@@ -73,4 +73,4 @@ ServerFS authorizes the workdir and runtime, holds the shared writer lease for w
 - **Cancellation leaves workdir busy:** do not delete locks or retry a writer. Check Bridge/provider process state and use the documented recovery procedure; the guard remains until stop is proven.
 - **Linux container cannot reach Bridge:** use the deployment guide to verify measured peer UID/GID, socket mounts, Agent overlay, and host Bridge health.
 
-See [Agent Bridge](./agent-bridge/) and the platform deployment guides for lifecycle and IPC setup.
+See [Agent Bridge](../agent-bridge/) and the platform deployment guides for lifecycle and IPC setup.

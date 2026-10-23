@@ -108,7 +108,7 @@ docker compose logs --tail=200 openai-tunnel
 
 Repeated completed poll failures or retry/backoff state are stronger evidence of a remote connectivity/authentication problem than container `Up`. A current long poll is normal; it is not an outage by itself.
 
-If `SERVERFS_OPENAI_TUNNEL_USE_PROXY=true`, also verify the configured HTTP proxy path. Tunnel proxy settings affect Tunnel control-plane egress only; they do not configure Docker image pulls. See [Restricted-network ARM64 deployment](./restricted-network-arm64/).
+If `SERVERFS_OPENAI_TUNNEL_USE_PROXY=true`, also verify the configured HTTP proxy path. Tunnel proxy settings affect Tunnel control-plane egress only; they do not configure Docker image pulls. See [Restricted-network ARM64 deployment](../restricted-network-arm64/).
 
 ### 5. Polling succeeds but ChatGPT receives no result
 

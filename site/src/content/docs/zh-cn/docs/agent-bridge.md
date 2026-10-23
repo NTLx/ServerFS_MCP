@@ -106,7 +106,7 @@ python3 deployment/agent-bridge/verify_host.py --require-runtimes
 
 配置 `SERVERFS_JEV_API_KEY` 后，任务提交阶段的一次请求会给出 Agent Task Preflight 与 Runtime Router 建议。v0.9.0 还允许 `list_agent_models` 携带即将提交的任务上下文：原生模型发现成功后，Model Advisor 可以在提交前从当前暴露的候选模型中给出建议；返回值始终 `automatic=false`，ServerFS 不会把建议自动填入 `submit_agent_task.model`。v0.12 中，`SERVERFS_JEV_USE_PROXY` 独立决定 Jev 的显式 HTTP client 是否使用共享代理，不会影响 Agent provider 或 Tunnel 的路由。如果原生 provider 后续真的生成 approval request，Approval Advisor 才可能再发起一次 Jev 请求，同一 task 内完全相同的 approval 会复用缓存。未配置 Key 时，模型发现和任务提交照常工作，但不会发生 Jev 请求。
 
-Jev 不会覆盖显式 runtime/model、workdir policy、writer lease、provider approval 状态或 `respond_agent_approval`。模型契约、请求流、数据最小化与失败行为详见 [Jev Advisors](./jev-advisors/)。
+Jev 不会覆盖显式 runtime/model、workdir policy、writer lease、provider approval 状态或 `respond_agent_approval`。模型契约、请求流、数据最小化与失败行为详见 [Jev Advisors](../jev-advisors/)。
 
 ## 委派任务编排规范
 
@@ -136,4 +136,4 @@ Jev 不会覆盖显式 runtime/model、workdir policy、writer lease、provider 
 应按真实能力边界进一步收窄，或改用已有的结构化 ServerFS primitive；不得因此削弱授权、
 审计、writer lease 或网络隔离控制。
 
-ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](./acp/)。
+ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](../acp/)。

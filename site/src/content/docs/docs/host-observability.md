@@ -139,4 +139,4 @@ sed -n '1,200p' /srv/serverfs-status/status.md
 
 Then verify through ServerFS that the workdir is read-only. Do not add the Docker socket, `/proc`, `/sys`, `/var/run`, service credential directories or broad log trees as workdirs just to obtain observability.
 
-This recipe deliberately keeps collection authority on the host side and publication authority in a narrow read-only directory. If you need active host changes or delegated engineering work, use the separately gated [Agent Bridge](./agent-bridge/) rather than widening this workdir.
+This recipe deliberately keeps collection authority on the host side and publication authority in a narrow read-only directory. If you need active host changes or delegated engineering work, use the separately gated [Agent Bridge](../agent-bridge/) rather than widening this workdir.

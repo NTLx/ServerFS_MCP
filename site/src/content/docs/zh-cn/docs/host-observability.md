@@ -139,4 +139,4 @@ sed -n '1,200p' /srv/serverfs-status/status.md
 
 随后通过 ServerFS 验证该 workdir 确实只读。不要为了获得可观测性而把 Docker socket、`/proc`、`/sys`、`/var/run`、服务 credential 目录或大范围日志目录直接加入 workdir。
 
-该方案刻意把“采集权限”留在宿主机，把“发布权限”限制在一个狭窄的只读目录。如果需要主动修改宿主机或委托工程任务，应使用独立受控的 [Agent Bridge](./agent-bridge/)，而不是扩大这个 workdir 的权限。
+该方案刻意把“采集权限”留在宿主机，把“发布权限”限制在一个狭窄的只读目录。如果需要主动修改宿主机或委托工程任务，应使用独立受控的 [Agent Bridge](../agent-bridge/)，而不是扩大这个 workdir 的权限。

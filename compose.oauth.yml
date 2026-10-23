@@ -3,7 +3,10 @@
 # OAuth remains disabled by default. Enable it explicitly in .env, prepare the
 # state directory for the configured ServerFS UID/GID, then include this file:
 #
-#   mkdir -p "${SERVERFS_AUTH_STATE_HOST_DIR:-./.serverfs-auth-state}"
+#   # Defaults shown; substitute the actual .env UID, GID and state path.
+#   # Assigning ownership normally requires sudo; containers remain non-root.
+#   sudo install -d -m 700 -o 10001 -g 10001 -- .serverfs-auth-state
+#   # For matching current-user UID/GID, see docs/oauth.md for no-sudo setup.
 #   docker compose --env-file .env \
 #     -f compose.yml -f compose.http.yml -f compose.oauth.yml up -d
 #

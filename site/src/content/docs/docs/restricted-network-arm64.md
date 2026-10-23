@@ -61,7 +61,7 @@ SERVERFS_PROXY_HOST=proxy.example.internal
 SERVERFS_PROXY_PORT=3128
 ```
 
-The Tunnel setting affects control-plane egress after startup. It does not alter `dockerd`, registry authentication or image pulling. See [Tunnel Diagnostics](./tunnel-diagnostics/) for runtime checks.
+The Tunnel setting affects control-plane egress after startup. It does not alter `dockerd`, registry authentication or image pulling. See [Tunnel Diagnostics](../tunnel-diagnostics/) for runtime checks.
 
 ## Path B: target cannot reach GHCR
 

@@ -3,7 +3,7 @@ title: Getting Started
 description: Deploy ServerFS MCP with standard Streamable HTTP; add the OpenAI Secure MCP Tunnel only when needed.
 ---
 
-This page covers the Linux/Docker deployment. For native deployments, use [Windows Native](./windows-native/) or [macOS Native](./macos-native/) instead.
+This page covers the Linux/Docker deployment. For native deployments, use [Windows Native](../windows-native/) or [macOS Native](../macos-native/) instead.
 
 ## Prerequisites
 
@@ -21,7 +21,13 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Configure at least one workdir in `.env`, then start the standard Streamable HTTP endpoint:
+Configure at least one workdir in `.env`. Before starting, set the Host allowlist in `.env` for the default loopback endpoint:
+
+```text
+SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
+```
+
+An empty allowlist only permits the Docker-internal authority. Keep `serverfs-mcp:8000` for the Tunnel/internal path and explicitly add `127.0.0.1:8000` and `localhost:8000` for direct local clients. If you customize ports, use the actual published port for loopback authorities and the container HTTP port for `serverfs-mcp`. For external clients or a reverse proxy, add each exact Host authority received by ServerFS to the allowlist rather than disabling Host validation. Then start the standard Streamable HTTP endpoint:
 
 ```bash
 docker compose pull
@@ -39,16 +45,32 @@ For a simple built-in shared-secret boundary, set:
 SERVERFS_HTTP_API_KEY=<long-random-secret>
 ```
 
-Keep the same `compose.yml` + `compose.http.yml` deployment. Clients should prefer `Authorization: Bearer <key>`. ServerFS also accepts a DingTalk-style `https://mcp.example.com/mcp?key=<key>` URL for clients that only support a complete URL, but query credentials may be captured by upstream access logs. API Key mode is mutually exclusive with built-in OAuth. See [Static API Key](./api-key/).
+Keep the same `compose.yml` + `compose.http.yml` deployment. Clients should prefer `Authorization: Bearer <key>`. ServerFS also accepts a DingTalk-style `https://mcp.example.com/mcp?key=<key>` URL for clients that only support a complete URL, but query credentials may be captured by upstream access logs. API Key mode is mutually exclusive with built-in OAuth. See [Static API Key](../api-key/).
 
 ## Optional OAuth 2.1 for remote HTTP
 
 v0.16.0 can add OAuth to the generic Streamable HTTP deployment without changing local/native stdio:
 
-```bash
-mkdir -p .serverfs-auth-state
-chmod 700 .serverfs-auth-state
+Before starting, set `SERVERFS_OAUTH_ENABLED=true`, the canonical public MCP resource URL, the `serverfs-auth` public/issuer URL, an introspection secret, at least one provider and the exact stable-principal allowlist.
 
+Before starting Compose, prepare the auth state directory for the configured `SERVERFS_UID:SERVERFS_GID`. With the default `10001:10001` and `SERVERFS_AUTH_STATE_HOST_DIR=./.serverfs-auth-state`, run from the checkout root:
+
+```bash
+sudo install -d -m 700 -o 10001 -g 10001 -- .serverfs-auth-state
+```
+
+Assigning ownership to `10001:10001` normally requires `sudo` (or an administrator); the container still runs as that non-root identity. If you customize `SERVERFS_UID`, `SERVERFS_GID` or `SERVERFS_AUTH_STATE_HOST_DIR` in `.env`, replace the numeric IDs and path above with those actual values. Compose reads `.env`; these values are not automatically exported into your shell.
+
+For a current-user deployment, you may instead set `SERVERFS_UID` and `SERVERFS_GID` in `.env` to the outputs of `id -u` and `id -g`, provided that identity also suits the MCP workdir permissions. For a new directory owned by that user, no privilege is needed:
+
+```bash
+install -d -m 700 -- .serverfs-auth-state
+```
+
+Use the configured state path if customized. Mode `700` alone does not grant a different container UID write access; verify the directory owner matches the configured UID before starting. Keep the directory private; do not widen its permissions.
+
+
+```bash
 docker compose --env-file .env \
   -f compose.yml \
   -f compose.http.yml \
@@ -56,7 +78,7 @@ docker compose --env-file .env \
   up -d
 ```
 
-Before starting, set `SERVERFS_OAUTH_ENABLED=true`, the canonical public MCP resource URL, the `serverfs-auth` public/issuer URL, an introspection secret, at least one provider and the exact stable-principal allowlist. Public deployments should expose the MCP and authorization-server loopback ports only through an HTTPS reverse proxy. See [OAuth 2.1](./oauth/) for provider callbacks, CIMD/DCR, backup/revocation and the OpenAI Tunnel compatibility boundary.
+Public deployments should expose the MCP and authorization-server loopback ports only through an HTTPS reverse proxy. See [OAuth 2.1](../oauth/) for provider callbacks, CIMD/DCR, backup/revocation and the OpenAI Tunnel compatibility boundary.
 
 ## Optional ChatGPT / OpenAI Tunnel deployment
 
@@ -69,11 +91,11 @@ docker compose ps
 docker compose logs -f openai-tunnel
 ```
 
-This remains a supported authenticated ingress adapter; it is no longer required for generic MCP clients. For operational troubleshooting, use [Tunnel Diagnostics](./tunnel-diagnostics/); container `Up` state alone is not proof of Tunnel readiness or control-plane continuity.
+This remains a supported authenticated ingress adapter; it is no longer required for generic MCP clients. For operational troubleshooting, use [Tunnel Diagnostics](../tunnel-diagnostics/); container `Up` state alone is not proof of Tunnel readiness or control-plane continuity.
 
-On Linux hosts with restricted registry/network access, see [Restricted-network ARM64 Deployment](./restricted-network-arm64/) for the separate Docker-daemon proxy and offline image-transfer paths.
+On Linux hosts with restricted registry/network access, see [Restricted-network ARM64 Deployment](../restricted-network-arm64/) for the separate Docker-daemon proxy and offline image-transfer paths.
 
-For a least-privilege monitoring pattern that exposes generated host status rather than host authority, see [Read-only Host Observability](./host-observability/).
+For a least-privilege monitoring pattern that exposes generated host status rather than host authority, see [Read-only Host Observability](../host-observability/).
 
 ## Agent deployment
 
@@ -94,7 +116,7 @@ If you want advisory task preflight, runtime routing, and provider-approval cont
 SERVERFS_JEV_API_KEY=<your key>
 ```
 
-Leave it empty to keep the Agent Bridge completely Jev-free. No extra MCP container configuration or ChatGPT plugin refresh is required. See [Jev Advisors](./jev-advisors/) for details.
+Leave it empty to keep the Agent Bridge completely Jev-free. No extra MCP container configuration or ChatGPT plugin refresh is required. See [Jev Advisors](../jev-advisors/) for details.
 
 ## ChatGPT file-parameter ingress
 
@@ -120,7 +142,7 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.agent.yml up -d
 ```
 
-The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](./binary-transfer/) and [Security Model](./security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
+The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](../binary-transfer/) and [Security Model](../security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
 ## Current stable release: v0.22.0
 
@@ -132,6 +154,6 @@ ghcr.io/ntlx/serverfs_mcp:0.22
 ghcr.io/ntlx/serverfs_mcp:0.22.0
 ```
 
-For production deployments, pin `0.22.0` rather than following `latest` or `edge`. The same tag carries the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests. The same release also provides one skills-only portable Agent Plugin, `serverfs-plugin-v0.22.0.zip`; see [Agent Skills](./agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](./windows-native/) and [macOS Native](./macos-native/).
+For production deployments, pin `0.22.0` rather than following `latest` or `edge`. The same tag carries the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) as GitHub Release assets with recorded SHA-256 digests. The same release also provides one skills-only portable Agent Plugin, `serverfs-plugin-v0.22.0.zip`; see [Agent Skills](../agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
 
-For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](./acp/).
+For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).

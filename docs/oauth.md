@@ -75,26 +75,33 @@ SERVERFS_AUTH_ALLOWED_PRINCIPALS=<provider:stable-subject,...>
 
 `SERVERFS_OAUTH_ISSUER_URL` must exactly equal `SERVERFS_AUTH_PUBLIC_URL`.
 
-For the MCP Host/Origin boundary, configure only the public authorities you actually use, for example:
+For the MCP Host/Origin boundary, preserve the internal/loopback authorities and add only the public authorities you actually use, for example:
 
 ```env
-SERVERFS_HTTP_ALLOWED_HOSTS=mcp.example.com
+SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000,mcp.example.com
 ```
 
 Do not disable DNS-rebinding protection to make a proxy work.
 
 ### Prepare persistent auth state
 
-`serverfs-auth` is non-root and has one writable persistent mount. The host directory must already exist and be writable by the configured `SERVERFS_UID:GID`.
+`serverfs-auth` is non-root and has one writable persistent mount.
 
-A simple current-user deployment can use:
+Before starting Compose, prepare the auth state directory for the configured `SERVERFS_UID:SERVERFS_GID`. With the default `10001:10001` and `SERVERFS_AUTH_STATE_HOST_DIR=./.serverfs-auth-state`, run from the checkout root:
 
 ```bash
-mkdir -p .serverfs-auth-state
-chmod 700 .serverfs-auth-state
+sudo install -d -m 700 -o 10001 -g 10001 -- .serverfs-auth-state
 ```
 
-and set `SERVERFS_UID` / `SERVERFS_GID` to the current user's `id -u` / `id -g` when that matches the deployment policy.
+Assigning ownership to `10001:10001` normally requires `sudo` (or an administrator); the container still runs as that non-root identity. If you customize `SERVERFS_UID`, `SERVERFS_GID` or `SERVERFS_AUTH_STATE_HOST_DIR` in `.env`, replace the numeric IDs and path above with those actual values. Compose reads `.env`; these values are not automatically exported into your shell.
+
+For a current-user deployment, you may instead set `SERVERFS_UID` and `SERVERFS_GID` in `.env` to the outputs of `id -u` and `id -g`, provided that identity also suits the MCP workdir permissions. For a new directory owned by that user, no privilege is needed:
+
+```bash
+install -d -m 700 -- .serverfs-auth-state
+```
+
+Use the configured state path if customized. Mode `700` alone does not grant a different container UID write access; verify the directory owner matches the configured UID before starting. Keep the directory private; do not widen its permissions.
 
 Start the OAuth shape with:
 

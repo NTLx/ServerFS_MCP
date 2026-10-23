@@ -24,13 +24,13 @@ The default host/port/path continue to match the existing OpenAI Tunnel's Docker
 
 ### Optional static API Key
 
-v0.17 adds one shared HTTP bearer secret through `SERVERFS_HTTP_API_KEY`. Leave it empty to disable. Clients should prefer `Authorization: Bearer <key>`; `?key=<key>` is also supported for one-line MCP URL compatibility but may be captured by upstream URL logs. API Key mode is mutually exclusive with built-in OAuth and does not apply to native stdio. See [Static API Key](./api-key/).
+v0.17 adds one shared HTTP bearer secret through `SERVERFS_HTTP_API_KEY`. Leave it empty to disable. Clients should prefer `Authorization: Bearer <key>`; `?key=<key>` is also supported for one-line MCP URL compatibility but may be captured by upstream URL logs. API Key mode is mutually exclusive with built-in OAuth and does not apply to native stdio. See [Static API Key](../api-key/).
 
 ### Optional OAuth 2.1
 
 Remote HTTP can add the isolated v0.16 OAuth overlay with `SERVERFS_OAUTH_ENABLED=true` plus `compose.oauth.yml`. OAuth is default-off, requires no settings on the disabled path, and does not apply to native Windows/macOS stdio. Provider credentials and provider/CIMD egress live only in `serverfs-auth`; the MCP service receives only Resource Server settings and the private introspection boundary.
 
-Use [OAuth 2.1](./oauth/) for the exact public URL model, stable-principal allowlist, provider callbacks, CIMD/DCR behavior, proxy settings and operational procedures. Keep `.env.example` as the complete versioned variable reference.
+Use [OAuth 2.1](../oauth/) for the exact public URL model, stable-principal allowlist, provider callbacks, CIMD/DCR behavior, proxy settings and operational procedures. Keep `.env.example` as the complete versioned variable reference.
 
 ## Workdir slots
 
@@ -89,8 +89,8 @@ To enable the host-side advisory suite, set the TypeSafe API key in the existing
 SERVERFS_JEV_API_KEY=<your key>
 ```
 
-Leave it empty to disable Agent Task Preflight, Runtime Router, Model Advisor, and Approval Advisor completely. The normal Agent Bridge installer renders a configured key only into its user-owned `0600` config. In v0.12, `SERVERFS_JEV_USE_PROXY=true` routes only that explicit Jev HTTP client through the shared proxy; Agent and Tunnel routing remain independent. See [Jev Advisors](./jev-advisors/) for the runtime behavior and security boundary.
+Leave it empty to disable Agent Task Preflight, Runtime Router, Model Advisor, and Approval Advisor completely. The normal Agent Bridge installer renders a configured key only into its user-owned `0600` config. In v0.12, `SERVERFS_JEV_USE_PROXY=true` routes only that explicit Jev HTTP client through the shared proxy; Agent and Tunnel routing remain independent. See [Jev Advisors](../jev-advisors/) for the runtime behavior and security boundary.
 
 For the complete Linux/Docker environment-variable surface, use the versioned [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example). Native Windows and macOS deployments use [`serverfs.toml.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/serverfs.toml.example) for non-secret policy plus `.env` only for the narrow secret/proxy/runtime values documented in their platform guides.
 
-For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](./acp/).
+For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).

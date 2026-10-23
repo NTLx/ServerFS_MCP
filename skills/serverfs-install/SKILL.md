@@ -74,7 +74,13 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Only perform the copy when `.env` does not already exist. Configure at least one workdir, then use the generic HTTP shape:
+Only perform the copy when `.env` does not already exist. Configure at least one workdir. Before starting the default loopback endpoint, set this explicit Host allowlist in `.env`:
+
+```text
+SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
+```
+
+An empty allowlist permits only the internal authority. Preserve `serverfs-mcp:8000` for the Tunnel/internal path and add the actual loopback Host authorities for local clients. With customized ports, use the published port for loopback and the container HTTP port for `serverfs-mcp`. For external clients or a reverse proxy, add each exact Host authority received by ServerFS to the allowlist rather than disabling Host validation. Then use the generic HTTP shape:
 
 ```bash
 docker compose pull

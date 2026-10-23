@@ -3,7 +3,7 @@ title: 快速开始
 description: 使用标准 Streamable HTTP 部署 ServerFS MCP；仅在需要时再启用 OpenAI Secure MCP Tunnel。
 ---
 
-本页介绍 Linux/Docker 部署。原生部署请分别查看 [Windows 原生部署](./windows-native/) 或 [macOS 原生部署](./macos-native/)。
+本页介绍 Linux/Docker 部署。原生部署请分别查看 [Windows 原生部署](../windows-native/) 或 [macOS 原生部署](../macos-native/)。
 
 ## 前置条件
 
@@ -21,7 +21,13 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-至少在 `.env` 中配置一个 workdir，然后启动标准 Streamable HTTP 端点：
+至少在 `.env` 中配置一个 workdir。启动前，在 `.env` 中为默认 loopback 端点设置 Host allowlist：
+
+```text
+SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
+```
+
+空 allowlist 仅允许 Docker 内部 authority。保留 Tunnel/内部路径所需的 `serverfs-mcp:8000`，并显式加入供本地客户端直接访问的 `127.0.0.1:8000` 与 `localhost:8000`。如果自定义端口，loopback authority 应使用实际发布端口，`serverfs-mcp` 应使用容器 HTTP 端口。对于外部客户端或反向代理，应将 ServerFS 实际收到的每个 Host authority 精确加入 allowlist，而不是关闭 Host 校验。然后启动标准 Streamable HTTP 端点：
 
 ```bash
 docker compose pull
@@ -39,16 +45,32 @@ HTTP override 默认仅发布 `127.0.0.1:8000/mcp`，并保持 OpenAI Tunnel 不
 SERVERFS_HTTP_API_KEY=<long-random-secret>
 ```
 
-仍然使用同一套 `compose.yml` + `compose.http.yml` 部署。客户端优先发送 `Authorization: Bearer <key>`。对于只接受完整 URL 的客户端，也支持 DingTalk 风格的 `https://mcp.example.com/mcp?key=<key>`，但 query credential 可能被上游 access log 记录。API Key 与内置 OAuth 互斥。详见[静态 API Key](./api-key/)。
+仍然使用同一套 `compose.yml` + `compose.http.yml` 部署。客户端优先发送 `Authorization: Bearer <key>`。对于只接受完整 URL 的客户端，也支持 DingTalk 风格的 `https://mcp.example.com/mcp?key=<key>`，但 query credential 可能被上游 access log 记录。API Key 与内置 OAuth 互斥。详见[静态 API Key](../api-key/)。
 
 ## 远程 HTTP 可选 OAuth 2.1
 
 v0.16.0 可以在不改变本地/原生 stdio 的前提下，为通用 Streamable HTTP 部署增加 OAuth：
 
-```bash
-mkdir -p .serverfs-auth-state
-chmod 700 .serverfs-auth-state
+启动前需要设置 `SERVERFS_OAUTH_ENABLED=true`、canonical 公网 MCP resource URL、`serverfs-auth` public/issuer URL、introspection secret、至少一个 provider，以及精确的稳定 principal allowlist。
 
+启动 Compose 前，先为配置的 `SERVERFS_UID:SERVERFS_GID` 准备 auth state 目录。默认身份为 `10001:10001`、`SERVERFS_AUTH_STATE_HOST_DIR=./.serverfs-auth-state` 时，在仓库根目录运行：
+
+```bash
+sudo install -d -m 700 -o 10001 -g 10001 -- .serverfs-auth-state
+```
+
+将所有者设为 `10001:10001` 通常需要 `sudo`（或管理员操作）；容器仍以该非 root 身份运行。如果在 `.env` 中自定义了 `SERVERFS_UID`、`SERVERFS_GID` 或 `SERVERFS_AUTH_STATE_HOST_DIR`，请将上述数字 ID 与路径替换为实际值。Compose 会读取 `.env`，但这些值不会自动导出到当前 shell。
+
+若采用当前用户身份部署，也可以将 `.env` 中的 `SERVERFS_UID` 与 `SERVERFS_GID` 分别设为 `id -u` 与 `id -g` 的输出，前提是该身份也符合 MCP workdir 的权限要求。对于由该用户拥有的新目录，无需特权：
+
+```bash
+install -d -m 700 -- .serverfs-auth-state
+```
+
+如果自定义了 state 路径，请使用实际路径。仅设置 `700` 不会让不同的容器 UID 获得写权限；启动前应确认目录所有者与配置的 UID 一致。保持目录私有，不要放宽权限。
+
+
+```bash
 docker compose --env-file .env \
   -f compose.yml \
   -f compose.http.yml \
@@ -56,7 +78,7 @@ docker compose --env-file .env \
   up -d
 ```
 
-启动前需要设置 `SERVERFS_OAUTH_ENABLED=true`、canonical 公网 MCP resource URL、`serverfs-auth` public/issuer URL、introspection secret、至少一个 provider，以及精确的稳定 principal allowlist。公网部署应继续让 MCP/auth 容器只绑定 loopback，再通过 HTTPS 反向代理发布。Provider callback、CIMD/DCR、备份/撤销与 OpenAI Tunnel 兼容边界详见 [OAuth 2.1](./oauth/)。
+启动前需要设置 `SERVERFS_OAUTH_ENABLED=true`、canonical 公网 MCP resource URL、`serverfs-auth` public/issuer URL、introspection secret、至少一个 provider，以及精确的稳定 principal allowlist。公网部署应继续让 MCP/auth 容器只绑定 loopback，再通过 HTTPS 反向代理发布。Provider callback、CIMD/DCR、备份/撤销与 OpenAI Tunnel 兼容边界详见 [OAuth 2.1](../oauth/)。
 
 ## 可选 ChatGPT / OpenAI Tunnel 部署
 
@@ -69,11 +91,11 @@ docker compose ps
 docker compose logs -f openai-tunnel
 ```
 
-该路径继续作为受支持的认证入口适配器，但不再是通用 MCP 客户端的前置条件。运维排障请使用 [Tunnel 诊断](./tunnel-diagnostics/)；仅看到容器 `Up` 并不能证明 Tunnel readiness 或 control-plane 连续可用。
+该路径继续作为受支持的认证入口适配器，但不再是通用 MCP 客户端的前置条件。运维排障请使用 [Tunnel 诊断](../tunnel-diagnostics/)；仅看到容器 `Up` 并不能证明 Tunnel readiness 或 control-plane 连续可用。
 
-Linux 主机如果受到 registry/网络访问限制，见[受限网络 ARM64 部署](./restricted-network-arm64/)，其中分别说明 Docker daemon proxy 与离线镜像转运路径。
+Linux 主机如果受到 registry/网络访问限制，见[受限网络 ARM64 部署](../restricted-network-arm64/)，其中分别说明 Docker daemon proxy 与离线镜像转运路径。
 
-如果只希望以最低权限向 AI 暴露生成后的宿主机状态，而不是授予宿主机权限，见[只读宿主机可观测性](./host-observability/)。
+如果只希望以最低权限向 AI 暴露生成后的宿主机状态，而不是授予宿主机权限，见[只读宿主机可观测性](../host-observability/)。
 
 ## Agent 部署
 
@@ -94,7 +116,7 @@ python3 deployment/agent-bridge/verify_host.py --require-runtimes
 SERVERFS_JEV_API_KEY=<your key>
 ```
 
-留空即可让 Agent Bridge 完全不依赖 Jev。无需额外修改 MCP 容器配置，也无需刷新 ChatGPT 插件。详见 [Jev Advisors](./jev-advisors/)。
+留空即可让 Agent Bridge 完全不依赖 Jev。无需额外修改 MCP 容器配置，也无需刷新 ChatGPT 插件。详见 [Jev Advisors](../jev-advisors/)。
 
 ## ChatGPT 文件参数入口
 
@@ -120,7 +142,7 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.agent.yml up -d
 ```
 
-Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 引入的文件入口主机策略与网络边界详见[二进制传输](./binary-transfer/)和[安全模型](./security/)。
+Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 引入的文件入口主机策略与网络边界详见[二进制传输](../binary-transfer/)和[安全模型](../security/)。
 
 ## 当前稳定版本：v0.22.0
 
@@ -132,6 +154,6 @@ ghcr.io/ntlx/serverfs_mcp:0.22
 ghcr.io/ntlx/serverfs_mcp:0.22.0
 ```
 
-生产环境应固定使用 `0.22.0`，而不是长期跟随 `latest` 或 `edge`。同一 tag 在 GitHub Release 上发布三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）并记录 SHA-256。同一 Release 还提供一个 skills-only portable Agent Plugin：`serverfs-plugin-v0.22.0.zip`，见 [Agent Skills](./agent-skills/)。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.19.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](./windows-native/)和 [macOS 原生部署](./macos-native/)。
+生产环境应固定使用 `0.22.0`，而不是长期跟随 `latest` 或 `edge`。同一 tag 在 GitHub Release 上发布三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）并记录 SHA-256。同一 Release 还提供一个 skills-only portable Agent Plugin：`serverfs-plugin-v0.22.0.zip`，见 [Agent Skills](../agent-skills/)。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.19.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](../windows-native/)和 [macOS 原生部署](../macos-native/)。
 
-ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](./acp/)。
+ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](../acp/)。

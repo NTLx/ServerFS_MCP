@@ -73,4 +73,4 @@ ServerFS 授权 workdir 和 runtime，为 workspace-write 任务持有共享 wri
 - **取消后 workdir 仍 busy：**不要删除锁或重试写任务。检查 Bridge/Provider 进程状态并使用既定恢复流程；确认停止前 guard 会保留。
 - **Linux 容器无法连接 Bridge：**按部署指南检查实测 peer UID/GID、socket mount、Agent overlay 和宿主机 Bridge 健康状态。
 
-生命周期与 IPC 配置见 [Agent Bridge](./agent-bridge/) 和各平台部署指南。
+生命周期与 IPC 配置见 [Agent Bridge](../agent-bridge/) 和各平台部署指南。

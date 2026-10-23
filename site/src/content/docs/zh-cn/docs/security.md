@@ -36,7 +36,7 @@ v0.4.0 引入了 MCP Streamable HTTP DNS-rebinding protection；v0.5.0 保持这
 
 ## 静态 API Key 边界
 
-v0.17 可以使用一个可选的共享 API Key 保护远程 Streamable HTTP。Key 会在进入 MCP dispatch 前校验，并采用 constant-time comparison；它不会创建用户身份，也不会改变 workdir 授权。优先使用 Header 认证（`Authorization: Bearer <key>`）。为了兼容一行 MCP URL，也支持 `?key=`，但 query credential 更容易出现在 URL 日志中，因此 API Key 模式会关闭 ServerFS 自身默认的 Uvicorn access log；上游代理日志仍由操作者负责。静态 API Key 与内置 OAuth 互斥。详见[静态 API Key](./api-key/)。
+v0.17 可以使用一个可选的共享 API Key 保护远程 Streamable HTTP。Key 会在进入 MCP dispatch 前校验，并采用 constant-time comparison；它不会创建用户身份，也不会改变 workdir 授权。优先使用 Header 认证（`Authorization: Bearer <key>`）。为了兼容一行 MCP URL，也支持 `?key=`，但 query credential 更容易出现在 URL 日志中，因此 API Key 模式会关闭 ServerFS 自身默认的 Uvicorn access log；上游代理日志仍由操作者负责。静态 API Key 与内置 OAuth 互斥。详见[静态 API Key](../api-key/)。
 
 ## OAuth 边界
 
@@ -44,7 +44,7 @@ v0.16 可通过隔离的 `serverfs-auth` Authorization Server 保护远程 Strea
 
 准入策略默认拒绝，只接受精确的稳定 provider subject。Provider-native token 不能直接访问 MCP。Authorization code/provider state 都是一次性的，refresh token 使用后轮换，原始 bearer 值不会持久化，resource/audience 校验保持严格。身份准入后仍由既有 workdir 策略决定权限；ServerFS 不把 workdir 权限复制成 OAuth scope。
 
-OpenAI Tunnel 的 OAuth 路径同样保持这些校验。已知上游 resource rewrite 问题会被明确记录，而不是通过 wildcard audience 绕过。部署、撤销、备份和 provider 细节见 [OAuth 2.1](./oauth/)。
+OpenAI Tunnel 的 OAuth 路径同样保持这些校验。已知上游 resource rewrite 问题会被明确记录，而不是通过 wildcard audience 绕过。部署、撤销、备份和 provider 细节见 [OAuth 2.1](../oauth/)。
 
 ## Agent 边界
 
@@ -58,6 +58,6 @@ Jev 是可选能力，只从宿主机 Agent Bridge 发起调用。它不属于 M
 
 TypeSafe API Key 只会渲染到用户自有的 Bridge 配置，不会进入 MCP 容器。v0.12 中，`SERVERFS_JEV_USE_PROXY` 通过 Jev 的显式 HTTP client 使用共享代理，而不会修改进程级代理变量。Approval Advisor 只发送最小化、已 redaction 的 approval state，并在外发前再次清洗 secret/token/password 等敏感模式。同一 task 内完全相同的 approval advice 可以复用缓存，但缓存本身绝不会完成审批。
 
-完整 advisory 契约详见 [Jev Advisors](./jev-advisors/)。
+完整 advisory 契约详见 [Jev Advisors](../jev-advisors/)。
 
-相邻的信任边界细节请继续查看 [架构](./architecture/)、[配置](./configuration/)、[静态 API Key](./api-key/) 与 [OAuth 2.1](./oauth/)。版本特定的实现与验收证据保留在仓库 phase acceptance 记录中，而不再堆叠到项目 README。
+相邻的信任边界细节请继续查看 [架构](../architecture/)、[配置](../configuration/)、[静态 API Key](../api-key/) 与 [OAuth 2.1](../oauth/)。版本特定的实现与验收证据保留在仓库 phase acceptance 记录中，而不再堆叠到项目 README。

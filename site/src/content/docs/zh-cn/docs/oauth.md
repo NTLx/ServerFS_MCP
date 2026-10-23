@@ -26,15 +26,7 @@ GitHub / 钉钉 / 飞书 / 微信
 
 ## 部署边界
 
-OAuth 当前是 **Linux Docker Compose** 能力：
-
-```bash
-docker compose --env-file .env \
-  -f compose.yml \
-  -f compose.http.yml \
-  -f compose.oauth.yml \
-  up -d
-```
+OAuth 当前是 **Linux Docker Compose** 能力。
 
 只有需要 Agent 委托时才额外加入 `compose.agent.yml`。
 
@@ -51,6 +43,7 @@ Docker 端口继续只绑定 loopback，由反向代理终止公网 TLS。反向
 
 ```text
 SERVERFS_OAUTH_ENABLED=true
+SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000,mcp.example.com
 SERVERFS_OAUTH_RESOURCE_URL=https://mcp.example.com/mcp
 SERVERFS_AUTH_PUBLIC_URL=https://auth.example.com
 SERVERFS_OAUTH_ISSUER_URL=https://auth.example.com
@@ -61,11 +54,32 @@ SERVERFS_AUTH_ALLOWED_PRINCIPALS=<provider:stable-subject,...>
 
 `SERVERFS_OAUTH_ISSUER_URL` 必须与 `SERVERFS_AUTH_PUBLIC_URL` 完全一致。除明确的 loopback 测试外，公网 URL 必须使用 HTTPS。
 
-启动 Compose 前必须预先创建 auth state 目录，并确保配置的非 root `SERVERFS_UID:GID` 可写：
+上述 Host allowlist 保留内部与 loopback 路径，并加入本例的公网 MCP authority。请将 `mcp.example.com` 替换为代理实际保留的 Host authority；如自定义端口，也需相应调整。保持 Host 校验启用。
+
+启动 Compose 前，先为配置的 `SERVERFS_UID:SERVERFS_GID` 准备 auth state 目录。默认身份为 `10001:10001`、`SERVERFS_AUTH_STATE_HOST_DIR=./.serverfs-auth-state` 时，在仓库根目录运行：
 
 ```bash
-mkdir -p .serverfs-auth-state
-chmod 700 .serverfs-auth-state
+sudo install -d -m 700 -o 10001 -g 10001 -- .serverfs-auth-state
+```
+
+将所有者设为 `10001:10001` 通常需要 `sudo`（或管理员操作）；容器仍以该非 root 身份运行。如果在 `.env` 中自定义了 `SERVERFS_UID`、`SERVERFS_GID` 或 `SERVERFS_AUTH_STATE_HOST_DIR`，请将上述数字 ID 与路径替换为实际值。Compose 会读取 `.env`，但这些值不会自动导出到当前 shell。
+
+若采用当前用户身份部署，也可以将 `.env` 中的 `SERVERFS_UID` 与 `SERVERFS_GID` 分别设为 `id -u` 与 `id -g` 的输出，前提是该身份也符合 MCP workdir 的权限要求。对于由该用户拥有的新目录，无需特权：
+
+```bash
+install -d -m 700 -- .serverfs-auth-state
+```
+
+如果自定义了 state 路径，请使用实际路径。仅设置 `700` 不会让不同的容器 UID 获得写权限；启动前应确认目录所有者与配置的 UID 一致。保持目录私有，不要放宽权限。
+
+完成下文的 provider 凭据与准入策略配置后，启动 OAuth：
+
+```bash
+docker compose --env-file .env \
+  -f compose.yml \
+  -f compose.http.yml \
+  -f compose.oauth.yml \
+  up -d
 ```
 
 ## 默认拒绝的准入策略

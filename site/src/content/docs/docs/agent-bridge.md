@@ -106,7 +106,7 @@ The host Bridge can optionally use TypeSafe Jev as an **advisory-only** decision
 
 With `SERVERFS_JEV_API_KEY` configured, one task-submission request provides Agent Task Preflight and Runtime Router advice. v0.9.0 also lets `list_agent_models` include a concrete proposed task: after successful native model discovery, Model Advisor may recommend one of the currently exposed candidates before submission. In v0.12, `SERVERFS_JEV_USE_PROXY` independently selects the shared proxy for Jev's explicit HTTP client; this does not affect Agent provider or Tunnel routing. ServerFS returns that advice with `automatic=false` and never copies it into `submit_agent_task.model`. If the native provider later creates a concrete approval request, Approval Advisor may make one additional Jev request; identical approvals within the same task reuse cached advice. With no key, model discovery/submission still work and no Jev requests occur.
 
-Jev never overrides the explicit runtime/model, workdir policy, writer lease, provider approval state, or `respond_agent_approval`. See [Jev Advisors](./jev-advisors/) for the model contract, request flow, data minimization, and failure behavior.
+Jev never overrides the explicit runtime/model, workdir policy, writer lease, provider approval state, or `respond_agent_approval`. See [Jev Advisors](../jev-advisors/) for the model contract, request flow, data minimization, and failure behavior.
 
 ## Delegation hygiene
 
@@ -141,4 +141,4 @@ task is blocked, narrow it at a real capability boundary or use a more structure
 ServerFS primitive without weakening authorization, audit, writer-lease or network-isolation
 controls.
 
-For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](./acp/).
+For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).

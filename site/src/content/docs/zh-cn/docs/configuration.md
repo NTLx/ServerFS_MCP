@@ -24,13 +24,13 @@ SERVERFS_HTTP_API_KEY=
 
 ### 可选静态 API Key
 
-v0.17 通过 `SERVERFS_HTTP_API_KEY` 提供一个共享 HTTP bearer secret。留空即关闭。客户端优先使用 `Authorization: Bearer <key>`；也支持 `?key=<key>` 以兼容只接受一行 MCP URL 的产品，但 query secret 可能被上游 URL 日志记录。API Key 与内置 OAuth 互斥，并且不适用于原生 stdio。详见[静态 API Key](./api-key/)。
+v0.17 通过 `SERVERFS_HTTP_API_KEY` 提供一个共享 HTTP bearer secret。留空即关闭。客户端优先使用 `Authorization: Bearer <key>`；也支持 `?key=<key>` 以兼容只接受一行 MCP URL 的产品，但 query secret 可能被上游 URL 日志记录。API Key 与内置 OAuth 互斥，并且不适用于原生 stdio。详见[静态 API Key](../api-key/)。
 
 ### 可选 OAuth 2.1
 
 远程 HTTP 可以在 v0.16 中通过 `SERVERFS_OAUTH_ENABLED=true` + `compose.oauth.yml` 增加隔离的 OAuth 层。OAuth 默认关闭；关闭时不要求任何 OAuth 配置，也不适用于 Windows/macOS 原生 stdio。Provider 凭据与 provider/CIMD egress 只进入 `serverfs-auth`；MCP 服务只接收 Resource Server 配置和私有 introspection 边界。
 
-公开 URL 模型、稳定 principal allowlist、provider callback、CIMD/DCR、代理与运维流程详见 [OAuth 2.1](./oauth/)。完整版本化变量面仍以 `.env.example` 为准。
+公开 URL 模型、稳定 principal allowlist、provider callback、CIMD/DCR、代理与运维流程详见 [OAuth 2.1](../oauth/)。完整版本化变量面仍以 `.env.example` 为准。
 
 ## Workdir 槽位
 
@@ -89,8 +89,8 @@ WORKDIR_02_READ_ONLY=false
 SERVERFS_JEV_API_KEY=<your key>
 ```
 
-留空即可完全关闭 Agent Task Preflight、Runtime Router、Model Advisor 与 Approval Advisor。正常 Agent Bridge 安装器只会把已配置的 Key 渲染到用户自有、权限为 `0600` 的配置中。v0.12 中，`SERVERFS_JEV_USE_PROXY=true` 只让 Jev 的显式 HTTP client 使用共享代理；Agent 与 Tunnel 的路由仍彼此独立。运行行为与安全边界详见 [Jev Advisors](./jev-advisors/)。
+留空即可完全关闭 Agent Task Preflight、Runtime Router、Model Advisor 与 Approval Advisor。正常 Agent Bridge 安装器只会把已配置的 Key 渲染到用户自有、权限为 `0600` 的配置中。v0.12 中，`SERVERFS_JEV_USE_PROXY=true` 只让 Jev 的显式 HTTP client 使用共享代理；Agent 与 Tunnel 的路由仍彼此独立。运行行为与安全边界详见 [Jev Advisors](../jev-advisors/)。
 
 完整 Linux/Docker 环境变量面请以版本化的 [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example) 为准。Windows 与 macOS 原生部署的非敏感策略使用 [`serverfs.toml.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/serverfs.toml.example)；`.env` 仅承载各平台指南所说明的少量 secret / proxy / runtime 配置。
 
-ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](./acp/)。
+ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](../acp/)。

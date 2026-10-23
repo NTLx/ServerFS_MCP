@@ -108,7 +108,7 @@ docker compose logs --tail=200 openai-tunnel
 
 持续出现已完成的 poll failure 或 retry/backoff，比容器 `Up` 更能说明远端网络或认证存在问题。正在进行的 long poll 本身是正常状态，不应单独视为故障。
 
-如果启用了 `SERVERFS_OPENAI_TUNNEL_USE_PROXY=true`，还需要检查 HTTP proxy 路径。Tunnel proxy 只影响 Tunnel control-plane 出站，不会配置 Docker 拉取镜像。详见[受限网络 ARM64 部署](./restricted-network-arm64/)。
+如果启用了 `SERVERFS_OPENAI_TUNNEL_USE_PROXY=true`，还需要检查 HTTP proxy 路径。Tunnel proxy 只影响 Tunnel control-plane 出站，不会配置 Docker 拉取镜像。详见[受限网络 ARM64 部署](../restricted-network-arm64/)。
 
 ### 5. Poll 成功但 ChatGPT 收不到结果
 

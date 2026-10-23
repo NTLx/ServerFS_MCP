@@ -53,7 +53,7 @@ Streamable HTTP MCP app
 现有 ServerFS workdir 策略
 ```
 
-v0.17 的 API Key 路径只是 SDK Streamable HTTP app 外的一层小型 HTTP ingress wrapper，不引入 Authorization Server、数据库、用户身份、scope 模型或 provider egress。API Key 与内置 OAuth 互斥。为了兼容一行 MCP URL 支持 query key，但该模式会关闭 ServerFS 自身默认的 Uvicorn access log，避免由 ServerFS 自己打印带 secret 的 URL。详见[静态 API Key](./api-key/)。
+v0.17 的 API Key 路径只是 SDK Streamable HTTP app 外的一层小型 HTTP ingress wrapper，不引入 Authorization Server、数据库、用户身份、scope 模型或 provider egress。API Key 与内置 OAuth 互斥。为了兼容一行 MCP URL 支持 query key，但该模式会关闭 ServerFS 自身默认的 Uvicorn access log，避免由 ServerFS 自己打印带 secret 的 URL。详见[静态 API Key](../api-key/)。
 
 ## 可选 OAuth 路径
 
@@ -74,7 +74,7 @@ serverfs-auth
 
 `serverfs-auth` 是独立部署的非 root 服务，拥有自己的可写 SQLite state 与 OAuth-only egress network。Provider 凭据不会进入 `serverfs-mcp`；MCP 容器也不会加入 OAuth 出站网络。Resource Server 只接受 ServerFS 自己签发、绑定到配置 MCP resource 的不透明 Token。准入策略精确且默认拒绝，身份准入后仍使用原有 workdir 策略。
 
-OAuth 属于 Linux remote-HTTP 部署形态，不属于 Windows/macOS 原生 stdio。公网 TLS/反向代理形态、provider callback、client 注册与 Tunnel 兼容边界详见 [OAuth 2.1](./oauth/)。
+OAuth 属于 Linux remote-HTTP 部署形态，不属于 Windows/macOS 原生 stdio。公网 TLS/反向代理形态、provider callback、client 注册与 Tunnel 兼容边界详见 [OAuth 2.1](../oauth/)。
 
 ## 可选 Agent 路径
 

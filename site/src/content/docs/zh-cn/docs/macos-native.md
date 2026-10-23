@@ -108,4 +108,4 @@ ServerFS 绝不绕过 macOS TCC 隐私控制。受保护路径会干净失败；
 
 参见 `docs/phase-0-macos27-arm64-capability-probe-2026-10.md`、`docs/phase-v0.13.2-servicemanagement-probe-2026-10.md`、v0.13 系列 macOS 验收记录，以及 v0.13.2 开发/验收记录。
 
-ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](./acp/)。
+ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](../acp/)。

@@ -61,7 +61,7 @@ SERVERFS_PROXY_HOST=proxy.example.internal
 SERVERFS_PROXY_PORT=3128
 ```
 
-该设置只影响 Tunnel 启动后的 control-plane egress，不会修改 `dockerd`、registry authentication 或镜像拉取。运行时诊断见 [Tunnel 诊断](./tunnel-diagnostics/)。
+该设置只影响 Tunnel 启动后的 control-plane egress，不会修改 `dockerd`、registry authentication 或镜像拉取。运行时诊断见 [Tunnel 诊断](../tunnel-diagnostics/)。
 
 ## 路径 B：目标主机无法访问 GHCR
 
