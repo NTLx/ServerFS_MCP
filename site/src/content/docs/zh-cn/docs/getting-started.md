@@ -108,7 +108,7 @@ uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --requir
 
 启用之前，请先按照仓库中的 [Agent Bridge 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md) 安装并验证宿主机 Agent Bridge。后续每次重建都必须保留 Agent overlay；只用基础 Compose 会移除 Agent socket/lock 挂载。源码 checkout 中的 Python 命令应通过项目级 uv 环境执行，不要直接依赖宿主机未限定版本的 `python3`。
 
-## 可选 Deterministic Repo Ops（v0.23 开发能力）
+## 可选 Deterministic Repo Ops（v0.23.0）
 
 Repo Ops 与 Agent delegation 相互独立，但会复用已认证的 Host Bridge transport 与 writer-lease 基础设施。在可写的 Linux/Compose Workdir 上设置：
 
@@ -117,7 +117,7 @@ WORKDIR_01_REPO_OPS_ENABLED=true
 WORKDIR_01_REPO_ACTIONS_JSON={...}
 ```
 
-不需要启用任何 Agent Runtime。v0.23 开发能力增加 `inspect_repo`、`run_repo_action`、`commit_repo_changes` 与 `push_repo`；named action 使用管理员拥有的固定 argv 和强制 SHA-256 integrity pins，调用方不会获得 shell/argv/remote/ref/force 控制。截至 2026-10-26，Linux bootstrap / 内部 E2E 与公共 ChatGPT MCP E2E 均已 PASS。后续运维 Skills 审计又修改了打包 guidance 与对应回归测试，因此正式版本化/发布前仍需刷新 root/Agent-Skills 验证，并重新执行最新站点 build/diff 检查。启用前请阅读 [Deterministic Repo Ops](../repo-ops/)。
+不需要启用任何 Agent Runtime。v0.23.0 增加 `inspect_repo`、`run_repo_action`、`commit_repo_changes` 与 `push_repo`；named action 使用管理员拥有的固定 argv 和强制 SHA-256 integrity pins，调用方不会获得 shell/argv/remote/ref/force 控制。发布验收覆盖 Linux bootstrap / 内部 E2E、公共 ChatGPT MCP E2E、完整 root/Agent Bridge CI、MCP conformance、Windows/macOS 回归以及冻结后的站点 build/deploy。启用前请阅读 [Deterministic Repo Ops](../repo-ops/)。
 
 ### 可选 Jev Advisors
 
@@ -155,16 +155,16 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 引入的文件入口主机策略与网络边界详见[二进制传输](../binary-transfer/)和[安全模型](../security/)。
 
-## 当前稳定版本：v0.22.1
+## 当前稳定版本：v0.23.0
 
-已发布的 v0.22.1 使用不可变标签 `v0.22.1`，并提供以下 GHCR 稳定标签：
+已发布的 v0.23.0 使用不可变标签 `v0.23.0`，并提供以下 GHCR 稳定标签：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.22
-ghcr.io/ntlx/serverfs_mcp:0.22.1
+ghcr.io/ntlx/serverfs_mcp:0.23
+ghcr.io/ntlx/serverfs_mcp:0.23.0
 ```
 
-生产环境应固定使用 `0.22.1`，而不是长期跟随 `latest` 或 `edge`。v0.22.1 GitHub Release 包含三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）以及 skills-only portable Agent Plugin `serverfs-plugin-v0.22.1.zip`；SHA-256 见[发布清单](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.1-release-checklist-2026-10-23.md)；见 [Agent Skills](../agent-skills/)。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.19.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](../windows-native/)和 [macOS 原生部署](../macos-native/)。
+生产环境应固定使用 `0.23.0`，而不是长期跟随 `latest` 或 `edge`。v0.23.0 GitHub Release 包含三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）以及 skills-only portable Agent Plugin `serverfs-plugin-v0.23.0.zip`；发布证据见 [v0.23.0 发布清单](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.0-release-checklist-2026-10-26.md)；见 [Agent Skills](../agent-skills/)。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.19.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](../windows-native/)和 [macOS 原生部署](../macos-native/)。
 
 ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](../acp/)。

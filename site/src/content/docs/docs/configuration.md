@@ -74,7 +74,7 @@ Extra deny globs are stricter: global and workdir rules are **unioned**, so a wo
 - The constrained OpenAI Blob host-family policy is separately disabled by default; enable it with `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` only when ChatGPT file parameters are required. Exact additional hosts belong in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
 - Static API Key authentication is disabled by default. A non-empty `SERVERFS_HTTP_API_KEY` protects Streamable HTTP with one shared secret and cannot be combined with built-in OAuth.
 - OAuth is disabled by default. Enabling it requires the OAuth Compose overlay, an HTTPS resource/auth URL pair outside loopback, a non-empty introspection secret, at least one configured identity provider, and an exact default-deny principal allowlist.
-- Repo Ops is disabled by default and is independently enabled per workdir with `WORKDIR_XX_REPO_OPS_ENABLED=true`. The v0.23 development implementation is Linux-only and requires the authenticated host Bridge transport, but does not require any Agent runtime.
+- Repo Ops is disabled by default and is independently enabled per workdir with `WORKDIR_XX_REPO_OPS_ENABLED=true`. The v0.23.0 release implementation is Linux-only and requires the authenticated host Bridge transport, but does not require any Agent runtime.
 - `WORKDIR_XX_REPO_ACTIONS_JSON` is private operator policy for Repo Ops named actions. It is rendered only into the host Bridge configuration and is intentionally not forwarded into the MCP container. Named actions require a read-write workdir and mandatory SHA-256 integrity pins.
 - Agent policy is disabled unless explicitly configured.
 - v0.12.0 keeps Tunnel, Agent runtime and Jev proxy decisions independent: `SERVERFS_OPENAI_TUNNEL_USE_PROXY`, `SERVERFS_AGENT_USE_PROXY`, and `SERVERFS_JEV_USE_PROXY` each reuse the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields but never implicitly enable one another.
@@ -84,7 +84,7 @@ Extra deny globs are stricter: global and workdir rules are **unioned**, so a wo
 - Host paths are not exposed through MCP tool results.
 - A typo in a workdir path fails loudly instead of silently creating a directory.
 
-## Optional deterministic Repo Ops (v0.23 development)
+## Optional deterministic Repo Ops (v0.23.0)
 
 Repo Ops is a per-workdir, default-off repository capability. A minimal Linux/Compose workdir configuration is:
 

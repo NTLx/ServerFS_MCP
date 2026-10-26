@@ -108,7 +108,7 @@ uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --requir
 
 Before enabling it, install and verify the host-side Agent Bridge as described in the repository's [Agent Bridge deployment guide](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md). Keep the Agent overlay on every later recreation; using base Compose alone removes the Agent socket/lock mounts. Source-checkout Python commands should run through the project uv environment rather than the host's unqualified `python3`.
 
-## Optional Deterministic Repo Ops (v0.23 development)
+## Optional Deterministic Repo Ops (v0.23.0)
 
 Repo Ops is separate from Agent delegation but reuses the authenticated host Bridge transport and writer-lease infrastructure. On a writable Linux/Compose workdir, set:
 
@@ -117,7 +117,7 @@ WORKDIR_01_REPO_OPS_ENABLED=true
 WORKDIR_01_REPO_ACTIONS_JSON={...}
 ```
 
-No Agent runtime needs to be enabled. The v0.23 development surface adds `inspect_repo`, `run_repo_action`, `commit_repo_changes`, and `push_repo`; named actions use operator-owned fixed argv plus mandatory SHA-256 integrity pins, and the caller never receives shell/argv/remote/ref/force control. As of 2026-10-26 the Linux bootstrap/internal E2E and public ChatGPT MCP E2E are PASS. A later operational-Skills audit changed the packaged guidance and its regression test, so refreshed root/Agent-Skills validation plus the fresh site build/diff check remain before normal versioning/publication. See [Deterministic Repo Ops](../repo-ops/) before enabling it.
+No Agent runtime needs to be enabled. v0.23.0 adds `inspect_repo`, `run_repo_action`, `commit_repo_changes`, and `push_repo`; named actions use operator-owned fixed argv plus mandatory SHA-256 integrity pins, and the caller never receives shell/argv/remote/ref/force control. Release acceptance covered Linux bootstrap/internal E2E, public ChatGPT MCP E2E, full root/Agent Bridge CI, MCP conformance, Windows/macOS regression, and the post-freeze site build/deploy. See [Deterministic Repo Ops](../repo-ops/) before enabling it.
 
 ### Optional Jev advisors
 
@@ -155,16 +155,16 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](../binary-transfer/) and [Security Model](../security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
-## Current stable release: v0.22.1
+## Current stable release: v0.23.0
 
-The published v0.22.1 release uses immutable tag `v0.22.1` and these GHCR stable tags:
+The published v0.23.0 release uses immutable tag `v0.23.0` and these GHCR stable tags:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.22
-ghcr.io/ntlx/serverfs_mcp:0.22.1
+ghcr.io/ntlx/serverfs_mcp:0.23
+ghcr.io/ntlx/serverfs_mcp:0.23.0
 ```
 
-For production deployments, pin `0.22.1` rather than following `latest` or `edge`. The v0.22.1 GitHub Release includes the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) and the skills-only portable Agent Plugin `serverfs-plugin-v0.22.1.zip`, with SHA-256 digests recorded in the [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.1-release-checklist-2026-10-23.md); see [Agent Skills](../agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
+For production deployments, pin `0.23.0` rather than following `latest` or `edge`. The v0.23.0 GitHub Release includes the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) and the skills-only portable Agent Plugin `serverfs-plugin-v0.23.0.zip`, with release evidence recorded in the [v0.23.0 release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.0-release-checklist-2026-10-26.md); see [Agent Skills](../agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
 
 For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).

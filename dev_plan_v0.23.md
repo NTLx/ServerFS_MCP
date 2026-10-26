@@ -1,6 +1,6 @@
 # ServerFS v0.23 Development Plan — Deterministic Repo Ops
 
-Status: implementation + Linux bootstrap/internal E2E + public ChatGPT MCP E2E **PASS**; post-Skills-audit root/Agent-Skills validation, fresh site build/diff, and release publication remain pending. Executed acceptance evidence is recorded in [`docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md`](docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md).
+Status: **v0.23.0 PRE-TAG RELEASE CANDIDATE PASS.** Implementation, Linux bootstrap/internal E2E, public ChatGPT MCP E2E, refreshed full root/Agent Bridge validation, MCP conformance, Windows/macOS regression, and post-freeze site build/deploy are PASS. Release-facing version/documentation closeout is complete and is being revalidated on the final release commit before the immutable tag is created. Executed acceptance evidence is recorded in [`docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md`](docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md) and the [`v0.23.0 release checklist`](docs/v0.23.0-release-checklist-2026-10-26.md).
 
 ## 1. Problem
 
@@ -24,7 +24,7 @@ Repo Ops is therefore a deterministic host capability, not Agent delegation.
 ### Non-goals
 
 - no generic shell, argv, env, cwd, executable, remote, ref, or force parameters from an MCP caller;
-- no caller-selectable pull/fetch/checkout/reset/clean/rebase/merge/tag/release operations; a fixed internal unstage rollback is allowed only to restore commit staging after a failed Repo Ops commit attempt;
+- no generic caller-selectable pull/fetch/checkout/reset/clean/rebase/merge/tag/release operations. The later accepted v0.23.0 release-action extension is deliberately narrower: an operator must configure the built-in `release_tag` or `publish_npm` action kind, and the caller may supply only a validated `release_tag`; repository, HEAD semantics and fixed workflow remain operator/product controlled. A fixed internal unstage rollback is allowed only to restore commit staging after a failed Repo Ops commit attempt;
 - no automatic Agent fallback;
 - no provider runtime/model/session/task creation;
 - no credential transport through MCP or Bridge RPC payloads;
@@ -46,16 +46,19 @@ Read-only. `view` is one of:
 
 Path arguments, when accepted, are validated through the same ServerFS workdir path policy as filesystem tools.
 
-### `run_repo_action(workdir, action, path=None)`
+### `run_repo_action(workdir, action, path=None, release_tag=None)`
 
-Runs one administrator-configured named action. The caller supplies only the action name and, only when the action profile explicitly declares `argument=path`, one workdir-relative path. The executable and base argv are fixed in host-side configuration. No shell is used.
+Runs one administrator-configured named action. Command actions accept only the action name and, when their profile explicitly declares a path argument, one workdir-relative path. The executable and base argv are fixed in host-side configuration and no shell is used. The later v0.23.0 built-in release-action extension may instead accept one validated `release_tag` for an operator-configured `release_tag` or `publish_npm` action; `path` and `release_tag` are mutually exclusive, and repository/workflow/HEAD semantics remain fixed rather than caller-controlled.
 
-An action profile contains:
+A command action profile contains:
 
+- `kind`: `command` (default);
 - `argv`: fixed non-empty argv array;
 - `mutates`: boolean;
 - `argument`: `none`, `path`, or `basename`; `basename` still requires the caller to submit a full policy-valid workdir path, but only its final filename is appended to the fixed argv;
 - `integrity`: non-empty map of workdir-relative files to lowercase SHA-256 digests.
+
+The accepted release-action extension adds `kind=release_tag` and `kind=publish_npm`. These built-ins do not accept command argv. Operator policy fixes the GitHub repository and, for npm dispatch, the fixed `publish.yml` workflow plus an optional administrator-only absolute GitHub CLI path. The public caller supplies only a full-match `vMAJOR.MINOR.PATCH` or `vMAJOR.MINOR.PATCH-beta.N` release tag. Both actions require a clean `main` tracking `origin/main`, matching package version, remote `main == HEAD`, reviewed integrity pins, approved GitHub fetch/push URLs and the same exclusive writer lease. Tag creation is exact-HEAD compare-and-create with conflict rejection; npm publication remains Git tag → fixed GitHub Actions → Trusted Publisher/OIDC and never adds an npm token to ServerFS.
 
 Before any named action runs, the host Bridge independently validates every integrity input as a confined regular file and verifies its digest. This is mandatory because a fixed argv such as `python tools/wiki-lint.py` is not safe if the caller can first modify `tools/wiki-lint.py`; without integrity pinning it would be an indirect arbitrary-code execution primitive. Integrity mismatch fails closed before process creation.
 
@@ -212,7 +215,7 @@ The source-focused results above were followed by the real user-scoped Linux boo
 
 - root project: `uv run --frozen --no-sync ruff check .` PASS; format gate PASS; **1780 passed, 320 skipped, 1 warning**. The only warning is the existing upstream Starlette `anyio.abc.BlockingPortal` deprecation warning;
 - Agent Bridge project: Ruff PASS; format PASS; **497 passed, 15 skipped, 0 warnings**. The earlier `PytestUnraisableExceptionWarning` is gone after `run_bounded_command()` was hardened to let stdout/stderr pipe readers settle before the event loop closes;
-- docs/site at bootstrap time: `npm ci` + Astro build PASS, **37 pages built**. The existing unsupported `env` / `cron` expressive-code language warnings fall back to `txt` and do not fail the build. The later v0.23 documentation freeze adds new Repo Ops pages/content, so a fresh post-freeze site build/diff gate remains required before release;
+- docs/site at bootstrap time: `npm ci` + Astro build PASS, **37 pages built**. The existing unsupported `env` / `cron` expressive-code language warnings fall back to `txt` and do not fail the build. This remains historical bootstrap evidence; the later post-freeze Pages build/deploy also passed before release closeout;
 - Compose shapes PASS; scratch image `serverfs-mcp:dev` built successfully. The host lacks Docker buildx, so Compose used the default builder; the image build still completed successfully;
 - all 16 writer leases were acquired for the maintenance cutover;
 - the dirty user-scoped Host Bridge was staged with `--no-start`, explicitly restarted, and `verify_host.py --require-runtimes` returned `bridge_rpc=PASS`, `enabled_runtimes=PASS:claude,codex,qoder`, and `user_scoped_deployment=PASS`;
@@ -224,7 +227,7 @@ The public ChatGPT MCP acceptance completed on 2026-10-26 after the connector re
 
 A follow-up 2026-10-26 operational-Skills audit aligned all seven packaged Skills with the v0.23 boundary: Repo Ops policy remains under `serverfs-configure`, Host Bridge lifecycle under `serverfs-agent-bridge`, install/upgrade/diagnose/tunnel/auth preserve the Host Bridge without inferring Agent enablement, native Windows/macOS remain Repo Ops-unclaimed, and deterministic Repo Ops must never fall back to Agent submission. `tests/test_agent_skills.py` now carries a semantic regression test for these contracts. Because that test/source changed after the bootstrap suite, the bootstrap's 1780-pass root result is historical evidence rather than final-source validation.
 
-The remaining release gates are refreshed root Ruff/format + Agent Skills validation/tests (preferably the complete root suite), a fresh post-documentation-freeze site build/diff check, and the normal versioning/release publication workflow. v0.23 is therefore implementation- and public-E2E-validated, but is still a development line until those release gates complete. The n8n/GitHub bootstrap alternatives remain unnecessary and must not be used as a substitute for the public MCP path.
+The post-Skills-audit and post-documentation-freeze gates subsequently completed successfully: Container run `40273205154`, Windows Native `40273205186`, Windows Agent `40273205178`, macOS Native `40273205159`, and Pages `40273290743` all concluded success; the Container run also passed the refreshed Agent Skills/Plugin, Registry, Compose, Ruff/format, complete root/Agent Bridge tests, and MCP conformance gates. The only remaining pre-tag step is revalidating the final v0.23.0 version/release-facing metadata commit. Publication and post-release deployment evidence are tracked in the release checklist. The n8n/GitHub bootstrap alternatives remain unnecessary and must not be used as a substitute for the public MCP path.
 
 ## 9. Acceptance criteria
 
@@ -245,5 +248,7 @@ PASS requires all of the following:
 3. Configure Repo Ops only for `LLM_WiKi` on the VPS with the three named actions above.
 4. Rebuild/update the user-scoped ServerFS deployment through the normal documented lifecycle.
 5. From ChatGPT, verify `actions → status → wiki_lint → explicit commit → push` without any Agent task. **PASS on 2026-10-26**; public commit `b3621bc5342e834990c170720de149d846d7de34` was pushed to `LLM_WiKi` `origin/main`.
-6. Re-run root Ruff/format and Agent Skills validation/tests after the Skills audit; preferably refresh the complete root suite.
-7. Run the fresh post-documentation-freeze site build/diff gate, then update release-facing version surfaces and decide whether to release v0.23.0.
+6. Re-run root Ruff/format and Agent Skills validation/tests after the Skills audit; refresh the complete root suite. **PASS** in Container run `40273205154`.
+7. Run the fresh post-documentation-freeze site build/diff gate and cross-platform regression workflows. **PASS**: Pages `40273290743`, Windows Native `40273205186`, Windows Agent `40273205178`, macOS Native `40273205159`.
+8. Align authoritative versions and all current release-facing documentation to v0.23.0, re-run the final release-commit gates, then create immutable tag `v0.23.0` and let the tag workflow publish the GitHub Release/assets.
+9. Replace the temporary VPS bootstrap/dev artifact with the official v0.23.0 release deployment, preserve permanent Repo Ops policy, refresh the client schema, and perform final live verification without Agent fallback.

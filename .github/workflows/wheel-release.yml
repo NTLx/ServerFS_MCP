@@ -140,7 +140,12 @@ jobs:
           $bridge = Get-ChildItem dist/serverfs_agent_bridge-*.whl
           $plugin = Get-ChildItem dist/serverfs-plugin-v*.zip
           if (-not (gh release view $tag 2>$null)) {
-            gh release create $tag --target $env:COMMIT --verify-tag --title "ServerFS $tag" --notes "ServerFS $tag"
+            $notesFile = "docs/releases/$tag.md"
+            if (Test-Path -LiteralPath $notesFile -PathType Leaf) {
+              gh release create $tag --target $env:COMMIT --verify-tag --title "ServerFS $tag" --notes-file $notesFile
+            } else {
+              gh release create $tag --target $env:COMMIT --verify-tag --title "ServerFS $tag" --notes "ServerFS $tag"
+            }
           }
           gh release upload $tag $native.FullName --clobber
           gh release upload $tag $product.FullName --clobber

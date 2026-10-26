@@ -5,11 +5,11 @@ description: 面向 Linux、Windows 与 macOS 的安全、标准优先 MCP 文�
 
 ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux 容器为既有形态，v0.10.0 起支持 Windows 原生，v0.13.0 起支持 macOS 原生）暴露为**受控 workdir**。
 
-当前稳定版本：**v0.22.1**。ServerFS 现在以标准 MCP 为中心：兼容 MCP 的宿主可使用原生 stdio 或标准 Streamable HTTP；OpenAI Secure MCP Tunnel 继续作为可选的 ChatGPT 入口。Linux、Windows 与 macOS 继续共享同一套文件系统、二进制与 Agent 能力契约。
+当前稳定版本：**v0.23.0**。ServerFS 现在以标准 MCP 为中心：兼容 MCP 的宿主可使用原生 stdio 或标准 Streamable HTTP；OpenAI Secure MCP Tunnel 继续作为可选的 ChatGPT 入口。Linux、Windows 与 macOS 继续共享同一套文件系统、二进制与 Agent 能力契约。
 
 v0.22.0 通过既有 Agent Bridge 私有 RPC 增加 Correlated Agent Diagnostics：`serverfs diagnostics snapshot` 提供有界的 Bridge 诊断快照，`serverfs diagnostics task <task-id>` 提供单个已保留任务的诊断投影。诊断状态仅驻留于 Bridge 进程内并保持有界；不新增 MCP tool、监听端口、持久 trace store、OpenTelemetry 依赖或 telemetry egress。Linux/VPS、受支持 macOS 与受支持 Windows 的 Phase F 均已通过，Phase G 发布就绪验收为 PASS。详见 [v0.22 Phase G 预检](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-g-preflight-2026-10-22.md)。
 
-它**默认只读**。管理员可以按 workdir 显式启用受控文件写入、有界整文件二进制传输，以及隔离且独立门控的 ChatGPT 文件参数入口。v0.23 开发源码进一步新增独立门控的 Linux **Deterministic Repo Ops**，无需 Agent 委托即可执行有界 Git inspection、完整性固定的 named action、显式文件 commit 与当前 upstream push。宿主机 Agent Bridge 仍然是可选能力；Codex、Claude 和 Qoder 原生 runtime 及可配置 ACP v1 profile 提供 Agent 委托；provider-neutral 模型发现与单次任务模型覆盖仍取决于 runtime，同时可按需启用 advisory-only 的 TypeSafe Jev 支持。Windows 始终保持原生形态：预构建 Rust/NTFS 内核 wheel 之上的 MCP stdio 服务，无需 Docker、WSL 或 MSVC；v0.14.0 进一步让正常 Windows 生命周期不再依赖终端/会话存活。
+它**默认只读**。管理员可以按 workdir 显式启用受控文件写入、有界整文件二进制传输，以及隔离且独立门控的 ChatGPT 文件参数入口。v0.23.0 进一步新增独立门控的 Linux **Deterministic Repo Ops**，无需 Agent 委托即可执行有界 Git inspection、完整性固定的 named action、显式文件 commit、精确当前 upstream push 与固定发布动作。宿主机 Agent Bridge 仍然是可选能力；Codex、Claude 和 Qoder 原生 runtime 及可配置 ACP v1 profile 提供 Agent 委托；provider-neutral 模型发现与单次任务模型覆盖仍取决于 runtime，同时可按需启用 advisory-only 的 TypeSafe Jev 支持。Windows 始终保持原生形态：预构建 Rust/NTFS 内核 wheel 之上的 MCP stdio 服务，无需 Docker、WSL 或 MSVC；v0.14.0 进一步让正常 Windows 生命周期不再依赖终端/会话存活。
 
 ## 能力面
 
@@ -17,14 +17,14 @@ v0.22.0 通过既有 Agent Bridge 私有 RPC 增加 Correlated Agent Diagnostics
 | --- | ---: | --- |
 | 文件系统 | 11 | 基础部署 |
 | 文件系统 + 二进制 | 13 | 启用二进制传输 |
-| 文件系统 + Repo Ops | 15 | 启用 v0.23 Linux 开发版 Repo Ops |
+| 文件系统 + Repo Ops | 15 | 启用 v0.23.0 Linux Repo Ops |
 | 文件系统 + 二进制 + Repo Ops | 17 | 同时启用二进制 + Repo Ops |
 | 文件系统 + Agent | 21 | 启用 Agent overlay |
 | 文件系统 + 二进制 + Agent | 23 | 同时启用二进制 + Agent |
 | 文件系统 + Agent + Repo Ops | 25 | 同时启用 Agent + Repo Ops |
-| v0.23 开发版完整能力 | 27 | 同时启用二进制 + Agent + Repo Ops |
+| v0.23.0 完整能力 | 27 | 同时启用二进制 + Agent + Repo Ops |
 
-稳定版 v0.22.1 仍保持 11 / 13 / 21 / 23 个工具；Repo Ops 在公共 MCP E2E 与正式发布完成前仍属于开发能力。ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
+稳定版 v0.23.0 保留既有 11 / 13 / 21 / 23 文件系统、二进制与 Agent 组合，并增加上表所示独立门控的 Linux Repo Ops 组合。ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
 
 ## 从这里开始
 
@@ -35,7 +35,7 @@ v0.22.0 通过既有 Agent Bridge 私有 RPC 增加 Correlated Agent Diagnostics
 - [静态 API Key](./api-key/) — 使用一个可选共享 bearer secret 保护 Linux 远程 Streamable HTTP。
 - [OAuth 2.1](./oauth/) — 使用可选 OAuth、身份联合与精确稳定 principal 准入保护 Linux 远程 Streamable HTTP。
 - [二进制传输](./binary-transfer/) — 启用有界 download/upload，以及可选的 ChatGPT 文件参数入口。
-- [Deterministic Repo Ops](./repo-ops/) — v0.23 Linux 开发能力，无需 Agent 委托即可完成有界 Git/action/commit/push 操作。
+- [Deterministic Repo Ops](./repo-ops/) — v0.23.0 Linux 能力，无需 Agent 委托即可完成有界 Git/action/commit/push 与固定发布操作。
 - [Agent Bridge](./agent-bridge/) — 按需启用结构化 Codex/Claude/Qoder 与可配置 ACP profile 委派。
 - [Windows 原生部署](./windows-native/) —— Windows 11 x64 + 本地 NTFS 原生部署，包括当前用户持久服务生命周期、健康检查、Tunnel bootstrap 与 Agent 委派。
 - [macOS 原生部署](./macos-native/) —— Apple M 系列 + macOS 27 原生部署，包括 Darwin 文件系统边界、launchd Agent Bridge 与平台门控。

@@ -11,9 +11,8 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 
 ## Current baseline
 
-- **Current stable release: v0.22.1.**
-- **v0.23 is the active development line for Linux Deterministic Repo Ops.** Bootstrap/internal E2E and public ChatGPT MCP E2E are PASS; post-Skills-audit root/Agent-Skills validation, fresh site build/diff, and release publication remain pending. Repo Ops is non-Agent and must not auto-fallback to `submit_agent_task`.
-- **v0.22.0 is the previous stable release.**
+- **Current stable release: v0.23.0.** Linux Deterministic Repo Ops is now a released, independently gated non-Agent capability; it must never auto-fallback to `submit_agent_task`. Native Windows/macOS Repo Ops enablement is not claimed in v0.23.0.
+- **v0.22.1 is the previous stable release.**
 - **v0.19.0 introduced generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes.** OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real Linux/macOS/Windows end-to-end acceptance; see `dev_plan_v0.19.md` for scope and evidence.
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to each platform/runtime gate.

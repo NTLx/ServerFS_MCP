@@ -30,7 +30,7 @@ Host Agent Bridge
 
 ## Why it is separate
 
-The base `compose.yml` remains host-Bridge-unaware. Linux deployments that need Agent delegation — or the v0.23 development Repo Ops transport — explicitly add `compose.agent.yml`. Adding the overlay provides the authenticated host socket/lock transport; Agent runtimes still require their own independent policy enablement.
+The base `compose.yml` remains host-Bridge-unaware. Linux deployments that need Agent delegation — or the v0.23.0 Repo Ops transport — explicitly add `compose.agent.yml`. Adding the overlay provides the authenticated host socket/lock transport; Agent runtimes still require their own independent policy enablement.
 
 This keeps:
 
@@ -45,14 +45,14 @@ ServerFS exposes ten structured Agent tools when Agent policy is enabled. They c
 
 They are **not** a shell, argv passthrough, or generic command executor.
 
-Stable v0.22.1 Agent deployments can expose:
+Stable v0.23.0 Agent deployments can expose:
 
 - 21 tools: filesystem + Agent
 - 23 tools: filesystem + binary + Agent
 
-The v0.23 development source also reuses the authenticated host Bridge transport for an independently gated **Deterministic Repo Ops** capability. Repo Ops adds four MCP tools (`inspect_repo`, `run_repo_action`, `commit_repo_changes`, `push_repo`) without creating an Agent task or invoking a provider adapter. A workdir may enable Repo Ops while Agent mode remains disabled. Linux is the initial implementation scope; native macOS/Windows enablement is not claimed yet.
+v0.23.0 also reuses the authenticated host Bridge transport for an independently gated **Deterministic Repo Ops** capability. Repo Ops adds four MCP tools (`inspect_repo`, `run_repo_action`, `commit_repo_changes`, `push_repo`) without creating an Agent task or invoking a provider adapter. A workdir may enable Repo Ops while Agent mode remains disabled. The released implementation scope is Linux; native macOS/Windows enablement is not claimed.
 
-Repo Ops is not a generic command channel: Git operations have fixed semantics, named actions use operator-owned fixed argv plus SHA-256 integrity pins, and callers cannot supply executable, argv, environment, remote, ref, force, or shell syntax. Repo Ops writes and all named actions share the existing writer lease with filesystem mutations and Agent workspace-write tasks. As of 2026-10-26, the Linux bootstrap/internal E2E and public ChatGPT MCP E2E are PASS. A later operational-Skills audit changed `skills/**` and `tests/test_agent_skills.py`, so refreshed root/Agent-Skills validation plus the fresh site build/diff check remain before normal versioning/publication. See [Deterministic Repo Ops](../repo-ops/) for the complete configuration, security, tool, and acceptance contract.
+Repo Ops is not a generic command channel: Git operations have fixed semantics, named actions use operator-owned fixed argv plus SHA-256 integrity pins, and callers cannot supply executable, argv, environment, remote, ref, force, or shell syntax. Repo Ops writes and all named actions share the existing writer lease with filesystem mutations and Agent workspace-write tasks. Linux bootstrap/internal E2E, public ChatGPT MCP E2E, refreshed root/Agent Bridge CI, MCP conformance, Windows/macOS regression, and the post-freeze site build/deploy all passed before v0.23.0 publication. See [Deterministic Repo Ops](../repo-ops/) for the complete configuration, security, tool, and acceptance contract.
 
 ## v0.12 Linux egress and interaction contract
 

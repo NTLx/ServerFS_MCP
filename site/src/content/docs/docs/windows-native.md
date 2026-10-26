@@ -5,7 +5,7 @@ description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, n
 
 Since v0.10.0 ServerFS runs natively on **Windows 11 x64 over local NTFS** as an MCP **stdio** service. Nothing listens on a port: the official OpenAI `tunnel-client` connects out to the control plane and speaks MCP through the child process's stdin/stdout, so the default native profile has no localhost listener. Linux Docker deployments are unchanged and remain the supported Linux shape.
 
-v0.11 adds **Agent delegation** to this deployment for Codex, Claude Code and Qoder through the same ten Agent tools over a Named-Pipe Bridge, accepted through the live ChatGPT tunnel E2E. The v0.23 Deterministic Repo Ops development path is initially Linux-only; this Windows guide does not claim native Repo Ops enablement.
+v0.11 adds **Agent delegation** to this deployment for Codex, Claude Code and Qoder through the same ten Agent tools over a Named-Pipe Bridge, accepted through the live ChatGPT tunnel E2E. The v0.23.0 Deterministic Repo Ops release scope is Linux-only; this Windows guide does not claim native Repo Ops enablement.
 
 v0.14.0 adds the persistent outer lifecycle without changing that MCP/Agent surface. Its owner is a **current-user, least-privilege Task Scheduler 2.0 task** — not an SCM/LocalSystem Windows Service. Normal install, runtime, recovery, maintenance and removal remain non-elevated and store no account password.
 
@@ -82,7 +82,7 @@ Intentional lifecycle operations are explicit:
 
 ### Common status formats (v0.22.0)
 
-The stable v0.22.1 release retains this behavior. The default `service status` detail/JSON is unchanged. Operators may explicitly run `serverfs service status --format common-json` or `serverfs service status --format common-human` for a bounded, sanitized projection. It omits paths, PIDs, task names and private IDs, and uses `unknown`/`not-checked` rather than inventing health. Use `serverfs doctor` for deeper platform/configuration diagnostics. See [Phase F acceptance and limits](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-windows-acceptance-2026-10-22.md).
+The stable v0.23.0 release retains this behavior. The default `service status` detail/JSON is unchanged. Operators may explicitly run `serverfs service status --format common-json` or `serverfs service status --format common-human` for a bounded, sanitized projection. It omits paths, PIDs, task names and private IDs, and uses `unknown`/`not-checked` rather than inventing health. Use `serverfs doctor` for deeper platform/configuration diagnostics. See [Phase F acceptance and limits](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-windows-acceptance-2026-10-22.md).
 
 `service stop` disables the scheduled task before ending its current action, so the heartbeat cannot resurrect an intentional stop. v0.14.0 also performs a controlled hand-over from the legacy v0.13.x manual launcher when it can freeze and revalidate the exact legacy process identities; it never kills a tree by executable name alone.
 

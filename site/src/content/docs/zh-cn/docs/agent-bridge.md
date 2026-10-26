@@ -30,7 +30,7 @@ Unix socket
 
 ## 为什么要独立存在
 
-基础 `compose.yml` 不感知 Host Bridge。Linux 部署如果需要 Agent 委托，或需要 v0.23 开发中的 Repo Ops transport，都显式叠加 `compose.agent.yml`。该 overlay 只提供已认证的宿主机 socket / lock transport；Agent runtime 仍必须通过独立策略显式启用。
+基础 `compose.yml` 不感知 Host Bridge。Linux 部署如果需要 Agent 委托，或需要 v0.23.0 Repo Ops transport，都显式叠加 `compose.agent.yml`。该 overlay 只提供已认证的宿主机 socket / lock transport；Agent runtime 仍必须通过独立策略显式启用。
 
 这样可以保证：
 
@@ -45,14 +45,14 @@ Unix socket
 
 这些工具**不是** Shell、argv 透传或通用命令执行器。
 
-稳定版 v0.22.1 的 Agent 部署可形成：
+稳定版 v0.23.0 的 Agent 部署可形成：
 
 - 21 个工具：文件系统 + Agent
 - 23 个工具：文件系统 + 二进制 + Agent
 
-v0.23 开发源码还会复用已认证的 Host Bridge transport，提供独立门控的 **Deterministic Repo Ops**。Repo Ops 增加 4 个 MCP 工具（`inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`），不会创建 Agent task，也不会调用 provider adapter。Workdir 可以在 Agent mode 保持 disabled 时单独开启 Repo Ops。首版实现范围仅声明 Linux；尚不声明 macOS / Windows 原生启用。
+v0.23.0 还会复用已认证的 Host Bridge transport，提供独立门控的 **Deterministic Repo Ops**。Repo Ops 增加 4 个 MCP 工具（`inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`），不会创建 Agent task，也不会调用 provider adapter。Workdir 可以在 Agent mode 保持 disabled 时单独开启 Repo Ops。发布实现范围仅声明 Linux；不声明 macOS / Windows 原生启用。
 
-Repo Ops 不是通用命令通道：Git 操作语义固定；named action 使用运维人员固定 argv 与 SHA-256 integrity pins；调用方不能传 executable、argv、environment、remote、ref、force 或 shell syntax。Repo Ops 写操作与所有 named action 都复用现有 writer lease，与文件修改和 Agent workspace-write task 互斥。截至 2026-10-26，Linux bootstrap / 内部 E2E 与公共 ChatGPT MCP E2E 均已 PASS。后续运维 Skills 审计又修改了 `skills/**` 与 `tests/test_agent_skills.py`，因此正式版本化/发布前仍需刷新 root/Agent-Skills 验证，并重新执行最新站点 build/diff 检查。完整配置、安全、工具与验收契约见 [Deterministic Repo Ops](../repo-ops/)。
+Repo Ops 不是通用命令通道：Git 操作语义固定；named action 使用运维人员固定 argv 与 SHA-256 integrity pins；调用方不能传 executable、argv、environment、remote、ref、force 或 shell syntax。Repo Ops 写操作与所有 named action 都复用现有 writer lease，与文件修改和 Agent workspace-write task 互斥。Linux bootstrap / 内部 E2E、公共 ChatGPT MCP E2E、刷新后的 root/Agent Bridge CI、MCP conformance、Windows/macOS 回归以及 documentation freeze 后的站点 build/deploy 均在 v0.23.0 发布前通过。完整配置、安全、工具与验收契约见 [Deterministic Repo Ops](../repo-ops/)。
 
 ## v0.12 Linux 出站与交互契约
 

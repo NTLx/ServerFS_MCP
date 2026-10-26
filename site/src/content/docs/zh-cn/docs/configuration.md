@@ -74,7 +74,7 @@ WORKDIR_02_READ_ONLY=false
 - 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
 - 静态 API Key 默认关闭。非空 `SERVERFS_HTTP_API_KEY` 会使用一个共享密钥保护 Streamable HTTP，并且不能与内置 OAuth 同时启用。
 - OAuth 默认关闭。启用时需要 OAuth Compose overlay；loopback 之外必须使用 HTTPS resource/auth URL；必须配置非空 introspection secret、至少一个身份 provider，以及精确的 default-deny principal allowlist。
-- Repo Ops 默认关闭，通过 `WORKDIR_XX_REPO_OPS_ENABLED=true` 按 Workdir 独立启用。v0.23 开发实现仅声明 Linux 支持，并要求已认证的 Host Bridge transport，但不要求启用任何 Agent Runtime。
+- Repo Ops 默认关闭，通过 `WORKDIR_XX_REPO_OPS_ENABLED=true` 按 Workdir 独立启用。v0.23.0 发布实现仅声明 Linux 支持，并要求已认证的 Host Bridge transport，但不要求启用任何 Agent Runtime。
 - `WORKDIR_XX_REPO_ACTIONS_JSON` 是 Repo Ops named action 的宿主机私有运维策略，只会被渲染到 Host Bridge 配置，不会转发进入 MCP 容器。Named action 要求 read-write Workdir，并强制配置 SHA-256 integrity pins。
 - Agent 策略只有在显式配置后才启用。
 - v0.12.0 把 Tunnel、Agent runtime 与 Jev 的代理选择保持独立：`SERVERFS_OPENAI_TUNNEL_USE_PROXY`、`SERVERFS_AGENT_USE_PROXY`、`SERVERFS_JEV_USE_PROXY` 复用同一组 `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` 端点字段，但不会互相隐式启用。
@@ -84,7 +84,7 @@ WORKDIR_02_READ_ONLY=false
 - MCP 工具结果不会暴露宿主机路径。
 - Workdir 路径拼写错误会明确失败，而不是静默创建目录。
 
-## 可选 Deterministic Repo Ops（v0.23 开发能力）
+## 可选 Deterministic Repo Ops（v0.23.0）
 
 Repo Ops 是按 Workdir 配置、默认关闭的仓库能力。最小 Linux/Compose 配置示例：
 

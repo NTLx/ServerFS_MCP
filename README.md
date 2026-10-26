@@ -10,9 +10,9 @@
 
 **一个安全、标准优先、按范围授权的 MCP 文件系统服务器，并可选支持 AI Agent 委托。**
 
-只暴露你明确选择的目录，并默认保持只读。仅在需要的位置按需开启受限文件修改、基于 revision 的并发保护、有限制的二进制传输，以及结构化的 Codex / Claude Code / Qoder 原生 runtime 或运维人员配置的 ACP Agent 委托能力。v0.23 开发线另行加入独立门控的 Linux Deterministic Repo Ops，用于无需 Agent 委托的确定性仓库收尾操作。
+只暴露你明确选择的目录，并默认保持只读。仅在需要的位置按需开启受限文件修改、基于 revision 的并发保护、有限制的二进制传输，以及结构化的 Codex / Claude Code / Qoder 原生 runtime 或运维人员配置的 ACP Agent 委托能力。v0.23.0 新增独立门控的 Linux Deterministic Repo Ops，用于无需 Agent 委托的确定性仓库收尾操作。
 
-**当前稳定版本：v0.22.1**
+**当前稳定版本：v0.23.0**
 
 [项目网站](https://ntlx.github.io/ServerFS_MCP/zh-cn/) ·
 [文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/) ·
@@ -43,7 +43,7 @@ ServerFS 围绕这一更窄、更明确的安全边界设计：
 
 | 平台 | 支持形态 | 文件系统边界 | Repo Ops | Agent 委托 |
 | --- | --- | --- | --- | --- |
-| **Linux** | Docker Compose，支持 `linux/amd64` 与 `linux/arm64` | Bind mount Workdir；容器默认只读 | v0.23 开发预览 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
+| **Linux** | Docker Compose，支持 `linux/amd64` 与 `linux/arm64` | Bind mount Workdir；容器默认只读 | v0.23.0 已发布 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
 | **Windows** | Windows 11 x64、本地 NTFS、原生 stdio | MCP stdio 上的原生 HANDLE-relative Rust 内核 | v0.23 不声明原生支持 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
 | **macOS** | Apple M 系列、原生 arm64、macOS 27 Golden Gate、本地 APFS | MCP stdio 上基于 descriptor-relative 的 Darwin 原生后端 | v0.23 不声明原生支持 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
 
@@ -58,7 +58,7 @@ macOS 仅支持 Apple M 系列、原生 arm64、macOS 27.x 与本地 APFS；不�
 
 仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
 
-仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。v0.22.1 Release 包含 `serverfs-plugin-v0.22.1.zip`，其中有 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
+仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。v0.23.0 Release 包含 `serverfs-plugin-v0.23.0.zip`，其中有 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
 
 ## 快速开始
 
@@ -82,9 +82,9 @@ chmod 600 .env
 
 编辑 `.env`，固定镜像版本、允许本地客户端的 Host，并至少配置一个 Workdir：
 
-# 当前稳定版本示例（v0.22.1）：
+# 当前稳定版本示例（v0.23.0）：
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.22.1
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.23.0
 SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
 WORKDIR_01_ALIAS=projects
 WORKDIR_01_PATH=/srv/projects
@@ -135,7 +135,7 @@ Claude Code / Codex / Qoder / MCP hosts
               | ServerFS MCP |------> configured workdirs
               | Core        |------> optional host Bridge (Agent / Repo Ops)
               +-------------+                |
-                     ^                       +--> Repo Ops (v0.23 Linux dev)
+                     ^                       +--> Repo Ops (v0.23.0 Linux)
                      |                       +--> Codex
           OpenAI Secure MCP Tunnel           +--> Claude Code
                      |                       +--> Qoder
@@ -152,13 +152,13 @@ Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持
 
 ## 能力边界
 
-稳定版 v0.22.1 仍提供 11 / 13 / 21 / 23 的文件、二进制与 Agent 能力组合。当前开发中的 v0.23 在 Linux Host Bridge 上新增独立、默认关闭的 4 个 Deterministic Repo Ops 工具；它们不启用 Agent runtime，也不改变既有 Agent 工具语义。默认仍注册 5 个文件修改工具，但只读 Workdir 会拒绝修改。
+稳定版 v0.23.0 在既有 11 / 13 / 21 / 23 文件、二进制与 Agent 能力组合之上，新增 Linux Host Bridge 上独立、默认关闭的 4 个 Deterministic Repo Ops 工具；它们不启用 Agent runtime，也不改变既有 Agent 工具语义。默认仍注册 5 个文件修改工具，但只读 Workdir 会拒绝修改。
 
 | 能力层 | 工具数 | 增加的能力 |
 | --- | ---: | --- |
 | 文件系统 | 11 | 6 个只读工具 + 5 个受控修改工具 |
 | 文件系统 + 二进制 | 13 | 有大小限制的整文件下载/上传 |
-| 文件系统 + Repo Ops | 15 | 4 个确定性 Git / named-action 工具；v0.23 Linux 开发能力 |
+| 文件系统 + Repo Ops | 15 | 4 个确定性 Git / named-action 工具；v0.23.0 Linux |
 | 文件系统 + 二进制 + Repo Ops | 17 | 二进制 + Repo Ops |
 | 文件系统 + Agent | 21 | 10 个结构化 Agent Bridge 工具 |
 | 文件系统 + 二进制 + Agent | 23 | 二进制 + Agent |
@@ -173,7 +173,7 @@ Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持
 
 **可选二进制传输：** `download_binary_file`、`upload_binary_file`
 
-**v0.23 Linux 开发中的可选 Repo Ops：** `inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`。Repo Ops 只允许固定 Git 语义和管理员配置、完整性固定的 named actions；调用方不能传 executable、argv、environment、remote、ref、force 或 shell fragment，也不会创建 Agent task。截至 2026-10-26，Linux bootstrap / 内部 E2E 与公共 ChatGPT MCP E2E 均已 PASS；由于后续 Skills 审计又修改了运维 Skills 与其回归测试，正式版本化/发布前仍需刷新 root/Agent-Skills 验证，并重新执行最新站点 build/diff 检查。
+**v0.23.0 Linux 可选 Repo Ops：** `inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`。Repo Ops 只允许固定 Git 语义和管理员配置、完整性固定的 named actions；调用方不能传 executable、argv、environment、remote、ref、force 或 shell fragment，也不会创建 Agent task。发布前 Linux bootstrap / 内部 E2E、公共 ChatGPT MCP E2E、root/Agent Bridge 全量 CI、MCP conformance、Windows/macOS 回归与站点 build/deploy 均已通过。
 
 Agent 工具用于提交和观察结构化 Provider Task，**不是** Shell 或任意命令执行 API。Repo Ops 与 Agent delegation 分别授权：一个 Workdir 可以在 `agent_mode=disabled` 时单独启用 Repo Ops。详见 [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) 与 [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/agent-bridge/)。
 
@@ -235,7 +235,7 @@ ChatGPT 文件参数通过可选的隔离 ingress helper 处理，而不是让 M
 | 远程 HTTP 静态 API Key | [Static API Key](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/api-key/) |
 | 远程 HTTP OAuth 2.1 | [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/oauth/) |
 | 二进制传输 / 文件输入 | [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/binary-transfer/) |
-| 确定性仓库操作（v0.23 开发能力） | [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) |
+| 确定性仓库操作（v0.23.0 Linux） | [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) |
 | Agent 委托 | [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/agent-bridge/) |
 | ACP profile 配置与运维 | [ACP Guide](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/acp/) |
 | 可选 Jev 建议 | [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/jev-advisors/) |
@@ -249,10 +249,10 @@ ChatGPT 文件参数通过可选的隔离 ingress helper 处理，而不是让 M
 
 ## 发布版本
 
-- Linux 镜像：`ghcr.io/ntlx/serverfs_mcp`；当前稳定版：`v0.22.1`
-- 当前稳定版本标签：`v0.22.1`
+- Linux 镜像：`ghcr.io/ntlx/serverfs_mcp`；当前稳定版：`v0.23.0`
+- 当前稳定版本标签：`v0.23.0`
 - 生产部署应固定到明确版本，不建议使用 `latest` 或 `edge`。
-- 可移植 Agent Plugin：v0.22.1 Release 中的 skills-only `serverfs-plugin-v0.22.1.zip` 资产。
+- 可移植 Agent Plugin：v0.23.0 Release 中的 skills-only `serverfs-plugin-v0.23.0.zip` 资产。
 - Windows Release 资产包含产品本体、Agent Bridge 与原生 kernel wheel。
 - macOS 直接使用产品与 Agent Bridge 的 Python distribution；不提供单独的 macOS native wheel，并在本地构建用于当前用户持久化服务的轻量 ServiceManagement companion。
 

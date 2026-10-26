@@ -1,6 +1,6 @@
 # Phase E — user-scoped Agent Bridge deployment
 
-Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.22.1 is the current published stable release.** The v0.23 development source keeps the same user-scoped topology while adding independently gated Linux Deterministic Repo Ops through the existing authenticated host Bridge transport; Repo Ops does not create Agent tasks or invoke provider runtimes. v0.12 kept the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling. v0.19.0 adds operator-configured generic ACP v1 profiles alongside the native Codex, Claude and Qoder runtimes.
+Phase E wires the frozen Phase A–D contracts into a real Linux deployment. **ServerFS v0.23.0 is the current published stable release.** v0.23.0 keeps the same user-scoped topology while adding independently gated Linux Deterministic Repo Ops through the existing authenticated host Bridge transport; Repo Ops does not create Agent tasks or invoke provider runtimes. v0.12 kept the user-scoped topology while adding independent Linux proxy control for OpenAI Tunnel, Agent runtimes and Jev, a Bridge-owned proxied Codex app-server, explicit provider approval handling, and configurable Agent result spooling. v0.19.0 adds operator-configured generic ACP v1 profiles alongside the native Codex, Claude and Qoder runtimes.
 
 ServerFS v0.22.0 adds bounded process-local Agent diagnostics over the existing private Bridge RPC only. Operators can run `serverfs diagnostics snapshot --format json` for a Bridge-wide diagnostic snapshot or `serverfs diagnostics task <task-id> --format json` for one retained task; omit `--format json` for human rendering. These commands do not add an MCP tool, network listener, persistent trace store or OpenTelemetry exporter. A task may report `available`, `unknown_task`, `not_retained`, or CLI-level `bridge_unavailable`; after a Bridge restart, diagnostics never fabricate pre-restart history.
 
@@ -26,7 +26,7 @@ ChatGPT
   -> native Codex / Claude Code / Qoder environment of the SAME login user
 ```
 
-The base `compose.yml` remains host-Bridge-unaware. Linux deployment of Agent delegation — and the v0.23 development Repo Ops transport — is opt-in via `compose.agent.yml`. The overlay provides the authenticated host socket/lock transport; Agent runtimes and Repo Ops remain independently enabled per workdir.
+The base `compose.yml` remains host-Bridge-unaware. Linux deployment of Agent delegation — and the v0.23.0 Repo Ops transport — is opt-in via `compose.agent.yml`. The overlay provides the authenticated host socket/lock transport; Agent runtimes and Repo Ops remain independently enabled per workdir.
 
 ## User-owned paths
 
@@ -509,7 +509,7 @@ Before host acceptance, run both independent code gates: the repository-root gat
 `bash -n deployment/agent-bridge/*.sh` for deployment shell syntax. Root `pytest`
 collects only `tests/` and does not validate `agent_bridge/tests/`.
 
-For the stable v0.22.1 package, verify the target host proves:
+For the stable v0.23.0 package, verify the target host proves:
 
 - install/update/rollback require no sudo/root;
 - real peer UID/GID equal the current login user;
@@ -529,10 +529,10 @@ For the stable v0.22.1 package, verify the target host proves:
 - proxied Linux Codex uses the Bridge-owned standalone app-server while direct mode preserves the user's managed daemon path;
 - real provider approval and configurable result-spool acceptance remain green;
 - Agent mode exposes 21 tools without binary transfer and 23 tools with binary transfer;
-- for the v0.23 Linux development path, Repo Ops is independently opt-in per workdir and adds exactly four deterministic tools without requiring an Agent runtime;
-- v0.23 Repo Ops named actions use fixed operator argv plus integrity pins, never accept request-controlled executable/argv/env, and share the existing exclusive writer lease;
-- v0.23 Repo Ops Linux bootstrap/internal E2E is CLOSED-PASS as of 2026-10-26: root suite 1780 passed / 320 skipped, Agent Bridge 497 passed / 15 skipped with no warnings, site/image/Bridge checks PASS, and internal MCP surface/action-set verification PASS;
-- final public v0.23 Repo Ops acceptance must still prove `actions -> status -> named validation -> explicit-file commit -> current-upstream push` through the public MCP surface without any `task.submit` / Provider task creation before release publication;
+- for v0.23.0 on Linux, Repo Ops is independently opt-in per workdir and adds exactly four deterministic tools without requiring an Agent runtime;
+- v0.23.0 Repo Ops named actions use fixed operator argv plus integrity pins, never accept request-controlled executable/argv/env, and share the existing exclusive writer lease;
+- v0.23.0 Repo Ops Linux bootstrap/internal E2E is CLOSED-PASS as of 2026-10-26: root suite 1780 passed / 320 skipped, Agent Bridge 497 passed / 15 skipped with no warnings, site/image/Bridge checks PASS, and internal MCP surface/action-set verification PASS;
+- public v0.23.0 Repo Ops acceptance also proved `actions -> status -> named validation -> explicit-file commit -> current-upstream push` through the public MCP surface without any `task.submit` / Provider task creation;
 - real submit/poll/HITL/cancel works;
 - shared writer lease works across host/container;
 - rollback implementation and recovery tests remain green; the live base
@@ -550,7 +550,7 @@ to the default 11-tool surface. Workdir `AGENT_MODE/RUNTIMES` values in
 container.
 
 If post-release verification fails, use the documented rollback script to restore the
-previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The published v0.22.1 tag is immutable; earlier release tags remain immutable as well. The v0.13.2 release passed the unified Linux + Windows + macOS release gates before publication.
+previous user-scoped Bridge release, configuration and unit state. Do not recreate or move published release tags. The published v0.23.0 tag is immutable; earlier release tags remain immutable as well. The v0.13.2 release passed the unified Linux + Windows + macOS release gates before publication.
 
 
 ACP profile configuration and operation: [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/).

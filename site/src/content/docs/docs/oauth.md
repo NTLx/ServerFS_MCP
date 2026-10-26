@@ -28,7 +28,7 @@ GitHub / DingTalk / Feishu / WeChat
 
 OAuth is currently a Linux Docker Compose capability.
 
-Add `compose.agent.yml` only when an authenticated host Bridge capability is needed: Agent delegation, the v0.23 Linux Repo Ops development transport, or both. Their per-workdir authorization remains independent of OAuth and of each other.
+Add `compose.agent.yml` only when an authenticated host Bridge capability is needed: Agent delegation, the v0.23.0 Linux Repo Ops transport, or both. Their per-workdir authorization remains independent of OAuth and of each other.
 
 A typical public deployment uses separate HTTPS origins:
 
