@@ -419,16 +419,20 @@ class BridgeProtocolServer:
                 paths=paths,
             )
         if method == "repo.action":
-            _require_keys(params, {"workdir", "action"}, optional={"path"})
+            _require_keys(params, {"workdir", "action"}, optional={"path", "release_tag"})
             _require_types(
                 params,
                 {"workdir": str, "action": str},
-                optional={"path": (str, type(None))},
+                optional={"path": (str, type(None)), "release_tag": (str, type(None))},
             )
+            release_params = {}
+            if params.get("release_tag") is not None:
+                release_params["release_tag"] = params["release_tag"]
             return await self.service.run_repo_action(
                 workdir=params["workdir"],
                 action=params["action"],
                 path=params.get("path"),
+                **release_params,
             )
         if method == "repo.commit":
             _require_keys(params, {"workdir", "paths", "message"})

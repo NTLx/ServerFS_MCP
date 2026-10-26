@@ -47,7 +47,9 @@ _WORKDIR_KEYS = frozenset(
         "repo_actions",
     }
 )
-_REPO_ACTION_KEYS = frozenset({"argv", "mutates", "argument", "integrity"})
+_REPO_ACTION_KEYS = frozenset(
+    {"argv", "mutates", "argument", "integrity", "kind", "repository", "github_cli"}
+)
 _MAX_REPO_ACTIONS = 16
 _CLAUDE_KEYS = frozenset(
     {
@@ -253,16 +255,19 @@ def _load_repo_actions(
         if not isinstance(name, str) or not isinstance(entry, dict):
             raise ValueError("workdir.repo_actions entries must be named objects")
         _reject_unknown_keys(entry, _REPO_ACTION_KEYS, f"repo action {name}")
-        argv_value = entry.get("argv")
-        if not isinstance(argv_value, list) or not argv_value:
+        kind = entry.get("kind", "command")
+        argv_value = entry.get("argv", [] if kind != "command" else None)
+        if not isinstance(argv_value, list) or (kind == "command" and not argv_value):
             raise ValueError(f"repo action {name}.argv must be a non-empty array")
         argv: list[str] = []
         for item in argv_value:
             argv.append(_strict_string(item, f"repo action {name}.argv entry"))
         mutates = _strict_bool(entry.get("mutates", False), f"repo action {name}.mutates")
         argument = _strict_string(entry.get("argument", "none"), f"repo action {name}.argument")
-        if argument not in {"none", "path", "basename"}:
-            raise ValueError(f"repo action {name}.argument must be none, path or basename")
+        if argument not in {"none", "path", "basename", "release_tag"}:
+            raise ValueError(
+                f"repo action {name}.argument must be none, path, basename or release_tag"
+            )
         integrity_value = entry.get("integrity")
         if not isinstance(integrity_value, dict) or not integrity_value:
             raise ValueError(f"repo action {name}.integrity must be a non-empty object")
@@ -278,6 +283,9 @@ def _load_repo_actions(
             mutates=mutates,
             argument=argument,
             integrity=tuple(integrity),
+            kind=kind,
+            repository=entry.get("repository"),
+            github_cli=entry.get("github_cli", "gh"),
         )
         if read_only:
             raise ValueError("read-only workdir cannot configure repo actions")

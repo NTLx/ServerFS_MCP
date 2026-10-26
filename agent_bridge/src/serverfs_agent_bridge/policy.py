@@ -19,21 +19,25 @@ _DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:")
 class RepoActionPolicy:
     """One operator-defined deterministic repository action.
 
-    The MCP caller selects only ``name`` and, when ``argument`` is ``path`` or
-    ``basename``, one workdir-relative path. Executable and base argv remain
-    operator-owned configuration and are never request-controlled.
+    Command profiles accept an optional policy-valid path/basename. Built-in
+    release profiles accept only a strict semver release tag for a fixed repository.
+    Executables, workflow and Git arguments are never request-controlled.
     """
 
     name: str
-    argv: tuple[str, ...]
+    argv: tuple[str, ...] = ()
     mutates: bool = False
     argument: str = "none"
     integrity: tuple[tuple[str, str], ...] = ()
 
+    kind: str = "command"
+    repository: str | None = None
+    github_cli: str = "gh"
+
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or _REPO_ACTION_RE.fullmatch(self.name) is None:
             raise ValueError("repo action name has an invalid format")
-        if not isinstance(self.argv, tuple) or not self.argv:
+        if not isinstance(self.argv, tuple) or (self.kind == "command" and not self.argv):
             raise ValueError("repo action argv must be a non-empty tuple")
         if len(self.argv) > 32:
             raise ValueError("repo action argv must contain at most 32 items")
@@ -44,12 +48,49 @@ class RepoActionPolicy:
                 raise ValueError("repo action argv contains an invalid character")
         if type(self.mutates) is not bool:
             raise ValueError("repo action mutates must be a boolean")
-        if self.argument not in {"none", "path", "basename"}:
-            raise ValueError("repo action argument must be none, path or basename")
+        if not isinstance(self.kind, str) or self.kind not in {
+            "command",
+            "release_tag",
+            "publish_npm",
+        }:
+            raise ValueError("repo action kind must be command, release_tag or publish_npm")
+        if self.argument not in {"none", "path", "basename", "release_tag"}:
+            raise ValueError("repo action argument must be none, path, basename or release_tag")
+        if self.kind == "command":
+            if self.repository is not None or self.argument == "release_tag":
+                raise ValueError("command actions cannot accept release tags or repository policy")
+        elif (
+            self.argv
+            or self.argument != "release_tag"
+            or not self.mutates
+            or not isinstance(self.repository, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}", self.repository)
+            is None
+        ):
+            raise ValueError(
+                "release actions require fixed repository, release_tag, mutates=true and no argv"
+            )
+        if (
+            not isinstance(self.github_cli, str)
+            or not self.github_cli
+            or any(c in self.github_cli for c in ("\x00", "\n", "\r"))
+            or (self.github_cli != "gh" and not Path(self.github_cli).is_absolute())
+            or (self.kind != "publish_npm" and self.github_cli != "gh")
+        ):
+            raise ValueError("github_cli must be gh or a fixed absolute path for publish_npm")
         if not isinstance(self.integrity, tuple) or not self.integrity:
             raise ValueError("repo action integrity must contain at least one pinned file")
         if len(self.integrity) > 32:
             raise ValueError("repo action integrity must contain at most 32 pinned files")
+        if self.kind != "command" and not {
+            "package.json",
+            ".github/workflows/publish.yml",
+        }.issubset(
+            {item[0] for item in self.integrity if isinstance(item, tuple) and len(item) == 2}
+        ):
+            raise ValueError(
+                "release actions must pin package.json and .github/workflows/publish.yml"
+            )
         seen_integrity_paths: set[str] = set()
         for item in self.integrity:
             if not isinstance(item, tuple) or len(item) != 2:

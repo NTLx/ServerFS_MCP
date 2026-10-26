@@ -123,3 +123,29 @@ def test_actions_require_repo_ops_enable_and_any_action_requires_writable_workdi
     values["WORKDIR_01_REPO_ACTIONS_JSON"] = actions
     with pytest.raises(render.ConfigRenderError, match="read-only workdir"):
         render.build_config(values)
+
+
+@pytest.mark.parametrize("kind", ["release_tag", "publish_npm"])
+def test_renderer_release_policy(tmp_path: Path, kind: str) -> None:
+    values = base_values(tmp_path)
+    values["WORKDIR_01_REPO_OPS_ENABLED"] = "true"
+    action = {
+        "kind": kind,
+        "argument": "release_tag",
+        "mutates": True,
+        "repository": "example/project",
+        "integrity": {"package.json": "0" * 64, ".github/workflows/publish.yml": "1" * 64},
+    }
+    values["WORKDIR_01_REPO_ACTIONS_JSON"] = json.dumps({"release": action})
+    rendered = render.build_config(values)["workdirs"][0]["repo_actions"]["release"]
+    assert rendered == {**action, "argv": []}
+    for invalid in (
+        {"argv": ["sh"]},
+        {"repository": "--help"},
+        {"argument": "path"},
+        {"kind": "workflow"},
+        {"integrity": {"package.json": "0" * 64}},
+    ):
+        values["WORKDIR_01_REPO_ACTIONS_JSON"] = json.dumps({"release": {**action, **invalid}})
+        with pytest.raises(render.ConfigRenderError):
+            render.build_config(values)

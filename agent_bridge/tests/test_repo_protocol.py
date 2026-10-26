@@ -96,3 +96,37 @@ async def test_repo_rpc_rejects_non_string_paths_before_service(tmp_path: Path) 
         )
     assert exc.value.code == "INVALID_REQUEST"
     assert service.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra", [{"force": True}, {"commit": "a" * 40}, {"workflow": "evil.yml"}, {"ref": "main"}]
+)
+async def test_release_rpc_rejects_escape_fields(tmp_path: Path, extra: dict) -> None:
+    service = FakeRepoService()
+    with pytest.raises(BridgeError) as exc:
+        await protocol(tmp_path, service)._dispatch(
+            "repo.action",
+            {"workdir": "repo", "action": "tag_release", "release_tag": "v1.1.0-beta.3", **extra},
+        )
+    assert exc.value.code == "INVALID_REQUEST"
+    assert service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_release_rpc_forwards_structured_tag(tmp_path: Path) -> None:
+    service = FakeRepoService()
+    await protocol(tmp_path, service)._dispatch(
+        "repo.action", {"workdir": "repo", "action": "tag_release", "release_tag": "v1.1.0-beta.3"}
+    )
+    assert service.calls == [
+        (
+            "action",
+            {
+                "workdir": "repo",
+                "action": "tag_release",
+                "path": None,
+                "release_tag": "v1.1.0-beta.3",
+            },
+        )
+    ]

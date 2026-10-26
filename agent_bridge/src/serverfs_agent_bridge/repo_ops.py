@@ -30,6 +30,10 @@ _MAX_PATHS = 64
 _MAX_COMMIT_MESSAGE_BYTES = 1024
 _MAX_INTEGRITY_FILE_BYTES = 8 * 1024 * 1024
 _DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:")
+RELEASE_TAG_PATTERN = (
+    r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-beta\.(?:0|[1-9][0-9]*))?"
+)
+
 _REMOTE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _BASE_ENV_KEYS = (
     "PATH",
@@ -272,6 +276,20 @@ class RepoOpsRunner:
                         "name": action.name,
                         "mutates": action.mutates,
                         "argument": action.argument,
+                        **(
+                            {
+                                "kind": action.kind,
+                                "repository": action.repository,
+                                "tag_pattern": RELEASE_TAG_PATTERN,
+                                "head_only": True,
+                                "force": False,
+                                "workflow": "publish.yml" if action.kind == "publish_npm" else None,
+                                "scope": "clean HEAD on main; matching package version; "
+                                "exact tag only; conflicts fail closed",
+                            }
+                            if action.kind != "command"
+                            else {}
+                        ),
                     }
                     for action in policy.repo_actions
                 ],
@@ -357,9 +375,26 @@ class RepoOpsRunner:
         *,
         action_name: str,
         path: str | None,
+        release_tag: str | None = None,
     ) -> dict[str, Any]:
         self._require_enabled(policy)
         action = self._action(policy, action_name)
+        if action.kind != "command":
+            if path is not None:
+                raise BridgeError("INVALID_REQUEST", "release action accepts no path")
+            if (
+                not isinstance(release_tag, str)
+                or len(release_tag) > 128
+                or re.fullmatch(RELEASE_TAG_PATTERN, release_tag) is None
+            ):
+                raise BridgeError("INVALID_RELEASE_TAG", "expected a semver release tag only")
+            await self._require_repo_root(policy)
+            self._verify_action_integrity(policy, action)
+            from .repo_release import run_release_action
+
+            return await run_release_action(self, policy, action, release_tag)
+        if release_tag is not None:
+            raise BridgeError("INVALID_REQUEST", "command action accepts no release tag")
         normalized_path: str | None = None
         action_argument: str | None = None
         if action.argument in {"path", "basename"}:

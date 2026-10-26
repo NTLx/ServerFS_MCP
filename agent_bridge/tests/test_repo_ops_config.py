@@ -143,3 +143,23 @@ def test_repo_action_policy_rejects_malformed_or_expansive_shapes(
                 {"repo_ops_enabled": True, "repo_actions": actions},
             )
         )
+
+
+@pytest.mark.parametrize("kind", ["release_tag", "publish_npm"])
+def test_builtin_release_config_loads_and_rejects_argv(tmp_path: Path, kind: str) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    action = {
+        "kind": kind,
+        "argument": "release_tag",
+        "mutates": True,
+        "repository": "example/project",
+        "integrity": {"package.json": "0" * 64, ".github/workflows/publish.yml": "1" * 64},
+    }
+    data = {"repo_ops_enabled": True, "repo_actions": {"release": action}}
+    loaded = BridgeConfig.load(write_config(tmp_path, repo, data)).policies.get("repo")
+    assert loaded.repo_actions[0].kind == kind
+    assert loaded.repo_actions[0].argv == ()
+    action["argv"] = ["sh"]
+    with pytest.raises(ValueError):
+        BridgeConfig.load(write_config(tmp_path, repo, data))

@@ -7,6 +7,7 @@ Git remote/ref, force option, or shell fragment.
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Annotated, Any, Literal
 
@@ -138,6 +139,14 @@ def register_repo_tools(
                 description="Optional workdir-relative path accepted only by path actions",
             ),
         ] = None,
+        release_tag: Annotated[
+            str | None,
+            Field(
+                default=None,
+                max_length=128,
+                description="Release action only: vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-beta.N",
+            ),
+        ] = None,
     ) -> dict[str, Any]:
         """Run one fixed administrator-configured repository action.
 
@@ -145,16 +154,28 @@ def register_repo_tools(
         actions require a read-write workdir and always take the host writer lease, including
         logically read-only checks, so integrity verification cannot race ServerFS/Agent writes.
         A path is accepted only when that action declares a path argument and must pass the
-        same ServerFS path policy as filesystem tools.
+        same ServerFS path policy as filesystem tools. Built-in release actions instead
+        accept only release_tag, validate semver, and fix HEAD/repository/workflow internally.
+        Unknown parameters such as force, commit, remote or workflow are rejected.
         """
         t0 = time.monotonic()
         try:
             wd = _authorize_repo_workdir(registry, workdir, mutable=True)
             normalized_path = _validate_repo_path(wd, path) if path is not None else None
-            result = await client.call(
-                "repo.action",
-                {"workdir": workdir, "action": action, "path": normalized_path},
-            )
+            params: dict[str, Any] = {"workdir": workdir, "action": action, "path": normalized_path}
+            if release_tag is not None:
+                if (
+                    path is not None
+                    or len(release_tag) > 128
+                    or re.fullmatch(
+                        r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-beta\.(?:0|[1-9][0-9]*))?",
+                        release_tag,
+                    )
+                    is None
+                ):
+                    raise ToolError("INVALID_RELEASE_TAG: expected a semver release tag only")
+                params["release_tag"] = release_tag
+            result = await client.call("repo.action", params)
         except Exception as exc:
             err = _repo_tool_error(exc)
             _audit_repo(
@@ -261,6 +282,15 @@ def register_repo_tools(
             raise err from exc
         _audit_repo("push_repo", t0, success=True, workdir=workdir)
         return result
+
+    # The pinned MCP SDK defaults to ignoring unknown arguments. Release operations
+    # must reject caller attempts to supply force/commit/workflow, not ignore them.
+    action_tool = mcp._tool_manager.get_tool("run_repo_action")
+    assert action_tool is not None
+    model = action_tool.fn_metadata.arg_model
+    model.model_config["extra"] = "forbid"
+    model.model_rebuild(force=True)
+    action_tool.parameters["additionalProperties"] = False
 
 
 def _authorize_repo_workdir(

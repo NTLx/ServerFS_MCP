@@ -42,7 +42,15 @@ _ACP_FIELDS = {
 }
 _ACP_MAX_JSON_BYTES = 65_536
 _REPO_ACTION_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
-_REPO_ACTION_FIELDS = {"argv", "mutates", "argument", "integrity"}
+_REPO_ACTION_FIELDS = {
+    "argv",
+    "mutates",
+    "argument",
+    "integrity",
+    "kind",
+    "repository",
+    "github_cli",
+}
 _REPO_ACTION_MAX_JSON_BYTES = 65_536
 _MAX_SPOOLED_RESULT_BYTES = 8 * 1024 * 1024
 
@@ -297,10 +305,13 @@ def _repo_actions(raw: str, *, key: str, enabled: bool, read_only: bool) -> dict
             raise ConfigRenderError(f"{key} contains an invalid action name")
         if not isinstance(action, dict) or set(action) - _REPO_ACTION_FIELDS:
             raise ConfigRenderError(f"{label} has invalid fields")
-        argv = action.get("argv")
+        kind = action.get("kind", "command")
+        if not isinstance(kind, str) or kind not in {"command", "release_tag", "publish_npm"}:
+            raise ConfigRenderError(f"{label}.kind is invalid")
+        argv = action.get("argv", [] if kind != "command" else None)
         if (
             not isinstance(argv, list)
-            or not argv
+            or (kind == "command" and not argv)
             or len(argv) > 32
             or any(
                 not isinstance(item, str)
@@ -317,8 +328,30 @@ def _repo_actions(raw: str, *, key: str, enabled: bool, read_only: bool) -> dict
         if read_only:
             raise ConfigRenderError(f"{label} cannot be configured on a read-only workdir")
         argument = action.get("argument", "none")
-        if argument not in {"none", "path", "basename"}:
-            raise ConfigRenderError(f"{label}.argument must be none, path or basename")
+        if argument not in {"none", "path", "basename", "release_tag"}:
+            raise ConfigRenderError(f"{label}.argument must be none, path, basename or release_tag")
+        repository = action.get("repository")
+        if kind == "command":
+            if repository is not None or argument == "release_tag":
+                raise ConfigRenderError(f"{label}: command cannot accept release tags/repository")
+        elif (
+            argv
+            or argument != "release_tag"
+            or not mutates
+            or not isinstance(repository, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}", repository)
+            is None
+        ):
+            raise ConfigRenderError(f"{label}: invalid fixed release policy")
+        github_cli = action.get("github_cli", "gh")
+        if (
+            not isinstance(github_cli, str)
+            or not github_cli
+            or any(c in github_cli for c in ("\x00", "\n", "\r"))
+            or (github_cli != "gh" and not Path(github_cli).is_absolute())
+            or (kind != "publish_npm" and github_cli != "gh")
+        ):
+            raise ConfigRenderError(f"{label}: invalid fixed github_cli path")
         integrity = action.get("integrity")
         if not isinstance(integrity, dict) or not integrity or len(integrity) > 32:
             raise ConfigRenderError(
@@ -342,12 +375,22 @@ def _repo_actions(raw: str, *, key: str, enabled: bool, read_only: bool) -> dict
             ):
                 raise ConfigRenderError(f"{label}.integrity digest must be lowercase sha256")
             normalized_integrity[path] = digest
+        if kind != "command" and not {"package.json", ".github/workflows/publish.yml"}.issubset(
+            integrity
+        ):
+            raise ConfigRenderError(
+                f"{label}: release actions must pin package.json and publish.yml"
+            )
         normalized[name] = {
             "argv": argv,
             "mutates": mutates,
             "argument": argument,
             "integrity": normalized_integrity,
         }
+        if kind != "command":
+            normalized[name].update(kind=kind, repository=repository)
+            if github_cli != "gh":
+                normalized[name]["github_cli"] = github_cli
     return normalized
 
 

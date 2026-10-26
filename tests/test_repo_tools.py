@@ -137,6 +137,7 @@ def test_repo_tool_schemas_expose_no_generic_command_or_git_escape_hatches(tmp_p
         "workdir",
         "action",
         "path",
+        "release_tag",
     }
     assert set(tools["commit_repo_changes"].input_schema["properties"]) == {
         "workdir",
@@ -275,3 +276,51 @@ def test_repo_bridge_errors_keep_repo_ops_vocabulary(tmp_path: Path) -> None:
     server = server_with_repo_client(tmp_path, client)
     message = call_error(server, "inspect_repo", {"workdir": "repo", "view": "status"})
     assert error_code(message) == "REPO_OPS_DISABLED"
+
+
+@pytest.mark.parametrize(
+    "tag", ["../../xxx", "main", "refs/heads/main", "v1.2.3;id", "v1.2.3 --force"]
+)
+def test_release_tag_rejected_before_rpc(tmp_path: Path, tag: str) -> None:
+    client = FakeRepoClient()
+    server = server_with_repo_client(tmp_path, client)
+    message = call_error(
+        server, "run_repo_action", {"workdir": "repo", "action": "tag_release", "release_tag": tag}
+    )
+    assert error_code(message) == "INVALID_RELEASE_TAG"
+    assert client.calls == []
+
+
+@pytest.mark.parametrize(
+    "extra", [{"force": True}, {"commit": "a" * 40}, {"workflow": "evil.yml"}, {"remote": "evil"}]
+)
+def test_release_extra_fields_are_rejected(tmp_path: Path, extra: dict) -> None:
+    client = FakeRepoClient()
+    server = server_with_repo_client(tmp_path, client)
+    call_error(
+        server,
+        "run_repo_action",
+        {"workdir": "repo", "action": "tag_release", "release_tag": "v1.1.0-beta.3", **extra},
+    )
+    assert client.calls == []
+
+
+def test_structured_release_tag_reaches_repo_rpc_only(tmp_path: Path) -> None:
+    client = FakeRepoClient()
+    server = server_with_repo_client(tmp_path, client)
+    call_success(
+        server,
+        "run_repo_action",
+        {"workdir": "repo", "action": "tag_release", "release_tag": "v1.1.0-beta.3"},
+    )
+    assert client.calls == [
+        (
+            "repo.action",
+            {
+                "workdir": "repo",
+                "action": "tag_release",
+                "path": None,
+                "release_tag": "v1.1.0-beta.3",
+            },
+        )
+    ]

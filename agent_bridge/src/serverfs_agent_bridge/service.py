@@ -311,6 +311,7 @@ class BridgeService:
         workdir: str,
         action: str,
         path: str | None,
+        release_tag: str | None = None,
     ) -> dict[str, Any]:
         if self._closed:
             raise BridgeError("BRIDGE_CLOSED", "bridge is closed")
@@ -322,6 +323,10 @@ class BridgeService:
         # declares it logically read-only. This closes the integrity-check/exec TOCTOU window
         # against concurrent ServerFS or Agent writers and preserves read-only workdir semantics.
         async with self._repo_write_lease(policy):
+            if release_tag is not None:
+                return await self.repo_ops.run_action(
+                    policy, action_name=action, path=path, release_tag=release_tag
+                )
             return await self.repo_ops.run_action(policy, action_name=action, path=path)
 
     async def commit_repo_changes(
