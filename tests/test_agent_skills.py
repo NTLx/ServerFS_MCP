@@ -319,16 +319,12 @@ def test_v023_repo_ops_skill_contract_is_explicit_and_non_agent() -> None:
     bridge_windows = text("skills/serverfs-agent-bridge/references/windows.md")
     bridge_macos = text("skills/serverfs-agent-bridge/references/macos.md")
 
-    assert (
-        "Repo Ops policy itself remains a normal per-workdir configuration concern" in configure
-    )
+    assert "Repo Ops policy itself remains a normal per-workdir configuration concern" in configure
     assert "never substitute Agent submission" in configure
     assert "Repo Ops is explicitly **not Agent delegation**" in bridge
     assert "Repo Ops-only Host Bridge deployments" in bridge
     assert "do not enable an Agent runtime merely because Repo Ops" in install
-    assert (
-        "Repo Ops-only deployments do not need an Agent runtime readiness check" in upgrade
-    )
+    assert "Repo Ops-only deployments do not need an Agent runtime readiness check" in upgrade
     assert "do not submit an Agent task as a diagnostic fallback" in diagnose
     assert "Repo Ops may still depend on that Host Bridge transport" in tunnel_linux
     assert "Agent delegation and/or v0.23 Repo Ops" in auth_oauth
