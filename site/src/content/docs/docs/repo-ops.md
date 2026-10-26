@@ -1,6 +1,6 @@
 ---
 title: Deterministic Repo Ops
-description: v0.23.0 Linux Deterministic Repo Ops for bounded Git inspection, integrity-pinned repository actions, explicit-file commits, exact current-upstream pushes, and fixed release actions without Agent delegation.
+description: v0.23.0 Linux Deterministic Repo Ops for bounded Git inspection, integrity-pinned repository actions, explicit-file commits, exact current-upstream pushes, and fixed npm release actions for the validated package.json release shape without Agent delegation.
 ---
 
 Deterministic Repo Ops is an optional **non-Agent repository capability** released in **v0.23.0**. It lets an MCP caller finish mechanical repository steps without receiving a shell and without delegating those steps to a server-side AI Agent.
@@ -93,10 +93,12 @@ Do not automatically update integrity pins in the same task that changed the pin
 
 ## Release tags and fixed npm workflow dispatch
 
-v0.23.0 Linux deployments can opt a workdir into two built-in action kinds through
-`WORKDIR_XX_REPO_ACTIONS_JSON`. These retain the same four public tools and exclusive
-writer lease. The administrator fixes the repository; the caller supplies only an action
-name and `release_tag`. Built-ins accept no executable or argv configuration.
+v0.23.0 Linux deployments can opt an npm/`package.json` release workdir into two built-in
+action kinds through `WORKDIR_XX_REPO_ACTIONS_JSON`. These retain the same four public
+tools and exclusive writer lease. The administrator fixes the repository; the caller supplies
+only an action name and `release_tag`. Built-ins accept no executable or argv configuration.
+The generic Repo Ops surface is repository-generic; these two built-ins intentionally implement
+a narrower npm release contract and are not a universal release abstraction for every repository type.
 
 ```json
 {
@@ -143,8 +145,8 @@ exclusive. Unknown public action arguments, including `force`, `commit`, `remote
 and `workflow`, are rejected rather than ignored.
 
 Both actions require the workdir to be writable, its Git root/metadata confined, a clean
-working tree/index, `main` tracking `origin/main`, the package version in HEAD to match
-the tag, and the actual remote `main` to equal HEAD. Fetch/push URLs must each resolve to
+working tree/index, `main` tracking `origin/main`, the root `package.json` version in HEAD
+to match the tag, and the actual remote `main` to equal HEAD. Fetch/push URLs must each resolve to
 one standard HTTPS/SSH URL for the configured GitHub repository. Git hooks, SSH-command
 and askpass overrides, mirror/follow-tags/submodule pushes and custom transport helpers
 are disabled. Children use the existing bounded execution and narrow environment.

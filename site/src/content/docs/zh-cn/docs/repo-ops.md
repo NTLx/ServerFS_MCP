@@ -1,6 +1,6 @@
 ---
 title: Deterministic Repo Ops
-description: v0.23.0 Linux Deterministic Repo Ops：无需 Agent 委托即可执行有界 Git 检查、完整性固定的仓库动作、显式文件提交、精确当前 upstream 推送与固定发布动作。
+description: v0.23.0 Linux Deterministic Repo Ops：无需 Agent 委托即可执行有界 Git 检查、完整性固定的仓库动作、显式文件提交、精确当前 upstream 推送，以及面向已验证 package.json 发布形态的固定 npm 发布动作。
 ---
 
 Deterministic Repo Ops 是 **v0.23.0** 正式发布的可选 **非 Agent 仓库能力**。它让 MCP 调用方可以完成机械性的仓库收尾步骤，而不获得 Shell，也不需要把这些步骤委托给服务器上的 AI Agent。
@@ -93,7 +93,7 @@ Integrity pinning 是强制要求。原因是：即使 argv 固定，如果它�
 
 ## Release tag 与固定 npm workflow 触发
 
-v0.23.0 Linux 部署可在 `WORKDIR_XX_REPO_ACTIONS_JSON` 中配置两个内置动作类型，继续使用原有四个公共工具、独占 writer lease、完整性校验和有界执行。管理员固定仓库，调用方只能提交动作名与 `release_tag`；内置动作不接受 executable 或 argv 配置。
+v0.23.0 Linux 部署可为 npm/`package.json` 发布型 workdir 在 `WORKDIR_XX_REPO_ACTIONS_JSON` 中配置两个内置动作类型，继续使用原有四个公共工具、独占 writer lease、完整性校验和有界执行。管理员固定仓库，调用方只能提交动作名与 `release_tag`；内置动作不接受 executable 或 argv 配置。通用 Repo Ops 能力本身适用于一般仓库；这两个内置动作有意实现更窄的 npm 发布契约，不应被理解为适用于所有仓库类型的通用发布抽象。
 
 ```json
 {
@@ -131,7 +131,7 @@ run_repo_action(workdir="DingtalkCard", action="publish_npm", release_tag="v1.1.
 
 Tag 必须完整匹配 `v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.(0|[1-9][0-9]*))?`，最长 128 字符。前导零、路径、分支名、空白、shell 语法和其他预发布渠道均被拒绝。`path` 与 `release_tag` 互斥；公共动作调用中的未知字段（包括 `force`、`commit`、`remote`、`ref`、`workflow`）直接报错，不会被忽略。
 
-两种动作都要求可写 workdir、受约束的 Git 根目录及元数据、干净工作树和暂存区、`main` 跟踪 `origin/main`、HEAD 内包版本与 tag 一致，且实际远程 `main` 等于 HEAD。fetch/push URL 各自必须只有一个，且是配置仓库的标准 GitHub HTTPS/SSH 地址。禁用 Git hooks、SSH-command/askpass 覆盖、mirror/follow-tags/submodule push 和自定义传输 helper；子进程沿用有界执行及最小环境。
+两种动作都要求可写 workdir、受约束的 Git 根目录及元数据、干净工作树和暂存区、`main` 跟踪 `origin/main`、HEAD 中根 `package.json` 的版本与 tag 一致，且实际远程 `main` 等于 HEAD。fetch/push URL 各自必须只有一个，且是配置仓库的标准 GitHub HTTPS/SSH 地址。禁用 Git hooks、SSH-command/askpass 覆盖、mirror/follow-tags/submodule push 和自定义传输 helper；子进程沿用有界执行及最小环境。
 
 `tag_release` 使用 compare-and-create 创建轻量 tag，仅指向捕获的当前 HEAD，且只把该对象 push 到精确的 `refs/tags/<release_tag>`，随后核实远程结果。已有本地/远程 tag 会剥离到 commit：指向相同 HEAD 则幂等成功，指向其他 commit 则返回 `REPO_TAG_CONFLICT`，绝不覆盖。push 失败可能留下新建的本地 tag，处理错误后可重试同一动作；不会修改分支或 force ref。
 

@@ -160,7 +160,7 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - optional one-secret static API Key boundary for Linux remote HTTP
 - optional OAuth 2.1 Resource Server + isolated identity broker for Linux remote HTTP
 - structured Agent task RPC, model discovery and request-scoped model override
-- Linux Deterministic Repo Ops in v0.23.0: bounded Git inspection, fixed named actions, explicit-file commit, exact current-upstream push, and fixed release actions
+- Linux Deterministic Repo Ops in v0.23.0: bounded Git inspection, fixed named actions, explicit-file commit, exact current-upstream push, and fixed npm release actions for the validated `package.json` release shape
 - optional host-side Jev advisory decisions
 
 The stable **v0.23.0** release retains the existing 11 / 13 / 21 / 23 tool combinations and can independently add four Linux Repo Ops tools: 15 tools for Repo Ops-only, 17 with binary transfer, 25 with Agent delegation, and 27 when binary, Agent and Repo Ops are all enabled. Repo Ops and Agent delegation are gated separately; Repo Ops never creates an Agent task and accepts no generic shell, argv, environment, remote, ref or force input. Linux bootstrap/internal E2E, public ChatGPT MCP E2E, refreshed root/Agent Bridge CI, MCP conformance, Windows/macOS regression, and the post-freeze site build/deploy all passed before publication. See [Deterministic Repo Ops](../repo-ops/) for the full contract and evidence. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.
