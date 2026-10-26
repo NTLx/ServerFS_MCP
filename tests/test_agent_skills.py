@@ -303,3 +303,34 @@ def test_skills_remain_model_invoked(plugin_source: Path) -> None:
     path.write_text(path.read_text().replace("name:", "disable-model-invocation: true\nname:", 1))
     with pytest.raises(PACKAGE_API["ValidationError"], match="model-invoked"):
         PACKAGE_API["validate"](plugin_source)
+
+
+def test_v023_repo_ops_skill_contract_is_explicit_and_non_agent() -> None:
+    def text(relative: str) -> str:
+        return (REPO_ROOT / relative).read_text(encoding="utf-8")
+
+    configure = text("skills/serverfs-configure/SKILL.md")
+    bridge = text("skills/serverfs-agent-bridge/SKILL.md")
+    install = text("skills/serverfs-install/SKILL.md")
+    upgrade = text("skills/serverfs-upgrade/SKILL.md")
+    diagnose = text("skills/serverfs-diagnose/SKILL.md")
+    tunnel_linux = text("skills/serverfs-tunnel/references/linux.md")
+    auth_oauth = text("skills/serverfs-auth/references/oauth.md")
+    bridge_windows = text("skills/serverfs-agent-bridge/references/windows.md")
+    bridge_macos = text("skills/serverfs-agent-bridge/references/macos.md")
+
+    assert (
+        "Repo Ops policy itself remains a normal per-workdir configuration concern" in configure
+    )
+    assert "never substitute Agent submission" in configure
+    assert "Repo Ops is explicitly **not Agent delegation**" in bridge
+    assert "Repo Ops-only Host Bridge deployments" in bridge
+    assert "do not enable an Agent runtime merely because Repo Ops" in install
+    assert (
+        "Repo Ops-only deployments do not need an Agent runtime readiness check" in upgrade
+    )
+    assert "do not submit an Agent task as a diagnostic fallback" in diagnose
+    assert "Repo Ops may still depend on that Host Bridge transport" in tunnel_linux
+    assert "Agent delegation and/or v0.23 Repo Ops" in auth_oauth
+    assert "v0.23 Deterministic Repo Ops implementation is Linux-only" in bridge_windows
+    assert "v0.23 Deterministic Repo Ops implementation is Linux-only" in bridge_macos

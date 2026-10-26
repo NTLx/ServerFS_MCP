@@ -62,7 +62,7 @@ Do not copy provider IDs/secrets or current `.env` values into tracked documenta
 2. **Edit existing `.env` surgically.** Never replace it with `.env.example`. Review the local diff for only requested auth keys without emitting their values.
 3. **Preserve mutual exclusion.** API Key non-empty + OAuth enabled is invalid and must remain a startup error. Confirm effective configuration selects exactly one requested mode, or neither when explicitly intended.
 4. **Preserve transport security.** Public bearer/OAuth deployments require HTTPS at an explicit ingress boundary; ServerFS does not become a DNS/certificate manager. Establish the HTTPS termination and exact Host/Origin policy before public access.
-5. **Render the exact Compose shape before restart.** Generic HTTP uses `compose.http.yml`; OAuth additionally requires `compose.oauth.yml`; preserve any already-enabled Agent overlay/profile. Proceed only after config --quiet succeeds for the deployment being restarted.
+5. **Render the exact Compose shape before restart.** Generic HTTP uses `compose.http.yml`; OAuth additionally requires `compose.oauth.yml`; preserve any already-enabled Host Bridge overlay (`compose.agent.yml`) and other profiles. On v0.23 Linux that overlay may exist for Agent delegation, Repo Ops, or both; authentication work must not change either capability's authorization. Proceed only after config --quiet succeeds for the deployment being restarted.
 6. **Restart only the required services/deployment.** Provider secret rotation may only require `serverfs-auth`; introspection-secret rotation must be coordinated across the resource/auth services. Confirm affected services are healthy and both sides of any coordinated secret rotation agree.
 7. **Validate admission and rejection behavior without logging secrets.** Test the intended client path and at least one expected rejection where safe. Record redacted admission/rejection outcomes; unavailable live provider acceptance remains Not verified.
 
@@ -120,7 +120,7 @@ If live external provider acceptance is unavailable, report it as `Not verified`
 
 ## Success criteria
 
-The requested HTTP auth mode is the only active ServerFS-owned mode, secrets remain private, the exact deployment shape validates, expected admission/rejection behavior is demonstrated to the available level, and workdir authorization remains unchanged.
+The requested HTTP auth mode is the only active ServerFS-owned mode, secrets remain private, the exact deployment shape validates, expected admission/rejection behavior is demonstrated to the available level, and workdir/Repo Ops/Agent authorization remains unchanged.
 
 ## Failure handling
 

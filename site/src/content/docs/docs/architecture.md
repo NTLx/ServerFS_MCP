@@ -76,6 +76,20 @@ serverfs-auth
 
 OAuth is Linux remote-HTTP deployment state, not part of native Windows/macOS stdio. See [OAuth 2.1](../oauth/) for the public TLS/reverse-proxy shape, provider callbacks, client registration and Tunnel compatibility boundary.
 
+## Optional Deterministic Repo Ops path (v0.23 development)
+
+```text
+ServerFS MCP container
+   │  structured repo.* RPC
+   ▼
+authenticated host Bridge transport
+   │
+   ├── fixed Git inspection / commit / push semantics
+   └── operator-defined integrity-pinned named actions
+```
+
+Repo Ops reuses the host Bridge transport, host workdir path, current-user Git credential context, and shared writer lease, but it does **not** enter the Agent execution path. No model/runtime is selected, no Agent task/session is created, and no provider adapter is invoked. Repo Ops and Agent delegation are authorized independently per workdir. The initial v0.23 implementation scope is Linux only. See [Deterministic Repo Ops](../repo-ops/).
+
 ## Optional Agent path
 
 ```text
@@ -146,6 +160,7 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - optional one-secret static API Key boundary for Linux remote HTTP
 - optional OAuth 2.1 Resource Server + isolated identity broker for Linux remote HTTP
 - structured Agent task RPC, model discovery and request-scoped model override
+- Linux Deterministic Repo Ops under development for v0.23: bounded Git inspection, fixed named actions, explicit-file commit and current-upstream push
 - optional host-side Jev advisory decisions
 
-In the stable **v0.22.1** release, the supported MCP surfaces remain 11 / 13 / 21 / 23 tools. Every optional capability is separately gated; v0.12's independent Tunnel/Agent/Jev proxy switches, v0.13's native macOS deployment and v0.14's Windows persistent lifecycle do not change the public tool counts. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.
+The stable **v0.22.1** release retains the existing 11 / 13 / 21 / 23 tool combinations. The v0.23 development source can independently add four Linux Repo Ops tools: 15 tools for Repo Ops-only, 17 with binary transfer, 25 with Agent delegation, and 27 when binary, Agent and Repo Ops are all enabled. Repo Ops and Agent delegation are gated separately; Repo Ops never creates an Agent task and accepts no generic shell, argv, environment, remote, ref or force input. As of 2026-10-26, the Linux bootstrap/internal E2E and public ChatGPT MCP E2E are PASS. The later operational-Skills audit changed Skills guidance and its regression test, so refreshed root/Agent-Skills validation plus the fresh site build/diff check remain before normal versioning/publication. See [Deterministic Repo Ops](../repo-ops/) for the full contract and current evidence. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.

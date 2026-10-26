@@ -37,7 +37,7 @@ Paths below are relative to the located **ServerFS checkout root**, never to thi
    - provider/private Agent Bridge state;
    - Tunnel credential/key files;
    - platform service registration.
-4. Determine which optional capabilities are currently enabled: generic HTTP, Tunnel, API Key, OAuth, file ingress, Agent Bridge/Jev.
+4. Determine which optional capabilities are currently enabled: generic HTTP, Tunnel, API Key, OAuth, file ingress, Repo Ops, Agent delegation, and Jev. On Linux, record whether `compose.agent.yml` is present because it may be required by Repo Ops even when Agent mode is disabled.
 5. If operating on a source checkout, inspect Git status before synchronization. Unknown local changes are a stop condition; do not discard them to make the repository match remote.
 6. Read the target release notes/current deployment guides for migration-specific requirements before changing runtime state.
 7. Confirm there is no active operation/writer lease that the documented upgrade path requires to be quiescent.
@@ -65,9 +65,9 @@ Historical plans may explain a migration but do not override current release/dep
 3. **Synchronize/acquire the target artifacts through the supported channel.** For a development/source checkout, use normal Git synchronization only after proving local changes are safe. For release installations, use the intended release assets/images/wheels. Verify acquired artifact version/integrity against the requested release before activation.
 4. **Review configuration drift explicitly.** Compare new examples/schema with the existing operator config and add only newly required keys or migrations. Do not replace the whole config. Review a local diff and pass config validation before runtime replacement.
 5. **Update the runtime using the platform-supported owner.** Keep the same current-user/non-elevated lifecycle. Confirm status shows the intended owner running the target artifact.
-6. **Preserve optional deployment shape.** If Agent overlay, OAuth overlay or file-ingress profile was already enabled, include it in the recreation. If it was disabled, leave it disabled. Compare the recreated overlay/profile and capability inventory with the before-state.
+6. **Preserve optional deployment shape.** If the Host Bridge overlay (`compose.agent.yml`), OAuth overlay or file-ingress profile was already enabled, include it in the recreation. Do not infer Agent delegation from the Host Bridge overlay: v0.23 Linux Repo Ops may require the same transport while Agent mode remains disabled. If an optional capability was disabled, leave it disabled. Compare the recreated overlay/profile and capability inventory with the before-state.
 7. **Run post-upgrade product validation.** Version, parser/doctor, service/container and transport checks must all refer to the new artifact. Proceed only after all applicable checks pass; report any missing evidence as Not verified.
-8. **Check continuity of previously enabled optional subsystems.** Tunnel and Agent Bridge require their own stronger verification rather than generic process state. Complete only after each previously enabled subsystem meets its dedicated verification criteria.
+8. **Check continuity of previously enabled optional subsystems.** Tunnel and Host Bridge require their own stronger verification rather than generic process state. If Repo Ops was enabled, verify the effective workdir still reports Repo Ops enabled and exercise its public deterministic inspection/action surface without Agent fallback. Complete only after each previously enabled subsystem meets its dedicated verification criteria.
 
 ## Platform branches
 
@@ -100,10 +100,10 @@ At minimum prove:
 - config parses/renders with the same operator values and optional feature intent;
 - intended current-user service/container owns the runtime;
 - base MCP/filesystem behavior is healthy;
-- every previously enabled optional subsystem is still healthy through its dedicated evidence surface;
+- every previously enabled optional subsystem is still healthy through its dedicated evidence surface, including Repo Ops public inspection/action evidence when it was enabled;
 - no previously disabled subsystem became enabled accidentally.
 
-For Agent-enabled Linux upgrades also use the current host Bridge verification path (including `--require-runtimes` where the deployment guide requires it) and preserve the Agent Compose overlay.
+For Linux upgrades that use the Host Bridge for Agent delegation and/or Repo Ops, preserve `compose.agent.yml` and verify the Bridge transport. Use `--require-runtimes` only when Agent runtimes are actually enabled and the deployment guide requires runtime readiness; Repo Ops-only deployments do not need an Agent runtime readiness check.
 
 ## Success criteria
 

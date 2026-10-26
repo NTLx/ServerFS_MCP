@@ -2,7 +2,9 @@
 
 Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
 
-Update the ServerFS/Bridge Python environments through the current project/release path, then validate:
+Update the ServerFS/Bridge Python environments through the current project/release path, then validate. The v0.23 Deterministic Repo Ops implementation is Linux-only at this stage; do not infer native macOS Repo Ops support or add Linux Repo Ops policy keys to the macOS configuration during an upgrade.
+
+Then validate:
 
 ```bash
 serverfs doctor --config serverfs.toml

@@ -103,10 +103,21 @@ Agent support is deliberately an explicit overlay:
 
 ```bash
 docker compose --env-file .env -f compose.yml -f compose.agent.yml up -d
-python3 deployment/agent-bridge/verify_host.py --require-runtimes
+uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --require-runtimes
 ```
 
-Before enabling it, install and verify the host-side Agent Bridge as described in the repository's [Agent Bridge deployment guide](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md). Keep the Agent overlay on every later recreation; using base Compose alone removes the Agent socket/lock mounts.
+Before enabling it, install and verify the host-side Agent Bridge as described in the repository's [Agent Bridge deployment guide](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md). Keep the Agent overlay on every later recreation; using base Compose alone removes the Agent socket/lock mounts. Source-checkout Python commands should run through the project uv environment rather than the host's unqualified `python3`.
+
+## Optional Deterministic Repo Ops (v0.23 development)
+
+Repo Ops is separate from Agent delegation but reuses the authenticated host Bridge transport and writer-lease infrastructure. On a writable Linux/Compose workdir, set:
+
+```text
+WORKDIR_01_REPO_OPS_ENABLED=true
+WORKDIR_01_REPO_ACTIONS_JSON={...}
+```
+
+No Agent runtime needs to be enabled. The v0.23 development surface adds `inspect_repo`, `run_repo_action`, `commit_repo_changes`, and `push_repo`; named actions use operator-owned fixed argv plus mandatory SHA-256 integrity pins, and the caller never receives shell/argv/remote/ref/force control. As of 2026-10-26 the Linux bootstrap/internal E2E and public ChatGPT MCP E2E are PASS. A later operational-Skills audit changed the packaged guidance and its regression test, so refreshed root/Agent-Skills validation plus the fresh site build/diff check remain before normal versioning/publication. See [Deterministic Repo Ops](../repo-ops/) before enabling it.
 
 ### Optional Jev advisors
 

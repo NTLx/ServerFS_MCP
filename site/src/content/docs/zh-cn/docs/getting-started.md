@@ -103,10 +103,21 @@ Agent 能力通过显式 overlay 启用：
 
 ```bash
 docker compose --env-file .env -f compose.yml -f compose.agent.yml up -d
-python3 deployment/agent-bridge/verify_host.py --require-runtimes
+uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --require-runtimes
 ```
 
-启用之前，请先按照仓库中的 [Agent Bridge 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md) 安装并验证宿主机 Agent Bridge。后续每次重建都必须保留 Agent overlay；只用基础 Compose 会移除 Agent socket/lock 挂载。
+启用之前，请先按照仓库中的 [Agent Bridge 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md) 安装并验证宿主机 Agent Bridge。后续每次重建都必须保留 Agent overlay；只用基础 Compose 会移除 Agent socket/lock 挂载。源码 checkout 中的 Python 命令应通过项目级 uv 环境执行，不要直接依赖宿主机未限定版本的 `python3`。
+
+## 可选 Deterministic Repo Ops（v0.23 开发能力）
+
+Repo Ops 与 Agent delegation 相互独立，但会复用已认证的 Host Bridge transport 与 writer-lease 基础设施。在可写的 Linux/Compose Workdir 上设置：
+
+```text
+WORKDIR_01_REPO_OPS_ENABLED=true
+WORKDIR_01_REPO_ACTIONS_JSON={...}
+```
+
+不需要启用任何 Agent Runtime。v0.23 开发能力增加 `inspect_repo`、`run_repo_action`、`commit_repo_changes` 与 `push_repo`；named action 使用管理员拥有的固定 argv 和强制 SHA-256 integrity pins，调用方不会获得 shell/argv/remote/ref/force 控制。截至 2026-10-26，Linux bootstrap / 内部 E2E 与公共 ChatGPT MCP E2E 均已 PASS。后续运维 Skills 审计又修改了打包 guidance 与对应回归测试，因此正式版本化/发布前仍需刷新 root/Agent-Skills 验证，并重新执行最新站点 build/diff 检查。启用前请阅读 [Deterministic Repo Ops](../repo-ops/)。
 
 ### 可选 Jev Advisors
 

@@ -52,7 +52,7 @@ OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 已记录通过 Linux、macOS�
 
 ## 验证 Bridge 与 runtime
 
-运行对应平台当前的 Bridge 验证流程（Linux 部署通常使用 `python3 deployment/agent-bridge/verify_host.py --require-runtimes`；Windows/macOS 使用原生部署验证以及 `serverfs doctor --config serverfs.toml`）。确认 Bridge 健康、有效 workdir 策略允许 `acp-opencode`，并且 runtime discovery/listing 显示配置的 runtime 可用。列举或探测不会为了发现能力而启动 Agent。随后在一次性且已授权的 workdir 中运行小任务，并检查终态结果和事件。
+运行对应平台当前的 Bridge 验证流程（Linux 源码 checkout 通常使用 `uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --require-runtimes`；Windows/macOS 使用原生部署验证以及 `serverfs doctor --config serverfs.toml`）。确认 Bridge 健康、有效 workdir 策略允许 `acp-opencode`，并且 runtime discovery/listing 显示配置的 runtime 可用。列举或探测不会为了发现能力而启动 Agent。随后在一次性且已授权的 workdir 中运行小任务，并检查终态结果和事件。
 
 ## 任务操作语义
 

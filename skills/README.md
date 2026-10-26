@@ -9,14 +9,16 @@ The skills teach an AI Agent how to choose and execute the **existing** ServerFS
 | User objective | Skill |
 | --- | --- |
 | Install ServerFS for the first time | [`serverfs-install`](serverfs-install/SKILL.md) |
-| Change workdirs or ordinary ServerFS policy | [`serverfs-configure`](serverfs-configure/SKILL.md) |
+| Change workdirs or ordinary ServerFS policy, including v0.23 Linux Repo Ops policy | [`serverfs-configure`](serverfs-configure/SKILL.md) |
 | Upgrade an existing deployment | [`serverfs-upgrade`](serverfs-upgrade/SKILL.md) |
 | Investigate a failure or verify current health | [`serverfs-diagnose`](serverfs-diagnose/SKILL.md) |
 | Configure or troubleshoot the OpenAI Secure MCP Tunnel | [`serverfs-tunnel`](serverfs-tunnel/SKILL.md) |
 | Configure remote HTTP API Key or OAuth authentication | [`serverfs-auth`](serverfs-auth/SKILL.md) |
-| Configure or troubleshoot Agent Bridge, runtimes or Jev | [`serverfs-agent-bridge`](serverfs-agent-bridge/SKILL.md) |
+| Configure or troubleshoot the Host Bridge lifecycle, Agent runtimes or Jev | [`serverfs-agent-bridge`](serverfs-agent-bridge/SKILL.md) |
 
 Do not load every skill by default. Start from the user's objective and read the smallest relevant skill. A skill may route to another skill when the task crosses an optional subsystem boundary.
+
+Repo Ops intentionally does **not** have an eighth standalone skill. Its per-workdir/action policy belongs to `serverfs-configure`; the Linux Host Bridge transport/lifecycle it reuses belongs to `serverfs-agent-bridge`; actual repository inspection/action/commit/push uses the deterministic MCP tools directly rather than Agent delegation.
 
 ## Source-of-truth rule
 
@@ -56,7 +58,8 @@ All ServerFS operational skills follow these rules:
 7. Prefer official `serverfs` CLI, Compose and `deployment/*` helpers over ad-hoc shell implementations.
 8. Verify every mutation through a supported parser, `doctor`, Compose render or platform service/status surface.
 9. Stop on failed validation or ambiguous ownership/state rather than layering speculative changes.
-10. Never silently enable optional Tunnel, HTTP Auth or Agent delegation during an unrelated install/upgrade.
+10. Never silently enable optional Tunnel, HTTP Auth, Repo Ops, or Agent delegation during an unrelated install/upgrade.
+11. On v0.23+, treat Repo Ops as deterministic non-Agent authority: use its fixed public surface when authorized and available; never substitute Agent delegation merely to perform mechanical Git/action/commit/push work.
 
 ## Plugin distribution
 

@@ -61,6 +61,7 @@ This model applies to:
 - hidden-file policy
 - read/write limits
 - binary transfer
+- Repo Ops enablement
 - Agent policy
 
 Extra deny globs are stricter: global and workdir rules are **unioned**, so a workdir can add restrictions but cannot remove the global deny floor.
@@ -73,6 +74,8 @@ Extra deny globs are stricter: global and workdir rules are **unioned**, so a wo
 - The constrained OpenAI Blob host-family policy is separately disabled by default; enable it with `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` only when ChatGPT file parameters are required. Exact additional hosts belong in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
 - Static API Key authentication is disabled by default. A non-empty `SERVERFS_HTTP_API_KEY` protects Streamable HTTP with one shared secret and cannot be combined with built-in OAuth.
 - OAuth is disabled by default. Enabling it requires the OAuth Compose overlay, an HTTPS resource/auth URL pair outside loopback, a non-empty introspection secret, at least one configured identity provider, and an exact default-deny principal allowlist.
+- Repo Ops is disabled by default and is independently enabled per workdir with `WORKDIR_XX_REPO_OPS_ENABLED=true`. The v0.23 development implementation is Linux-only and requires the authenticated host Bridge transport, but does not require any Agent runtime.
+- `WORKDIR_XX_REPO_ACTIONS_JSON` is private operator policy for Repo Ops named actions. It is rendered only into the host Bridge configuration and is intentionally not forwarded into the MCP container. Named actions require a read-write workdir and mandatory SHA-256 integrity pins.
 - Agent policy is disabled unless explicitly configured.
 - v0.12.0 keeps Tunnel, Agent runtime and Jev proxy decisions independent: `SERVERFS_OPENAI_TUNNEL_USE_PROXY`, `SERVERFS_AGENT_USE_PROXY`, and `SERVERFS_JEV_USE_PROXY` each reuse the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields but never implicitly enable one another.
 - Linux Agent proxying in v0.12 is credentialless-only. If Agent proxying is enabled while shared proxy credentials are configured, deployment rendering fails closed; use a credentialless local broker for an authenticated upstream.
@@ -80,6 +83,22 @@ Extra deny globs are stricter: global and workdir rules are **unioned**, so a wo
 - Jev advisors are disabled unless `SERVERFS_JEV_API_KEY` is non-empty. The key is consumed only by the host Agent Bridge deployment path, not the MCP container.
 - Host paths are not exposed through MCP tool results.
 - A typo in a workdir path fails loudly instead of silently creating a directory.
+
+## Optional deterministic Repo Ops (v0.23 development)
+
+Repo Ops is a per-workdir, default-off repository capability. A minimal Linux/Compose workdir configuration is:
+
+```text
+WORKDIR_01_ALIAS=project
+WORKDIR_01_PATH=/srv/project
+WORKDIR_01_READ_ONLY=false
+WORKDIR_01_REPO_OPS_ENABLED=true
+WORKDIR_01_REPO_ACTIONS_JSON={...}
+```
+
+`WORKDIR_XX_REPO_ACTIONS_JSON` maps caller-visible action names to operator-owned fixed `argv`, `mutates`, `argument`, and `integrity` policy. The caller never supplies executable/argv/environment/remote/ref/force. Every named action requires a non-empty integrity map and always acquires the exclusive writer lease, even when `mutates=false`.
+
+The public Repo Ops tools are registered only when at least one workdir enables the capability. The host Bridge transport must be enabled because it owns host Git credentials/path context and writer-lease coordination; Agent mode may remain disabled. See [Deterministic Repo Ops](../repo-ops/) for the complete security and action-profile contract.
 
 ## Optional Jev advisors
 

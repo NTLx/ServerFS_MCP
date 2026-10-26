@@ -10,7 +10,7 @@
 
 **一个安全、标准优先、按范围授权的 MCP 文件系统服务器，并可选支持 AI Agent 委托。**
 
-只暴露你明确选择的目录，并默认保持只读。仅在需要的位置按需开启受限文件修改、基于 revision 的并发保护、有限制的二进制传输，以及结构化的 Codex / Claude Code / Qoder 原生 runtime 或运维人员配置的 ACP Agent 委托能力。
+只暴露你明确选择的目录，并默认保持只读。仅在需要的位置按需开启受限文件修改、基于 revision 的并发保护、有限制的二进制传输，以及结构化的 Codex / Claude Code / Qoder 原生 runtime 或运维人员配置的 ACP Agent 委托能力。v0.23 开发线另行加入独立门控的 Linux Deterministic Repo Ops，用于无需 Agent 委托的确定性仓库收尾操作。
 
 **当前稳定版本：v0.22.1**
 
@@ -18,6 +18,7 @@
 [文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/) ·
 [快速开始](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/getting-started/) ·
 [安全模型](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/security/) ·
+[Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) ·
 [静态 API Key](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/api-key/) ·
 [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/oauth/) ·
 [Releases](https://github.com/NTLx/ServerFS_MCP/releases)
@@ -35,16 +36,16 @@ ServerFS 围绕这一更窄、更明确的安全边界设计：
 - **受限文件操作** —— 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
 - **并发安全的修改** —— 破坏性操作使用不透明 revision；文本修改采用精确匹配并原子提交。
 - **纵深防御** —— 路径约束、符号链接拒绝、凭据路径拒绝规则、有界 I/O、审计事件，以及平台原生的文件系统安全机制。
-- **可选能力保持可选** —— 二进制传输、ChatGPT 文件输入、Agent 委托和 Jev 建议能力均可独立启用。
+- **可选能力保持可选** —— 二进制传输、ChatGPT 文件输入、v0.23 Linux Repo Ops、Agent 委托和 Jev 建议能力均可独立启用。
 - **Linux、Windows、macOS** —— 对外保持一致的能力模型，同时使用各平台原生的约束与部署边界。
 
 ## 支持的部署方式
 
-| 平台 | 支持形态 | 文件系统边界 | Agent 委托 |
-| --- | --- | --- | --- |
-| **Linux** | Docker Compose，支持 `linux/amd64` 与 `linux/arm64` | Bind mount Workdir；容器默认只读 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
-| **Windows** | Windows 11 x64、本地 NTFS、原生 stdio | MCP stdio 上的原生 HANDLE-relative Rust 内核 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
-| **macOS** | Apple M 系列、原生 arm64、macOS 27 Golden Gate、本地 APFS | MCP stdio 上基于 descriptor-relative 的 Darwin 原生后端 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
+| 平台 | 支持形态 | 文件系统边界 | Repo Ops | Agent 委托 |
+| --- | --- | --- | --- | --- |
+| **Linux** | Docker Compose，支持 `linux/amd64` 与 `linux/arm64` | Bind mount Workdir；容器默认只读 | v0.23 开发预览 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
+| **Windows** | Windows 11 x64、本地 NTFS、原生 stdio | MCP stdio 上的原生 HANDLE-relative Rust 内核 | v0.23 不声明原生支持 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
+| **macOS** | Apple M 系列、原生 arm64、macOS 27 Golden Gate、本地 APFS | MCP stdio 上基于 descriptor-relative 的 Darwin 原生后端 | v0.23 不声明原生支持 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
 
 macOS 仅支持 Apple M 系列、原生 arm64、macOS 27.x 与本地 APFS；不声明支持 Intel、Rosetta 或其他 macOS 大版本。持久 Tunnel 与 Agent Bridge 通过当前用户的 `SMAppService` LaunchAgent 管理。Windows 使用当前用户、非提权的 Task Scheduler 2.0 任务托管无窗口 watchdog，由 watchdog 恢复 runner、runner 恢复 Tunnel。两平台均使用 `serverfs service` 管理持久服务；具体安装、恢复边界与验收限制见平台指南。
 
@@ -132,11 +133,12 @@ Claude Code / Codex / Qoder / MCP hosts
                      v
               +-------------+
               | ServerFS MCP |------> configured workdirs
-              | Core        |------> optional host Agent Bridge
+              | Core        |------> optional host Bridge (Agent / Repo Ops)
               +-------------+                |
-                     ^                       +--> Codex
-                     |                       +--> Claude Code
-          OpenAI Secure MCP Tunnel           +--> Qoder
+                     ^                       +--> Repo Ops (v0.23 Linux dev)
+                     |                       +--> Codex
+          OpenAI Secure MCP Tunnel           +--> Claude Code
+                     |                       +--> Qoder
                      |                       +--> ACP profiles
                      |
                   ChatGPT
@@ -144,20 +146,24 @@ Claude Code / Codex / Qoder / MCP hosts
 
 MCP Core 与宿主平台解耦。标准 MCP 客户端使用 stdio 或 Streamable HTTP；OpenAI Secure MCP Tunnel 保持为可选的、带认证的 ChatGPT ingress 适配器。Linux 上的通用 HTTP 需要显式开启，并默认仅向主机 loopback 发布；原有 Tunnel 部署方式继续受支持。Streamable HTTP 支持可选的单密钥 API Key 认证，或独立的 `serverfs-auth` OAuth 2.1 Broker，用于需要身份感知的部署。这两种认证方式都不会改变既有 Workdir 授权模型或原生 stdio。可选 file-ingress sidecar 仍维持独立的出站职责。
 
-Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持独立的主机进程边界。
+Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持独立的主机进程边界；v0.23 Repo Ops 首版仍仅声明 Linux 支持。
 
 完整部署与信任边界模型见 [Architecture](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/architecture/)。
 
 ## 能力边界
 
-以下是注册的 MCP 工具数；默认仍注册 5 个修改工具，但只读 Workdir 会拒绝修改。二进制工具需至少一个 Workdir 启用二进制策略；Agent 工具需 Bridge 开关和 Workdir Agent 策略同时启用。
+稳定版 v0.22.1 仍提供 11 / 13 / 21 / 23 的文件、二进制与 Agent 能力组合。当前开发中的 v0.23 在 Linux Host Bridge 上新增独立、默认关闭的 4 个 Deterministic Repo Ops 工具；它们不启用 Agent runtime，也不改变既有 Agent 工具语义。默认仍注册 5 个文件修改工具，但只读 Workdir 会拒绝修改。
 
 | 能力层 | 工具数 | 增加的能力 |
 | --- | ---: | --- |
 | 文件系统 | 11 | 6 个只读工具 + 5 个受控修改工具 |
 | 文件系统 + 二进制 | 13 | 有大小限制的整文件下载/上传 |
+| 文件系统 + Repo Ops | 15 | 4 个确定性 Git / named-action 工具；v0.23 Linux 开发能力 |
+| 文件系统 + 二进制 + Repo Ops | 17 | 二进制 + Repo Ops |
 | 文件系统 + Agent | 21 | 10 个结构化 Agent Bridge 工具 |
-| 完整能力 | 23 | 文件系统 + 二进制 + Agent |
+| 文件系统 + 二进制 + Agent | 23 | 二进制 + Agent |
+| 文件系统 + Agent + Repo Ops | 25 | Agent 与 Repo Ops 独立同时启用 |
+| 完整能力 | 27 | 文件系统 + 二进制 + Agent + Repo Ops |
 
 ### 文件系统工具
 
@@ -167,7 +173,9 @@ Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持
 
 **可选二进制传输：** `download_binary_file`、`upload_binary_file`
 
-Agent 工具用于提交和观察结构化 Provider Task，**不是** Shell 或任意命令执行 API。详见 [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/agent-bridge/)。
+**v0.23 Linux 开发中的可选 Repo Ops：** `inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`。Repo Ops 只允许固定 Git 语义和管理员配置、完整性固定的 named actions；调用方不能传 executable、argv、environment、remote、ref、force 或 shell fragment，也不会创建 Agent task。截至 2026-10-26，Linux bootstrap / 内部 E2E 与公共 ChatGPT MCP E2E 均已 PASS；由于后续 Skills 审计又修改了运维 Skills 与其回归测试，正式版本化/发布前仍需刷新 root/Agent-Skills 验证，并重新执行最新站点 build/diff 检查。
+
+Agent 工具用于提交和观察结构化 Provider Task，**不是** Shell 或任意命令执行 API。Repo Ops 与 Agent delegation 分别授权：一个 Workdir 可以在 `agent_mode=disabled` 时单独启用 Repo Ops。详见 [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) 与 [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/agent-bridge/)。
 
 ## 安全模型
 
@@ -182,7 +190,8 @@ ServerFS 假设文件内容均为不可信数据，并通过多个独立防线�
 - 替换写入时保留文件元数据；
 - 保留内部名称与内置凭据路径拒绝规则；
 - 对读取、写入、搜索、二进制传输、任务结果及交互生命周期设置明确上限；
-- 不提供递归删除、force、通用 `write_file`、Shell 或任意命令执行器；
+- 不提供递归删除、通用 `write_file`、Shell 或任意命令执行器；Repo Ops 也不暴露调用方可控的 Git force / remote / ref / argv；
+- v0.23 Repo Ops named action 使用管理员固定 argv、SHA-256 integrity pins、窄环境与有界执行；Git 写操作与文件修改/Agent writer 共用 writer lease；
 - 使用隔离的 file ingress，而不是给 MCP 主服务开放通用下载出站能力；
 - Agent runtime allowlist、writer lease、恢复保护、显式 Provider approval，以及仅提供建议的 Jev 集成。
 
@@ -226,6 +235,7 @@ ChatGPT 文件参数通过可选的隔离 ingress helper 处理，而不是让 M
 | 远程 HTTP 静态 API Key | [Static API Key](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/api-key/) |
 | 远程 HTTP OAuth 2.1 | [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/oauth/) |
 | 二进制传输 / 文件输入 | [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/binary-transfer/) |
+| 确定性仓库操作（v0.23 开发能力） | [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) |
 | Agent 委托 | [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/agent-bridge/) |
 | ACP profile 配置与运维 | [ACP Guide](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/acp/) |
 | 可选 Jev 建议 | [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/jev-advisors/) |

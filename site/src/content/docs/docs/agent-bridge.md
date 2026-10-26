@@ -30,11 +30,11 @@ Host Agent Bridge
 
 ## Why it is separate
 
-The base `compose.yml` remains Agent-unaware. Agent deployments explicitly add `compose.agent.yml`.
+The base `compose.yml` remains host-Bridge-unaware. Linux deployments that need Agent delegation — or the v0.23 development Repo Ops transport — explicitly add `compose.agent.yml`. Adding the overlay provides the authenticated host socket/lock transport; Agent runtimes still require their own independent policy enablement.
 
 This keeps:
 
-- the filesystem MCP usable without native Agent runtimes
+- the filesystem MCP usable without native Agent runtimes or Repo Ops
 - the host socket and writer locks out of the base deployment
 - the security boundary visible in deployment configuration
 - existing filesystem-only deployments backward compatible
@@ -45,10 +45,14 @@ ServerFS exposes ten structured Agent tools when Agent policy is enabled. They c
 
 They are **not** a shell, argv passthrough, or generic command executor.
 
-Current deployments can expose:
+Stable v0.22.1 Agent deployments can expose:
 
 - 21 tools: filesystem + Agent
 - 23 tools: filesystem + binary + Agent
+
+The v0.23 development source also reuses the authenticated host Bridge transport for an independently gated **Deterministic Repo Ops** capability. Repo Ops adds four MCP tools (`inspect_repo`, `run_repo_action`, `commit_repo_changes`, `push_repo`) without creating an Agent task or invoking a provider adapter. A workdir may enable Repo Ops while Agent mode remains disabled. Linux is the initial implementation scope; native macOS/Windows enablement is not claimed yet.
+
+Repo Ops is not a generic command channel: Git operations have fixed semantics, named actions use operator-owned fixed argv plus SHA-256 integrity pins, and callers cannot supply executable, argv, environment, remote, ref, force, or shell syntax. Repo Ops writes and all named actions share the existing writer lease with filesystem mutations and Agent workspace-write tasks. As of 2026-10-26, the Linux bootstrap/internal E2E and public ChatGPT MCP E2E are PASS. A later operational-Skills audit changed `skills/**` and `tests/test_agent_skills.py`, so refreshed root/Agent-Skills validation plus the fresh site build/diff check remain before normal versioning/publication. See [Deterministic Repo Ops](../repo-ops/) for the complete configuration, security, tool, and acceptance contract.
 
 ## v0.12 Linux egress and interaction contract
 
@@ -93,12 +97,12 @@ Final responses stay inline up to the configured spool threshold. The default re
 For current Agent-enabled deployments, run:
 
 ```bash
-python3 deployment/agent-bridge/verify_host.py --require-runtimes
+uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --require-runtimes
 ```
 
 The strict mode first proves the user-scoped Bridge deployment, then performs bounded read-only `runtime.list` retries for every enabled native runtime. It never starts, restarts, bootstraps, updates, kills, or otherwise manages Codex/Claude/Qoder. If a runtime remains unavailable after the retry window, verification fails and provider-native lifecycle diagnostics remain an operator action. For Codex specifically, if `codex app-server daemon update` succeeds with `runningVersion: null` and the managed control socket is absent, first prove there are no active Agent tasks, then run `codex app-server daemon bootstrap` without `--remote-control` and re-run `daemon version` plus this strict verifier.
 
-When recreating the MCP container, always preserve both `-f compose.yml -f compose.agent.yml`; using base Compose alone removes the Agent socket/lock mounts even if `.env` still contains Agent policy.
+When recreating an MCP container that uses host-Bridge capabilities, preserve both `-f compose.yml -f compose.agent.yml`; using base Compose alone removes the Bridge socket/lock mounts even if `.env` still contains Agent or Repo Ops policy.
 
 ## Optional Jev advisors
 

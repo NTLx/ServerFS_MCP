@@ -30,11 +30,11 @@ Unix socket
 
 ## 为什么要独立存在
 
-基础 `compose.yml` 不感知 Agent。需要 Agent 的部署显式叠加 `compose.agent.yml`。
+基础 `compose.yml` 不感知 Host Bridge。Linux 部署如果需要 Agent 委托，或需要 v0.23 开发中的 Repo Ops transport，都显式叠加 `compose.agent.yml`。该 overlay 只提供已认证的宿主机 socket / lock transport；Agent runtime 仍必须通过独立策略显式启用。
 
 这样可以保证：
 
-- 没有原生 Agent runtime 时，文件系统 MCP 仍可独立使用
+- 没有原生 Agent runtime 或 Repo Ops 时，文件系统 MCP 仍可独立使用
 - 宿主机 socket 与 writer lock 不进入基础部署
 - 安全边界在部署配置中保持可见
 - 现有纯文件系统部署保持向后兼容
@@ -45,10 +45,14 @@ Unix socket
 
 这些工具**不是** Shell、argv 透传或通用命令执行器。
 
-当前部署可形成：
+稳定版 v0.22.1 的 Agent 部署可形成：
 
 - 21 个工具：文件系统 + Agent
 - 23 个工具：文件系统 + 二进制 + Agent
+
+v0.23 开发源码还会复用已认证的 Host Bridge transport，提供独立门控的 **Deterministic Repo Ops**。Repo Ops 增加 4 个 MCP 工具（`inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`），不会创建 Agent task，也不会调用 provider adapter。Workdir 可以在 Agent mode 保持 disabled 时单独开启 Repo Ops。首版实现范围仅声明 Linux；尚不声明 macOS / Windows 原生启用。
+
+Repo Ops 不是通用命令通道：Git 操作语义固定；named action 使用运维人员固定 argv 与 SHA-256 integrity pins；调用方不能传 executable、argv、environment、remote、ref、force 或 shell syntax。Repo Ops 写操作与所有 named action 都复用现有 writer lease，与文件修改和 Agent workspace-write task 互斥。截至 2026-10-26，Linux bootstrap / 内部 E2E 与公共 ChatGPT MCP E2E 均已 PASS。后续运维 Skills 审计又修改了 `skills/**` 与 `tests/test_agent_skills.py`，因此正式版本化/发布前仍需刷新 root/Agent-Skills 验证，并重新执行最新站点 build/diff 检查。完整配置、安全、工具与验收契约见 [Deterministic Repo Ops](../repo-ops/)。
 
 ## v0.12 Linux 出站与交互契约
 
@@ -93,12 +97,12 @@ workspace-write 任务还会在现有 `flock` 之外发布持久化的 slot reco
 当前 Agent-enabled 部署验收使用：
 
 ```bash
-python3 deployment/agent-bridge/verify_host.py --require-runtimes
+uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --require-runtimes
 ```
 
 严格模式先验证用户级 Bridge 部署，再对所有已启用原生 runtime 做有界、只读的 `runtime.list` 重试。它不会启动、重启、bootstrap、update、kill 或以其它方式管理 Codex/Claude/Qoder；如果 retry 窗口结束后 runtime 仍不可用，验收失败，provider 生命周期诊断仍由运维人员通过原生工具完成。对 Codex 而言，如果 `codex app-server daemon update` 成功但返回 `runningVersion: null`，同时 managed control socket 不存在，应先确认没有活动 Agent task，再执行不带 `--remote-control` 的 `codex app-server daemon bootstrap`，随后重新核对 `daemon version` 并再次运行严格验收。
 
-重建 MCP 容器时必须同时保留 `-f compose.yml -f compose.agent.yml`；如果只使用基础 Compose，即使 `.env` 中仍保留 Agent 策略，也会丢失 Agent socket/lock 挂载。
+重建使用 Host Bridge capability 的 MCP 容器时，必须同时保留 `-f compose.yml -f compose.agent.yml`；如果只使用基础 Compose，即使 `.env` 中仍保留 Agent 或 Repo Ops 策略，也会丢失 Bridge socket/lock 挂载。
 
 ## 可选 Jev Advisors
 

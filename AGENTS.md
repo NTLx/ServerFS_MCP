@@ -12,6 +12,7 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 ## Current baseline
 
 - **Current stable release: v0.22.1.**
+- **v0.23 is the active development line for Linux Deterministic Repo Ops.** Bootstrap/internal E2E and public ChatGPT MCP E2E are PASS; post-Skills-audit root/Agent-Skills validation, fresh site build/diff, and release publication remain pending. Repo Ops is non-Agent and must not auto-fallback to `submit_agent_task`.
 - **v0.22.0 is the previous stable release.**
 - **v0.19.0 introduced generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes.** OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real Linux/macOS/Windows end-to-end acceptance; see `dev_plan_v0.19.md` for scope and evidence.
 - Native deployment families: Linux, Windows and macOS.
@@ -53,7 +54,8 @@ Skills are workflow guidance, not a second configuration/source-of-truth layer. 
 - Workdir confinement and deny/reserved-path policy must apply consistently across every path-bearing channel.
 - Request-derived filesystem access must preserve the platform's race-resistant handle/FD containment model; never weaken symlink/path safety for convenience.
 - Mutations remain explicit, narrow, atomic where specified and revision guarded. There is no recursive delete or unguarded overwrite path.
-- Read-only is the default. Optional binary transfer, ChatGPT file ingress and Agent delegation remain separately gated capabilities.
+- Read-only is the default. Optional binary transfer, ChatGPT file ingress, Deterministic Repo Ops, and Agent delegation remain separately gated capabilities.
+- Repo Ops exposes only the fixed four-tool repository surface documented in `docs/maintainers/invariants.md`; do not add caller-controlled shell/argv/env/remote/ref/force or use Agent delegation as a fallback for deterministic repository completion.
 - Public MCP schemas and stable error/protocol contracts are product API, not documentation-only decoration.
 - Protocol stdout stays protocol-clean; contents, credentials, private paths and other sensitive payloads stay out of normal logs.
 - Agent delegation remains provider-neutral and explicitly authorized. ServerFS does not silently change provider authentication, defaults, sandbox/permission policy or runtime.

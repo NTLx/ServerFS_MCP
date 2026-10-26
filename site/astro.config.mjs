@@ -14,7 +14,7 @@ export default defineConfig({
         alt: 'ServerFS',
       },
       description:
-        'Secure, standards-first MCP filesystem access on Linux, Windows and macOS — read-only by default, with Streamable HTTP, optional API Key or OAuth 2.1 authentication, controlled mutations, binary transfer and Agent delegation.',
+        'Secure, standards-first MCP filesystem access on Linux, Windows and macOS — read-only by default, with controlled mutations, binary transfer and Agent delegation; the v0.23 development line adds Linux Deterministic Repo Ops without Agent fallback.',
       defaultLocale: 'root',
       locales: {
         root: {
@@ -86,6 +86,11 @@ export default defineConfig({
               label: 'Binary Transfer',
               translations: { 'zh-CN': '二进制传输' },
               slug: 'docs/binary-transfer',
+            },
+            {
+              label: 'Repo Ops',
+              translations: { 'zh-CN': 'Repo Ops' },
+              slug: 'docs/repo-ops',
             },
             {
               label: 'Agent Bridge',

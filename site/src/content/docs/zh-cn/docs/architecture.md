@@ -76,6 +76,20 @@ serverfs-auth
 
 OAuth 属于 Linux remote-HTTP 部署形态，不属于 Windows/macOS 原生 stdio。公网 TLS/反向代理形态、provider callback、client 注册与 Tunnel 兼容边界详见 [OAuth 2.1](../oauth/)。
 
+## 可选 Deterministic Repo Ops 路径（v0.23 开发能力）
+
+```text
+ServerFS MCP 容器
+   │  结构化 repo.* RPC
+   ▼
+已认证的宿主机 Bridge transport
+   │
+   ├── 固定语义的 Git inspection / commit / push
+   └── 管理员定义、integrity-pinned 的 named actions
+```
+
+Repo Ops 会复用宿主机 Bridge transport、宿主机 Workdir 路径、当前用户 Git 凭据上下文以及共享 writer lease，但它**不会**进入 Agent 执行路径。不会选择模型/Runtime，不会创建 Agent task/session，也不会调用 Provider adapter。Repo Ops 与 Agent delegation 按 Workdir 独立授权。v0.23 首版实现范围仅声明 Linux。详见 [Deterministic Repo Ops](../repo-ops/)。
+
 ## 可选 Agent 路径
 
 ```text
@@ -146,6 +160,7 @@ ServerFS 提供窄能力操作，而不是通用执行原语：
 - Linux remote HTTP 可选单一共享密钥静态 API Key 边界
 - Linux remote HTTP 可选 OAuth 2.1 Resource Server + 隔离身份 broker
 - 结构化 Agent task RPC、模型发现与单次任务模型覆盖
+- v0.23 开发中的 Linux Deterministic Repo Ops：有界 Git inspection、固定 named action、显式文件 commit 与当前 upstream push
 - 可选的宿主机 Jev advisory decision
 
-稳定版 **v0.22.1** 仍支持 11 / 13 / 21 / 23 个工具的四种 MCP 能力面。每种可选能力都有独立门控；v0.12 的 Tunnel / Agent / Jev 独立代理开关、v0.13 的 macOS 原生部署以及 v0.14 的 Windows 持久生命周期都不会改变公开工具数量。Jev 仍是 Agent Bridge 内部 advisor，而不是新的 MCP capability surface。
+稳定版 **v0.22.1** 仍支持 11 / 13 / 21 / 23 个工具的既有能力组合。当前开发中的 v0.23 可在 Linux 上独立增加 4 个 Repo Ops 工具，因此 Repo Ops-only 为 15 个、二进制 + Repo Ops 为 17 个、Agent + Repo Ops 为 25 个，三者全部启用为 27 个。Repo Ops 与 Agent delegation 分别门控，且 Repo Ops 不创建 Agent task、不接收通用 shell / argv / env / remote / ref / force。截至 2026-10-26，Linux bootstrap / 内部 E2E 与公共 ChatGPT MCP E2E 均已 PASS。后续运维 Skills 审计又修改了 Skills guidance 与对应回归测试，因此正式版本化/发布前仍需刷新 root/Agent-Skills 验证，并重新执行最新站点 build/diff 检查。完整契约与当前证据见 [Deterministic Repo Ops](../repo-ops/)。Jev 仍是 Agent Bridge 内部 advisor，而不是 MCP capability surface。

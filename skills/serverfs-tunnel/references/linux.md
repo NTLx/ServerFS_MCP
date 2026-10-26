@@ -11,7 +11,7 @@ docker compose ps
 docker compose logs --tail=200 openai-tunnel
 ```
 
-If Agent delegation or file ingress is already enabled, preserve the deployment's existing overlay/profile when recreating the stack.
+If the Host Bridge is already used for Agent delegation and/or v0.23 Repo Ops, or file ingress is enabled, preserve the deployment's existing overlay/profile when recreating the stack. Do not drop `compose.agent.yml` merely because Agent mode is disabled; Repo Ops may still depend on that Host Bridge transport.
 
 Use the running Tunnel's own layered health evidence:
 

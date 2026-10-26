@@ -93,6 +93,23 @@ uv build --wheel --out-dir /tmp/serverfs-wheel-check
 
 Real `SMAppService` registration, Login Items approval and reboot/login recovery are local operator acceptance steps; hosted CI must not mutate a runner's Login Items.
 
+### Deterministic Repo Ops (v0.23+)
+
+Repo Ops crosses the root MCP surface, host Bridge service, Linux deployment rendering, Git/process execution, writer-lease coordination and release-facing documentation. Run every affected root + `agent_bridge/` gate, plus Linux Compose/render checks and `bash -n deployment/agent-bridge/*.sh` when deployment scripts/config rendering change.
+
+Before release, prove all of the following on the supported Linux deployment:
+
+1. at least one workdir can enable Repo Ops while Agent mode remains disabled;
+2. the public MCP surface exposes exactly `inspect_repo`, `run_repo_action`, `commit_repo_changes`, and `push_repo` in addition to the applicable existing tools;
+3. named actions execute only administrator-fixed argv with mandatory reviewed SHA-256 integrity pins and fail closed on pin/path violations;
+4. `inspect_repo` status/diff output respects ServerFS hidden/credential deny policy;
+5. commit refuses pre-existing staged state and stages only explicit requested paths;
+6. push derives the current upstream and supplies one exact refspec, with no caller-selected remote/ref/force path;
+7. timeout/output-overflow/cancellation process-tree cleanup completes before the writer lease is released;
+8. public ChatGPT MCP E2E completes `actions -> status -> named validation -> explicit diff/commit -> current-upstream push` as applicable, and evidence shows that no `submit_agent_task` / provider task was created.
+
+Internal Bridge RPC/in-container checks are required implementation evidence but do **not** replace the public MCP E2E release gate. Do not use Agent delegation as a fallback when deterministic Repo Ops is unavailable or fail-closed; report the capability gap instead.
+
 ### Website / docs-only changes
 
 `site/` is an Astro + Starlight static GitHub Pages site. For site changes use:
@@ -149,7 +166,7 @@ Do not make a search result disappear by falsifying history.
 
 ## 6. Release workflow
 
-Use Semantic Versioning and the repository's established version surfaces. Before tagging, reconcile current version/status claims across the release-facing README/docs/site, package metadata/version gates, deployment examples and release notes/checklists that are intended to describe the upcoming/current release.
+Use Semantic Versioning and the repository's established version surfaces. Before tagging, reconcile current version/status claims across the release-facing README/docs/site, package metadata/version gates, deployment examples and release notes/checklists that are intended to describe the upcoming/current release. For a release that introduces a new public MCP capability such as Repo Ops, public client E2E acceptance is a tag gate; internal/private RPC evidence alone is insufficient.
 
 Git tags drive published images:
 

@@ -28,7 +28,7 @@ GitHub / 钉钉 / 飞书 / 微信
 
 OAuth 当前是 **Linux Docker Compose** 能力。
 
-只有需要 Agent 委托时才额外加入 `compose.agent.yml`。
+只有需要已认证的 Host Bridge capability 时才额外加入 `compose.agent.yml`：Agent 委托、v0.23 Linux Repo Ops 开发 transport，或两者同时启用。它们各自的 Workdir 授权与 OAuth、彼此之间都保持独立。
 
 典型公网部署使用两个独立 HTTPS origin：
 

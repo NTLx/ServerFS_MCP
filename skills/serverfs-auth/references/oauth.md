@@ -23,6 +23,6 @@ Before starting, verify from the current OAuth guide/template that:
 - the exact stable-principal allowlist is present and contains no wildcards;
 - the auth-state host directory exists with appropriate non-root ownership/permissions.
 
-Then deploy the same validated shape. Add `compose.agent.yml` only if Agent delegation was already intended/enabled.
+Then deploy the same validated shape. Preserve `compose.agent.yml` whenever the existing deployment uses the Host Bridge for Agent delegation and/or v0.23 Repo Ops; do not infer Agent enablement from the overlay itself, and do not change Repo Ops/Agent policy as part of OAuth work.
 
 Do not authorize users by display name, email, nickname or phone when the provider contract requires a stable provider subject.

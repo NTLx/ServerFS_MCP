@@ -19,7 +19,8 @@ Use dedicated skills for optional subsystems after the base install is healthy:
 
 - `serverfs-tunnel`;
 - `serverfs-auth`;
-- `serverfs-agent-bridge`.
+- `serverfs-configure` for per-workdir Repo Ops policy;
+- `serverfs-agent-bridge` for the Linux Host Bridge transport/lifecycle used by Agent delegation and/or Repo Ops.
 
 ## Preflight
 
@@ -34,7 +35,7 @@ Paths below are relative to the located **ServerFS checkout root**, never to thi
 5. Determine the minimum requested ingress:
    - Linux generic Streamable HTTP is the normal base deployment;
    - Windows/macOS native use stdio plus optional Tunnel for ChatGPT connectivity.
-6. Keep Tunnel, Auth, binary/file ingress and Agent delegation disabled unless they are explicitly part of the requested installation.
+6. Keep Tunnel, Auth, binary/file ingress, Repo Ops and Agent delegation disabled unless they are explicitly part of the requested installation. Repo Ops and Agent delegation are independent opt-ins even though Linux uses the same Host Bridge transport for both.
 
 If an existing operator config is found, stop the new-install path. Never treat it as disposable merely because it differs from the example.
 
@@ -43,6 +44,7 @@ If an existing operator config is found, stop the new-install path. Never treat 
 - `site/src/content/docs/docs/getting-started.md`
 - `site/src/content/docs/docs/windows-native.md`
 - `site/src/content/docs/docs/macos-native.md`
+- `site/src/content/docs/docs/repo-ops.md` when the requested Linux installation includes Repo Ops;
 - `deployment/windows/README.md`
 - `deployment/macos/README.md`
 - `.env.example`
@@ -57,9 +59,9 @@ Do not use an old development plan as the install guide when current deployment 
 2. **Acquire the intended release/source.** Prefer the user's requested release; otherwise use the current stable release documented by the checkout/release source. Do not silently track `edge`/unreleased code for a production install. Confirm acquired artifact version/integrity against the intended release metadata.
 3. **Create initial configuration only when none exists.** Examples may seed a new config, but immediately reduce it to the operator's actual workdirs/settings and keep secrets untracked/private. Confirm the new config is private and parses before starting services.
 4. **Configure one minimal workdir.** Read-only is the default; enable writes only when the user's use case requires them. Check the configured root exists and its effective read-only/write policy matches the request.
-5. **Start/validate the base product before optional features.** This separates filesystem/configuration failures from Tunnel/Auth/Agent failures. Proceed only after base parser/doctor and transport checks pass.
+5. **Start/validate the base product before optional features.** This separates filesystem/configuration failures from Tunnel/Auth/Repo Ops/Agent failures. Proceed only after base parser/doctor and transport checks pass.
 6. **Use the platform's supported current-user lifecycle.** Do not replace it with root/system services. Confirm status identifies the intended current-user owner.
-7. **Add optional capabilities one at a time when requested**, using the dedicated skill and re-verifying after each capability. Complete each requested subsystem’s verification before adding another.
+7. **Add optional capabilities one at a time when requested**, using the dedicated skill and re-verifying after each capability. For Linux Repo Ops, configure the per-workdir policy through `serverfs-configure` and the required Host Bridge transport/lifecycle through `serverfs-agent-bridge`; do not enable an Agent runtime merely because Repo Ops needs the Bridge transport. Complete each requested subsystem’s verification before adding another.
 
 ## Platform branches
 
@@ -90,11 +92,11 @@ docker compose -f compose.yml -f compose.http.yml ps
 
 Before public/non-loopback exposure, route to `serverfs-auth` if ServerFS-owned authentication is requested and ensure the separate TLS/Host/Origin boundary from current documentation is satisfied.
 
-Do not add `compose.agent.yml`, `compose.oauth.yml`, file-ingress profile or the historical base Tunnel shape unless requested.
+Do not add `compose.agent.yml`, `compose.oauth.yml`, file-ingress profile or the historical base Tunnel shape unless requested. On v0.23 Linux, `compose.agent.yml` is the Host Bridge transport overlay for Agent delegation and/or Repo Ops; adding it does not itself authorize either capability.
 
 ### Windows native
 
-Supported installation uses the release wheels in **two isolated per-user Python environments**: product/native kernel in the connector environment and Agent Bridge in its separate environment when Agent support is needed. Do not install the product and Bridge into one dependency graph.
+Supported installation uses the release wheels in **two isolated per-user Python environments**: product/native kernel in the connector environment and Agent Bridge in its separate environment when Agent support is needed. Do not install the product and Bridge into one dependency graph. The v0.23 Deterministic Repo Ops implementation is Linux-only; a Windows install must not invent or enable native Repo Ops policy.
 
 For the base filesystem/native product, follow the current Windows guide and install product + native wheel into the stable current-user connector environment. Create `serverfs.toml` from the example only if no config exists, then run:
 
@@ -114,7 +116,7 @@ A fresh install being disabled until explicit `service start` is intentional. Do
 
 ### macOS native
 
-Only proceed within the current documented macOS support boundary. Use the normal Python environments and current native deployment guide. Create `serverfs.toml` only when no existing configuration exists, then run:
+Only proceed within the current documented macOS support boundary. Use the normal Python environments and current native deployment guide. The v0.23 Deterministic Repo Ops implementation is Linux-only; a macOS install must not invent or enable native Repo Ops policy. Create `serverfs.toml` only when no existing configuration exists, then run:
 
 ```bash
 serverfs doctor --config serverfs.toml
@@ -146,7 +148,7 @@ Minimum base verification:
 - configuration parses/renders;
 - target workdir is visible through the supported ServerFS surface with expected read-only/write policy;
 - intended current-user service/container is running/healthy;
-- no unrequested Tunnel/Auth/Agent capability is active.
+- no unrequested Tunnel/Auth/Repo Ops/Agent capability is active.
 
 Windows/macOS: `serverfs doctor --config serverfs.toml` must pass before claiming the native installation healthy.
 

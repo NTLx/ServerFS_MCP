@@ -5,7 +5,7 @@ These are durable contracts. Change them only when a demonstrated defect or an e
 ## 1. Capability surface and authority
 
 - ServerFS exposes narrow filesystem/Agent capabilities, never ambient host authority.
-- The base filesystem surface has **11 tools**. Optional binary transfer expands it to **13**. Optional Agent delegation expands it to **21**. Enabling both yields **23**.
+- The base filesystem surface has **11 tools**. Optional binary transfer expands it to **13**. Optional Agent delegation expands it to **21**. Enabling binary + Agent yields **23**. Starting with v0.23, optional Deterministic Repo Ops independently adds four tools: filesystem + Repo Ops = **15**, binary + Repo Ops = **17**, Agent + Repo Ops = **25**, and binary + Agent + Repo Ops = **27**.
 - Read-only remains the default per workdir. Mutation is an explicit workdir capability.
 - Do not add a generic shell/argv/env MCP tool or another general-purpose executor.
 - Public MCP schemas are contracts. Structured results must expose matching `outputSchema`; mixed binary results keep both the resource block and structured metadata.
@@ -148,7 +148,26 @@ Approvals and questions remain provider-neutral but human-controlled:
 - late interaction answers are stale after terminal/expiry state;
 - `approve_session` may echo only provider-supplied session-scoped suggestions and must not silently persist broader provider permission changes.
 
-## 7. Jev is advisory only
+## 7. Deterministic Repo Ops contract
+
+Starting with v0.23, Repo Ops is an optional, per-workdir, default-off **non-Agent** host repository capability. Its purpose is to let MCP callers finish deterministic repository gates without turning those steps into Agent delegation or exposing a generic host executor.
+
+Preserve these invariants together:
+
+- Repo Ops and Agent delegation are independently authorized. A workdir may enable Repo Ops with Agent mode disabled, and Repo Ops must never auto-fallback to `submit_agent_task` or another provider task path.
+- The public Repo Ops surface is exactly four narrow tools: `inspect_repo`, `run_repo_action`, `commit_repo_changes`, and `push_repo`. Do not add a generic repo command/shell/argv/env/cwd/executable/remote/ref/force passthrough.
+- All caller paths pass the normal ServerFS path/deny policy before Bridge RPC. The host Bridge independently confines them again and must not return absolute host workdir paths.
+- Named actions are operator-owned fixed argv profiles. The caller selects only an action name and, only when the profile declares it, one policy-valid path/basename argument. Every action requires a non-empty SHA-256 integrity map over repository-controlled execution inputs; a missing/symlinked/oversized/mismatched pin fails before process creation.
+- Do not auto-update integrity pins in the same task that changed the pinned repository code. A pin update is an operator review decision.
+- Every named action requires a read-write workdir and acquires the exclusive writer lease even when `mutates=false`. `mutates` is audit metadata, not a sandbox claim. Commit and push use the same lease/recovery-guard boundary.
+- Commit refuses pre-existing staged state, stages only explicit requested paths, rejects external clean/process filters, disables hooks and signing on the deterministic path, and returns the resulting SHA without implicitly pushing.
+- Push derives the current branch/upstream internally and supplies exactly one `HEAD:<upstream-branch>` refspec. The caller cannot choose remote/ref/force. Git is non-interactive; hooks, askpass, repository SSH-command overrides and unapproved custom remote helpers remain neutralized/denied.
+- Repo Ops child environments are narrowly allowlisted; provider/API secrets are not forwarded wholesale. Runtime/output limits are mandatory. On Linux, timeout/output overflow/cancellation terminates the entire subprocess group and drains child pipes before releasing the writer lease.
+- Repo Ops RPC/service code must not import or invoke Agent provider adapters, select models, create sessions/tasks, or claim provider authority.
+- Initial v0.23 platform support is Linux only. Do not claim native Windows/macOS Repo Ops until their configuration renderer, process containment, credential behavior, tests and live acceptance exist.
+- Release acceptance requires public MCP E2E through the four tools, including status/action/diff/commit/push as applicable, and explicit evidence that no Agent task was created. Private Bridge/internal checks are necessary but not a substitute for public MCP acceptance.
+
+## 8. Jev is advisory only
 
 Jev Preflight, Runtime Router, Model Advisor and Approval Advisor are opt-in advisors, not an Agent runtime, authorization system or safety authority.
 
@@ -161,15 +180,15 @@ Jev Preflight, Runtime Router, Model Advisor and Approval Advisor are opt-in adv
 
 v0.12 added independent proxy control for Jev without increasing its authority.
 
-## 8. Platform containment
+## 9. Platform containment
 
 Platform support is implemented behind explicit platform seams, not by weakening a security invariant to make another OS fit.
 
 ### Linux
 
-The established Linux deployment remains containerized ServerFS MCP with two supported ingress shapes: the existing outbound OpenAI Secure MCP Tunnel and the v0.15 opt-in generic Streamable HTTP publication override. The base Compose shape does not publish the MCP port. Optional host-side Agent Bridge remains behind the Linux deployment overlay. User-scoped Agent deployment is non-root; do not require system users, `/etc`/`/opt`/`/var/lib` writes or automatic login lingering.
+The established Linux deployment remains containerized ServerFS MCP with two supported ingress shapes: the existing outbound OpenAI Secure MCP Tunnel and the v0.15 opt-in generic Streamable HTTP publication override. The base Compose shape does not publish the MCP port. Optional host-side Bridge transport remains behind the Linux deployment overlay and may carry independently gated Agent delegation, Deterministic Repo Ops, or both. User-scoped host-Bridge deployment is non-root; do not require system users, `/etc`/`/opt`/`/var/lib` writes or automatic login lingering.
 
-Agent-enabled Linux deployment must use the measured peer identity and the same user/group contract documented by Phase E. Do not synthesize peer UID/GID as a substitute for kernel measurement. Base `compose.yml` remains Agent-unaware; the opt-in overlay owns the socket/lock mounts.
+Host-Bridge-enabled Linux deployment must use the measured peer identity and the same user/group contract documented by Phase E. Do not synthesize peer UID/GID as a substitute for kernel measurement. Base `compose.yml` remains host-Bridge-unaware; the opt-in overlay owns the socket/lock mounts while Agent and Repo Ops authorization remain independent.
 
 ### Windows
 
@@ -191,14 +210,14 @@ For v0.14.0+, `deployment/windows/start-native.ps1` is compatibility/emergency m
 
 v0.13 supports Apple M-series only, native arm64, macOS 27 Golden Gate. Preserve the measured runtime gate and fail closed outside that boundary. Darwin uses POSIX-generic filesystem/Agent seams where proven, Darwin-specific peer/runtime primitives where required, the macOS application-data home, native arm64 Tunnel asset and private AF_UNIX file ingress. **Since v0.13.2, persistent lifecycle is app-associated `SMAppService` + per-user LaunchAgents for both Tunnel and Agent Bridge.** Normal operation must not recreate a hand-installed `~/Library/LaunchAgents` plist, root LaunchDaemon, shell-profile bootstrap or `nohup` persistence. Registration/approval state belongs to ServiceManagement/Login Items and user denial must be respected. The bundled launcher contains no secrets, reads only private 0600 lifecycle state, uses absolute executable/config paths, and preserves exactly-one managed Tunnel/Bridge semantics. Lifecycle operations that must replace the managed Agent Bridge may use ServerFS's product-owned bounded one-shot launchd hand-over so the operation can outlive its Bridge-owned caller; final success requires verified service readiness/health plus proof that the temporary hand-over job and plist are absent. Maintainer one-shot handoffs must not be implemented as persistent or `KeepAlive` `launchctl submit` jobs. Do not claim Intel, Rosetta, macOS 26/28 or a `darwin-amd64` asset without new measured support.
 
-## 9. Secrets and configuration
+## 10. Secrets and configuration
 
 - Repository-root `.env` is the deployment configuration source; do not reintroduce `.env.agent` or another competing deployment env layer.
 - `.env.example` documents the public configuration surface without secrets.
 - Provider-native secrets/shell-only variables remain outside the repository except where an explicitly documented integration uses the untracked root `.env` and renders only the minimum private host-side config.
 - Never print raw `docker compose config` output when it can expand secrets; query only the field needed.
 
-## 10. Intentional product decisions and traps
+## 11. Intentional product decisions and traps
 
 - Hidden-path, default-deny and extra-deny controls are intentional administrator-facing policy, not bugs. Global extra deny globs are a floor; per-workdir globs can only add restrictions.
 - `WORKDIR_XX_READ_ONLY` intentionally drives both application authorization and mount intent. Application authorization remains fail-closed even if the filesystem mount is writable.

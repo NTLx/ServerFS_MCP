@@ -22,7 +22,8 @@ Do not use this as the main workflow when the requested change is already explic
 - planned upgrade: use `serverfs-upgrade`;
 - known Tunnel work: use `serverfs-tunnel`;
 - known HTTP API Key/OAuth work: use `serverfs-auth`;
-- known Agent Bridge/runtime/Jev work: use `serverfs-agent-bridge`.
+- known Agent Bridge/runtime/Jev work: use `serverfs-agent-bridge`;
+- known Repo Ops policy changes: use `serverfs-configure`. Repo Ops diagnosis may still begin here when the failing layer is not yet known.
 
 Do not use diagnosis as permission to change configuration, restart services, delete state, reinstall packages or rotate credentials unless the user requested remediation and the cause is established.
 
@@ -53,6 +54,7 @@ Read the smallest relevant current sources before drawing conclusions:
 - `site/src/content/docs/docs/macos-native.md`
 - `site/src/content/docs/docs/tunnel-diagnostics.md`
 - `site/src/content/docs/docs/host-observability.md`
+- `site/src/content/docs/docs/repo-ops.md`
 - `deployment/windows/README.md`
 - `deployment/macos/README.md`
 - `deployment/agent-bridge/README.md`
@@ -70,6 +72,7 @@ Historical `dev_plan_v*.md` files are evidence of past releases, not current-sta
    - generic HTTP: MCP container state, Host/Origin policy and exact published endpoint;
    - Tunnel: route to `serverfs-tunnel` and use its layered health evidence;
    - API Key/OAuth: route to `serverfs-auth` after confirming the configured mode;
+   - Repo Ops: first distinguish public tool-schema exposure, per-workdir `repo_ops` policy, Host Bridge transport, named-action policy/integrity, and the fixed Git operation itself. Use `inspect_repo(actions/status)` when exposed; do not submit an Agent task as a diagnostic fallback. Route policy repair to `serverfs-configure` and Host Bridge lifecycle/transport repair to `serverfs-agent-bridge`.
    - Agent tools/runtime: route to `serverfs-agent-bridge` after confirming Agent policy and Bridge status.
    - For Agent problems, follow the **Correlated Agent Diagnostics (v0.22+ / feature-detect)** section in `skills/serverfs-agent-bridge/SKILL.md`: check the installed version or `serverfs diagnostics --help` (or equivalent capability listing) first. Only when advertised, use `serverfs diagnostics snapshot --format json` and `serverfs diagnostics task <task-id> --format json`. These are not v0.21 guarantees; fall back to the version-supported Agent status/runtime surfaces when absent.
 5. **Bound logs and redact.** Read only the recent logs needed to explain the failure. Never dump `.env`, provider environment, keys, bearer tokens or unrestricted logs. Retain only redacted evidence tied to the observed symptom.
@@ -87,13 +90,13 @@ docker compose config --quiet
 docker compose ps
 ```
 
-For an Agent-enabled deployment, include `-f compose.agent.yml`; for generic HTTP include `-f compose.http.yml`; for OAuth include `-f compose.oauth.yml`. Do not validate a different Compose shape from the one actually deployed.
+If the deployment uses the Host Bridge for Agent delegation and/or Repo Ops, include `-f compose.agent.yml`; for generic HTTP include `-f compose.http.yml`; for OAuth include `-f compose.oauth.yml`. Do not validate a different Compose shape from the one actually deployed, and do not infer Agent mode merely from the presence of the Host Bridge overlay.
 
 Inspect bounded logs only for the affected service. A container being `Up` is not proof that Tunnel control-plane or MCP response delivery is healthy.
 
 ### Windows native
 
-Run the ServerFS executable from the stable current-user connector environment and use the real config:
+The v0.23 Deterministic Repo Ops implementation is Linux-only. If Repo Ops is reported missing on Windows, treat that as an unsupported-capability mismatch rather than a Bridge/runtime failure. Run the ServerFS executable from the stable current-user connector environment and use the real config:
 
 ```powershell
 & $serverfs doctor --config serverfs.toml
@@ -106,7 +109,7 @@ The opt-in v0.21 `common-json`/`common-human` formats provide a bounded, sanitiz
 
 ### macOS native
 
-Use the supported native CLI surfaces:
+The v0.23 Deterministic Repo Ops implementation is Linux-only. If Repo Ops is reported missing on macOS, treat that as an unsupported-capability mismatch rather than a Bridge/runtime failure. Use the supported native CLI surfaces:
 
 ```bash
 serverfs doctor --config serverfs.toml
@@ -146,7 +149,7 @@ Minimum examples:
 - the failing subsystem reports healthy/expected state;
 - no unintended optional subsystem was enabled or disabled.
 
-For Tunnel, Auth or Agent problems, use the dedicated skill's verification contract rather than treating a generic process-up state as sufficient.
+For Tunnel, Auth or Agent problems, use the dedicated skill's verification contract rather than treating a generic process-up state as sufficient. For Repo Ops, verify the public deterministic surface directly: effective workdir enablement plus `inspect_repo(actions/status)` and, when relevant, the exact named action or Git operation that failed. Never use `submit_agent_task` merely to prove or work around Repo Ops behavior.
 
 ## Success criteria
 

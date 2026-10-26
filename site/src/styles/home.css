@@ -667,7 +667,7 @@ html[lang="zh-CN"] .hero-system .system-footer {
 
 .capability-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   margin-top: -18px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -1191,12 +1191,17 @@ html[lang="zh-CN"] .hero-system .system-footer {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .cap-card:nth-child(2) {
+  .cap-card:nth-child(2n),
+  .cap-card:last-child {
     border-right: 0;
   }
 
-  .cap-card:nth-child(-n + 2) {
+  .cap-card:nth-child(-n + 4) {
     border-bottom: 1px solid var(--line);
+  }
+
+  .cap-card:last-child {
+    border-bottom: 0;
   }
 
   .security-item:nth-child(2n) {
@@ -2396,6 +2401,10 @@ h1 {
 
   .capability-strip {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cap-card:last-child {
+    grid-column: 1 / -1;
   }
 
   .cap-card:not(:last-child)::after {

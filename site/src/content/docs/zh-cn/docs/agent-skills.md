@@ -12,14 +12,16 @@ ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/sk
 | 用户目标 | Skill |
 | --- | --- |
 | 首次安装 | `serverfs-install` |
-| Workdir 与普通策略配置 | `serverfs-configure` |
+| Workdir 与普通策略配置，包括 v0.23 Linux Repo Ops 策略 | `serverfs-configure` |
 | 已有部署升级 | `serverfs-upgrade` |
 | 只读优先的诊断与健康核验 | `serverfs-diagnose` |
 | OpenAI Secure MCP Tunnel | `serverfs-tunnel` |
 | 远程 HTTP API Key / OAuth | `serverfs-auth` |
-| Agent Bridge / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
+| Host Bridge 生命周期 / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
 仓库根 `AGENTS.md` 只保留很薄的索引。Agent 应根据具体任务加载最小匹配的 `SKILL.md`，而不是把全部运维流程长期塞进基础上下文。
+
+Repo Ops 有意不新增第 8 个独立 Skill：其 per-workdir / named-action 策略归 `serverfs-configure`，Linux Host Bridge transport / 生命周期归 `serverfs-agent-bridge`，真正的仓库 inspection / action / commit / push 直接使用 deterministic MCP 工具，而不是 Agent delegation。
 
 ## 单一事实源
 
@@ -39,7 +41,8 @@ Skills 继续保持 ServerFS 手工运维时的核心约束：
 
 - 当前用户、非提权的生命周期；
 - Workdir 默认只读，除非用户明确扩大权限；
-- Tunnel、HTTP Auth、Agent delegation 分别独立显式启用；
+- Tunnel、HTTP Auth、v0.23 Repo Ops、Agent delegation 分别独立显式启用；
+- Deterministic Repo Ops 始终保持非 Agent；不能仅为了机械性的 Git/action/commit/push 步骤而改用 Agent submission；
 - Secret 不进入受版本控制文件、暴露的 Workdir 或普通日志；
 - 配置修改后必须经过正式解析器、doctor、Compose 或平台状态接口验证；
 - 平台、所有权或运行状态不明确时停止，而不是猜测。

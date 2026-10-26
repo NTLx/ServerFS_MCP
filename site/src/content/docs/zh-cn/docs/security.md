@@ -21,6 +21,7 @@ ServerFS 围绕**窄能力与独立执行层**设计。
 - 非 root 容器用户、drop capabilities、no-new-privileges。
 - MCP 仅连接内部网络，无公开端口、无互联网出口。
 - 可选 ChatGPT 文件入口被隔离在独立 sidecar 中，不挂载 workdir，也不持有 OpenAI 凭据。
+- v0.23 开发中的 Repo Ops 仍是非 Agent、按 Workdir opt-in 的能力，不暴露调用方可控的 shell/argv/environment/remote/ref/force。
 
 ## 文件入口边界
 
@@ -46,6 +47,16 @@ v0.16 可通过隔离的 `serverfs-auth` Authorization Server 保护远程 Strea
 
 OpenAI Tunnel 的 OAuth 路径同样保持这些校验。已知上游 resource rewrite 问题会被明确记录，而不是通过 wildcard audience 绕过。部署、撤销、备份和 provider 细节见 [OAuth 2.1](../oauth/)。
 
+## Deterministic Repo Ops 边界（v0.23 开发能力）
+
+Repo Ops 是独立门控的 Linux 宿主机能力，不属于 Agent 执行模式。它复用已认证的 Host Bridge transport 和共享 writer lease，但 `repo.*` RPC 路径不会创建 Agent task，也不会调用 Provider adapter。
+
+Git 操作语义固定。调用方不能选择 executable、argv、environment、cwd、remote、ref、force、hooks、signing、askpass、repository SSH override 或自定义 remote helper。Commit 只接受显式、通过策略校验的路径，并拒绝预先存在的 staged state；push 会在内部解析当前 branch/upstream，并只提供一个精确 refspec。子进程环境使用 allowlist，因此不会整体继承 Bridge/Provider secrets。
+
+Named action 是管理员拥有的固定 argv profile。每个 action 都必须对仓库控制的执行输入配置非空 SHA-256 integrity map，Bridge 会在进程创建前立即验证。即使 `mutates=false`，所有 named action 也会获取独占 writer lease，避免 integrity-check/execute 与其他 ServerFS 或 Agent writer 发生竞态。Timeout、output overflow 与 cancellation 都会在释放 lease 前终止整个 Linux subprocess group。
+
+完整工具、策略与验收契约见 [Deterministic Repo Ops](../repo-ops/)。
+
 ## Agent 边界
 
 Agent 支持是 opt-in，并位于宿主机 Unix socket 之后。MCP 容器获得的是结构化 Agent 能力，而不是宿主机 Shell。
@@ -60,4 +71,4 @@ TypeSafe API Key 只会渲染到用户自有的 Bridge 配置，不会进入 MCP
 
 完整 advisory 契约详见 [Jev Advisors](../jev-advisors/)。
 
-相邻的信任边界细节请继续查看 [架构](../architecture/)、[配置](../configuration/)、[静态 API Key](../api-key/) 与 [OAuth 2.1](../oauth/)。版本特定的实现与验收证据保留在仓库 phase acceptance 记录中，而不再堆叠到项目 README。
+相邻的信任边界细节请继续查看 [架构](../architecture/)、[配置](../configuration/)、[Deterministic Repo Ops](../repo-ops/)、[静态 API Key](../api-key/) 与 [OAuth 2.1](../oauth/)。版本特定的实现与验收证据保留在仓库 phase acceptance 记录中，而不再堆叠到项目 README。

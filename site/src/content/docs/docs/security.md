@@ -21,6 +21,7 @@ ServerFS is designed around **narrow capabilities and independent enforcement la
 - Non-root container user, dropped capabilities, and no-new-privileges.
 - Internal-only MCP networks with no published ports or Internet egress.
 - Optional ChatGPT file ingress is isolated in a separate sidecar with no workdir mounts or OpenAI credentials.
+- v0.23 development Repo Ops remains non-Agent, per-workdir opt-in, and exposes no caller-controlled shell/argv/environment/remote/ref/force surface.
 
 ## File-ingress boundary
 
@@ -46,6 +47,16 @@ Admission is default-deny and uses exact stable provider subjects. Provider-nati
 
 The OpenAI Tunnel OAuth path keeps the same validation. A known upstream resource-rewrite issue is documented rather than bypassed with wildcard audiences. See [OAuth 2.1](../oauth/) for deployment, revocation, backup and provider details.
 
+## Deterministic Repo Ops boundary (v0.23 development)
+
+Repo Ops is an independently gated Linux host capability, not an Agent execution mode. It reuses the authenticated host Bridge transport and shared writer lease, but its `repo.*` RPC path never creates an Agent task or invokes a provider adapter.
+
+Git operations have fixed semantics. Callers cannot select executable, argv, environment, cwd, remote, ref, force, hooks, signing, askpass, repository SSH overrides, or custom remote helpers. Commit accepts explicit policy-valid paths only and refuses pre-existing staged state; push derives the current branch/upstream internally and supplies one exact refspec. Child environments are allowlisted so Bridge/provider secrets are not inherited wholesale.
+
+Named actions are administrator-owned fixed argv profiles. Every action requires a non-empty SHA-256 integrity map over repository-controlled execution inputs, and the Bridge verifies those pins immediately before process creation. All named actions acquire the exclusive writer lease even when marked `mutates=false`, preventing an integrity-check/execute race with another ServerFS or Agent writer. Timeout, output overflow, and cancellation terminate the Linux subprocess group before the lease is released.
+
+See [Deterministic Repo Ops](../repo-ops/) for the complete tool, policy, and acceptance contract.
+
 ## Agent boundary
 
 Agent support is opt-in and lives behind a host-side Unix socket. The MCP container receives structured Agent capabilities, not shell access to the host.
@@ -60,4 +71,4 @@ The TypeSafe API key is rendered only into the user-owned Bridge config and is n
 
 See [Jev Advisors](../jev-advisors/) for the complete advisory contract.
 
-For adjacent trust-boundary detail, see [Architecture](../architecture/), [Configuration](../configuration/), [Static API Key](../api-key/) and [OAuth 2.1](../oauth/). Version-specific implementation evidence remains in the repository's phase acceptance records rather than the project README.
+For adjacent trust-boundary detail, see [Architecture](../architecture/), [Configuration](../configuration/), [Deterministic Repo Ops](../repo-ops/), [Static API Key](../api-key/) and [OAuth 2.1](../oauth/). Version-specific implementation evidence remains in the repository's phase acceptance records rather than the project README.

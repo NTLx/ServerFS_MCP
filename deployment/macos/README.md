@@ -1,10 +1,10 @@
 # macOS Native Deployment (v0.22.1)
 
-ServerFS v0.22.1 is the prepared next maintenance release candidate and is not published; v0.22.0 remains the current published stable version. The macOS deployment shape introduced
+ServerFS **v0.22.1 is the current published stable release**. The macOS deployment shape introduced
 in v0.13.2 remains pure Python over POSIX/Darwin primitives (`fcopyfile`, `getpeereid`, `confstr`
 via narrow ctypes bindings); v0.13.2 adds a small headless Swift ServiceManagement companion solely for persistent
 per-user service registration. There is still no `serverfs-macos-native` wheel, Docker/VM,
-LaunchDaemon, root helper or Rosetta requirement.
+LaunchDaemon, root helper or Rosetta requirement. The v0.23 Deterministic Repo Ops development path is initially Linux-only; this macOS guide does not claim native Repo Ops enablement.
 
 ## Supported platform
 

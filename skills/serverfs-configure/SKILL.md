@@ -1,6 +1,6 @@
 ---
 name: serverfs-configure
-description: Change existing ServerFS workdirs, filesystem policy, binary transfer, or file ingress; validate effective configuration.
+description: Change existing ServerFS workdirs, filesystem policy, binary transfer, file ingress, or v0.23 Linux Repo Ops policy; validate effective configuration.
 ---
 
 # Configure ServerFS
@@ -9,7 +9,7 @@ Change the smallest possible part of the operator's existing configuration and p
 
 ## When to use
 
-Use this skill to add, remove or change ServerFS workdirs and ordinary filesystem/capability policy, including read-only state, size limits, hidden-file policy, deny rules, binary transfer and file-ingress settings.
+Use this skill to add, remove or change ServerFS workdirs and ordinary filesystem/capability policy, including read-only state, size limits, hidden-file policy, deny rules, binary transfer, file-ingress settings, and — on the v0.23 Linux development line — per-workdir Deterministic Repo Ops enablement / named-action policy.
 
 Use it when the user has a specific configuration objective but is not primarily asking to configure Tunnel, HTTP authentication, or Agent delegation.
 
@@ -19,7 +19,7 @@ Use the dedicated skill instead for:
 
 - OpenAI Secure MCP Tunnel: `serverfs-tunnel`;
 - static HTTP API Key or OAuth: `serverfs-auth`;
-- Agent Bridge, runtime allowlists, provider/Jev behavior: `serverfs-agent-bridge`;
+- Agent Bridge installation/lifecycle, runtime allowlists, provider/Jev behavior: `serverfs-agent-bridge`; Repo Ops policy itself remains a normal per-workdir configuration concern, but its Linux host Bridge transport must follow the current Bridge deployment guide;
 - first installation with no existing configuration: `serverfs-install`;
 - version upgrade: `serverfs-upgrade`;
 - unexplained failure: `serverfs-diagnose` first.
@@ -50,6 +50,7 @@ If the current config cannot be read safely or its ownership/source is ambiguous
 - `serverfs.toml.example` — native non-secret configuration reference.
 - `site/src/content/docs/docs/configuration.md` — current configuration model and inheritance.
 - `site/src/content/docs/docs/binary-transfer.md` — binary/file-ingress boundary.
+- `site/src/content/docs/docs/repo-ops.md` — v0.23 Linux Repo Ops policy, named actions, integrity pins and host-Bridge boundary.
 - `site/src/content/docs/docs/windows-native.md`
 - `site/src/content/docs/docs/macos-native.md`
 - current config parser/`serverfs doctor` behavior in the target checkout/release.
@@ -60,10 +61,10 @@ When these disagree, use implementation/tests and current parser behavior rather
 
 1. **Snapshot logically, not by leaking.** Read the relevant existing section and remember enough surrounding context to make a revision-guarded/surgical edit. Do not print the entire secret-bearing `.env` into chat or logs. Before editing, identify the active file and the exact keys in scope.
 2. **Resolve inheritance before changing it.** On Linux, global `SERVERFS_*` values may be inherited by `WORKDIR_XX_*`; deny-glob restrictions union rather than replace. Confirm whether the desired behavior belongs globally or to one workdir. Proceed after the effective inherited value and target workdir scope are established.
-3. **Preserve secure defaults.** New workdirs should remain read-only unless the user explicitly needs writes. Optional binary transfer/file ingress remains opt-in.
+3. **Preserve secure defaults.** New workdirs should remain read-only unless the user explicitly needs writes. Optional binary transfer/file ingress and Repo Ops remain opt-in. Enabling Repo Ops does not enable Agent delegation; named actions require a read-write workdir and mandatory reviewed SHA-256 integrity pins.
 4. **Apply only the requested keys.** Do not reorder/reformat the whole file or opportunistically normalize unrelated settings. Review the diff locally; every changed key must map to the request.
 5. **Validate syntax and semantics before lifecycle changes.** Use the current parser/doctor/Compose render for the exact deployment shape. Proceed only on a successful validator exit for the same config/env/overlays used at runtime.
-6. **Restart/recreate only if required by the affected setting and requested objective.** Keep all previously enabled overlays/profiles; do not accidentally drop Agent or file-ingress mounts during recreation. Confirm status reflects the intended owner and retained deployment shape.
+6. **Restart/recreate only if required by the affected setting and requested objective.** Keep all previously enabled overlays/profiles; do not accidentally drop Host Bridge (`compose.agent.yml`), OAuth or file-ingress mounts during recreation. Repo Ops and Agent delegation may share the Host Bridge transport while remaining independently authorized. Confirm status reflects the intended owner and retained deployment shape.
 7. **Re-check effective behavior.** Prove the target workdir/policy changed and unrelated optional capabilities retained their prior state.
 
 ## Platform branches
@@ -78,13 +79,13 @@ Render the exact deployment shape without emitting expanded secret values when o
 docker compose --env-file .env -f compose.yml -f compose.http.yml config --quiet
 ```
 
-Add the existing overlays/profiles that the real deployment uses, such as `compose.agent.yml`, `compose.oauth.yml`, or `--profile file-ingress`.
+Add the existing overlays/profiles that the real deployment uses, such as `compose.agent.yml`, `compose.oauth.yml`, or `--profile file-ingress`. On v0.23 Linux, `compose.agent.yml` is the authenticated Host Bridge transport for Agent delegation and/or Repo Ops; using the overlay does not itself authorize either capability.
 
 A host workdir path typo must fail rather than being silently created for convenience. Do not create a requested workdir directory unless directory creation itself is explicitly part of the user's task.
 
 ### Windows native
 
-Use `serverfs.toml` for workdirs and native policy. Keep secrets out of TOML. Validate with the stable connector environment:
+Use `serverfs.toml` for workdirs and native policy. Keep secrets out of TOML. The v0.23 Deterministic Repo Ops implementation is Linux-only; do not add Linux Repo Ops fields or imply native Windows support. Validate with the stable connector environment:
 
 ```powershell
 & $serverfs doctor --config serverfs.toml
@@ -94,7 +95,7 @@ If the managed lifecycle already exists, use `serverfs service status` to confir
 
 ### macOS native
 
-Use `serverfs.toml` for workdirs and policy and keep secrets in the documented private env/state boundary. Validate with:
+Use `serverfs.toml` for workdirs and policy and keep secrets in the documented private env/state boundary. The v0.23 Deterministic Repo Ops implementation is Linux-only; do not add Linux Repo Ops fields or imply native macOS support. Validate with:
 
 ```bash
 serverfs doctor --config serverfs.toml
@@ -110,7 +111,8 @@ Stop instead of mutating when:
 - the active config file/deployment shape is unknown;
 - the requested workdir path or platform storage class is unsupported or cannot be verified;
 - an existing config contains unfamiliar local changes that would be overwritten by the proposed edit;
-- the requested change would silently change Auth, Tunnel or Agent policy without explicit intent;
+- the requested change would silently change Auth, Tunnel, Repo Ops, or Agent policy without explicit intent;
+- a Repo Ops action would use caller-controlled executable/argv/env/remote/ref/force, omit integrity pins, or auto-update pins without a separate operator review decision;
 - a secret would be moved into `serverfs.toml`, a tracked file or an exposed workdir;
 - validation reports an unknown/invalid key, path, policy combination or platform failure;
 - the change appears to require root/Administrator ownership to work.
@@ -125,7 +127,7 @@ Use the strongest applicable existing validation without exposing secrets:
 - Windows/macOS: `serverfs doctor --config serverfs.toml` with the same env/lifecycle context used by the deployment, plus `serverfs service status` when persistent services are involved;
 - workdir behavior: list/read/write only to the degree needed to prove the requested policy, using a safe disposable file when a write test is explicitly required.
 
-If file ingress is changed, verify both its feature gate and deployment profile. If binary transfer is changed, verify that workdir/global limits remain within the current schema rather than assuming values from this skill.
+If file ingress is changed, verify both its feature gate and deployment profile. If binary transfer is changed, verify that workdir/global limits remain within the current schema rather than assuming values from this skill. If Linux Repo Ops is changed, verify `repo_ops` in the effective workdir projection, preserve `compose.agent.yml`, verify named-action policy/integrity pins when configured, and never substitute Agent submission for a missing deterministic Repo Ops capability. Native Windows/macOS must remain Repo Ops-unclaimed until their own product support and acceptance exist.
 
 ## Success criteria
 
@@ -134,7 +136,7 @@ The task is complete when:
 - only requested configuration semantics changed;
 - the current parser/Compose/doctor accepts the result;
 - the target workdir or policy exhibits the requested behavior;
-- unrelated Auth/Tunnel/Agent and other workdirs retain their previous state;
+- unrelated Auth/Tunnel/Repo Ops/Agent and other workdirs retain their previous state;
 - no secret or host path was exposed through an inappropriate channel.
 
 ## Failure handling

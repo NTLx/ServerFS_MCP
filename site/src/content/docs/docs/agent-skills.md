@@ -12,14 +12,16 @@ ServerFS keeps operational Agent Skills in the repository [`skills/`](https://gi
 | Objective | Skill |
 | --- | --- |
 | First installation | `serverfs-install` |
-| Workdir and ordinary policy changes | `serverfs-configure` |
+| Workdir and ordinary policy changes, including v0.23 Linux Repo Ops policy | `serverfs-configure` |
 | Existing deployment upgrade | `serverfs-upgrade` |
 | Read-first diagnosis and health verification | `serverfs-diagnose` |
 | OpenAI Secure MCP Tunnel | `serverfs-tunnel` |
 | Remote HTTP API Key / OAuth | `serverfs-auth` |
-| Agent Bridge / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
+| Host Bridge lifecycle / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
 The repository-level `AGENTS.md` contains only a thin index. An Agent should load the smallest matching `SKILL.md` rather than placing all operational procedures in its base context.
+
+Repo Ops intentionally does not add an eighth Skill. Its per-workdir/action policy is handled by `serverfs-configure`, its Linux Host Bridge transport/lifecycle by `serverfs-agent-bridge`, and its actual repository operations by the deterministic public MCP tools rather than Agent delegation.
 
 ## Source of truth
 
@@ -39,7 +41,8 @@ The skills preserve the same ServerFS invariants as manual operation:
 
 - current-user/non-elevated lifecycle;
 - read-only workdirs unless explicitly widened;
-- separate opt-in boundaries for Tunnel, HTTP Auth and Agent delegation;
+- separate opt-in boundaries for Tunnel, HTTP Auth, v0.23 Repo Ops and Agent delegation;
+- deterministic Repo Ops remains non-Agent and is never replaced by Agent submission merely to perform mechanical Git/action/commit/push steps;
 - secrets outside tracked files, exposed workdirs and normal logs;
 - validation after every configuration mutation;
 - stop rather than guess when platform, ownership or active state is ambiguous.

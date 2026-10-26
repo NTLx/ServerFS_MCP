@@ -113,7 +113,7 @@ docker compose --env-file .env \
   up -d
 ```
 
-Add `-f compose.agent.yml` only when Agent delegation is required.
+Add `-f compose.agent.yml` only when an authenticated host Bridge capability is required: Agent delegation, the v0.23 Linux Repo Ops development transport, or both. Their per-workdir authorization remains independent of OAuth and of each other.
 
 Verify the rendered deployment before starting it:
 

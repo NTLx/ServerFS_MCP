@@ -14,7 +14,7 @@ const copy = {
     lang: 'en',
     title: 'ServerFS MCP — Controlled filesystem access for AI on Linux, Windows, and macOS',
     description:
-      'ServerFS MCP securely exposes selected directories as controlled workdirs to standards-compatible MCP hosts on Linux, Windows, and macOS, with standard Streamable HTTP, optional API Key or OAuth 2.1 authentication, and portable Agent Skills.',
+      'ServerFS MCP securely exposes selected directories as controlled workdirs on Linux, Windows, and macOS; the v0.23 development line adds independently gated Linux Deterministic Repo Ops without Agent fallback.'
     nav: { docs: 'Docs', connect: 'Connect', architecture: 'Architecture', security: 'Security' },
     languageSwitch: '简中',
     languageLabel: '切换到简体中文',
@@ -22,7 +22,7 @@ const copy = {
     heroEyebrow: 'SECURE MCP FOR LINUX · WINDOWS · MACOS WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
-      'Expose selected workdirs through native stdio or standard Streamable HTTP. Read-only by default, with guarded writes and bounded binary transfer; API Key, OAuth 2.1, OpenAI Tunnel, file ingress, Agent delegation, and Agent Skills stay explicit capabilities.',
+      'Expose selected workdirs through native stdio or standard Streamable HTTP. Read-only by default, with guarded writes and bounded binary transfer; API Key, OAuth 2.1, OpenAI Tunnel, file ingress, Agent delegation, and Agent Skills stay explicit capabilities. The v0.23 development source adds independently gated Linux Deterministic Repo Ops without Agent fallback.',
     getStarted: 'Get started',
     viewSource: 'View source',
     guaranteesShort: ['No shell', 'No escape', 'Scoped writes', 'MIT licensed'],
@@ -33,6 +33,7 @@ const copy = {
       ['FILESYSTEM', 'scoped workdirs'],
       ['MUTATIONS', 'revision guarded'],
       ['BINARY I/O', 'bounded · optional'],
+      ['REPO OPS', 'deterministic · v0.23 preview'],
       ['AGENT BRIDGE', 'native host · optional'],
     ],
     workdirs: 'Scoped Workdirs',
@@ -62,8 +63,9 @@ const copy = {
     surfaces: [
       { count: '11', label: 'Filesystem', detail: 'safe read + guarded mutation surface' },
       { count: '13', label: '+ Binary', detail: 'bounded whole-file transfer' },
+      { count: '15', label: '+ Repo Ops', detail: 'v0.23 Linux preview · deterministic Git/actions' },
       { count: '21', label: '+ Agent', detail: 'native delegation + model discovery' },
-      { count: '23', label: 'Full surface', detail: 'binary + Agent Bridge enabled' },
+      { count: '27', label: 'v0.23 full', detail: 'binary + Agent + Repo Ops enabled' },
     ],
     platformEyebrow: 'THREE DEPLOYMENT SHAPES',
     platformTitle: 'One contract. Native boundaries on every platform.',
@@ -78,12 +80,12 @@ const copy = {
         name: 'Linux',
         kicker: 'DOCKER-NATIVE SERVER DEPLOYMENT',
         title: 'Containers define the outer boundary.',
-        body: 'Linux is the server-oriented shape: Docker Compose on amd64 or arm64, standard Streamable HTTP by default, and optional overlays for authentication, file ingress, Agent Bridge, or the OpenAI Tunnel.',
+        body: 'Linux is the server-oriented shape: Docker Compose on amd64 or arm64, standard Streamable HTTP by default, and optional overlays for authentication, file ingress, the host Bridge (Agent delegation and v0.23 Repo Ops), or the OpenAI Tunnel.',
         path: [
           ['01', 'INGRESS', 'Streamable HTTP', 'Authenticated TLS edge · optional OpenAI Tunnel'],
           ['02', 'RUNTIME', 'ServerFS container', 'Policy-bound MCP surface · no shell'],
           ['03', 'BOUNDARY', 'Bind-mounted workdirs', 'Only explicitly configured paths are visible'],
-          ['04', 'HOST AGENT', 'Optional Agent Bridge', 'Native delegation stays outside the container'],
+          ['04', 'HOST BRIDGE', 'Optional host capability', 'Agent delegation and v0.23 Repo Ops stay outside the container'],
         ],
         insights: [
           ['Container boundary', 'Compose makes runtime and filesystem mounts explicit, so adding capability never silently expands host access.'],
@@ -189,7 +191,7 @@ const copy = {
     quickTitleLine1: 'One controlled service.',
     quickTitleLine2: 'Your machine. Your policy.',
     quickBody:
-      'Start with standard Streamable HTTP on Linux, then add only the capabilities you need. OpenAI Tunnel remains available for ChatGPT, while API Key, OAuth 2.1, file ingress, Agent delegation, Agent Skills, and Jev stay explicit opt-ins.',
+      'Start with standard Streamable HTTP on Linux, then add only the capabilities you need. OpenAI Tunnel remains available for ChatGPT, while API Key, OAuth 2.1, file ingress, v0.23 Repo Ops, Agent delegation, Agent Skills, and Jev stay explicit opt-ins.',
     readDeployment: 'Read the deployment guide',
     finalTitleLine1: 'Make your server legible to AI.',
     finalTitleLine2: 'Keep the boundary explicit.',
@@ -208,7 +210,7 @@ const copy = {
     lang: 'zh-CN',
     title: 'ServerFS MCP — 让 AI 在 Linux、Windows 和 macOS 上受控访问文件系统',
     description:
-      'ServerFS MCP 在 Linux、Windows 和 macOS 上将你明确指定的目录以受控 workdir 的形式安全开放给标准 MCP 宿主，并支持 Streamable HTTP、可选 API Key / OAuth 2.1 认证与可移植 Agent Skills。',
+      'ServerFS MCP 在 Linux、Windows 和 macOS 上将明确指定的目录安全开放为受控 workdir；v0.23 开发线新增独立门控的 Linux Deterministic Repo Ops，并且不会回退到 Agent。'
     nav: { docs: '文档', connect: '接入', architecture: '架构', security: '安全' },
     languageSwitch: 'EN',
     languageLabel: 'Switch to English',
@@ -216,7 +218,7 @@ const copy = {
     heroEyebrow: '面向 Linux · Windows · macOS Workdir 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
-      '通过原生 stdio 或标准 Streamable HTTP 只开放你明确指定的 workdir。默认只读，并支持受控写入与有界二进制传输；API Key、OAuth 2.1、OpenAI Tunnel、文件入口、Agent 委托与 Agent Skills 都保持显式可选。',
+      '通过原生 stdio 或标准 Streamable HTTP 只开放你明确指定的 workdir。默认只读，并支持受控写入与有界二进制传输；API Key、OAuth 2.1、OpenAI Tunnel、文件入口、Agent 委托与 Agent Skills 都保持显式可选。v0.23 开发源码新增独立门控的 Linux Deterministic Repo Ops，并且不会回退到 Agent。',
     getStarted: '快速开始',
     viewSource: '查看源码',
     guaranteesShort: ['无 Shell', '无法越界', '受控写入', 'MIT 许可'],
@@ -227,6 +229,7 @@ const copy = {
       ['文件系统', '限定 workdir'],
       ['写入操作', 'revision 保护'],
       ['二进制 I/O', '有界 · 可选'],
+      ['REPO OPS', '确定性 · v0.23 预览'],
       ['AGENT BRIDGE', '原生宿主机 · 可选'],
     ],
     workdirs: '限定 Workdirs',
@@ -256,8 +259,9 @@ const copy = {
     surfaces: [
       { count: '11', label: '文件系统', detail: '安全读取 + 受控写入能力面' },
       { count: '13', label: '+ 二进制', detail: '有界的整文件传输' },
+      { count: '15', label: '+ Repo Ops', detail: 'v0.23 Linux 预览 · 确定性 Git/actions' },
       { count: '21', label: '+ Agent', detail: '原生 Agent 委派 + 模型发现' },
-      { count: '23', label: '完整能力面', detail: '二进制 + Agent Bridge' },
+      { count: '27', label: 'v0.23 完整', detail: '二进制 + Agent + Repo Ops' },
     ],
     platformEyebrow: '三种部署形态',
     platformTitle: '同一套能力契约，各自遵循平台原生边界。',
@@ -272,12 +276,12 @@ const copy = {
         name: 'Linux',
         kicker: 'DOCKER 原生服务器部署',
         title: '用容器定义外层边界。',
-        body: 'Linux 是面向服务器的部署形态：通过 Docker Compose 支持 amd64 与 arm64，默认采用标准 Streamable HTTP，并可按需叠加认证、文件入口、Agent Bridge 或 OpenAI Tunnel。',
+        body: 'Linux 是面向服务器的部署形态：通过 Docker Compose 支持 amd64 与 arm64，默认采用标准 Streamable HTTP，并可按需叠加认证、文件入口、Host Bridge（Agent 委托与 v0.23 Repo Ops）或 OpenAI Tunnel。',
         path: [
           ['01', '入口', 'Streamable HTTP', '带认证的 TLS 边界 · 可选 OpenAI Tunnel'],
           ['02', '运行时', 'ServerFS 容器', '策略约束的 MCP 能力面 · 无 Shell'],
           ['03', '边界', 'Bind mount Workdir', '仅能看到显式配置的路径'],
-          ['04', '宿主机 Agent', '可选 Agent Bridge', '原生 Agent 委托保持在容器外'],
+          ['04', 'HOST BRIDGE', '可选宿主机能力', 'Agent 委托与 v0.23 Repo Ops 保持在容器外'],
         ],
         insights: [
           ['容器就是外层边界', 'Compose 将运行时与文件系统挂载显式化，增加能力时不会悄悄扩大宿主机访问范围。'],
@@ -382,7 +386,7 @@ const copy = {
     quickTitleLine1: '一个受控服务。',
     quickTitleLine2: '你的机器，你的策略。',
     quickBody:
-      'Linux 上从标准 Streamable HTTP 开始，再按需增加能力。OpenAI Tunnel 仍可用于 ChatGPT；API Key、OAuth 2.1、文件入口、Agent 委托、Agent Skills 与 Jev 都保持显式 opt-in。',
+      'Linux 上从标准 Streamable HTTP 开始，再按需增加能力。OpenAI Tunnel 仍可用于 ChatGPT；API Key、OAuth 2.1、文件入口、v0.23 Repo Ops、Agent 委托、Agent Skills 与 Jev 都保持显式 opt-in。'
     readDeployment: '阅读部署指南',
     finalTitleLine1: '让 AI 理解你的服务器。',
     finalTitleLine2: '让边界始终清晰。',
@@ -601,7 +605,7 @@ const canonicalUrl = isZh
 
         <div class="capability-strip" data-reveal-item aria-label={c.surfacesLabel}>
         {c.surfaces.map((surface, index) => (
-          <article class:list={['cap-card', { active: index === 3 }]}>
+          <article class:list={['cap-card', { active: index === c.surfaces.length - 1 }]}>
             <div class="cap-top">
               <strong>{surface.count}</strong>
               <span>{String(index + 1).padStart(2, '0')}</span>

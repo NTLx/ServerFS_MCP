@@ -1,20 +1,20 @@
 ---
 name: serverfs-agent-bridge
-description: Enable workdir Agent delegation; operate Bridge lifecycle, native Codex/Claude/Qoder or operator-configured ACP profiles, proxy routing, Jev advice, or task/HITL failures.
+description: Operate the ServerFS Host Bridge lifecycle for Agent delegation and/or v0.23 Linux Repo Ops transport; manage native/ACP runtimes, proxy/Jev behavior, or Bridge/task failures.
 ---
 
 # Operate ServerFS Agent Bridge
 
-Agent delegation is an explicit optional capability. Preserve the two-process security boundary, per-workdir authorization, provider-native ownership and current-user lifecycle.
+The Host Bridge is an explicit optional host capability. It may carry Agent delegation, v0.23 Linux Deterministic Repo Ops transport, or both. Preserve the two-process security boundary, independent per-workdir authorization, provider-native ownership for Agent execution, and current-user lifecycle.
 
-The current published stable is v0.22.0; v0.22.1 is the prepared next maintenance release candidate and is not published. Generic ACP v1 profiles were introduced in v0.19.0 and remain distinct from native `codex`, `claude` and `qoder` adapters. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete configuration and operations.
+The current published stable is **v0.22.1**. The v0.23 development source adds Linux Deterministic Repo Ops over the same authenticated host Bridge transport, but Repo Ops is explicitly **not Agent delegation** and does not create provider tasks. Generic ACP v1 profiles were introduced in v0.19.0 and remain distinct from native `codex`, `claude` and `qoder` adapters. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete Agent configuration and operations, and the [Deterministic Repo Ops guide](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) for the separate repository capability.
 
 ## When to use
 
 Use this skill when the user explicitly wants to:
 
 - enable/disable Agent delegation for selected workdirs;
-- install/update/verify the Linux host Agent Bridge;
+- install/update/verify the Linux Host Bridge for Agent delegation and/or Repo Ops transport;
 - configure native Windows/macOS Agent policy and Bridge lifecycle;
 - allow Codex, Claude or Qoder runtimes;
 - configure an operator-owned ACP v1 profile (`acp-<id>`);
@@ -29,7 +29,8 @@ Do not use this skill to:
 - alter provider authentication/default permissions/sandbox policy merely to make a task run;
 - upgrade provider CLIs outside the requested ServerFS/Agent operational objective;
 - configure OpenAI Tunnel or HTTP Auth except where verifying their independence;
-- diagnose an unknown whole-system outage before the Agent boundary is identified (`serverfs-diagnose`).
+- diagnose an unknown whole-system outage before the Agent boundary is identified (`serverfs-diagnose`);
+- use Agent delegation merely to perform v0.23 Repo Ops Git/action/commit/push steps when the deterministic Repo Ops surface is available.
 
 Jev is advisory only. It is not an Agent runtime, approval authority or fallback executor.
 
@@ -40,10 +41,10 @@ First locate the target ServerFS checkout or deployed installation and establish
 Paths below are relative to the located **ServerFS checkout root**, never to this skill or the Plugin ZIP. Resolve repository paths only after locating that checkout. For an installed deployment without a checkout, use its version-matched deployment documentation, installed CLI help and active configuration; obtain matching sources before a step that needs missing repository material.
 
 1. Identify platform and deployment family.
-2. Read current workdir read-only and Agent policy before changing it.
+2. Read current workdir read-only, Repo Ops, and Agent policy before changing it. Do not infer Agent authorization merely because the Host Bridge transport is present.
 3. Identify enabled runtimes and their actual provider binaries/native environment.
 4. Locate provider credentials/private state and ensure they remain outside exposed workdirs and the MCP container.
-5. Determine current Bridge/service owner and whether active Agent tasks/writer leases exist before any restart/update.
+5. Determine current Bridge/service owner and whether active Agent tasks, Repo Ops operations, or writer leases exist before any restart/update.
 6. On Linux, measure/verify the real container peer identity; never assume `id -u/-g` is equivalent to the socket peer measurement.
 7. Keep Tunnel, Agent and Jev proxy switches independent.
 
@@ -53,6 +54,7 @@ If provider policy or credential ownership is unclear, stop rather than copying 
 
 - `deployment/agent-bridge/README.md`
 - `site/src/content/docs/docs/agent-bridge.md`
+- `site/src/content/docs/docs/repo-ops.md`
 - `site/src/content/docs/docs/jev-advisors.md`
 - `site/src/content/docs/docs/windows-native.md`
 - `site/src/content/docs/docs/macos-native.md`
@@ -64,13 +66,13 @@ The Linux deployment guide is the authoritative step-by-step source for peer ide
 
 ## Procedure
 
-1. **Define the authorization boundary first.** Agent delegation is enabled only for selected workdirs/runtimes. ACP profiles always require `workspace-write`; reject them on read-only workdirs and never widen workdir policy silently. Record explicit authorization before enablement.
-2. **Establish the provider-native baseline.** Confirm the selected provider CLI works for the same login user before blaming ServerFS. Preserve provider-owned auth and permission configuration. Proceed after direct CLI availability/version is observed for the same user.
+1. **Define the authorization boundary first.** Agent delegation and Repo Ops are independent per-workdir capabilities. Agent delegation is enabled only for selected workdirs/runtimes; Repo Ops policy belongs to `serverfs-configure`. ACP profiles always require `workspace-write`; reject them on read-only workdirs and never widen workdir policy silently. Installing/preserving the Host Bridge transport does not itself authorize either capability.
+2. **Establish the provider-native baseline only when Agent delegation is in scope.** Confirm the selected provider CLI works for the same login user before blaming ServerFS, and preserve provider-owned auth/permission configuration. Repo Ops-only Host Bridge work skips provider baseline checks entirely.
 3. **Configure only the required ServerFS policy.** Use Linux `.env` or native TOML as documented; keep provider secrets/private env in their dedicated user-owned boundary. Review the local policy diff and pass the applicable parser/doctor or Compose gate.
 4. **Install/configure the Bridge through supported current-user lifecycle.** Do not create system users, root services or administrator services. Confirm status identifies the supported current-user owner.
-5. **Verify IPC/identity before Agent tasks.** Prove Bridge status/runtime discovery and container/native connectivity. Proceed only after status, runtime discovery and applicable peer/RPC checks pass.
-6. **Verify provider parity.** Compare direct provider version/availability with normalized ServerFS runtime evidence. Treat stale managed provider daemons using the provider's official lifecycle, not arbitrary kill/delete operations. Record direct and Bridge-reported runtime evidence; resolve unexplained differences before task testing.
-7. **Exercise a disposable Agent task only after structural checks pass.** Use a safe workdir and verify poll/result/cancel/HITL as required by the user's objective. Record a terminal result and lease release; when cancel/HITL is exercised, verify those outcomes too.
+5. **Verify IPC/identity before capability execution.** Prove Bridge status and container/native connectivity first. If Agent runtimes are enabled, also verify runtime discovery/readiness. If Repo Ops is enabled without Agent mode, verify the Repo Ops RPC/public surface instead; do not require or launch a provider runtime merely to prove Bridge health.
+6. **Verify provider parity only for enabled Agent runtimes.** Compare direct provider version/availability with normalized ServerFS runtime evidence. Treat stale managed provider daemons using the provider's official lifecycle, not arbitrary kill/delete operations. Repo Ops-only work skips this step.
+7. **Exercise a disposable Agent task only when Agent execution verification is explicitly required.** Use a safe workdir and verify poll/result/cancel/HITL as required by the user's objective. Never submit a disposable Agent task merely to verify Repo Ops or generic Host Bridge transport.
 8. **Preserve writer-lease semantics.** Never bypass a legitimate `WORKDIR_BUSY` by deleting locks or launching an uncontrolled parallel writer. Report busy/recovery state and use the documented lifecycle before retrying.
 
 ## ACP profile workflow (v0.19.0)
@@ -120,21 +122,21 @@ Never manually delete a live control socket, lock or Bridge state as a first-lin
 
 At the minimum level appropriate to the task, prove:
 
-- intended workdir Agent mode/runtime allowlist is the effective policy;
 - Bridge/service is owned by the current user and IPC identity checks pass;
-- selected provider runtimes report the expected availability;
-- direct provider and ServerFS-reported runtime versions/availability are consistent enough for the supported provider contract;
-- a disposable task can be submitted/polled to terminal state when execution verification is requested;
-- cancellation/HITL paths work when they are part of the changed boundary;
-- writer lease is acquired/released correctly;
+- Repo Ops and Agent delegation remain independently authorized;
+- when Agent delegation is enabled, the intended workdir Agent mode/runtime allowlist is effective, selected provider runtimes report expected availability, and direct/provider-normalized evidence is consistent enough for the supported contract;
+- a disposable Agent task is submitted/polled only when Agent execution verification is actually requested;
+- when Repo Ops is enabled, its public deterministic surface is reachable without provider runtime or Agent fallback;
+- writer lease is acquired/released correctly for the changed capability boundary;
+- cancellation/HITL paths work when they are part of an Agent change;
 - Jev advice, if enabled, remains advisory and absence/failure does not gain execution authority;
 - no provider credential appears in MCP container/config/log/task events.
 
-Linux release/upgrade acceptance should use `verify_host.py --require-runtimes` and prove the container-to-Bridge RPC through the documented path.
+Linux release/upgrade acceptance must prove the container-to-Bridge RPC through the documented path. Use `verify_host.py --require-runtimes` only when Agent runtimes are enabled and runtime readiness is part of the target deployment. For Repo Ops-only Host Bridge deployments, verify Bridge RPC plus the public Repo Ops surface without starting or requiring any Agent runtime.
 
 ## Success criteria
 
-The task is complete when Agent delegation is enabled only where requested, uses the supported current-user Bridge/lifecycle, exposes only the intended runtime set, preserves provider-owned security configuration, and passes structural plus runtime verification appropriate to the change.
+The task is complete when the Host Bridge exists only where requested, Repo Ops and Agent delegation remain independently authorized, Agent delegation (when enabled) exposes only the intended runtime set and preserves provider-owned security configuration, and the deployment passes structural plus capability-specific verification appropriate to the change.
 
 ## Failure handling
 

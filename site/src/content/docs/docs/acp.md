@@ -52,7 +52,7 @@ OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` is recorded as passing real en
 
 ## Validate Bridge and runtime
 
-Run the platform's current Bridge verification procedure (Linux deployments commonly use `python3 deployment/agent-bridge/verify_host.py --require-runtimes`; Windows/macOS use their native deployment verification and `serverfs doctor --config serverfs.toml`). Confirm the Bridge is healthy, the effective workdir policy allows `acp-opencode`, and runtime discovery/listing reports the configured runtime available. Listing/probing does not launch an Agent to discover capabilities. Then use a disposable authorized workdir for a small task and inspect its terminal result and events.
+Run the platform's current Bridge verification procedure (Linux source checkouts commonly use `uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --require-runtimes`; Windows/macOS use their native deployment verification and `serverfs doctor --config serverfs.toml`). Confirm the Bridge is healthy, the effective workdir policy allows `acp-opencode`, and runtime discovery/listing reports the configured runtime available. Listing/probing does not launch an Agent to discover capabilities. Then use a disposable authorized workdir for a small task and inspect its terminal result and events.
 
 ## Task operation semantics
 

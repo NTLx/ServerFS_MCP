@@ -57,7 +57,7 @@ Paths below are relative to the located **ServerFS checkout root**, never to thi
 ## Procedure
 
 1. **Identify ownership and mode.** Determine exactly which managed service/container owns the Tunnel and whether it is expected to be active. Proceed only when the intended owner is proven and no competing client for the same Tunnel ID is active.
-2. **Configure only Tunnel settings.** Keep control-plane Tunnel ID/key and Tunnel proxy switch separate from ServerFS HTTP Auth, Agent and Jev settings. Review the non-secret key names/diff and confirm credential-file location is outside workdirs.
+2. **Configure only Tunnel settings.** Keep control-plane Tunnel ID/key and Tunnel proxy switch separate from ServerFS HTTP Auth, Repo Ops, Agent and Jev settings. Review the non-secret key names/diff and confirm credential-file location is outside workdirs.
 3. **Use supported bootstrap/lifecycle paths.** On native platforms, prefer ServerFS bootstrap/service integration; on Linux use the intended Compose Tunnel service. Confirm bootstrap integrity checks and managed status pass for the selected branch.
 4. **Restart/re-establish only when needed.** If ServerFS recreation requires reconnecting the Tunnel, use the platform's managed lifecycle rather than starting an extra client manually. Confirm exactly one intended owner after the lifecycle operation.
 5. **Validate through layered Tunnel evidence.** Process/container existence is only the first layer; prove readiness/control-plane/MCP/response delivery as needed. Record the highest proven health layer and any unverified layer required by the symptom.
@@ -101,7 +101,7 @@ For native managed deployments, also prove exactly one intended Tunnel owner and
 
 ## Success criteria
 
-The Tunnel task is complete when the intended current-user/Compose owner is active, the correct control-plane configuration is in use without credential exposure, health evidence reaches the layer required by the user's symptom, and no second Tunnel client or unrelated Auth/Agent policy was introduced.
+The Tunnel task is complete when the intended current-user/Compose owner is active, the correct control-plane configuration is in use without credential exposure, health evidence reaches the layer required by the user's symptom, and no second Tunnel client or unrelated Auth/Repo Ops/Agent policy was introduced.
 
 ## Failure handling
 

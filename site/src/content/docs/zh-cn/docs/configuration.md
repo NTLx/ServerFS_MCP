@@ -61,6 +61,7 @@ WORKDIR_02_READ_ONLY=false
 - 隐藏文件策略
 - 读写限制
 - 二进制传输
+- Repo Ops 启用策略
 - Agent 策略
 
 额外 deny glob 更严格：全局规则与 workdir 规则会**取并集**，因此 workdir 可以增加限制，但不能移除全局 deny 下限。
@@ -73,6 +74,8 @@ WORKDIR_02_READ_ONLY=false
 - 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
 - 静态 API Key 默认关闭。非空 `SERVERFS_HTTP_API_KEY` 会使用一个共享密钥保护 Streamable HTTP，并且不能与内置 OAuth 同时启用。
 - OAuth 默认关闭。启用时需要 OAuth Compose overlay；loopback 之外必须使用 HTTPS resource/auth URL；必须配置非空 introspection secret、至少一个身份 provider，以及精确的 default-deny principal allowlist。
+- Repo Ops 默认关闭，通过 `WORKDIR_XX_REPO_OPS_ENABLED=true` 按 Workdir 独立启用。v0.23 开发实现仅声明 Linux 支持，并要求已认证的 Host Bridge transport，但不要求启用任何 Agent Runtime。
+- `WORKDIR_XX_REPO_ACTIONS_JSON` 是 Repo Ops named action 的宿主机私有运维策略，只会被渲染到 Host Bridge 配置，不会转发进入 MCP 容器。Named action 要求 read-write Workdir，并强制配置 SHA-256 integrity pins。
 - Agent 策略只有在显式配置后才启用。
 - v0.12.0 把 Tunnel、Agent runtime 与 Jev 的代理选择保持独立：`SERVERFS_OPENAI_TUNNEL_USE_PROXY`、`SERVERFS_AGENT_USE_PROXY`、`SERVERFS_JEV_USE_PROXY` 复用同一组 `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` 端点字段，但不会互相隐式启用。
 - v0.12 的 Linux Agent 代理仅支持无凭据代理；若启用 Agent 代理同时配置了共享代理用户名/密码，部署渲染会 fail closed。需要认证的上游应通过无凭据本地 broker 转接。
@@ -80,6 +83,22 @@ WORKDIR_02_READ_ONLY=false
 - Jev Advisors 只有在 `SERVERFS_JEV_API_KEY` 非空时才启用；该 Key 只进入宿主机 Agent Bridge 部署路径，不进入 MCP 容器。
 - MCP 工具结果不会暴露宿主机路径。
 - Workdir 路径拼写错误会明确失败，而不是静默创建目录。
+
+## 可选 Deterministic Repo Ops（v0.23 开发能力）
+
+Repo Ops 是按 Workdir 配置、默认关闭的仓库能力。最小 Linux/Compose 配置示例：
+
+```text
+WORKDIR_01_ALIAS=project
+WORKDIR_01_PATH=/srv/project
+WORKDIR_01_READ_ONLY=false
+WORKDIR_01_REPO_OPS_ENABLED=true
+WORKDIR_01_REPO_ACTIONS_JSON={...}
+```
+
+`WORKDIR_XX_REPO_ACTIONS_JSON` 把调用方可见的 action 名称映射到管理员拥有的固定 `argv`、`mutates`、`argument` 与 `integrity` 策略。调用方永远不能提供 executable/argv/environment/remote/ref/force。每个 named action 都必须配置非空 integrity map，并且即使 `mutates=false` 也始终获取独占 writer lease。
+
+只有至少一个 Workdir 启用 Repo Ops 时，公共 Repo Ops 工具才会注册。Host Bridge transport 必须启用，因为它掌握宿主机 Git 凭据/路径上下文以及 writer-lease 协调；Agent mode 可以保持 disabled。完整安全边界与 action profile 契约见 [Deterministic Repo Ops](../repo-ops/)。
 
 ## 可选 Jev Advisors
 

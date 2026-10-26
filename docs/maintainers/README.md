@@ -5,6 +5,7 @@
 ## Current release
 
 - **v0.22.1 is the current stable release.**
+- **v0.23 is the active development line for Linux Deterministic Repo Ops; bootstrap/internal E2E and public ChatGPT MCP E2E are PASS, while post-Skills-audit root/Agent-Skills validation, fresh site build/diff, and release publication remain pending.**
 - **v0.22.0 is the previous released stable version.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
@@ -58,6 +59,7 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.22.0** — previous stable release; adds bounded process-local Correlated Agent Diagnostics through private Bridge RPC only: `diagnostics snapshot` and per-task diagnostics, with no new MCP tool, listener, trace persistence, OpenTelemetry dependency or telemetry egress. Phase F is accepted on Linux/VPS, supported macOS and supported Windows, and Phase G release-readiness acceptance is PASS; see [`dev_plan_v0.22.md`](../../dev_plan_v0.22.md) and the v0.22 acceptance evidence.
 
 - **v0.22.1** — current stable maintenance release for the Linux Agent Bridge installer staged-Python fix, macOS restart readiness/health closure, one-shot self-restart hand-over with verified cleanup, and test-isolation regression fix; see [`dev_plan_v0.22.1.md`](../../dev_plan_v0.22.1.md) and [`v0.22.1-release-checklist-2026-10-23.md`](../v0.22.1-release-checklist-2026-10-23.md) for release evidence.
+- **v0.23 (development)** — adds independently gated Linux Deterministic Repo Ops: four public MCP tools for bounded Git inspection, integrity-pinned named actions, explicit-file commit and exact current-upstream push without Agent delegation. The Linux bootstrap/internal E2E and public ChatGPT MCP E2E are PASS on 2026-10-26; the later operational-Skills audit changed `skills/**` and `tests/test_agent_skills.py`, so refreshed root/Agent-Skills validation plus the fresh site build/diff check are still required before normal versioning/publication. See [`dev_plan_v0.23.md`](../../dev_plan_v0.23.md), [`v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md`](../v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md), and the [Repo Ops guide](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/).
 
 ## Keep this index small
 
