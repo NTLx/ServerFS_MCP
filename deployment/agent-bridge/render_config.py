@@ -41,6 +41,9 @@ _ACP_FIELDS = {
     "shutdown_timeout_seconds",
 }
 _ACP_MAX_JSON_BYTES = 65_536
+_REPO_ACTION_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+_REPO_ACTION_FIELDS = {"argv", "mutates", "argument", "integrity"}
+_REPO_ACTION_MAX_JSON_BYTES = 65_536
 _MAX_SPOOLED_RESULT_BYTES = 8 * 1024 * 1024
 
 _SHARED_PROXY_PATH = (
@@ -265,6 +268,89 @@ def _acp_profiles(raw: str) -> list[dict[str, Any]]:
     return result
 
 
+def _repo_actions(raw: str, *, key: str, enabled: bool, read_only: bool) -> dict[str, Any]:
+    if not raw.strip():
+        return {}
+    if len(raw.encode("utf-8")) > _REPO_ACTION_MAX_JSON_BYTES:
+        raise ConfigRenderError(f"{key} exceeds size limit")
+    try:
+
+        def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for name, value in pairs:
+                if name in result:
+                    raise ConfigRenderError(f"{key} contains duplicate object keys")
+                result[name] = value
+            return result
+
+        actions = json.loads(raw, object_pairs_hook=reject_duplicate_keys)
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ConfigRenderError(f"{key} must be valid JSON") from exc
+    if not isinstance(actions, dict) or len(actions) > 16:
+        raise ConfigRenderError(f"{key} must be an object with at most 16 actions")
+    if actions and not enabled:
+        raise ConfigRenderError(f"{key} requires REPO_OPS_ENABLED=true")
+    normalized: dict[str, Any] = {}
+    for name, action in actions.items():
+        label = f"{key}.{name}"
+        if not isinstance(name, str) or not _REPO_ACTION_RE.fullmatch(name):
+            raise ConfigRenderError(f"{key} contains an invalid action name")
+        if not isinstance(action, dict) or set(action) - _REPO_ACTION_FIELDS:
+            raise ConfigRenderError(f"{label} has invalid fields")
+        argv = action.get("argv")
+        if (
+            not isinstance(argv, list)
+            or not argv
+            or len(argv) > 32
+            or any(
+                not isinstance(item, str)
+                or not item
+                or len(item.encode("utf-8")) > 4096
+                or any(char in item for char in ("\x00", "\n", "\r"))
+                for item in argv
+            )
+        ):
+            raise ConfigRenderError(f"{label}.argv must be 1-32 bounded strings")
+        mutates = action.get("mutates", False)
+        if not isinstance(mutates, bool):
+            raise ConfigRenderError(f"{label}.mutates must be boolean")
+        if read_only:
+            raise ConfigRenderError(f"{label} cannot be configured on a read-only workdir")
+        argument = action.get("argument", "none")
+        if argument not in {"none", "path", "basename"}:
+            raise ConfigRenderError(f"{label}.argument must be none, path or basename")
+        integrity = action.get("integrity")
+        if not isinstance(integrity, dict) or not integrity or len(integrity) > 32:
+            raise ConfigRenderError(
+                f"{label}.integrity must be a non-empty object of at most 32 files"
+            )
+        normalized_integrity: dict[str, str] = {}
+        for path, digest in integrity.items():
+            if (
+                not isinstance(path, str)
+                or not path
+                or path.startswith(("/", "-"))
+                or "\\" in path
+                or "\x00" in path
+                or any(part in {"", ".", ".."} for part in path.split("/"))
+            ):
+                raise ConfigRenderError(f"{label}.integrity contains an invalid relative path")
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(char not in "0123456789abcdef" for char in digest)
+            ):
+                raise ConfigRenderError(f"{label}.integrity digest must be lowercase sha256")
+            normalized_integrity[path] = digest
+        normalized[name] = {
+            "argv": argv,
+            "mutates": mutates,
+            "argument": argument,
+            "integrity": normalized_integrity,
+        }
+    return normalized
+
+
 def build_config(values: dict[str, str]) -> dict[str, Any]:
     if not _bool(
         values.get("SERVERFS_AGENT_BRIDGE_ENABLED", ""),
@@ -317,6 +403,7 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
     acp_ids = {f"acp-{profile['id']}" for profile in acp_profiles}
     workdirs: list[dict[str, Any]] = []
     enabled_runtimes: set[str] = set()
+    repo_ops_any = False
     seen_aliases: set[str] = set()
 
     for slot in range(1, 17):
@@ -330,6 +417,12 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         )
         mode = values.get(f"{prefix}_AGENT_MODE", "disabled").strip().lower()
         raw_runtimes = values.get(f"{prefix}_AGENT_RUNTIMES", "")
+        repo_ops_enabled = _bool(
+            values.get(f"{prefix}_REPO_OPS_ENABLED", ""),
+            f"{prefix}_REPO_OPS_ENABLED",
+            False,
+        )
+        repo_actions_raw = values.get(f"{prefix}_REPO_ACTIONS_JSON", "")
         runtimes = []
         for item in raw_runtimes.split(","):
             runtime = item.strip()
@@ -345,6 +438,8 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
                 raise ConfigRenderError(
                     f"{prefix}: disabled slot cannot configure Agent delegation"
                 )
+            if repo_ops_enabled or repo_actions_raw.strip():
+                raise ConfigRenderError(f"{prefix}: disabled slot cannot configure Repo Ops")
             continue
         if not alias or not host_path_raw:
             raise ConfigRenderError(f"{prefix}: ALIAS and PATH must be set together")
@@ -370,6 +465,12 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
             raise ConfigRenderError(f"{prefix}: workspace-write requires READ_ONLY=false")
         if runtimes and mode != "workspace-write":
             raise ConfigRenderError(f"{prefix}: Agent runtimes require workspace-write")
+        repo_actions = _repo_actions(
+            repo_actions_raw,
+            key=f"{prefix}_REPO_ACTIONS_JSON",
+            enabled=repo_ops_enabled,
+            read_only=read_only,
+        )
 
         host_path = Path(host_path_raw)
         if not host_path.is_absolute():
@@ -381,20 +482,25 @@ def build_config(values: dict[str, str]) -> dict[str, Any]:
         if not host_path.is_dir():
             raise ConfigRenderError(f"{prefix}_PATH must be a directory")
 
-        workdirs.append(
-            {
-                "slot": slot,
-                "alias": alias,
-                "host_path": str(host_path),
-                "read_only": read_only,
-                "agent_mode": mode or "disabled",
-                "agent_runtimes": runtimes,
-            }
-        )
+        workdir_entry: dict[str, Any] = {
+            "slot": slot,
+            "alias": alias,
+            "host_path": str(host_path),
+            "read_only": read_only,
+            "agent_mode": mode or "disabled",
+            "agent_runtimes": runtimes,
+        }
+        if repo_ops_enabled:
+            workdir_entry["repo_ops_enabled"] = True
+            workdir_entry["repo_actions"] = repo_actions
+        workdirs.append(workdir_entry)
         enabled_runtimes.update(runtimes)
+        repo_ops_any = repo_ops_any or repo_ops_enabled
 
-    if not enabled_runtimes:
-        raise ConfigRenderError("at least one workdir must explicitly enable an Agent runtime")
+    if not enabled_runtimes and not repo_ops_any:
+        raise ConfigRenderError(
+            "at least one workdir must explicitly enable an Agent runtime or Repo Ops"
+        )
 
     codex_enabled = "codex" in enabled_runtimes
     claude_enabled = "claude" in enabled_runtimes

@@ -49,6 +49,7 @@ def make_server(workdir: Workdir, *, read_write_access: bool = False, **settings
             max_write_bytes=settings.max_write_bytes,
             binary_transfer_enabled=settings.binary_transfer_enabled,
             max_binary_transfer_bytes=settings.max_binary_transfer_bytes,
+            repo_ops_enabled=wd.policy.repo_ops_enabled,
             agent_mode=wd.policy.agent_mode,
             agent_runtimes=wd.policy.agent_runtimes,
         ),

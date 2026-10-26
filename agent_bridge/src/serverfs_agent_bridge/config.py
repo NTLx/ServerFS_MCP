@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from . import lease_identity
 from .models import ACP_PROFILE_ID_RE, KNOWN_RUNTIME_NAMES, AcpProfile, AgentMode
-from .policy import PolicyRegistry, WorkdirAgentPolicy
+from .policy import PolicyRegistry, RepoActionPolicy, WorkdirAgentPolicy
 
 _CONFIG_KEYS = frozenset(
     {
@@ -36,8 +36,19 @@ _CONFIG_KEYS = frozenset(
     }
 )
 _WORKDIR_KEYS = frozenset(
-    {"slot", "alias", "host_path", "read_only", "agent_mode", "agent_runtimes"}
+    {
+        "slot",
+        "alias",
+        "host_path",
+        "read_only",
+        "agent_mode",
+        "agent_runtimes",
+        "repo_ops_enabled",
+        "repo_actions",
+    }
 )
+_REPO_ACTION_KEYS = frozenset({"argv", "mutates", "argument", "integrity"})
+_MAX_REPO_ACTIONS = 16
 _CLAUDE_KEYS = frozenset(
     {
         "enabled",
@@ -222,6 +233,58 @@ def _load_acp_profiles(value: Any) -> tuple[AcpProfile, ...]:
     return tuple(profiles)
 
 
+def _load_repo_actions(
+    value: Any,
+    *,
+    enabled: bool,
+    read_only: bool,
+) -> tuple[RepoActionPolicy, ...]:
+    if value is None:
+        value = {}
+    if not isinstance(value, dict):
+        raise ValueError("workdir.repo_actions must be an object")
+    if len(value) > _MAX_REPO_ACTIONS:
+        raise ValueError(f"workdir.repo_actions must contain at most {_MAX_REPO_ACTIONS} actions")
+    if not enabled and value:
+        raise ValueError("workdir.repo_actions requires repo_ops_enabled=true")
+    actions: list[RepoActionPolicy] = []
+    for name in sorted(value):
+        entry = value[name]
+        if not isinstance(name, str) or not isinstance(entry, dict):
+            raise ValueError("workdir.repo_actions entries must be named objects")
+        _reject_unknown_keys(entry, _REPO_ACTION_KEYS, f"repo action {name}")
+        argv_value = entry.get("argv")
+        if not isinstance(argv_value, list) or not argv_value:
+            raise ValueError(f"repo action {name}.argv must be a non-empty array")
+        argv: list[str] = []
+        for item in argv_value:
+            argv.append(_strict_string(item, f"repo action {name}.argv entry"))
+        mutates = _strict_bool(entry.get("mutates", False), f"repo action {name}.mutates")
+        argument = _strict_string(entry.get("argument", "none"), f"repo action {name}.argument")
+        if argument not in {"none", "path", "basename"}:
+            raise ValueError(f"repo action {name}.argument must be none, path or basename")
+        integrity_value = entry.get("integrity")
+        if not isinstance(integrity_value, dict) or not integrity_value:
+            raise ValueError(f"repo action {name}.integrity must be a non-empty object")
+        integrity: list[tuple[str, str]] = []
+        for path in sorted(integrity_value):
+            digest = integrity_value[path]
+            if not isinstance(path, str) or not isinstance(digest, str):
+                raise ValueError(f"repo action {name}.integrity must map paths to sha256 strings")
+            integrity.append((path, digest))
+        action = RepoActionPolicy(
+            name=name,
+            argv=tuple(argv),
+            mutates=mutates,
+            argument=argument,
+            integrity=tuple(integrity),
+        )
+        if read_only:
+            raise ValueError("read-only workdir cannot configure repo actions")
+        actions.append(action)
+    return tuple(actions)
+
+
 @dataclass(frozen=True)
 class LifecycleLimits:
     task_timeout_seconds: int = 7200
@@ -316,6 +379,14 @@ class BridgeConfig:
             if mode is AgentMode.DISABLED and runtimes:
                 raise ValueError("disabled agent mode cannot allow runtimes")
             read_only = _strict_bool(item.get("read_only", True), "workdir.read_only")
+            repo_ops_enabled = _strict_bool(
+                item.get("repo_ops_enabled", False), "workdir.repo_ops_enabled"
+            )
+            repo_actions = _load_repo_actions(
+                item.get("repo_actions"),
+                enabled=repo_ops_enabled,
+                read_only=read_only,
+            )
             if mode is AgentMode.WORKSPACE_WRITE and read_only:
                 raise ValueError("workspace-write agent mode requires a writable workdir")
             policies.append(
@@ -326,6 +397,8 @@ class BridgeConfig:
                     mode=mode,
                     runtimes=frozenset(runtimes),
                     read_only=read_only,
+                    repo_ops_enabled=repo_ops_enabled,
+                    repo_actions=repo_actions,
                 )
             )
 

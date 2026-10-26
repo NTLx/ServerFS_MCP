@@ -407,6 +407,43 @@ class BridgeProtocolServer:
             # signal the watchdog needs. No runtime, provider, discovery or network work.
             _require_keys(params, set())
             return {"status": "ok"}
+        if method == "repo.inspect":
+            _require_keys(params, {"workdir", "view"}, optional={"paths"})
+            _require_types(params, {"workdir": str, "view": str}, optional={"paths": list})
+            paths = params.get("paths", [])
+            if any(not isinstance(item, str) for item in paths):
+                raise BridgeError("INVALID_REQUEST", "repo paths must be strings")
+            return await self.service.inspect_repo(
+                workdir=params["workdir"],
+                view=params["view"],
+                paths=paths,
+            )
+        if method == "repo.action":
+            _require_keys(params, {"workdir", "action"}, optional={"path"})
+            _require_types(
+                params,
+                {"workdir": str, "action": str},
+                optional={"path": (str, type(None))},
+            )
+            return await self.service.run_repo_action(
+                workdir=params["workdir"],
+                action=params["action"],
+                path=params.get("path"),
+            )
+        if method == "repo.commit":
+            _require_keys(params, {"workdir", "paths", "message"})
+            _require_types(params, {"workdir": str, "paths": list, "message": str})
+            if any(not isinstance(item, str) for item in params["paths"]):
+                raise BridgeError("INVALID_REQUEST", "repo paths must be strings")
+            return await self.service.commit_repo_changes(
+                workdir=params["workdir"],
+                paths=params["paths"],
+                message=params["message"],
+            )
+        if method == "repo.push":
+            _require_keys(params, {"workdir"})
+            _require_types(params, {"workdir": str})
+            return await self.service.push_repo(workdir=params["workdir"])
         if method == "runtime.list":
             _require_keys(params, set())
             return await self.service.list_runtimes()

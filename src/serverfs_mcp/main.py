@@ -43,9 +43,14 @@ no unguarded force mode and no recursive delete. Revision-guarded mutations \
 require the revision returned by a previous read or stat. ServerFS never \
 executes commands itself and exposes \
 no generic shell or arbitrary command-execution tool. When explicitly \
-enabled by the administrator, Agent tools may delegate a task to configured \
-native Codex, Claude or Qoder runtimes through the local Agent Bridge. Delegation \
-is separately authorized per workdir and is disabled by default.\
+enabled by the administrator, deterministic Repo Ops may inspect Git state, \
+run fixed administrator-configured repository actions, commit explicit files, \
+and push the current upstream through the authenticated host Bridge. Repo Ops \
+never accepts arbitrary executables, argv, environment, remotes, refs or force \
+flags and never starts an Agent runtime. Separately, Agent tools may delegate \
+a task to configured native Codex, Claude or Qoder runtimes through the local \
+Agent Bridge. Both capabilities are separately authorized per workdir and are \
+disabled by default.\
 """
 
 _MCP_REQUEST_JSON_OVERHEAD = 64 * 1024
@@ -121,6 +126,19 @@ def create_server(
         token_verifier=verifier,
     )
     register_tools(mcp, registry, settings, file_ingress_client)
+    repo_tools_requested = any(
+        workdir.policy.repo_ops_enabled for workdir in registry.all_workdirs()
+    )
+    if repo_tools_requested and not settings.agent_bridge_enabled:
+        raise ValueError("Repo Ops requires the host Bridge to be enabled")
+    repo_tools_enabled = settings.agent_bridge_enabled and repo_tools_requested
+    if repo_tools_enabled:
+        from .repo_tools import register_repo_tools
+
+        if agent_client is None:
+            raise ValueError("Repo Ops is enabled but no host Bridge client was configured")
+        register_repo_tools(mcp, registry, settings, agent_client)
+
     agent_tools_enabled = settings.agent_bridge_enabled and any(
         workdir.agent_mode != "disabled" for workdir in registry.all_workdirs()
     )
@@ -199,10 +217,15 @@ def main() -> int:
         jsonlog.set_level(settings.log_level)
         registry = build_registry_from_env(os.environ, settings)
         agent_enabled_workdirs = [w for w in registry.all_workdirs() if w.agent_mode != "disabled"]
+        repo_ops_workdirs = [w for w in registry.all_workdirs() if w.policy.repo_ops_enabled]
         if agent_enabled_workdirs and not settings.agent_bridge_enabled:
             raise WorkdirError(
                 "Agent delegation is configured on a workdir but "
                 "SERVERFS_AGENT_BRIDGE_ENABLED is false"
+            )
+        if repo_ops_workdirs and not settings.agent_bridge_enabled:
+            raise WorkdirError(
+                "Repo Ops is configured on a workdir but SERVERFS_AGENT_BRIDGE_ENABLED is false"
             )
         if settings.agent_bridge_enabled and not Path(settings.agent_lock_dir).is_absolute():
             raise ValueError("SERVERFS_AGENT_LOCK_DIR must be absolute")
@@ -287,5 +310,8 @@ def log_startup(settings: Settings, registry) -> None:
         file_ingress_enabled=settings.file_ingress_enabled,
         agent_enabled_workdirs=sum(
             1 for w in registry.all_workdirs() if w.agent_mode != "disabled"
+        ),
+        repo_ops_enabled_workdirs=sum(
+            1 for w in registry.all_workdirs() if w.policy.repo_ops_enabled
         ),
     )

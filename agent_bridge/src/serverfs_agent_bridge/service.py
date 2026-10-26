@@ -6,6 +6,8 @@ import asyncio
 import hashlib
 import json
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -30,6 +32,7 @@ from .observability import BridgeObservationMetrics, normalize_runtime_family
 from .policy import PolicyRegistry, redact_host_path
 from .preflight import TaskPreflight
 from .recovery import ActiveGuardManager
+from .repo_ops import RepoOpsRunner
 from .result_spool import ResultSpool, utf8_prefix
 from .store import TaskStore
 from .util import is_expired, new_id, seconds_until, utc_after, utc_before
@@ -144,6 +147,7 @@ class BridgeService:
         #: False for an unsupervised launch, deliberately.
         self._prior_bridge_execution_stopped = prior_bridge_execution_stopped
         self.result_spool = ResultSpool(store.state_dir)
+        self.repo_ops = RepoOpsRunner()
         self.guard_manager = ActiveGuardManager(
             lease_manager.lock_dir,
             shared_gid=lease_manager.shared_gid,
@@ -288,6 +292,81 @@ class BridgeService:
             )
         if self.preflight is not None:
             await self.preflight.close()
+
+    async def inspect_repo(
+        self,
+        *,
+        workdir: str,
+        view: str,
+        paths: list[str],
+    ) -> dict[str, Any]:
+        if self._closed:
+            raise BridgeError("BRIDGE_CLOSED", "bridge is closed")
+        policy = self.policies.get(workdir)
+        return await self.repo_ops.inspect(policy, view=view, paths=paths)
+
+    async def run_repo_action(
+        self,
+        *,
+        workdir: str,
+        action: str,
+        path: str | None,
+    ) -> dict[str, Any]:
+        if self._closed:
+            raise BridgeError("BRIDGE_CLOSED", "bridge is closed")
+        policy = self.policies.get(workdir)
+        selected = next((item for item in policy.repo_actions if item.name == action), None)
+        if selected is None:
+            raise BridgeError("REPO_ACTION_NOT_ALLOWED", "repo action is not allowlisted")
+        # Every executable action takes the exclusive writer lease, even when the operator
+        # declares it logically read-only. This closes the integrity-check/exec TOCTOU window
+        # against concurrent ServerFS or Agent writers and preserves read-only workdir semantics.
+        async with self._repo_write_lease(policy):
+            return await self.repo_ops.run_action(policy, action_name=action, path=path)
+
+    async def commit_repo_changes(
+        self,
+        *,
+        workdir: str,
+        paths: list[str],
+        message: str,
+    ) -> dict[str, Any]:
+        if self._closed:
+            raise BridgeError("BRIDGE_CLOSED", "bridge is closed")
+        policy = self.policies.get(workdir)
+        async with self._repo_write_lease(policy):
+            return await self.repo_ops.commit(policy, paths=paths, message=message)
+
+    async def push_repo(self, *, workdir: str) -> dict[str, Any]:
+        if self._closed:
+            raise BridgeError("BRIDGE_CLOSED", "bridge is closed")
+        policy = self.policies.get(workdir)
+        async with self._repo_write_lease(policy):
+            return await self.repo_ops.push(policy)
+
+    @asynccontextmanager
+    async def _repo_write_lease(self, policy) -> AsyncIterator[None]:
+        if not policy.repo_ops_enabled:
+            raise BridgeError("REPO_OPS_DISABLED", "Repo Ops is disabled for this workdir")
+        if policy.read_only:
+            raise BridgeError(
+                "WORKDIR_READ_ONLY",
+                "Repo Ops commits, pushes, and named actions require a writable workdir",
+            )
+        for active_task_id in self._leases:
+            try:
+                if self.store.get_task(active_task_id).lease_id == policy.lease_id:
+                    raise BridgeError("WORKDIR_BUSY", "workdir already has an active writer")
+            except BridgeError as exc:
+                if exc.code == "WORKDIR_BUSY":
+                    raise
+                continue
+        await self._reconcile_guard(policy.lease_id)
+        lease = self.lease_manager.acquire_exclusive(policy.lease_id)
+        try:
+            yield
+        finally:
+            lease.release()
 
     async def list_runtimes(self) -> dict[str, Any]:
         runtimes = []

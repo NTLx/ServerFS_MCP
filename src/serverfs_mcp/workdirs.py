@@ -72,6 +72,7 @@ class EffectiveWorkdirPolicy:
     max_write_bytes: int = 1_048_576
     binary_transfer_enabled: bool = False
     max_binary_transfer_bytes: int = 8_388_608
+    repo_ops_enabled: bool = False
     agent_mode: str = AGENT_MODE_DISABLED
     agent_runtimes: frozenset[str] = frozenset()
 
@@ -119,6 +120,7 @@ class Workdir:
                 max_write_bytes=effective_policy.max_write_bytes,
                 binary_transfer_enabled=effective_policy.binary_transfer_enabled,
                 max_binary_transfer_bytes=effective_policy.max_binary_transfer_bytes,
+                repo_ops_enabled=effective_policy.repo_ops_enabled,
                 agent_mode=agent_mode if agent_mode is not None else effective_policy.agent_mode,
                 agent_runtimes=(
                     agent_runtimes
@@ -192,6 +194,7 @@ class WorkdirRegistry:
                     binary_transfer=w.policy.binary_transfer_enabled,
                     agent_mode=w.policy.agent_mode,
                     agent_runtimes=sorted(w.policy.agent_runtimes),
+                    repo_ops=w.policy.repo_ops_enabled,
                 )
                 for w in self._all
             ]
@@ -398,6 +401,12 @@ def _policy_for_slot(
             raw("MAX_BINARY_TRANSFER_BYTES"),
             settings.max_binary_transfer_bytes,
         ),
+        repo_ops_enabled=_override_bool(
+            slot,
+            prefix + "REPO_OPS_ENABLED",
+            raw("REPO_OPS_ENABLED"),
+            False,
+        ),
         agent_mode=agent_mode,
         agent_runtimes=agent_runtimes,
     )
@@ -408,6 +417,7 @@ def _validate_disabled_slot_overrides(slot: int, env: Mapping[str, str]) -> None
     agent_mode_raw = env.get(prefix + "AGENT_MODE", "").strip()
     agent_runtimes_raw = env.get(prefix + "AGENT_RUNTIMES", "").strip()
     binary_raw = env.get(prefix + "BINARY_TRANSFER_ENABLED", "").strip()
+    repo_ops_raw = env.get(prefix + "REPO_OPS_ENABLED", "").strip()
     if agent_mode_raw:
         agent_mode = parse_agent_mode(slot, agent_mode_raw)
         if agent_mode != AGENT_MODE_DISABLED:
@@ -429,6 +439,13 @@ def _validate_disabled_slot_overrides(slot: int, env: Mapping[str, str]) -> None
             )
         if binary_raw.lower() in _TRUE_VALUES:
             raise WorkdirError(f"slot {slot:02d}: disabled slot cannot enable binary transfer")
+    if repo_ops_raw:
+        if repo_ops_raw.lower() not in _TRUE_VALUES | _FALSE_VALUES:
+            raise WorkdirError(
+                f"slot {slot:02d}: invalid {prefix}REPO_OPS_ENABLED value {repo_ops_raw!r}"
+            )
+        if repo_ops_raw.lower() in _TRUE_VALUES:
+            raise WorkdirError(f"slot {slot:02d}: disabled slot cannot enable Repo Ops")
 
 
 def _override_bool(slot: int, key: str, raw: str, default: bool) -> bool:

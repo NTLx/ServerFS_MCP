@@ -11,7 +11,68 @@ from .errors import BridgeError
 from .models import KNOWN_RUNTIME_NAMES, AgentMode, AgentProfile
 
 _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+_REPO_ACTION_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 _DRIVE_PREFIX_RE = re.compile(r"^[A-Za-z]:")
+
+
+@dataclass(frozen=True)
+class RepoActionPolicy:
+    """One operator-defined deterministic repository action.
+
+    The MCP caller selects only ``name`` and, when ``argument`` is ``path`` or
+    ``basename``, one workdir-relative path. Executable and base argv remain
+    operator-owned configuration and are never request-controlled.
+    """
+
+    name: str
+    argv: tuple[str, ...]
+    mutates: bool = False
+    argument: str = "none"
+    integrity: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or _REPO_ACTION_RE.fullmatch(self.name) is None:
+            raise ValueError("repo action name has an invalid format")
+        if not isinstance(self.argv, tuple) or not self.argv:
+            raise ValueError("repo action argv must be a non-empty tuple")
+        if len(self.argv) > 32:
+            raise ValueError("repo action argv must contain at most 32 items")
+        for item in self.argv:
+            if not isinstance(item, str) or not item or len(item.encode("utf-8")) > 4096:
+                raise ValueError("repo action argv contains an invalid item")
+            if any(char in item for char in ("\x00", "\n", "\r")):
+                raise ValueError("repo action argv contains an invalid character")
+        if type(self.mutates) is not bool:
+            raise ValueError("repo action mutates must be a boolean")
+        if self.argument not in {"none", "path", "basename"}:
+            raise ValueError("repo action argument must be none, path or basename")
+        if not isinstance(self.integrity, tuple) or not self.integrity:
+            raise ValueError("repo action integrity must contain at least one pinned file")
+        if len(self.integrity) > 32:
+            raise ValueError("repo action integrity must contain at most 32 pinned files")
+        seen_integrity_paths: set[str] = set()
+        for item in self.integrity:
+            if not isinstance(item, tuple) or len(item) != 2:
+                raise ValueError("repo action integrity entries must be path/digest pairs")
+            path, digest = item
+            if (
+                not isinstance(path, str)
+                or not path
+                or path.startswith(("/", "-"))
+                or "\\" in path
+                or "\x00" in path
+                or any(part in {"", ".", ".."} for part in path.split("/"))
+            ):
+                raise ValueError("repo action integrity contains an invalid relative path")
+            if path in seen_integrity_paths:
+                raise ValueError("repo action integrity paths must be unique")
+            seen_integrity_paths.add(path)
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(char not in "0123456789abcdef" for char in digest)
+            ):
+                raise ValueError("repo action integrity digest must be lowercase sha256")
 
 
 @dataclass(frozen=True)
@@ -29,6 +90,8 @@ class WorkdirAgentPolicy:
     mode: AgentMode = AgentMode.DISABLED
     runtimes: frozenset[str] = frozenset()
     read_only: bool = True
+    repo_ops_enabled: bool = False
+    repo_actions: tuple[RepoActionPolicy, ...] = ()
 
     def __post_init__(self) -> None:
         if self.slot is not None and (
@@ -43,6 +106,19 @@ class WorkdirAgentPolicy:
             raise ValueError("host_path must be absolute")
         if type(self.read_only) is not bool:
             raise ValueError("read_only must be a boolean")
+        if type(self.repo_ops_enabled) is not bool:
+            raise ValueError("repo_ops_enabled must be a boolean")
+        if not isinstance(self.repo_actions, tuple) or any(
+            not isinstance(action, RepoActionPolicy) for action in self.repo_actions
+        ):
+            raise ValueError("repo_actions must contain RepoActionPolicy values")
+        if not self.repo_ops_enabled and self.repo_actions:
+            raise ValueError("repo actions require repo_ops_enabled")
+        action_names = [action.name for action in self.repo_actions]
+        if len(action_names) != len(set(action_names)):
+            raise ValueError("repo action names must be unique")
+        if self.read_only and self.repo_actions:
+            raise ValueError("read-only workdir cannot configure executable repo actions")
         if not isinstance(self.mode, AgentMode):
             raise ValueError("mode must be a valid AgentMode")
         if not isinstance(self.runtimes, frozenset) or any(

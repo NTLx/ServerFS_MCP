@@ -26,6 +26,7 @@ def read(registry, settings, path, start=1, max_lines=200, workdir="test"):
                 max_write_bytes=settings.max_write_bytes,
                 binary_transfer_enabled=settings.binary_transfer_enabled,
                 max_binary_transfer_bytes=settings.max_binary_transfer_bytes,
+                repo_ops_enabled=selected.policy.repo_ops_enabled,
                 agent_mode=selected.policy.agent_mode,
                 agent_runtimes=selected.policy.agent_runtimes,
             ),

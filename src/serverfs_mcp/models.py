@@ -32,6 +32,10 @@ class WorkdirInfo(BaseModel):
         default_factory=list,
         description="Effective native Agent runtimes allowlisted for this workdir",
     )
+    repo_ops: bool = Field(
+        default=False,
+        description="Whether deterministic non-Agent repository operations are enabled",
+    )
 
 
 class ListWorkdirsResult(BaseModel):
