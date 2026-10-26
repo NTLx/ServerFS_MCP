@@ -126,6 +126,7 @@ def create_server(
         token_verifier=verifier,
     )
     register_tools(mcp, registry, settings, file_ingress_client)
+    # Repo Ops reuses the host Bridge transport but is gated independently from Agent delegation.
     repo_tools_requested = any(
         workdir.policy.repo_ops_enabled for workdir in registry.all_workdirs()
     )
