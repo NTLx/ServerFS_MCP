@@ -3,7 +3,7 @@ title: Agent Skills
 description: 使用 ServerFS 仓库内置 Skills，指导 AI Agent 安全完成安装、配置、升级、诊断和可选子系统运维。
 ---
 
-> **当前稳定版本：v0.23.1。** ServerFS 包含 7 个运维 Agent Skills 和一个 skills-only portable Agent Plugin。
+> **当前稳定版本：v0.23.2。** ServerFS 包含 7 个运维 Agent Skills 和一个 skills-only portable Agent Plugin。
 
 ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) 目录中维护运维 Agent Skills。它们告诉 Agent **如何安全使用 ServerFS 已有的正式产品接口**，而不是再建立一套配置格式或部署实现。
 
@@ -12,7 +12,7 @@ ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/sk
 | 用户目标 | Skill |
 | --- | --- |
 | 首次安装 | `serverfs-install` |
-| Workdir 与普通策略配置，包括 v0.23 Linux Repo Ops 策略 | `serverfs-configure` |
+| Workdir 与普通策略配置，包括 v0.23 Repo Ops 策略 | `serverfs-configure` |
 | 已有部署升级 | `serverfs-upgrade` |
 | 只读优先的诊断与健康核验 | `serverfs-diagnose` |
 | OpenAI Secure MCP Tunnel | `serverfs-tunnel` |
@@ -21,7 +21,7 @@ ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/sk
 
 仓库根 `AGENTS.md` 只保留很薄的索引。Agent 应根据具体任务加载最小匹配的 `SKILL.md`，而不是把全部运维流程长期塞进基础上下文。
 
-Repo Ops 有意不新增第 8 个独立 Skill：其 per-workdir / named-action 策略归 `serverfs-configure`，Linux Host Bridge transport / 生命周期归 `serverfs-agent-bridge`，真正的仓库 inspection / action / commit / push 直接使用 deterministic MCP 工具，而不是 Agent delegation。
+Repo Ops 有意不新增第 8 个独立 Skill：其 per-workdir / named-action 策略归 `serverfs-configure`，平台原生 Bridge transport / 生命周期归 `serverfs-agent-bridge`，真正的仓库 inspection / action / commit / push 直接使用 deterministic MCP 工具，而不是 Agent delegation。
 
 ## 单一事实源
 
@@ -49,10 +49,10 @@ Skills 继续保持 ServerFS 手工运维时的核心约束：
 
 ## Portable Agent Plugin
 
-仓库根目录维护 portable Agent Plugins manifest：`plugin.json`。v0.23.1 GitHub Release 将 7 个运行时 Skill 及其参考文件统一打包为以下资产：
+仓库根目录维护 portable Agent Plugins manifest：`plugin.json`。v0.23.2 GitHub Release 将 7 个运行时 Skill 及其参考文件统一打包为以下资产：
 
 ```text
-serverfs-plugin-v0.23.1.zip
+serverfs-plugin-v0.23.2.zip
 ```
 
 该 ZIP 是 **skills-only Plugin**，不会内置 `mcp.json`、某个 ServerFS 实例 URL、凭据或 Provider 私有配置。Plugin 与 Skills 都直接跟随 ServerFS 项目版本，不建立独立版本生命周期。

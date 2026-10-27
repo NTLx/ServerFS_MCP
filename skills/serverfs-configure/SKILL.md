@@ -85,7 +85,7 @@ A host workdir path typo must fail rather than being silently created for conven
 
 ### Windows native
 
-Use `serverfs.toml` for workdirs and native policy. Keep secrets out of TOML. The v0.23 Deterministic Repo Ops implementation is Linux-only; do not add Linux Repo Ops fields or imply native Windows support. Validate with the stable connector environment:
+Use `serverfs.toml` for workdirs and native policy. Keep secrets out of TOML. v0.23.2 supports validated native Windows 11 x64 Deterministic Repo Ops; configure it only through the documented per-workdir native Repo Ops fields, independently from Agent mode. Validate with the stable connector environment:
 
 ```powershell
 & $serverfs doctor --config serverfs.toml
@@ -95,7 +95,7 @@ If the managed lifecycle already exists, use `serverfs service status` to confir
 
 ### macOS native
 
-Use `serverfs.toml` for workdirs and policy and keep secrets in the documented private env/state boundary. The v0.23 Deterministic Repo Ops implementation is Linux-only; do not add Linux Repo Ops fields or imply native macOS support. Validate with:
+Use `serverfs.toml` for workdirs and policy and keep secrets in the documented private env/state boundary. v0.23.1+ supports validated native Apple Silicon macOS Deterministic Repo Ops; configure it only through the documented per-workdir native Repo Ops fields, independently from Agent mode. Validate with:
 
 ```bash
 serverfs doctor --config serverfs.toml

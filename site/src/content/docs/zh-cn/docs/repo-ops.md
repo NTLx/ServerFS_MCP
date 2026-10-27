@@ -1,11 +1,11 @@
 ---
 title: Deterministic Repo Ops
-description: v0.23.0 Linux Deterministic Repo Ops：无需 Agent 委托即可执行有界 Git 检查、完整性固定的仓库动作、显式文件提交、精确当前 upstream 推送，以及面向已验证 package.json 发布形态的固定 npm 发布动作。
+description: ServerFS v0.23.2 Deterministic Repo Ops：在 Linux、已验收原生 macOS 与已验收原生 Windows 上，无需 Agent 委托即可执行有界 Git 检查、完整性固定的仓库动作、显式文件提交、精确当前 upstream 推送和固定发布动作。
 ---
 
-Deterministic Repo Ops 是 **v0.23.0** 正式发布的可选 **非 Agent 仓库能力**。它让 MCP 调用方可以完成机械性的仓库收尾步骤，而不获得 Shell，也不需要把这些步骤委托给服务器上的 AI Agent。
+Deterministic Repo Ops 是可选的 **非 Agent 仓库能力**：Linux Host Bridge 在 **v0.23.0** 首次发布，已验收的 Apple Silicon 原生 macOS 在 **v0.23.1** 加入，已验收的 Windows 11 x64 原生支持在 **v0.23.2** 加入。它让 MCP 调用方可以完成机械性的仓库收尾步骤，而不获得 Shell，也不需要把这些步骤委托给服务器上的 AI Agent。
 
-当前稳定版为 **v0.23.1**。Repo Ops 支持 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS；原生 Windows Repo Ops 仍不支持。
+当前稳定版为 **v0.23.2**。Repo Ops 支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署。
 
 ## 产品边界
 
@@ -41,7 +41,7 @@ Repo Ops 永远不会：
 
 ## 按 Workdir 配置
 
-Repo Ops 默认关闭，在 Linux/Compose 中按 Workdir 独立开启：
+Repo Ops 默认关闭，并按 Workdir 独立开启。Linux/Compose 使用以下环境变量形式：
 
 ```text
 WORKDIR_01_ALIAS=project
@@ -145,7 +145,7 @@ Tag 必须完整匹配 `v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta
 
 Repo Ops commit、push，以及**所有 named action**，都会获取与 ServerFS 文件修改和 Agent workspace-write task 相同的独占 writer lease。即使 `mutates=false`，named action 仍会获取 lease；该标志无法证明操作绝对无副作用，也不能允许 integrity verification 与实际执行之间出现 TOCTOU 窗口。
 
-Linux 子进程执行同时受时间和输出大小限制。发生 timeout、output overflow 或 cancellation 时，会终止整个 Repo Ops subprocess group，并在释放 writer lease 之前完整收敛进程与 pipe 生命周期。
+Repo Ops 子进程在所有支持平台上都受时间和输出大小限制。POSIX 主机在 timeout、output overflow 或 cancellation 时终止整个 subprocess group，并在释放 writer lease 前收敛进程与 pipe。Windows 会先以 suspended 状态创建子进程，成功加入 Bridge 自有 Job Object 后才 resume；异常时必须终止并收敛完整 descendant tree 才能释放 writer lease。如果 cleanup 无法被证明，操作 fail closed，并保留 lease 直到外部重启 Bridge generation。
 
 ## 安全不变量
 
@@ -153,18 +153,19 @@ Repo Ops 延续 ServerFS 现有信任模型：
 
 - 所有调用方路径先通过 MCP 侧 path/deny policy，再发送 Bridge RPC；
 - Bridge 在宿主机侧再次独立约束路径；
+- 原生 Windows 会在仓库执行前拒绝 NTFS reparse point / junction，与原生文件系统边界一致，而不是把 Windows 路径当作 POSIX symlink 处理；
 - hidden/credential-denied 路径不会出现在 status 中，也不能被请求用于 diff/commit；
 - 子进程环境使用 allowlist，不会整体继承 Bridge/Provider secrets；
-- Hardened deterministic Git 路径会关闭 hooks、askpass override、repository SSH-command override、external content filter 与 commit signing；
+- Hardened deterministic Git 路径会关闭 hooks、askpass override、repository SSH-command override、external content filter 与 commit signing；Windows 在 Git-for-Windows 需要 hooks sink 时使用原生 `NUL`；
 - Git transport 仅允许批准协议，自定义 remote helper 不能由调用方选择；
 - 错误与结果不会泄露真实宿主机 Workdir 绝对路径；
 - Repo Ops 代码不会 import 或调用 Agent provider adapter。
 
 相邻信任边界见[安全模型](../security/)与[架构](../architecture/)。
 
-## v0.23.1 中的工具数量
+## v0.23.2 中的工具数量
 
-稳定版 v0.23.1 保留既有文件系统、二进制与 Agent 的 11 / 13 / 21 / 23 组合，并在 Linux Host Bridge 与已验收的 Apple Silicon 原生 macOS 上独立增加 4 个 Repo Ops 工具：
+稳定版 v0.23.2 保留既有文件系统、二进制与 Agent 的 11 / 13 / 21 / 23 组合，并在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署上独立增加 4 个 Repo Ops 工具：
 
 | 能力面 | 工具数 |
 | --- | ---: |
@@ -191,4 +192,4 @@ Linux bootstrap / 内部 E2E 已 **CLOSED-PASS**，公共 ChatGPT MCP E2E 也已
 - Host Repo Ops action-set verification：PASS；
 - 公共 ChatGPT MCP E2E：PASS —— 完成 `actions → status → wiki_lint → explicit diff → explicit-file commit → current-upstream push`，全程未使用 Agent task；提交 `b3621bc5342e834990c170720de149d846d7de34` 已推送到 `LLM_WiKi` 的 `origin/main`，最终 worktree clean。
 
-Linux/public-MCP 已执行证据记录在 [`docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md)。最终发布 gate 还通过了刷新后的 root/Agent Bridge CI、Agent Skills/Plugin validation、MCP conformance、Windows Native、Windows Agent、macOS Native，以及 documentation freeze 后的 Pages build/deploy；见 [`v0.23.0 发布清单`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.0-release-checklist-2026-10-26.md)。
+Linux/public-MCP 已执行证据记录在 [`docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md)；原生 Apple Silicon macOS 证据记录在 [`docs/v0.23.1-macos-repo-ops-acceptance-2026-10-27.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.1-macos-repo-ops-acceptance-2026-10-27.md)；原生 Windows 11 x64 证据记录在 [`docs/v0.23.2-windows-repo-ops-acceptance-2026-10-28.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.2-windows-repo-ops-acceptance-2026-10-28.md)。最终打包与发布 gate 见各版本 release checklist。

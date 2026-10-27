@@ -2,7 +2,7 @@
 
 Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
 
-Use the stable current-user connector and Bridge environments described by the current Windows guide. Upgrade the release wheels in their correct isolated environments; do not merge product and Agent Bridge dependencies. The v0.23 Deterministic Repo Ops implementation is Linux-only at this stage; do not infer native Windows Repo Ops support or add Linux Repo Ops policy keys to the Windows configuration during an upgrade.
+Use the stable current-user connector and Bridge environments described by the current Windows guide. Upgrade the release wheels in their correct isolated environments; do not merge product and Agent Bridge dependencies. v0.23.2 adds validated native Windows 11 x64 Deterministic Repo Ops using the same independently gated Bridge transport and no-Agent-fallback contract as Linux/macOS. Preserve existing per-workdir Repo Ops enablement exactly; do not infer Repo Ops from Agent mode or vice versa.
 
 Before/after the managed lifecycle update, use:
 

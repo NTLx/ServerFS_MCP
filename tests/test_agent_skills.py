@@ -328,5 +328,7 @@ def test_v023_repo_ops_skill_contract_is_explicit_and_non_agent() -> None:
     assert "do not submit an Agent task as a diagnostic fallback" in diagnose
     assert "Repo Ops may still depend on that Host Bridge transport" in tunnel_linux
     assert "Agent delegation and/or v0.23 Repo Ops" in auth_oauth
-    assert "v0.23 Deterministic Repo Ops implementation is Linux-only" in bridge_windows
-    assert "v0.23 Deterministic Repo Ops implementation is Linux-only" in bridge_macos
+    assert "v0.23.2 supports validated native Windows 11 x64 Deterministic Repo Ops" in bridge_windows
+    assert "independently gated from Agent delegation" in bridge_windows
+    assert "v0.23.1+ supports validated native Apple Silicon macOS Deterministic Repo Ops" in bridge_macos
+    assert "independently gated from Agent delegation" in bridge_macos

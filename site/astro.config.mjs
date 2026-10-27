@@ -14,7 +14,7 @@ export default defineConfig({
         alt: 'ServerFS',
       },
       description:
-        'Secure, standards-first MCP filesystem access on Linux, Windows and macOS — read-only by default, with controlled mutations, binary transfer and Agent delegation; v0.23.1 adds native Apple Silicon macOS Deterministic Repo Ops alongside Linux Host Bridge support, without Agent fallback.',
+        'Secure, standards-first MCP filesystem access on Linux, Windows and macOS — read-only by default, with controlled mutations, binary transfer and Agent delegation; v0.23.2 extends Deterministic Repo Ops to validated native Windows 11 x64 alongside Linux Host Bridge and validated Apple Silicon macOS support, without Agent fallback.',
       defaultLocale: 'root',
       locales: {
         root: {

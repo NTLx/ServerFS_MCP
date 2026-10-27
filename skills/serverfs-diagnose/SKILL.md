@@ -96,7 +96,7 @@ Inspect bounded logs only for the affected service. A container being `Up` is no
 
 ### Windows native
 
-The v0.23 Deterministic Repo Ops implementation is Linux-only. If Repo Ops is reported missing on Windows, treat that as an unsupported-capability mismatch rather than a Bridge/runtime failure. Run the ServerFS executable from the stable current-user connector environment and use the real config:
+v0.23.2 supports validated native Windows 11 x64 Deterministic Repo Ops. If an explicitly enabled Windows Repo Ops workdir is missing the capability, diagnose native policy/Bridge synchronization, reparse-point policy, Git-for-Windows execution, and writer-lease/process-tree state rather than treating it as unsupported. Run the ServerFS executable from the stable current-user connector environment and use the real config:
 
 ```powershell
 & $serverfs doctor --config serverfs.toml
@@ -109,7 +109,7 @@ The opt-in v0.21 `common-json`/`common-human` formats provide a bounded, sanitiz
 
 ### macOS native
 
-The v0.23 Deterministic Repo Ops implementation is Linux-only. If Repo Ops is reported missing on macOS, treat that as an unsupported-capability mismatch rather than a Bridge/runtime failure. Use the supported native CLI surfaces:
+v0.23.1+ supports validated native Apple Silicon macOS Deterministic Repo Ops. If an explicitly enabled macOS Repo Ops workdir is missing the capability, diagnose native policy/Bridge synchronization and writer-lease/process-lifecycle state rather than treating it as unsupported. Use the supported native CLI surfaces:
 
 ```bash
 serverfs doctor --config serverfs.toml

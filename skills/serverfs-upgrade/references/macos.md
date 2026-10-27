@@ -2,7 +2,7 @@
 
 Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
 
-Update the ServerFS/Bridge Python environments through the current project/release path, then validate. The v0.23 Deterministic Repo Ops implementation is Linux-only at this stage; do not infer native macOS Repo Ops support or add Linux Repo Ops policy keys to the macOS configuration during an upgrade.
+Update the ServerFS/Bridge Python environments through the current project/release path, then validate. v0.23.1+ supports validated native Apple Silicon macOS Deterministic Repo Ops. Preserve existing per-workdir Repo Ops enablement and action policy exactly; do not infer Repo Ops from Agent mode or vice versa.
 
 Then validate:
 

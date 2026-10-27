@@ -1,13 +1,13 @@
 ---
 name: serverfs-agent-bridge
-description: Operate the ServerFS Host Bridge lifecycle for Agent delegation and/or v0.23 Linux Repo Ops transport; manage native/ACP runtimes, proxy/Jev behavior, or Bridge/task failures.
+description: Operate the ServerFS Host Bridge lifecycle for Agent delegation and/or v0.23 Repo Ops transport; manage native/ACP runtimes, proxy/Jev behavior, or Bridge/task failures.
 ---
 
 # Operate ServerFS Agent Bridge
 
-The Host Bridge is an explicit optional host capability. It may carry Agent delegation, v0.23 Linux Deterministic Repo Ops transport, or both. Preserve the two-process security boundary, independent per-workdir authorization, provider-native ownership for Agent execution, and current-user lifecycle.
+The Host Bridge is an explicit optional host capability. It may carry Agent delegation, v0.23 Deterministic Repo Ops transport, or both. Preserve the two-process security boundary, independent per-workdir authorization, provider-native ownership for Agent execution, and current-user lifecycle.
 
-The current published stable is **v0.23.1**. v0.23.0 introduced Linux Deterministic Repo Ops over the same authenticated host Bridge transport, and v0.23.1 adds validated native Apple Silicon macOS support; native Windows Repo Ops remains unsupported. Repo Ops is explicitly **not Agent delegation** and does not create provider tasks. Generic ACP v1 profiles were introduced in v0.19.0 and remain distinct from native `codex`, `claude` and `qoder` adapters. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete Agent configuration and operations, and the [Deterministic Repo Ops guide](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) for the separate repository capability.
+The current published stable is **v0.23.2**. v0.23.0 introduced Linux Deterministic Repo Ops over the same authenticated host Bridge transport, v0.23.1 added validated native Apple Silicon macOS support, and v0.23.2 adds validated native Windows 11 x64 support. Repo Ops is explicitly **not Agent delegation** and does not create provider tasks. Generic ACP v1 profiles were introduced in v0.19.0 and remain distinct from native `codex`, `claude` and `qoder` adapters. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete Agent configuration and operations, and the [Deterministic Repo Ops guide](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) for the separate repository capability.
 
 ## When to use
 

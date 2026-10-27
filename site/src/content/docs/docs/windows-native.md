@@ -1,11 +1,11 @@
 ---
 title: Windows Native
-description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, native Codex/Claude/Qoder and configurable ACP delegation, and the v0.14 current-user Task Scheduler lifecycle.
+description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, v0.23.2 Deterministic Repo Ops, native Codex/Claude/Qoder and configurable ACP delegation, and the current-user Task Scheduler lifecycle.
 ---
 
 Since v0.10.0 ServerFS runs natively on **Windows 11 x64 over local NTFS** as an MCP **stdio** service. Nothing listens on a port: the official OpenAI `tunnel-client` connects out to the control plane and speaks MCP through the child process's stdin/stdout, so the default native profile has no localhost listener. Linux Docker deployments are unchanged and remain the supported Linux shape.
 
-v0.11 adds **Agent delegation** to this deployment for Codex, Claude Code and Qoder through the same ten Agent tools over a Named-Pipe Bridge, accepted through the live ChatGPT tunnel E2E. v0.23.1 supports Repo Ops on Linux Host Bridge and validated native Apple Silicon macOS; native Windows Repo Ops remains unsupported.
+v0.11 adds **Agent delegation** to this deployment for Codex, Claude Code and Qoder through the same ten Agent tools over a Named-Pipe Bridge, accepted through the live ChatGPT tunnel E2E. v0.23.2 adds validated native Windows 11 x64 **Deterministic Repo Ops**, using the same independently gated, no-Agent-fallback Bridge transport already used by Linux and validated native Apple Silicon macOS.
 
 v0.14.0 adds the persistent outer lifecycle without changing that MCP/Agent surface. Its owner is a **current-user, least-privilege Task Scheduler 2.0 task** — not an SCM/LocalSystem Windows Service. Normal install, runtime, recovery, maintenance and removal remain non-elevated and store no account password.
 
@@ -55,6 +55,19 @@ $serverfs = "$env:LOCALAPPDATA\ServerFS\connector-env\Scripts\serverfs.exe"
 `serverfs doctor` probes the native backend import/version, each workdir root open, the filesystem class, reparse topology, a real policy-filtered listing, a non-mutating write-capability check, the tunnel-client version and the project-managed HTTP proxy reachability — proxy and tunnel credentials are never displayed. Windows GA is local NTFS only: network shares, FAT/exFAT, ReFS and any storage whose class cannot be measured are reported as `FAIL` (fail closed, never a silent blessing).
 
 With `[agent]` enabled, doctor additionally reports — read-only, never starting a Bridge or a provider — the per-workdir Agent policy, each runtime's enabled state and proxy routing, the Agent data home, the private-state safety of whatever exists, the Agent proxy endpoint wiring and reachability (the endpoint itself is never displayed), the user identity derivation, and that the Bridge package is importable by the configured `SERVERFS_BRIDGE_PYTHON` interpreter.
+
+## Deterministic Repo Ops on Windows (v0.23.2+)
+
+Repo Ops is configured independently per workdir and may be enabled while Agent mode remains disabled. The public MCP surface is the same four-tool contract as other supported platforms: `inspect_repo`, `run_repo_action`, `commit_repo_changes`, and `push_repo`. It never starts a provider runtime and has no Agent fallback.
+
+Windows-specific containment is fail closed:
+
+- Repo paths reject NTFS reparse points/junctions before repository execution, matching the native filesystem boundary.
+- Repo Ops children are created suspended, assigned to a Bridge-owned Job Object, and resumed only after containment succeeds.
+- Timeout, cancellation, or output overflow terminates and drains the descendant tree before the shared writer lease is released; if cleanup cannot be proven, the operation preserves the lease until an external Bridge restart.
+- Hardened Git-for-Windows execution remains non-interactive, uses a narrow environment, disables hooks/signing/askpass/SSH overrides, and uses the native `NUL` hooks sink where required.
+
+The v0.23.2 Windows acceptance exercised the installed 0.23.2 stdio MCP server through the managed 0.23.2 Bridge with a disposable local Git repository and `file://` bare upstream: all 27 tools were present, Repo Ops worked while Agent mode was disabled, an Agent submission was rejected with `AGENT_DISABLED`, and create → inspect → explicit-file commit → exact upstream push → final clean status completed without Agent fallback. See the [v0.23.2 Windows Repo Ops acceptance](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.2-windows-repo-ops-acceptance-2026-10-28.md).
 
 ## Persistent current-user lifecycle (v0.14.0+)
 

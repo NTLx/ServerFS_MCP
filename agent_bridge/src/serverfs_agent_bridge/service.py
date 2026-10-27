@@ -32,7 +32,7 @@ from .observability import BridgeObservationMetrics, normalize_runtime_family
 from .policy import PolicyRegistry, redact_host_path
 from .preflight import TaskPreflight
 from .recovery import ActiveGuardManager
-from .repo_ops import RepoOpsRunner
+from .repo_ops import RepoCleanupUnproven, RepoOpsRunner
 from .result_spool import ResultSpool, utf8_prefix
 from .store import TaskStore
 from .util import is_expired, new_id, seconds_until, utc_after, utc_before
@@ -154,6 +154,8 @@ class BridgeService:
         )
         self._background: dict[str, asyncio.Task[None]] = {}
         self._leases: dict[str, LeaseHandle] = {}
+        # An unproven Repo Ops stop must retain its OS lease until the Bridge exits.
+        self._repo_cleanup_leases: list[LeaseHandle] = []
         self._pending_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._approval_advice_cache: dict[str, dict[str, dict[str, Any]]] = {}
         self._user_cancelled: set[str] = set()
@@ -370,7 +372,13 @@ class BridgeService:
         lease = self.lease_manager.acquire_exclusive(policy.lease_id)
         try:
             yield
-        finally:
+        except RepoCleanupUnproven:
+            self._repo_cleanup_leases.append(lease)
+            raise
+        except BaseException:
+            lease.release()
+            raise
+        else:
             lease.release()
 
     async def list_runtimes(self) -> dict[str, Any]:

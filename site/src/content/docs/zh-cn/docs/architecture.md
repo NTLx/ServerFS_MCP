@@ -76,7 +76,7 @@ serverfs-auth
 
 OAuth 属于 Linux remote-HTTP 部署形态，不属于 Windows/macOS 原生 stdio。公网 TLS/反向代理形态、provider callback、client 注册与 Tunnel 兼容边界详见 [OAuth 2.1](../oauth/)。
 
-## 可选 Deterministic Repo Ops 路径（v0.23.1）
+## 可选 Deterministic Repo Ops 路径（v0.23.2）
 
 ```text
 ServerFS MCP 容器
@@ -88,7 +88,7 @@ ServerFS MCP 容器
    └── 管理员定义、integrity-pinned 的 named actions
 ```
 
-Repo Ops 会复用宿主机 Bridge transport、宿主机 Workdir 路径、当前用户 Git 凭据上下文以及共享 writer lease，但它**不会**进入 Agent 执行路径。不会选择模型/Runtime，不会创建 Agent task/session，也不会调用 Provider adapter。Repo Ops 与 Agent delegation 按 Workdir 独立授权。v0.23.1 支持 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS Repo Ops；原生 Windows Repo Ops 仍不支持。详见 [Deterministic Repo Ops](../repo-ops/)。
+Repo Ops 会复用宿主机 Bridge transport、宿主机 Workdir 路径、当前用户 Git 凭据上下文以及共享 writer lease，但它**不会**进入 Agent 执行路径。不会选择模型/Runtime，不会创建 Agent task/session，也不会调用 Provider adapter。Repo Ops 与 Agent delegation 按 Workdir 独立授权。Linux Host Bridge 支持始于 v0.23.0，已验收的 Apple Silicon 原生 macOS 支持在 v0.23.1 加入，v0.23.2 再加入已验收的 Windows 11 x64 原生支持。详见 [Deterministic Repo Ops](../repo-ops/)。
 
 ## 可选 Agent 路径
 
@@ -160,7 +160,7 @@ ServerFS 提供窄能力操作，而不是通用执行原语：
 - Linux remote HTTP 可选单一共享密钥静态 API Key 边界
 - Linux remote HTTP 可选 OAuth 2.1 Resource Server + 隔离身份 broker
 - 结构化 Agent task RPC、模型发现与单次任务模型覆盖
-- v0.23.0 Linux Deterministic Repo Ops：有界 Git inspection、固定 named action、显式文件 commit、精确当前 upstream push，以及面向已验证 `package.json` 发布形态的固定 npm 发布动作
+- Deterministic Repo Ops：Linux Host Bridge 自 v0.23.0 起支持，已验收 Apple Silicon 原生 macOS 自 v0.23.1 起支持，已验收 Windows 11 x64 原生部署自 v0.23.2 起支持；提供有界 Git inspection、固定 named action、显式文件 commit、精确当前 upstream push，以及面向已验证 `package.json` 发布形态的固定 npm 发布动作
 - 可选的宿主机 Jev advisory decision
 
-稳定版 **v0.23.1** 保留既有 11 / 13 / 21 / 23 工具组合，并可在 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS 上独立增加 4 个 Repo Ops 工具，因此 Repo Ops-only 为 15 个、二进制 + Repo Ops 为 17 个、Agent + Repo Ops 为 25 个，三者全部启用为 27 个。Repo Ops 与 Agent delegation 分别门控，且 Repo Ops 不创建 Agent task、不接收通用 shell / argv / env / remote / ref / force。v0.23.0 的 Linux bootstrap / 内部与公共 ChatGPT MCP E2E 继续作为基线；v0.23.1 新增原生 macOS live acceptance，并刷新 root/Agent Bridge、打包、Plugin 与站点验证。完整契约与证据见 [Deterministic Repo Ops](../repo-ops/)。Jev 仍是 Agent Bridge 内部 advisor，而不是 MCP capability surface。
+稳定版 **v0.23.2** 保留既有 11 / 13 / 21 / 23 工具组合，并可在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署上独立增加 4 个 Repo Ops 工具，因此 Repo Ops-only 为 15 个、二进制 + Repo Ops 为 17 个、Agent + Repo Ops 为 25 个，三者全部启用为 27 个。Repo Ops 与 Agent delegation 分别门控，且 Repo Ops 不创建 Agent task、不接收通用 shell / argv / env / remote / ref / force。v0.23.0 的 Linux bootstrap / 内部与公共 ChatGPT MCP E2E 继续作为基线；v0.23.1 新增原生 macOS live acceptance；v0.23.2 新增 Windows 进程树 containment、reparse point fail-closed、Git-for-Windows portability 与真实 public MCP acceptance。完整契约与证据见 [Deterministic Repo Ops](../repo-ops/)。Jev 仍是 Agent Bridge 内部 advisor，而不是 MCP capability surface。

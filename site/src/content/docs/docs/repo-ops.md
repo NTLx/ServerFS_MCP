@@ -1,11 +1,11 @@
 ---
 title: Deterministic Repo Ops
-description: v0.23.0 Linux Deterministic Repo Ops for bounded Git inspection, integrity-pinned repository actions, explicit-file commits, exact current-upstream pushes, and fixed npm release actions for the validated package.json release shape without Agent delegation.
+description: ServerFS v0.23.2 Deterministic Repo Ops for bounded Git inspection, integrity-pinned repository actions, explicit-file commits, exact current-upstream pushes, and fixed npm release actions without Agent delegation on Linux, validated native macOS, and validated native Windows.
 ---
 
-Deterministic Repo Ops is an optional **non-Agent repository capability** released in **v0.23.0** and extended to validated native Apple Silicon macOS in **v0.23.1**. It lets an MCP caller finish mechanical repository steps without receiving a shell and without delegating those steps to a server-side AI Agent.
+Deterministic Repo Ops is an optional **non-Agent repository capability** released on Linux Host Bridge in **v0.23.0**, extended to validated native Apple Silicon macOS in **v0.23.1**, and extended again to validated native Windows 11 x64 in **v0.23.2**. It lets an MCP caller finish mechanical repository steps without receiving a shell and without delegating those steps to a server-side AI Agent.
 
-The current stable release is **v0.23.1**. Repo Ops is supported on Linux Host Bridge and validated native Apple Silicon macOS. Native Windows Repo Ops remains unsupported.
+The current stable release is **v0.23.2**. Repo Ops is supported on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64.
 
 ## Product boundary
 
@@ -41,7 +41,7 @@ Repo Ops adds exactly four tools when at least one workdir explicitly enables it
 
 ## Per-workdir configuration
 
-Repo Ops defaults off and is enabled independently for each Linux/Compose workdir:
+Repo Ops defaults off and is enabled independently for each workdir. Linux/Compose uses environment variables such as:
 
 ```text
 WORKDIR_01_ALIAS=project
@@ -185,7 +185,7 @@ refresh their connector before using the new parameter; do not substitute Agent 
 
 Repo Ops commit, push, and **all named actions** acquire the same exclusive writer lease used by ServerFS filesystem mutations and Agent workspace-write tasks. Named actions take the lease even when `mutates=false`; that flag cannot prove side-effect freedom and must not create a TOCTOU gap between integrity verification and execution.
 
-Linux child execution is bounded by time and output. Timeout, output overflow, or cancellation terminates the entire Repo Ops subprocess group and drains its pipes before the lease is released.
+Repo Ops child execution is bounded by time and output on every supported platform. On POSIX hosts, timeout, output overflow, or cancellation terminates the subprocess group and drains its pipes before the lease is released. On Windows, Repo Ops creates the child suspended, assigns it to a Bridge-owned Job Object, resumes it only after containment succeeds, and terminates/drains the full descendant tree before the writer lease is released. If cleanup cannot be proven, the operation fails closed and the lease is preserved until the Bridge generation is externally restarted.
 
 ## Security invariants
 
@@ -193,18 +193,19 @@ Repo Ops keeps the existing ServerFS trust model:
 
 - all caller paths pass MCP-side path/deny policy before Bridge RPC;
 - the Bridge independently confines host paths again;
+- native Windows rejects reparse points/junctions in the Repo Ops path before repository execution; this matches the native filesystem boundary instead of treating Windows paths as POSIX symlinks;
 - hidden/credential-denied paths are filtered from status and cannot be requested for diff/commit;
 - child environments are allowlisted instead of inheriting Bridge/provider secrets wholesale;
-- Git hooks, askpass overrides, repository SSH-command overrides, external content filters, and commit signing are neutralized on hardened deterministic paths;
+- Git hooks, askpass overrides, repository SSH-command overrides, external content filters, and commit signing are neutralized on hardened deterministic paths; Windows uses the native `NUL` hooks sink where required by Git-for-Windows;
 - Git transport is restricted to approved protocols and custom remote helpers are not caller-selectable;
 - errors and results do not reveal absolute host workdir paths;
 - Repo Ops code does not import or call Agent provider adapters.
 
 See [Security Model](../security/) and [Architecture](../architecture/) for the adjacent trust boundaries.
 
-## Capability counts in v0.23.1
+## Capability counts in v0.23.2
 
-Stable v0.23.1 keeps the existing 11 / 13 / 21 / 23 filesystem, binary, and Agent combinations and adds four independently gated Repo Ops tools on Linux Host Bridge and validated native Apple Silicon macOS:
+Stable v0.23.2 keeps the existing 11 / 13 / 21 / 23 filesystem, binary, and Agent combinations and adds four independently gated Repo Ops tools on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64:
 
 | Surface | Tools |
 | --- | ---: |
@@ -231,4 +232,4 @@ The Linux bootstrap/internal E2E is **CLOSED-PASS** and the public ChatGPT MCP E
 - configured Host Repo Ops action-set verification: PASS;
 - public ChatGPT MCP E2E: PASS — `actions → status → wiki_lint → explicit diff → explicit-file commit → current-upstream push`, no Agent task; commit `b3621bc5342e834990c170720de149d846d7de34` pushed to `LLM_WiKi` `origin/main` and final status clean.
 
-The executed Linux/public-MCP evidence is recorded in [`docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md). The final release gate additionally passed refreshed root/Agent Bridge CI, Agent Skills/Plugin validation, MCP conformance, Windows Native, Windows Agent, macOS Native, and the post-freeze Pages build/deploy; see the [`v0.23.0 release checklist`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.0-release-checklist-2026-10-26.md).
+The executed Linux/public-MCP evidence is recorded in [`docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md). Native Apple Silicon macOS evidence is recorded in [`docs/v0.23.1-macos-repo-ops-acceptance-2026-10-27.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.1-macos-repo-ops-acceptance-2026-10-27.md). Native Windows 11 x64 evidence is recorded in [`docs/v0.23.2-windows-repo-ops-acceptance-2026-10-28.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.2-windows-repo-ops-acceptance-2026-10-28.md). See the versioned release checklists for final packaging and publication gates.

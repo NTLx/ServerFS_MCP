@@ -21,7 +21,7 @@ ServerFS 围绕**窄能力与独立执行层**设计。
 - 非 root 容器用户、drop capabilities、no-new-privileges。
 - MCP 仅连接内部网络，无公开端口、无互联网出口。
 - 可选 ChatGPT 文件入口被隔离在独立 sidecar 中，不挂载 workdir，也不持有 OpenAI 凭据。
-- v0.23.1 Repo Ops 是非 Agent、按 Workdir opt-in 的能力，支持 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS，原生 Windows Repo Ops 仍不支持，不暴露调用方可控的 shell/argv/environment/remote/ref/force。
+- v0.23.2 Repo Ops 是非 Agent、按 Workdir opt-in 的能力，支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署，不暴露调用方可控的 shell/argv/environment/remote/ref/force。
 
 ## 文件入口边界
 
@@ -47,13 +47,13 @@ v0.16 可通过隔离的 `serverfs-auth` Authorization Server 保护远程 Strea
 
 OpenAI Tunnel 的 OAuth 路径同样保持这些校验。已知上游 resource rewrite 问题会被明确记录，而不是通过 wildcard audience 绕过。部署、撤销、备份和 provider 细节见 [OAuth 2.1](../oauth/)。
 
-## Deterministic Repo Ops 边界（v0.23.1）
+## Deterministic Repo Ops 边界（v0.23.2）
 
-Repo Ops 是独立门控的宿主机能力，支持 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS，不属于 Agent 执行模式。它复用已认证的 Host Bridge transport 和共享 writer lease，但 `repo.*` RPC 路径不会创建 Agent task，也不会调用 Provider adapter。
+Repo Ops 是独立门控的宿主机能力，支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署，不属于 Agent 执行模式。它复用已认证的 Host Bridge transport 和共享 writer lease，但 `repo.*` RPC 路径不会创建 Agent task，也不会调用 Provider adapter。
 
 Git 操作语义固定。调用方不能选择 executable、argv、environment、cwd、remote、ref、force、hooks、signing、askpass、repository SSH override 或自定义 remote helper。Commit 只接受显式、通过策略校验的路径，并拒绝预先存在的 staged state；push 会在内部解析当前 branch/upstream，并只提供一个精确 refspec。子进程环境使用 allowlist，因此不会整体继承 Bridge/Provider secrets。
 
-Named action 是管理员拥有的固定 argv profile。每个 action 都必须对仓库控制的执行输入配置非空 SHA-256 integrity map，Bridge 会在进程创建前立即验证。即使 `mutates=false`，所有 named action 也会获取独占 writer lease，避免 integrity-check/execute 与其他 ServerFS 或 Agent writer 发生竞态。Timeout、output overflow 与 cancellation 都会在释放 lease 前终止整个 Linux subprocess group。
+Named action 是管理员拥有的固定 argv profile。每个 action 都必须对仓库控制的执行输入配置非空 SHA-256 integrity map，Bridge 会在进程创建前立即验证。即使 `mutates=false`，所有 named action 也会获取独占 writer lease，避免 integrity-check/execute 与其他 ServerFS 或 Agent writer 发生竞态。Timeout、output overflow 与 cancellation 都必须在释放 lease 前终止完整子进程树：POSIX 使用 subprocess group；Windows 使用 Bridge 自有 Job Object，如果 descendant cleanup 无法被证明则 fail closed，并保留 lease 直到外部重启 Bridge。原生 Windows Repo Ops 还会在仓库执行前拒绝 reparse point / junction。
 
 完整工具、策略与验收契约见 [Deterministic Repo Ops](../repo-ops/)。
 

@@ -1,11 +1,11 @@
 ---
 title: Windows 原生部署
-description: Windows 11 x64 + 本地 NTFS 原生部署——预构建 Rust 内核、Codex/Claude/Qoder 原生 runtime 与可配置 ACP 委派，以及 v0.14.0 当前用户 Task Scheduler 持久生命周期。
+description: Windows 11 x64 + 本地 NTFS 原生部署——预构建 Rust 内核、v0.23.2 Deterministic Repo Ops、Codex/Claude/Qoder 原生 runtime 与可配置 ACP 委派，以及当前用户 Task Scheduler 持久生命周期。
 ---
 
 自 v0.10.0 起，ServerFS 可以在 **Windows 11 x64 + 本地 NTFS** 上以 MCP **stdio** 服务原生运行。没有任何端口监听：官方 OpenAI `tunnel-client` 主动连出到控制面，并通过子进程的 stdin/stdout 传输 MCP 帧，因此默认原生 profile 不存在 localhost 监听器。Linux Docker 部署保持不变，仍是 Linux 的受支持形态。
 
-v0.11 为该部署加入 **Agent 委派**：通过同一组十个 Agent 工具与 Named-Pipe Bridge 驱动 Codex、Claude Code 与 Qoder 三个运行时，并已通过真实 ChatGPT 隧道 E2E 验收。v0.23.1 支持 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS Repo Ops；原生 Windows Repo Ops 仍不支持。
+v0.11 为该部署加入 **Agent 委派**：通过同一组十个 Agent 工具与 Named-Pipe Bridge 驱动 Codex、Claude Code 与 Qoder 三个运行时，并已通过真实 ChatGPT 隧道 E2E 验收。v0.23.2 新增已验收的 Windows 11 x64 原生 **Deterministic Repo Ops**，复用 Linux 与已验收 Apple Silicon 原生 macOS 所使用的独立门控、无 Agent fallback Bridge transport。
 
 **v0.14.0** 已加入持久的当前用户生命周期，同时不引入管理员要求。Windows Task Scheduler 2.0 以交互用户的最低权限令牌持有一个无窗口 watchdog；watchdog 负责重启 managed runner，runner 再负责重启 Tunnel generation。
 
@@ -60,6 +60,19 @@ $serverfs = "$env:LOCALAPPDATA\ServerFS\connector-env\Scripts\serverfs.exe"
 `serverfs doctor` 会探测 native 后端导入/版本、每个 workdir 根目录打开、文件系统类别、reparse 拓扑、真实策略过滤列表、非变更写能力检查、tunnel-client 版本以及项目托管的 HTTP proxy 可达性——proxy 与 tunnel 凭证永不显示。Windows GA 仅限本地 NTFS：网络共享、FAT/exFAT、ReFS 以及任何无法测量类别的存储都会报 `FAIL`（fail closed，绝不静默放行）。
 
 启用 `[agent]` 后，doctor 还会以只读方式（绝不启动 Bridge 或 provider）额外报告：每个 workdir 的 Agent 策略、各 runtime 的启用状态与 proxy 路由、Agent data home、已存在对象的 private-state 安全性、Agent proxy endpoint 的接线与可达性（endpoint 本身永不显示）、用户身份推导，以及 Bridge 包可被配置的 `SERVERFS_BRIDGE_PYTHON` 解释器导入。
+
+## Windows 上的 Deterministic Repo Ops（v0.23.2+）
+
+Repo Ops 按 Workdir 独立配置，可以在 Agent mode 保持 disabled 时单独开启。公开 MCP 能力面与其他受支持平台一致，固定为 `inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo` 四个工具；它不会启动 Provider runtime，也没有 Agent fallback。
+
+Windows 专属 containment 保持 fail closed：
+
+- 仓库路径在执行前拒绝 NTFS reparse point / junction，与原生文件系统边界一致。
+- Repo Ops 子进程先以 suspended 状态创建，成功加入 Bridge 自有 Job Object 后才 resume。
+- timeout、cancellation 或 output overflow 必须在共享 writer lease 释放前终止并收敛完整 descendant tree；如果 cleanup 无法被证明，操作会 fail closed，并保留 lease 直到外部重启 Bridge generation。
+- Git-for-Windows hardened 路径保持非交互、最小环境，关闭 hooks/signing/askpass/SSH override，并在需要 hooks sink 时使用原生 `NUL`。
+
+v0.23.2 Windows acceptance 使用已安装的 0.23.2 stdio MCP Server 通过受管 0.23.2 Bridge 对 disposable 本地 Git 仓库与 `file://` bare upstream 做了真实验收：27 个工具全部存在；Repo Ops 在 Agent mode disabled 时正常工作；Agent submission 被 `AGENT_DISABLED` 拒绝；`create → inspect → explicit-file commit → exact-upstream push → final clean status` 全程没有 Agent fallback。详见 [v0.23.2 Windows Repo Ops 验收](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.2-windows-repo-ops-acceptance-2026-10-28.md)。
 
 ## 持久的当前用户生命周期（v0.14.0+）
 

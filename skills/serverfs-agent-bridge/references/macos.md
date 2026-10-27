@@ -2,7 +2,7 @@
 
 Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
 
-Agent workdir/runtime policy lives in `serverfs.toml`. Private derived Bridge state stays outside exposed workdirs. The v0.23 Deterministic Repo Ops implementation is Linux-only; this macOS branch does not provide native Repo Ops transport or policy and must not infer support from the shared Bridge concept. Use supported commands:
+Agent workdir/runtime policy lives in `serverfs.toml`. Private derived Bridge state stays outside exposed workdirs. v0.23.1+ supports validated native Apple Silicon macOS Deterministic Repo Ops through the same authenticated Bridge transport, while keeping Repo Ops policy independently gated from Agent delegation. Use supported commands:
 
 ```bash
 serverfs agent-bridge configure --config serverfs.toml --env-file .env

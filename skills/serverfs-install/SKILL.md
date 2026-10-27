@@ -96,7 +96,7 @@ Do not add `compose.agent.yml`, `compose.oauth.yml`, file-ingress profile or the
 
 ### Windows native
 
-Supported installation uses the release wheels in **two isolated per-user Python environments**: product/native kernel in the connector environment and Agent Bridge in its separate environment when Agent support is needed. Do not install the product and Bridge into one dependency graph. The v0.23 Deterministic Repo Ops implementation is Linux-only; a Windows install must not invent or enable native Repo Ops policy.
+Supported installation uses the release wheels in **two isolated per-user Python environments**: product/native kernel in the connector environment and Agent Bridge in its separate environment when Agent support and/or Repo Ops transport is needed. Do not install the product and Bridge into one dependency graph. v0.23.2 supports validated native Windows 11 x64 Deterministic Repo Ops; preserve explicit per-workdir Repo Ops policy independently from Agent delegation.
 
 For the base filesystem/native product, follow the current Windows guide and install product + native wheel into the stable current-user connector environment. Create `serverfs.toml` from the example only if no config exists, then run:
 
@@ -116,7 +116,7 @@ A fresh install being disabled until explicit `service start` is intentional. Do
 
 ### macOS native
 
-Only proceed within the current documented macOS support boundary. Use the normal Python environments and current native deployment guide. The v0.23 Deterministic Repo Ops implementation is Linux-only; a macOS install must not invent or enable native Repo Ops policy. Create `serverfs.toml` only when no existing configuration exists, then run:
+Only proceed within the current documented macOS support boundary. Use the normal Python environments and current native deployment guide. v0.23.1+ supports validated native Apple Silicon macOS Deterministic Repo Ops; preserve explicit per-workdir Repo Ops policy independently from Agent delegation. Create `serverfs.toml` only when no existing configuration exists, then run:
 
 ```bash
 serverfs doctor --config serverfs.toml

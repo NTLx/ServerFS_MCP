@@ -10,9 +10,9 @@
 
 **A secure, standards-first MCP filesystem server with scoped access and optional Agent delegation.**
 
-Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured delegation to native Codex / Claude Code / Qoder runtimes and operator-configured ACP Agents only where you need them. v0.23.1 adds independently gated Deterministic Repo Ops on Linux Host Bridge and validated native Apple Silicon macOS for deterministic repository completion without Agent delegation.
+Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured delegation to native Codex / Claude Code / Qoder runtimes and operator-configured ACP Agents only where you need them. Deterministic Repo Ops shipped on Linux Host Bridge in v0.23.0, expanded to validated native Apple Silicon macOS in v0.23.1, and now extends to validated native Windows 11 x64 in v0.23.2 for deterministic repository completion without Agent delegation.
 
-**Current stable release: v0.23.1**
+**Current stable release: v0.23.2**
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -36,16 +36,16 @@ ServerFS is built around that narrower boundary:
 - **Narrow file operations** — no shell, generic command executor, recursive delete, or unguarded overwrite.
 - **Concurrency-aware mutations** — destructive operations use opaque revisions; text edits are exact-match and atomic.
 - **Defense in depth** — path confinement, symlink rejection, credential-path deny rules, bounded I/O, audit events, and platform-specific filesystem safety.
-- **Optional capabilities stay optional** — binary transfer, ChatGPT file ingress, v0.23.1 Linux Host Bridge and validated native macOS Repo Ops, Agent delegation, and Jev advice are independently gated.
+- **Optional capabilities stay optional** — binary transfer, ChatGPT file ingress, Linux / native macOS / native Windows Repo Ops, Agent delegation, and Jev advice are independently gated.
 - **Linux, Windows, and macOS** — one public capability model with platform-native containment and deployment boundaries.
 
 ## Supported deployments
 
 | Platform | Supported shape | Filesystem boundary | Repo Ops | Agent delegation |
 | --- | --- | --- | --- | --- |
-| **Linux** | Docker Compose, `linux/amd64` and `linux/arm64` | Bind-mounted workdirs; container read-only by default | v0.23.1 released | Native Codex, Claude Code, Qoder; configurable ACP v1 profiles |
-| **Windows** | Windows 11 x64, local NTFS, native stdio | Native HANDLE-relative Rust kernel over MCP stdio | Native Repo Ops unsupported | Native Codex, Claude Code, Qoder; configurable ACP v1 profiles |
-| **macOS** | Apple M-series, native arm64, macOS 27 Golden Gate, local APFS | Native descriptor-relative Darwin backend over MCP stdio | v0.23.1 validated | Native Codex, Claude Code, Qoder; configurable ACP v1 profiles |
+| **Linux** | Docker Compose, `linux/amd64` and `linux/arm64` | Bind-mounted workdirs; container read-only by default | v0.23.0+ | Native Codex, Claude Code, Qoder; configurable ACP v1 profiles |
+| **Windows** | Windows 11 x64, local NTFS, native stdio | Native HANDLE-relative Rust kernel over MCP stdio | v0.23.2 validated | Native Codex, Claude Code, Qoder; configurable ACP v1 profiles |
+| **macOS** | Apple M-series, native arm64, macOS 27 Golden Gate, local APFS | Native descriptor-relative Darwin backend over MCP stdio | v0.23.1+ validated | Native Codex, Claude Code, Qoder; configurable ACP v1 profiles |
 
 macOS support is limited to Apple M-series, native arm64, macOS 27.x and local APFS; Intel, Rosetta and other macOS major versions are not claimed. Persistent Tunnel and Agent Bridge services use current-user `SMAppService` LaunchAgents. Windows uses a current-user, non-elevated Task Scheduler 2.0 task with a windowless watchdog that restarts the runner, which restarts the Tunnel. Both platforms manage persistent services through `serverfs service`; see the platform guides for setup, recovery boundaries and acceptance limits.
 
@@ -58,7 +58,7 @@ For native setup, use the dedicated guides:
 
 The repository carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
 
-The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The published v0.23.1 GitHub Release includes `serverfs-plugin-v0.23.1.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
+The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The published v0.23.2 GitHub Release includes `serverfs-plugin-v0.23.2.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
 
 ## Quick start
 
@@ -82,9 +82,9 @@ chmod 600 .env
 
 Edit `.env` to pin the image, allow the local client Host values, and configure at least one workdir:
 
-# Current stable release example (v0.23.1):
+# Current stable release example (v0.23.2):
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.23.1
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.23.2
 SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
 WORKDIR_01_ALIAS=projects
 WORKDIR_01_PATH=/srv/projects
@@ -135,7 +135,7 @@ Claude Code / Codex / Qoder / MCP hosts
               | ServerFS MCP |------> configured workdirs
               | Core        |------> optional host Bridge (Agent / Repo Ops)
               +-------------+                |
-                     ^                       +--> Repo Ops (v0.23.1 Linux + native Apple Silicon macOS)
+                     ^                       +--> Repo Ops (Linux + native macOS + native Windows)
                      |                       +--> Codex
           OpenAI Secure MCP Tunnel           +--> Claude Code
                      |                       +--> Qoder
@@ -144,24 +144,24 @@ Claude Code / Codex / Qoder / MCP hosts
                   ChatGPT
 ```
 
-The MCP core is host-neutral. Standard clients use stdio or Streamable HTTP; the OpenAI Secure MCP Tunnel remains an optional authenticated ChatGPT ingress adapter. On Linux, generic HTTP publication is opt-in and binds to host loopback by default, while the historical Tunnel deployment remains supported. Streamable HTTP supports optional one-secret API Key authentication or the isolated `serverfs-auth` OAuth 2.1 broker for identity-aware deployments. Neither mode changes the existing workdir authorization model or native stdio. The optional file-ingress sidecar retains separate egress responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary; Repo Ops is supported on Linux Host Bridge and validated native Apple Silicon macOS; native Windows Repo Ops remains unsupported.
+The MCP core is host-neutral. Standard clients use stdio or Streamable HTTP; the OpenAI Secure MCP Tunnel remains an optional authenticated ChatGPT ingress adapter. On Linux, generic HTTP publication is opt-in and binds to host loopback by default, while the historical Tunnel deployment remains supported. Streamable HTTP supports optional one-secret API Key authentication or the isolated `serverfs-auth` OAuth 2.1 broker for identity-aware deployments. Neither mode changes the existing workdir authorization model or native stdio. The optional file-ingress sidecar retains separate egress responsibilities. On Windows and macOS, ServerFS runs natively over stdio and keeps the Agent Bridge in a separate host process boundary. Repo Ops debuted on Linux in v0.23.0, expanded to validated native Apple Silicon macOS in v0.23.1, and adds validated native Windows 11 x64 support in v0.23.2.
 
 See [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) for the complete deployment and trust-boundary model.
 
 ## Capability surface
 
-These are registered MCP tool counts. The default surface includes all 5 mutation tools, but read-only workdirs reject mutations. Binary tools require binary policy on at least one workdir; Agent tools require both the Bridge switch and an enabled workdir Agent policy. Stable v0.23.1 keeps the existing 11 / 13 / 21 / 23 filesystem, binary and Agent combinations and can independently add four Deterministic Repo Ops tools on Linux Host Bridge and validated native Apple Silicon macOS.
+These are registered MCP tool counts. The default surface includes all 5 mutation tools, but read-only workdirs reject mutations. Binary tools require binary policy on at least one workdir; Agent tools require both the Bridge switch and an enabled workdir Agent policy. Stable v0.23.2 keeps the existing 11 / 13 / 21 / 23 filesystem, binary and Agent combinations and can independently add four Deterministic Repo Ops tools on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64.
 
 | Surface | Tools | What it adds |
 | --- | ---: | --- |
 | Filesystem | 11 | 6 read tools + 5 controlled mutation tools |
 | Filesystem + binary | 13 | Bounded whole-file download/upload |
-| Filesystem + Repo Ops | 15 | 4 deterministic Git / named-action tools; v0.23.1 Linux Host Bridge / native macOS |
+| Filesystem + Repo Ops | 15 | 4 deterministic Git / named-action tools; v0.23.2 Linux Host Bridge / native macOS / native Windows |
 | Filesystem + binary + Repo Ops | 17 | Binary + Repo Ops |
 | Filesystem + Agent | 21 | 10 structured Agent Bridge tools |
 | Filesystem + binary + Agent | 23 | Binary + Agent |
 | Filesystem + Agent + Repo Ops | 25 | Agent and Repo Ops independently enabled |
-| Full v0.23.1 surface | 27 | Filesystem + binary + Agent + Repo Ops |
+| Full v0.23.2 surface | 27 | Filesystem + binary + Agent + Repo Ops |
 
 ### Filesystem tools
 
@@ -171,7 +171,7 @@ These are registered MCP tool counts. The default surface includes all 5 mutatio
 
 **Optional binary transfer:** `download_binary_file`, `upload_binary_file`
 
-**Optional v0.23.1 Linux Host Bridge and validated native macOS Repo Ops:** `inspect_repo`, `run_repo_action`, `commit_repo_changes`, `push_repo`. Repo Ops uses fixed Git semantics and operator-defined, SHA-256 integrity-pinned named actions. The caller cannot supply executable, argv, environment, remote, ref, force, or shell fragments, and Repo Ops never creates an Agent task. The v0.23.0 Linux acceptance remains the baseline; v0.23.1 adds real native Apple Silicon macOS Repo Ops E2E plus refreshed root/Agent Bridge, packaging, plugin, and site validation.
+**Optional v0.23.2 Linux Host Bridge, validated native macOS, and validated native Windows Repo Ops:** `inspect_repo`, `run_repo_action`, `commit_repo_changes`, `push_repo`. Repo Ops uses fixed Git semantics and operator-defined, SHA-256 integrity-pinned named actions. The caller cannot supply executable, argv, environment, remote, ref, force, or shell fragments, and Repo Ops never creates an Agent task. The v0.23.0 Linux acceptance remains the baseline; v0.23.1 adds real native Apple Silicon macOS Repo Ops E2E; v0.23.2 adds Windows 11 x64 process-tree containment, reparse/junction fail-closed behavior, and public MCP live acceptance.
 
 Agent tools submit and observe structured provider tasks; they are **not** a shell or arbitrary command-execution API. Repo Ops and Agent delegation are authorized independently: a workdir may enable Repo Ops while Agent mode remains disabled. See [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) and [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/).
 
@@ -233,7 +233,7 @@ The documentation site is the authoritative user and operator reference. The REA
 | Static API Key remote HTTP | [Static API Key](https://ntlx.github.io/ServerFS_MCP/docs/api-key/) |
 | OAuth 2.1 remote HTTP | [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/docs/oauth/) |
 | Binary transfer / file ingress | [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/docs/binary-transfer/) |
-| Deterministic repository operations (v0.23.1 Linux / native macOS) | [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) |
+| Deterministic repository operations (v0.23.2 Linux / native macOS / native Windows) | [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) |
 | Agent delegation | [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/) |
 | ACP profile configuration and operation | [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) |
 | Optional Jev advice | [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) |
@@ -247,10 +247,10 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-- Linux images: `ghcr.io/ntlx/serverfs_mcp`; current stable release: `v0.23.1`
-- Current stable release tag: `v0.23.1`
+- Linux images: `ghcr.io/ntlx/serverfs_mcp`; current stable release: `v0.23.2`
+- Current stable release tag: `v0.23.2`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
-- Portable Agent Plugin: skills-only `serverfs-plugin-v0.23.1.zip` asset in the v0.23.1 GitHub Release.
+- Portable Agent Plugin: skills-only `serverfs-plugin-v0.23.2.zip` asset in the v0.23.2 GitHub Release.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; there is no separate macOS native wheel. Installation locally builds the small bundled ServiceManagement companion used for persistent per-user services.
 

@@ -2,7 +2,7 @@
 
 Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
 
-Agent Bridge is a separate Python distribution/environment from the ServerFS connector environment. Preserve the frozen process boundary selected by `SERVERFS_BRIDGE_PYTHON`; never install both distributions into one environment to simplify deployment. The v0.23 Deterministic Repo Ops implementation is Linux-only; this Windows branch does not provide native Repo Ops transport or policy and must not infer support from the shared Bridge concept.
+Agent Bridge is a separate Python distribution/environment from the ServerFS connector environment. Preserve the frozen process boundary selected by `SERVERFS_BRIDGE_PYTHON`; never install both distributions into one environment to simplify deployment. v0.23.2 supports validated native Windows 11 x64 Deterministic Repo Ops through the same authenticated Bridge transport, while keeping Repo Ops policy independently gated from Agent delegation.
 
 Agent policy lives in `serverfs.toml`; secret/proxy/runtime values use the documented private env boundary. Run:
 

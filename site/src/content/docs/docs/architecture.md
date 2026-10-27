@@ -76,7 +76,7 @@ serverfs-auth
 
 OAuth is Linux remote-HTTP deployment state, not part of native Windows/macOS stdio. See [OAuth 2.1](../oauth/) for the public TLS/reverse-proxy shape, provider callbacks, client registration and Tunnel compatibility boundary.
 
-## Optional Deterministic Repo Ops path (v0.23.1)
+## Optional Deterministic Repo Ops path (v0.23.2)
 
 ```text
 ServerFS MCP container
@@ -88,7 +88,7 @@ authenticated host Bridge transport
    └── operator-defined integrity-pinned named actions
 ```
 
-Repo Ops reuses the host Bridge transport, host workdir path, current-user Git credential context, and shared writer lease, but it does **not** enter the Agent execution path. No model/runtime is selected, no Agent task/session is created, and no provider adapter is invoked. Repo Ops and Agent delegation are authorized independently per workdir. v0.23.1 supports Repo Ops on Linux Host Bridge and validated native Apple Silicon macOS; native Windows Repo Ops remains unsupported. See [Deterministic Repo Ops](../repo-ops/).
+Repo Ops reuses the host Bridge transport, host workdir path, current-user Git credential context, and shared writer lease, but it does **not** enter the Agent execution path. No model/runtime is selected, no Agent task/session is created, and no provider adapter is invoked. Repo Ops and Agent delegation are authorized independently per workdir. Linux Host Bridge support shipped in v0.23.0, validated native Apple Silicon macOS support followed in v0.23.1, and v0.23.2 adds validated native Windows 11 x64 support. See [Deterministic Repo Ops](../repo-ops/).
 
 ## Optional Agent path
 
@@ -160,7 +160,7 @@ ServerFS exposes narrow operations rather than a generic execution primitive:
 - optional one-secret static API Key boundary for Linux remote HTTP
 - optional OAuth 2.1 Resource Server + isolated identity broker for Linux remote HTTP
 - structured Agent task RPC, model discovery and request-scoped model override
-- Linux Deterministic Repo Ops in v0.23.0: bounded Git inspection, fixed named actions, explicit-file commit, exact current-upstream push, and fixed npm release actions for the validated `package.json` release shape
+- Deterministic Repo Ops: Linux Host Bridge since v0.23.0, validated native Apple Silicon macOS since v0.23.1, and validated native Windows 11 x64 since v0.23.2; bounded Git inspection, fixed named actions, explicit-file commit, exact current-upstream push, and fixed npm release actions for the validated `package.json` release shape
 - optional host-side Jev advisory decisions
 
-The stable **v0.23.1** release retains the existing 11 / 13 / 21 / 23 tool combinations and can independently add four Repo Ops tools on Linux Host Bridge and validated native Apple Silicon macOS: 15 tools for Repo Ops-only, 17 with binary transfer, 25 with Agent delegation, and 27 when binary, Agent and Repo Ops are all enabled. Repo Ops and Agent delegation are gated separately; Repo Ops never creates an Agent task and accepts no generic shell, argv, environment, remote, ref or force input. Linux bootstrap/internal and public ChatGPT MCP E2E remain the v0.23.0 baseline; v0.23.1 adds native macOS live acceptance plus refreshed root/Agent Bridge, packaging, plugin, and site validation. See [Deterministic Repo Ops](../repo-ops/) for the full contract and evidence. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.
+The stable **v0.23.2** release retains the existing 11 / 13 / 21 / 23 tool combinations and can independently add four Repo Ops tools on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64: 15 tools for Repo Ops-only, 17 with binary transfer, 25 with Agent delegation, and 27 when binary, Agent and Repo Ops are all enabled. Repo Ops and Agent delegation are gated separately; Repo Ops never creates an Agent task and accepts no generic shell, argv, environment, remote, ref or force input. Linux bootstrap/internal and public ChatGPT MCP E2E remain the v0.23.0 baseline; v0.23.1 adds native macOS live acceptance; v0.23.2 adds Windows process-tree containment, reparse-point fail-closed behavior, Git-for-Windows portability, and live public MCP acceptance. See [Deterministic Repo Ops](../repo-ops/) for the full contract and evidence. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.

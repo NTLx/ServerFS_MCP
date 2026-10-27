@@ -3,7 +3,7 @@ title: Agent Skills
 description: Use ServerFS repository skills to guide AI Agents through safe installation, configuration, upgrade, diagnosis and optional subsystem operations.
 ---
 
-> **Current stable release: v0.23.1.** ServerFS includes seven operational Agent Skills and one skills-only portable Agent Plugin.
+> **Current stable release: v0.23.2.** ServerFS includes seven operational Agent Skills and one skills-only portable Agent Plugin.
 
 ServerFS keeps operational Agent Skills in the repository [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) directory. They teach an Agent **how to use the existing ServerFS product interfaces safely**; they are not another configuration format or deployment implementation.
 
@@ -12,7 +12,7 @@ ServerFS keeps operational Agent Skills in the repository [`skills/`](https://gi
 | Objective | Skill |
 | --- | --- |
 | First installation | `serverfs-install` |
-| Workdir and ordinary policy changes, including v0.23 Linux Repo Ops policy | `serverfs-configure` |
+| Workdir and ordinary policy changes, including v0.23 Repo Ops policy | `serverfs-configure` |
 | Existing deployment upgrade | `serverfs-upgrade` |
 | Read-first diagnosis and health verification | `serverfs-diagnose` |
 | OpenAI Secure MCP Tunnel | `serverfs-tunnel` |
@@ -21,7 +21,7 @@ ServerFS keeps operational Agent Skills in the repository [`skills/`](https://gi
 
 The repository-level `AGENTS.md` contains only a thin index. An Agent should load the smallest matching `SKILL.md` rather than placing all operational procedures in its base context.
 
-Repo Ops intentionally does not add an eighth Skill. Its per-workdir/action policy is handled by `serverfs-configure`, its Linux Host Bridge transport/lifecycle by `serverfs-agent-bridge`, and its actual repository operations by the deterministic public MCP tools rather than Agent delegation.
+Repo Ops intentionally does not add an eighth Skill. Its per-workdir/action policy is handled by `serverfs-configure`, its platform-native Bridge transport/lifecycle by `serverfs-agent-bridge`, and its actual repository operations by the deterministic public MCP tools rather than Agent delegation.
 
 ## Source of truth
 
@@ -49,10 +49,10 @@ The skills preserve the same ServerFS invariants as manual operation:
 
 ## Portable Agent Plugin
 
-The repository root contains the portable Agent Plugins manifest `plugin.json`. The v0.23.1 GitHub Release packages the seven runtime skills and their references as this asset:
+The repository root contains the portable Agent Plugins manifest `plugin.json`. The v0.23.2 GitHub Release packages the seven runtime skills and their references as this asset:
 
 ```text
-serverfs-plugin-v0.23.1.zip
+serverfs-plugin-v0.23.2.zip
 ```
 
 The ZIP is a **skills-only** Plugin. It does not bundle `mcp.json`, a ServerFS instance URL, credentials, or provider-private settings. Plugin and skill content follow the ServerFS release version; there is no independent skill version lifecycle.

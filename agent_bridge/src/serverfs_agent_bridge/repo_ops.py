@@ -69,6 +69,13 @@ class _OutputLimitExceeded(Exception):
     pass
 
 
+class RepoCleanupUnproven(BridgeError):
+    """The writer lease must remain held until the Bridge is stopped externally."""
+
+    def __init__(self) -> None:
+        super().__init__("REPO_STOP_UNPROVEN", "repository command tree stop could not be proven")
+
+
 def normalize_repo_path(value: str) -> str:
     """Validate a platform-neutral workdir-relative repository path."""
     if not isinstance(value, str) or not value:
@@ -102,8 +109,15 @@ def _validate_host_path(
     *,
     require_existing_file: bool,
 ) -> None:
-    """Independently reject symlink traversal and unsafe final objects on the host."""
-    current = root.resolve(strict=True)
+    """Reject links, Windows reparse points, and unsafe final objects on the host."""
+    if os.name == "nt":
+        from .windows_security import is_reparse_point
+
+        current = root.absolute()
+        if is_reparse_point(current):
+            raise BridgeError("INVALID_REPO_PATH", "repo root must not be a reparse point")
+    else:
+        current = root.resolve(strict=True)
     parts = PurePosixPath(value).parts
     for index, part in enumerate(parts):
         candidate = current / part
@@ -116,6 +130,8 @@ def _validate_host_path(
             raise BridgeError("INVALID_REPO_PATH", "repo path does not exist") from exc
         if stat.S_ISLNK(info.st_mode):
             raise BridgeError("INVALID_REPO_PATH", "repo paths must not traverse symlinks")
+        if os.name == "nt" and is_reparse_point(candidate):
+            raise BridgeError("INVALID_REPO_PATH", "repo paths must not traverse reparse points")
         if not final:
             if not stat.S_ISDIR(info.st_mode):
                 raise BridgeError("INVALID_REPO_PATH", "repo path parent is not a directory")
@@ -132,7 +148,13 @@ def _command_env(*, git: bool) -> dict[str, str]:
     keys = _GIT_ENV_KEYS if git else _BASE_ENV_KEYS
     env = {key: os.environ[key] for key in keys if key in os.environ}
     env.setdefault("PATH", os.defpath)
+    if os.name == "nt" and "SYSTEMROOT" in os.environ:
+        # Windows side-by-side assembly loading requires SystemRoot in a custom environment.
+        env["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
     if git:
+        if os.name == "nt" and "USERPROFILE" in os.environ:
+            # Git for Windows derives HOME from USERPROFILE when HOME is absent.
+            env["USERPROFILE"] = os.environ["USERPROFILE"]
         env["GIT_TERMINAL_PROMPT"] = "0"
         env["GIT_PAGER"] = "cat"
         env["PAGER"] = "cat"
@@ -150,8 +172,6 @@ async def _kill_process_tree(process: asyncio.subprocess.Process) -> None:
             # The group can outlive its leader. Do not skip killpg merely because the
             # immediate child has already exited: descendants may still hold stdio open.
             os.killpg(process.pid, signal.SIGKILL)
-        elif process.returncode is None:  # Linux-only in v0.23; conservative fallback.
-            process.kill()
     except ProcessLookupError:
         pass
     except OSError:
@@ -188,6 +208,17 @@ async def run_bounded_command(
     """Run one fixed argv without a shell and with bounded time/output."""
     if not argv:
         raise BridgeError("REPO_ACTION_INVALID", "repo action argv is empty")
+    if os.name == "nt":
+        from .repo_ops_windows import run_windows_command
+
+        return await run_windows_command(
+            argv,
+            cwd=cwd,
+            env=_command_env(git=git_environment),
+            timeout_seconds=timeout_seconds,
+            max_output_bytes=max_output_bytes,
+            strict_utf8=strict_utf8,
+        )
     spawn_kwargs: dict[str, Any] = {}
     if os.name == "posix":
         spawn_kwargs["start_new_session"] = True

@@ -155,16 +155,16 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](../binary-transfer/) and [Security Model](../security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
-## Current stable release: v0.23.1
+## Current stable release: v0.23.2
 
-The published v0.23.1 release uses immutable tag `v0.23.1` and these GHCR stable tags:
+The published v0.23.2 release uses immutable tag `v0.23.2` and these GHCR stable tags:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
 ghcr.io/ntlx/serverfs_mcp:0.23
-ghcr.io/ntlx/serverfs_mcp:0.23.1
+ghcr.io/ntlx/serverfs_mcp:0.23.2
 ```
 
-For production deployments, pin `0.23.1` rather than following `latest` or `edge`. The v0.23.1 GitHub Release includes the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) and the skills-only portable Agent Plugin `serverfs-plugin-v0.23.1.zip`, with release evidence recorded in the [v0.23.1 release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.1-release-checklist-2026-10-26.md); see [Agent Skills](../agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
+For production deployments, pin `0.23.2` rather than following `latest` or `edge`. The v0.23.2 GitHub Release includes the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) and the skills-only portable Agent Plugin `serverfs-plugin-v0.23.2.zip`, with release evidence recorded in the [v0.23.2 release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.2-release-checklist-2026-10-28.md); see [Agent Skills](../agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
 
 For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).

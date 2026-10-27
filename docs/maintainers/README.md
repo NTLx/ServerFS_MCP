@@ -4,8 +4,8 @@
 
 ## Current release
 
-- **v0.23.1 is the current stable release.** It adds validated native Apple Silicon macOS support for independently gated Deterministic Repo Ops while retaining Linux Host Bridge support and the no-Agent-fallback contract; native Windows Repo Ops remains unsupported.
-- **v0.22.1 is the previous released stable version.**
+- **v0.23.2 is the current stable release.** It extends independently gated Deterministic Repo Ops to validated native Windows 11 x64 while retaining the Linux Host Bridge, validated Apple Silicon macOS support, and the no-Agent-fallback contract.
+- **v0.23.1 is the previous released stable version.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
 - Generic ACP v1 profiles are also supported when operator-configured with an absolute executable and fixed argv; OpenCode 2.1.2 passed real end-to-end acceptance on Linux, macOS and Windows.
@@ -58,7 +58,8 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.22.0** — previous stable release; adds bounded process-local Correlated Agent Diagnostics through private Bridge RPC only: `diagnostics snapshot` and per-task diagnostics, with no new MCP tool, listener, trace persistence, OpenTelemetry dependency or telemetry egress. Phase F is accepted on Linux/VPS, supported macOS and supported Windows, and Phase G release-readiness acceptance is PASS; see [`dev_plan_v0.22.md`](../../dev_plan_v0.22.md) and the v0.22 acceptance evidence.
 
 - **v0.22.1** — previous stable maintenance release for the Linux Agent Bridge installer staged-Python fix, macOS restart readiness/health closure, one-shot self-restart hand-over with verified cleanup, and test-isolation regression fix; see [`dev_plan_v0.22.1.md`](../../dev_plan_v0.22.1.md) and [`v0.22.1-release-checklist-2026-10-23.md`](../v0.22.1-release-checklist-2026-10-23.md) for release evidence.
-- **v0.23.1** — current stable maintenance release; enables independently gated Deterministic Repo Ops on validated native Apple Silicon macOS, retaining Linux Host Bridge support and the no-Agent-fallback contract. Native Windows Repo Ops remains unsupported. See [release notes](../releases/v0.23.1.md), [`v0.23.1 release checklist`](../v0.23.1-release-checklist-2026-10-27.md), and [`macOS native Repo Ops acceptance`](../v0.23.1-macos-repo-ops-acceptance-2026-10-27.md). The v0.23.0 Linux Repo Ops evidence remains in its [original release records](../v0.23.0-release-checklist-2026-10-26.md).
+- **v0.23.1** — previous stable maintenance release; enabled independently gated Deterministic Repo Ops on validated native Apple Silicon macOS while retaining Linux Host Bridge support. See [release notes](../releases/v0.23.1.md), [`v0.23.1 release checklist`](../v0.23.1-release-checklist-2026-10-27.md), and [`macOS native Repo Ops acceptance`](../v0.23.1-macos-repo-ops-acceptance-2026-10-27.md).
+- **v0.23.2** — current stable maintenance release; extends the same deterministic, no-Agent-fallback Repo Ops contract to validated native Windows 11 x64. See [release notes](../releases/v0.23.2.md), [`v0.23.2 release checklist`](../v0.23.2-release-checklist-2026-10-28.md), and [`Windows native Repo Ops acceptance`](../v0.23.2-windows-repo-ops-acceptance-2026-10-28.md). The v0.23.0 Linux and v0.23.1 macOS evidence remain in their original release records.
 
 ## Keep this index small
 

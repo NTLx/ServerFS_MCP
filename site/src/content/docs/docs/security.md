@@ -21,7 +21,7 @@ ServerFS is designed around **narrow capabilities and independent enforcement la
 - Non-root container user, dropped capabilities, and no-new-privileges.
 - Internal-only MCP networks with no published ports or Internet egress.
 - Optional ChatGPT file ingress is isolated in a separate sidecar with no workdir mounts or OpenAI credentials.
-- v0.23.1 Repo Ops is non-Agent, per-workdir opt-in, supported on Linux Host Bridge and validated native Apple Silicon macOS; native Windows Repo Ops remains unsupported, and exposes no caller-controlled shell/argv/environment/remote/ref/force surface.
+- v0.23.2 Repo Ops is non-Agent, per-workdir opt-in, supported on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64, and exposes no caller-controlled shell/argv/environment/remote/ref/force surface.
 
 ## File-ingress boundary
 
@@ -47,13 +47,13 @@ Admission is default-deny and uses exact stable provider subjects. Provider-nati
 
 The OpenAI Tunnel OAuth path keeps the same validation. A known upstream resource-rewrite issue is documented rather than bypassed with wildcard audiences. See [OAuth 2.1](../oauth/) for deployment, revocation, backup and provider details.
 
-## Deterministic Repo Ops boundary (v0.23.1)
+## Deterministic Repo Ops boundary (v0.23.2)
 
-Repo Ops is an independently gated host capability supported on Linux Host Bridge and validated native Apple Silicon macOS, not an Agent execution mode. It reuses the authenticated host Bridge transport and shared writer lease, but its `repo.*` RPC path never creates an Agent task or invokes a provider adapter.
+Repo Ops is an independently gated host capability supported on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64, not an Agent execution mode. It reuses the authenticated host Bridge transport and shared writer lease, but its `repo.*` RPC path never creates an Agent task or invokes a provider adapter.
 
 Git operations have fixed semantics. Callers cannot select executable, argv, environment, cwd, remote, ref, force, hooks, signing, askpass, repository SSH overrides, or custom remote helpers. Commit accepts explicit policy-valid paths only and refuses pre-existing staged state; push derives the current branch/upstream internally and supplies one exact refspec. Child environments are allowlisted so Bridge/provider secrets are not inherited wholesale.
 
-Named actions are administrator-owned fixed argv profiles. Every action requires a non-empty SHA-256 integrity map over repository-controlled execution inputs, and the Bridge verifies those pins immediately before process creation. All named actions acquire the exclusive writer lease even when marked `mutates=false`, preventing an integrity-check/execute race with another ServerFS or Agent writer. Timeout, output overflow, and cancellation terminate the Linux subprocess group before the lease is released.
+Named actions are administrator-owned fixed argv profiles. Every action requires a non-empty SHA-256 integrity map over repository-controlled execution inputs, and the Bridge verifies those pins immediately before process creation. All named actions acquire the exclusive writer lease even when marked `mutates=false`, preventing an integrity-check/execute race with another ServerFS or Agent writer. Timeout, output overflow, and cancellation terminate the whole child tree before the lease is released: POSIX uses the subprocess group, while Windows uses a Bridge-owned Job Object and fails closed if descendant cleanup cannot be proven. Native Windows Repo Ops also rejects reparse points/junctions before repository execution.
 
 See [Deterministic Repo Ops](../repo-ops/) for the complete tool, policy, and acceptance contract.
 

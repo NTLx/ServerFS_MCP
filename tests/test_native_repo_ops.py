@@ -38,7 +38,7 @@ argument = "none"
         + "\n"
     )
     return (
-        f'[[workdirs]]\nalias = "repo"\npath = "{root}"\nread_only = false\n'
+        f'[[workdirs]]\nalias = "repo"\npath = "{root.as_posix()}"\nread_only = false\n'
         "repo_ops_enabled = true\n" + (action_table if action else "")
     )
 
