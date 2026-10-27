@@ -296,17 +296,21 @@ class TestRenderRequest:
         assert request["runtimes"]["codex"]["use_proxy"] is True
         assert "codex_bin" in request["runtimes"]["codex"]
 
-    def test_render_request_refuses_a_disabled_configuration(self, tmp_path: Path, workdir: Path):
+    def test_render_request_refuses_when_bridge_is_not_required(
+        self, tmp_path: Path, workdir: Path
+    ):
         config = _write_config(tmp_path, V010_CONFIG, workdir)
         workdirs, settings = load_native_config(config)
-        with pytest.raises(AgentLifecycleError, match="does not enable Agent"):
+        with pytest.raises(AgentLifecycleError, match="does not require the Agent Bridge"):
             render_request_from_config(workdirs, settings)
 
-    def test_render_request_needs_an_agent_workdir(self, tmp_path: Path, workdir: Path):
+    def test_render_request_requires_a_bridge_capability_workdir(
+        self, tmp_path: Path, workdir: Path
+    ):
         template = '[agent]\nenabled = true\n\n[[workdirs]]\nalias = "repo"\npath = "{root}"\n'
         config = _write_config(tmp_path, template, workdir)
         workdirs, settings = load_native_config(config)
-        with pytest.raises(AgentLifecycleError, match="no workdir configures an agent_mode"):
+        with pytest.raises(AgentLifecycleError, match="no workdir enables Agent delegation or Repo Ops"):
             render_request_from_config(workdirs, settings)
 
 

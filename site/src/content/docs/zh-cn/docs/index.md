@@ -17,14 +17,14 @@ v0.22.0 通过既有 Agent Bridge 私有 RPC 增加 Correlated Agent Diagnostics
 | --- | ---: | --- |
 | 文件系统 | 11 | 基础部署 |
 | 文件系统 + 二进制 | 13 | 启用二进制传输 |
-| 文件系统 + Repo Ops | 15 | 启用 v0.23.0 Linux Repo Ops |
+| 文件系统 + Repo Ops | 15 | 启用 Repo Ops（Linux / 已验收原生 macOS） |
 | 文件系统 + 二进制 + Repo Ops | 17 | 同时启用二进制 + Repo Ops |
 | 文件系统 + Agent | 21 | 启用 Agent overlay |
 | 文件系统 + 二进制 + Agent | 23 | 同时启用二进制 + Agent |
 | 文件系统 + Agent + Repo Ops | 25 | 同时启用 Agent + Repo Ops |
-| v0.23.0 完整能力 | 27 | 同时启用二进制 + Agent + Repo Ops |
+| v0.23.1 完整能力 | 27 | 同时启用二进制 + Agent + Repo Ops |
 
-稳定版 v0.23.1 保留既有 11 / 13 / 21 / 23 文件系统、二进制与 Agent 组合，并增加上表所示独立门控的 Repo Ops 组合。ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
+稳定版 v0.23.1 保留既有 11 / 13 / 21 / 23 文件系统、二进制与 Agent 组合，并在 Linux Host Bridge 与已验收的 Apple Silicon 原生 macOS 上增加上表所示独立门控的 Repo Ops 组合。ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
 
 ## 从这里开始
 

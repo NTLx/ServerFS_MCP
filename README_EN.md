@@ -156,7 +156,7 @@ These are registered MCP tool counts. The default surface includes all 5 mutatio
 | --- | ---: | --- |
 | Filesystem | 11 | 6 read tools + 5 controlled mutation tools |
 | Filesystem + binary | 13 | Bounded whole-file download/upload |
-| Filesystem + Repo Ops | 15 | 4 deterministic Git / named-action tools; v0.23.1 Linux |
+| Filesystem + Repo Ops | 15 | 4 deterministic Git / named-action tools; v0.23.1 Linux Host Bridge / native macOS |
 | Filesystem + binary + Repo Ops | 17 | Binary + Repo Ops |
 | Filesystem + Agent | 21 | 10 structured Agent Bridge tools |
 | Filesystem + binary + Agent | 23 | Binary + Agent |
@@ -171,7 +171,7 @@ These are registered MCP tool counts. The default surface includes all 5 mutatio
 
 **Optional binary transfer:** `download_binary_file`, `upload_binary_file`
 
-**Optional v0.23.1 Linux Host Bridge and validated native macOS Repo Ops:** `inspect_repo`, `run_repo_action`, `commit_repo_changes`, `push_repo`. Repo Ops uses fixed Git semantics and operator-defined, SHA-256 integrity-pinned named actions. The caller cannot supply executable, argv, environment, remote, ref, force, or shell fragments, and Repo Ops never creates an Agent task. The v0.23.0 Linux release acceptance included bootstrap/internal E2E, public ChatGPT MCP E2E, full root/Agent Bridge CI, MCP conformance, Windows/macOS regression, and the site build/deploy all passed.
+**Optional v0.23.1 Linux Host Bridge and validated native macOS Repo Ops:** `inspect_repo`, `run_repo_action`, `commit_repo_changes`, `push_repo`. Repo Ops uses fixed Git semantics and operator-defined, SHA-256 integrity-pinned named actions. The caller cannot supply executable, argv, environment, remote, ref, force, or shell fragments, and Repo Ops never creates an Agent task. The v0.23.0 Linux acceptance remains the baseline; v0.23.1 adds real native Apple Silicon macOS Repo Ops E2E plus refreshed root/Agent Bridge, packaging, plugin, and site validation.
 
 Agent tools submit and observe structured provider tasks; they are **not** a shell or arbitrary command-execution API. Repo Ops and Agent delegation are authorized independently: a workdir may enable Repo Ops while Agent mode remains disabled. See [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) and [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/).
 
@@ -233,7 +233,7 @@ The documentation site is the authoritative user and operator reference. The REA
 | Static API Key remote HTTP | [Static API Key](https://ntlx.github.io/ServerFS_MCP/docs/api-key/) |
 | OAuth 2.1 remote HTTP | [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/docs/oauth/) |
 | Binary transfer / file ingress | [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/docs/binary-transfer/) |
-| Deterministic repository operations (v0.23.1 Linux) | [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) |
+| Deterministic repository operations (v0.23.1 Linux / native macOS) | [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) |
 | Agent delegation | [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/) |
 | ACP profile configuration and operation | [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) |
 | Optional Jev advice | [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/docs/jev-advisors/) |

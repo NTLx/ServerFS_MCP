@@ -17,14 +17,14 @@ It is **read-only by default**. Administrators can opt individual workdirs into 
 | --- | ---: | --- |
 | Filesystem | 11 | Base deployment |
 | Filesystem + binary | 13 | Binary transfer enabled |
-| Filesystem + Repo Ops | 15 | v0.23.0 Linux Repo Ops enabled |
+| Filesystem + Repo Ops | 15 | Repo Ops enabled (Linux / validated native macOS) |
 | Filesystem + binary + Repo Ops | 17 | Binary + Repo Ops enabled |
 | Filesystem + Agent | 21 | Agent overlay enabled |
 | Filesystem + binary + Agent | 23 | Binary + Agent enabled |
 | Filesystem + Agent + Repo Ops | 25 | Agent + Repo Ops enabled |
-| Full v0.23.0 surface | 27 | Binary + Agent + Repo Ops enabled |
+| Full v0.23.1 surface | 27 | Binary + Agent + Repo Ops enabled |
 
-Stable v0.23.1 keeps the existing 11 / 13 / 21 / 23 filesystem, binary and Agent combinations and adds the independently gated Linux Repo Ops combinations shown above. There is no shell, generic command executor, recursive delete, or unguarded overwrite.
+Stable v0.23.1 keeps the existing 11 / 13 / 21 / 23 filesystem, binary and Agent combinations and adds the independently gated Repo Ops combinations shown above on Linux Host Bridge and validated native Apple Silicon macOS. There is no shell, generic command executor, recursive delete, or unguarded overwrite.
 
 ## Start here
 

@@ -173,7 +173,7 @@ Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持
 
 **可选二进制传输：** `download_binary_file`、`upload_binary_file`
 
-**v0.23.1 Linux Host Bridge 与原生 macOS 可选 Repo Ops：** `inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`。Repo Ops 只允许固定 Git 语义和管理员配置、完整性固定的 named actions；调用方不能传 executable、argv、environment、remote、ref、force 或 shell fragment，也不会创建 Agent task。发布前 Linux bootstrap / 内部 E2E、公共 ChatGPT MCP E2E、root/Agent Bridge 全量 CI、MCP conformance、Windows/macOS 回归与站点 build/deploy 均已通过。
+**v0.23.1 Linux Host Bridge 与原生 macOS 可选 Repo Ops：** `inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`。Repo Ops 只允许固定 Git 语义和管理员配置、完整性固定的 named actions；调用方不能传 executable、argv、environment、remote、ref、force 或 shell fragment，也不会创建 Agent task。v0.23.0 的 Linux 验收继续作为基线；v0.23.1 新增真实 Apple Silicon 原生 macOS Repo Ops E2E，并刷新 root/Agent Bridge、打包、Plugin 与站点验证。
 
 Agent 工具用于提交和观察结构化 Provider Task，**不是** Shell 或任意命令执行 API。Repo Ops 与 Agent delegation 分别授权：一个 Workdir 可以在 `agent_mode=disabled` 时单独启用 Repo Ops。详见 [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) 与 [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/agent-bridge/)。
 
@@ -235,7 +235,7 @@ ChatGPT 文件参数通过可选的隔离 ingress helper 处理，而不是让 M
 | 远程 HTTP 静态 API Key | [Static API Key](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/api-key/) |
 | 远程 HTTP OAuth 2.1 | [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/oauth/) |
 | 二进制传输 / 文件输入 | [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/binary-transfer/) |
-| 确定性仓库操作（v0.23.1 Linux） | [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) |
+| 确定性仓库操作（v0.23.1 Linux / 原生 macOS） | [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) |
 | Agent 委托 | [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/agent-bridge/) |
 | ACP profile 配置与运维 | [ACP Guide](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/acp/) |
 | 可选 Jev 建议 | [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/jev-advisors/) |
