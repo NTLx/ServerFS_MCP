@@ -310,7 +310,10 @@ class TestRenderRequest:
         template = '[agent]\nenabled = true\n\n[[workdirs]]\nalias = "repo"\npath = "{root}"\n'
         config = _write_config(tmp_path, template, workdir)
         workdirs, settings = load_native_config(config)
-        with pytest.raises(AgentLifecycleError, match="no workdir enables Agent delegation or Repo Ops"):
+        with pytest.raises(
+            AgentLifecycleError,
+            match="no workdir enables Agent delegation or Repo Ops",
+        ):
             render_request_from_config(workdirs, settings)
 
 
