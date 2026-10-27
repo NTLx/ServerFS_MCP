@@ -3,9 +3,9 @@ title: Deterministic Repo Ops
 description: v0.23.0 Linux Deterministic Repo Ops for bounded Git inspection, integrity-pinned repository actions, explicit-file commits, exact current-upstream pushes, and fixed npm release actions for the validated package.json release shape without Agent delegation.
 ---
 
-Deterministic Repo Ops is an optional **non-Agent repository capability** released in **v0.23.0**. It lets an MCP caller finish mechanical repository steps without receiving a shell and without delegating those steps to a server-side AI Agent.
+Deterministic Repo Ops is an optional **non-Agent repository capability** released in **v0.23.0** and extended to validated native Apple Silicon macOS in **v0.23.1**. It lets an MCP caller finish mechanical repository steps without receiving a shell and without delegating those steps to a server-side AI Agent.
 
-The current stable release is **v0.23.0**. Repo Ops is released for the Linux Host Bridge deployment shape; native Windows/macOS Repo Ops enablement is not claimed.
+The current stable release is **v0.23.1**. Repo Ops is supported on Linux Host Bridge and validated native Apple Silicon macOS. Native Windows Repo Ops remains unsupported.
 
 ## Product boundary
 
@@ -202,9 +202,9 @@ Repo Ops keeps the existing ServerFS trust model:
 
 See [Security Model](../security/) and [Architecture](../architecture/) for the adjacent trust boundaries.
 
-## Capability counts in v0.23.0
+## Capability counts in v0.23.1
 
-Stable v0.23.0 keeps the existing 11 / 13 / 21 / 23 filesystem, binary, and Agent combinations and adds four independently gated Repo Ops tools on Linux:
+Stable v0.23.1 keeps the existing 11 / 13 / 21 / 23 filesystem, binary, and Agent combinations and adds four independently gated Repo Ops tools on Linux Host Bridge and validated native Apple Silicon macOS:
 
 | Surface | Tools |
 | --- | ---: |
@@ -217,7 +217,7 @@ Stable v0.23.0 keeps the existing 11 / 13 / 21 / 23 filesystem, binary, and Agen
 | Filesystem + Agent + Repo Ops | 25 |
 | Filesystem + binary + Agent + Repo Ops | 27 |
 
-## v0.23.0 release acceptance
+## v0.23.0 Linux release acceptance
 
 The Linux bootstrap/internal E2E is **CLOSED-PASS** and the public ChatGPT MCP E2E is **PASS**:
 

@@ -232,3 +232,42 @@ def test_acp_profiles_do_not_weaken_unknown_key_rejection(tmp_path: Path) -> Non
 
     with pytest.raises(BridgeError, match="unknown render request field"):
         build_policy_document({"workdirs": [], "acp_profiles": [], "surprise": True})
+
+
+def test_repo_only_policy_round_trips_without_private_material(tmp_path: Path) -> None:
+    from serverfs_agent_bridge.config import BridgeConfig
+    from serverfs_agent_bridge.render_config import build_policy_document
+
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    request = {
+        "workdirs": [
+            {
+                "alias": "repo",
+                "host_path": str(workdir),
+                "read_only": False,
+                "agent_mode": "disabled",
+                "agent_runtimes": [],
+                "repo_ops_enabled": True,
+                "repo_actions": {
+                    "fixed_check": {
+                        "argv": ["python", "tools/check.py", "$(id)"],
+                        "mutates": False,
+                        "argument": "none",
+                        "integrity": {"tools/check.py": "a" * 64},
+                    }
+                },
+            }
+        ]
+    }
+    derived = build_policy_document(request)
+    assert derived["workdirs"][0]["repo_actions"]["fixed_check"]["argv"][-1] == "$(id)"
+    assert "proxy" not in derived and "jev" not in derived
+
+    config_path = tmp_path / "bridge.json"
+    configure_bridge_config(config_path, request, {})
+    bridge = BridgeConfig.load(config_path)
+    policy = bridge.policies.get("repo")
+    assert policy.repo_ops_enabled is True
+    assert policy.repo_actions[0].argv[-1] == "$(id)"
+    assert not bridge.codex.enabled

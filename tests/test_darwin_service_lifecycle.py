@@ -418,7 +418,7 @@ def test_agent_bridge_restart_syncs_then_hands_off_only_bridge(
     monkeypatch.setattr(
         cli,
         "_load",
-        lambda _path: ([], SimpleNamespace(agent_enabled=True)),
+        lambda _path: ([], SimpleNamespace(bridge_required=True)),
     )
     from serverfs_mcp import darwin_bridge_policy
 

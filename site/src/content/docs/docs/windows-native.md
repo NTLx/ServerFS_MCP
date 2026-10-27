@@ -5,7 +5,7 @@ description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, n
 
 Since v0.10.0 ServerFS runs natively on **Windows 11 x64 over local NTFS** as an MCP **stdio** service. Nothing listens on a port: the official OpenAI `tunnel-client` connects out to the control plane and speaks MCP through the child process's stdin/stdout, so the default native profile has no localhost listener. Linux Docker deployments are unchanged and remain the supported Linux shape.
 
-v0.11 adds **Agent delegation** to this deployment for Codex, Claude Code and Qoder through the same ten Agent tools over a Named-Pipe Bridge, accepted through the live ChatGPT tunnel E2E. The v0.23.0 Deterministic Repo Ops release scope is Linux-only; this Windows guide does not claim native Repo Ops enablement.
+v0.11 adds **Agent delegation** to this deployment for Codex, Claude Code and Qoder through the same ten Agent tools over a Named-Pipe Bridge, accepted through the live ChatGPT tunnel E2E. v0.23.1 supports Repo Ops on Linux Host Bridge and validated native Apple Silicon macOS; native Windows Repo Ops remains unsupported.
 
 v0.14.0 adds the persistent outer lifecycle without changing that MCP/Agent surface. Its owner is a **current-user, least-privilege Task Scheduler 2.0 task** — not an SCM/LocalSystem Windows Service. Normal install, runtime, recovery, maintenance and removal remain non-elevated and store no account password.
 

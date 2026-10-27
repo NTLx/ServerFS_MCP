@@ -4,7 +4,7 @@
 
 ## Current release
 
-- **v0.23.0 is the current stable release.** It introduces independently gated Linux Deterministic Repo Ops without Agent fallback; native Windows/macOS Repo Ops enablement is not claimed.
+- **v0.23.1 is the current stable release.** It adds validated native Apple Silicon macOS support for independently gated Deterministic Repo Ops while retaining Linux Host Bridge support and the no-Agent-fallback contract; native Windows Repo Ops remains unsupported.
 - **v0.22.1 is the previous released stable version.**
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
@@ -58,7 +58,7 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.22.0** — previous stable release; adds bounded process-local Correlated Agent Diagnostics through private Bridge RPC only: `diagnostics snapshot` and per-task diagnostics, with no new MCP tool, listener, trace persistence, OpenTelemetry dependency or telemetry egress. Phase F is accepted on Linux/VPS, supported macOS and supported Windows, and Phase G release-readiness acceptance is PASS; see [`dev_plan_v0.22.md`](../../dev_plan_v0.22.md) and the v0.22 acceptance evidence.
 
 - **v0.22.1** — previous stable maintenance release for the Linux Agent Bridge installer staged-Python fix, macOS restart readiness/health closure, one-shot self-restart hand-over with verified cleanup, and test-isolation regression fix; see [`dev_plan_v0.22.1.md`](../../dev_plan_v0.22.1.md) and [`v0.22.1-release-checklist-2026-10-23.md`](../v0.22.1-release-checklist-2026-10-23.md) for release evidence.
-- **v0.23.0** — current stable release; adds independently gated Linux Deterministic Repo Ops: four public MCP tools for bounded Git inspection, integrity-pinned named actions, explicit-file commit and exact current-upstream push without Agent delegation. Linux bootstrap/internal E2E, public ChatGPT MCP E2E, full root/Agent Bridge CI, MCP conformance, Windows/macOS regression and site build/deploy all passed before publication. See [`dev_plan_v0.23.md`](../../dev_plan_v0.23.md), [`v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md`](../v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md), [`v0.23.0-release-checklist-2026-10-26.md`](../v0.23.0-release-checklist-2026-10-26.md), and the [Repo Ops guide](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/).
+- **v0.23.1** — current stable maintenance release; enables independently gated Deterministic Repo Ops on validated native Apple Silicon macOS, retaining Linux Host Bridge support and the no-Agent-fallback contract. Native Windows Repo Ops remains unsupported. See [release notes](../releases/v0.23.1.md), [`v0.23.1 release checklist`](../v0.23.1-release-checklist-2026-10-27.md), and [`macOS native Repo Ops acceptance`](../v0.23.1-macos-repo-ops-acceptance-2026-10-27.md). The v0.23.0 Linux Repo Ops evidence remains in its [original release records](../v0.23.0-release-checklist-2026-10-26.md).
 
 ## Keep this index small
 

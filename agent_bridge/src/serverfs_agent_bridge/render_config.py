@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from . import lease_identity
-from .config import _load_acp_profiles
+from .config import _load_acp_profiles, _load_repo_actions
 from .data_home import bridge_data_home
 from .errors import BridgeError
 from .local_ipc import derive_pipe_name
@@ -64,7 +64,17 @@ NATIVE_LEASE_KEY = "alias"
 MAX_INPUT_BYTES = 256 * 1024
 
 _INPUT_KEYS = frozenset({"workdirs", "enable_fake_runtime", "limits", "runtimes", "acp_profiles"})
-_WORKDIR_KEYS = frozenset({"alias", "host_path", "read_only", "agent_mode", "agent_runtimes"})
+_WORKDIR_KEYS = frozenset(
+    {
+        "alias",
+        "host_path",
+        "read_only",
+        "agent_mode",
+        "agent_runtimes",
+        "repo_ops_enabled",
+        "repo_actions",
+    }
+)
 
 #: Per-runtime policy keys the renderer accepts. These are all non-secret: an executable name and
 #: two booleans. The proxy *endpoint* is deliberately absent — it arrives over the bootstrap channel
@@ -163,6 +173,17 @@ def _validate_workdirs(entries: Any) -> list[WorkdirAgentPolicy]:
             raise BridgeError(
                 "BRIDGE_CONFIG_INVALID", "workspace-write agent mode requires a writable workdir"
             )
+        repo_ops_enabled = item.get("repo_ops_enabled", False)
+        if type(repo_ops_enabled) is not bool:
+            raise BridgeError(
+                "BRIDGE_CONFIG_INVALID", "workdir.repo_ops_enabled must be a JSON boolean"
+            )
+        try:
+            repo_actions = _load_repo_actions(
+                item.get("repo_actions"), enabled=repo_ops_enabled, read_only=read_only
+            )
+        except ValueError as exc:
+            raise BridgeError("BRIDGE_CONFIG_INVALID", str(exc)) from exc
         policies.append(
             WorkdirAgentPolicy(
                 slot=None,  # native deployment: alias-derived identity only
@@ -171,6 +192,8 @@ def _validate_workdirs(entries: Any) -> list[WorkdirAgentPolicy]:
                 mode=mode,
                 runtimes=frozenset(runtimes),
                 read_only=read_only,
+                repo_ops_enabled=repo_ops_enabled,
+                repo_actions=repo_actions,
             )
         )
     return policies
@@ -252,6 +275,29 @@ def build_policy_document(request: dict[str, Any]) -> dict[str, Any]:
                 "read_only": policy.read_only,
                 "agent_mode": policy.mode.value,
                 "agent_runtimes": sorted(policy.runtimes),
+                **(
+                    {
+                        "repo_ops_enabled": True,
+                        "repo_actions": {
+                            action.name: {
+                                "argv": list(action.argv),
+                                "mutates": action.mutates,
+                                "argument": action.argument,
+                                "integrity": dict(action.integrity),
+                                **({"kind": action.kind} if action.kind != "command" else {}),
+                                **({"repository": action.repository} if action.repository else {}),
+                                **(
+                                    {"github_cli": action.github_cli}
+                                    if action.github_cli != "gh"
+                                    else {}
+                                ),
+                            }
+                            for action in policy.repo_actions
+                        },
+                    }
+                    if policy.repo_ops_enabled
+                    else {}
+                ),
             }
             for policy in policies
         ],

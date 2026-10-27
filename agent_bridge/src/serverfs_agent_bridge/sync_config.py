@@ -81,7 +81,15 @@ def _load_existing(path: Path) -> dict[str, Any]:
 def _workdirs_match(actual: Any, expected: Any) -> bool:
     if not isinstance(actual, list) or not isinstance(expected, list):
         return False
-    keys = ("alias", "host_path", "read_only", "agent_mode", "agent_runtimes")
+    keys = (
+        "alias",
+        "host_path",
+        "read_only",
+        "agent_mode",
+        "agent_runtimes",
+        "repo_ops_enabled",
+        "repo_actions",
+    )
     try:
         actual_projection = sorted(
             ({key: item.get(key) for key in keys} for item in actual if isinstance(item, dict)),

@@ -21,7 +21,7 @@ ServerFS 围绕**窄能力与独立执行层**设计。
 - 非 root 容器用户、drop capabilities、no-new-privileges。
 - MCP 仅连接内部网络，无公开端口、无互联网出口。
 - 可选 ChatGPT 文件入口被隔离在独立 sidecar 中，不挂载 workdir，也不持有 OpenAI 凭据。
-- v0.23.0 Repo Ops 是非 Agent、按 Workdir opt-in 的能力，本版本仅声明 Linux 支持，不暴露调用方可控的 shell/argv/environment/remote/ref/force。
+- v0.23.1 Repo Ops 是非 Agent、按 Workdir opt-in 的能力，支持 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS，原生 Windows Repo Ops 仍不支持，不暴露调用方可控的 shell/argv/environment/remote/ref/force。
 
 ## 文件入口边界
 
@@ -47,9 +47,9 @@ v0.16 可通过隔离的 `serverfs-auth` Authorization Server 保护远程 Strea
 
 OpenAI Tunnel 的 OAuth 路径同样保持这些校验。已知上游 resource rewrite 问题会被明确记录，而不是通过 wildcard audience 绕过。部署、撤销、备份和 provider 细节见 [OAuth 2.1](../oauth/)。
 
-## Deterministic Repo Ops 边界（v0.23.0）
+## Deterministic Repo Ops 边界（v0.23.1）
 
-Repo Ops 是独立门控的 Linux 宿主机能力，不属于 Agent 执行模式。它复用已认证的 Host Bridge transport 和共享 writer lease，但 `repo.*` RPC 路径不会创建 Agent task，也不会调用 Provider adapter。
+Repo Ops 是独立门控的宿主机能力，支持 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS，不属于 Agent 执行模式。它复用已认证的 Host Bridge transport 和共享 writer lease，但 `repo.*` RPC 路径不会创建 Agent task，也不会调用 Provider adapter。
 
 Git 操作语义固定。调用方不能选择 executable、argv、environment、cwd、remote、ref、force、hooks、signing、askpass、repository SSH override 或自定义 remote helper。Commit 只接受显式、通过策略校验的路径，并拒绝预先存在的 staged state；push 会在内部解析当前 branch/upstream，并只提供一个精确 refspec。子进程环境使用 allowlist，因此不会整体继承 Bridge/Provider secrets。
 

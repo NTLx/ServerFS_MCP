@@ -271,7 +271,8 @@ def _env_bool(values: Mapping[str, str], name: str, *, default: bool = False) ->
 def _private_overlay(settings, values: Mapping[str, str]) -> dict:
     agent = settings.agent
     if agent is None or not agent.enabled:
-        raise DarwinBridgePolicyError("the native configuration does not enable Agent delegation")
+        # Repo-only Bridge operation has no provider or Jev egress configuration.
+        return {}
 
     runtime_needs_proxy = any(
         agent.runtime_enabled(name) and agent.runtime_use_proxy(name)

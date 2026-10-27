@@ -7,7 +7,7 @@ description: Operate the ServerFS Host Bridge lifecycle for Agent delegation and
 
 The Host Bridge is an explicit optional host capability. It may carry Agent delegation, v0.23 Linux Deterministic Repo Ops transport, or both. Preserve the two-process security boundary, independent per-workdir authorization, provider-native ownership for Agent execution, and current-user lifecycle.
 
-The current published stable is **v0.23.0**. v0.23.0 adds Linux Deterministic Repo Ops over the same authenticated host Bridge transport, but Repo Ops is explicitly **not Agent delegation** and does not create provider tasks. Generic ACP v1 profiles were introduced in v0.19.0 and remain distinct from native `codex`, `claude` and `qoder` adapters. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete Agent configuration and operations, and the [Deterministic Repo Ops guide](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) for the separate repository capability.
+The current published stable is **v0.23.1**. v0.23.0 introduced Linux Deterministic Repo Ops over the same authenticated host Bridge transport, and v0.23.1 adds validated native Apple Silicon macOS support; native Windows Repo Ops remains unsupported. Repo Ops is explicitly **not Agent delegation** and does not create provider tasks. Generic ACP v1 profiles were introduced in v0.19.0 and remain distinct from native `codex`, `claude` and `qoder` adapters. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for complete Agent configuration and operations, and the [Deterministic Repo Ops guide](https://ntlx.github.io/ServerFS_MCP/docs/repo-ops/) for the separate repository capability.
 
 ## When to use
 

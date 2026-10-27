@@ -21,7 +21,7 @@ ServerFS is designed around **narrow capabilities and independent enforcement la
 - Non-root container user, dropped capabilities, and no-new-privileges.
 - Internal-only MCP networks with no published ports or Internet egress.
 - Optional ChatGPT file ingress is isolated in a separate sidecar with no workdir mounts or OpenAI credentials.
-- v0.23.0 Repo Ops is non-Agent, per-workdir opt-in, Linux-only in this release, and exposes no caller-controlled shell/argv/environment/remote/ref/force surface.
+- v0.23.1 Repo Ops is non-Agent, per-workdir opt-in, supported on Linux Host Bridge and validated native Apple Silicon macOS; native Windows Repo Ops remains unsupported, and exposes no caller-controlled shell/argv/environment/remote/ref/force surface.
 
 ## File-ingress boundary
 
@@ -47,9 +47,9 @@ Admission is default-deny and uses exact stable provider subjects. Provider-nati
 
 The OpenAI Tunnel OAuth path keeps the same validation. A known upstream resource-rewrite issue is documented rather than bypassed with wildcard audiences. See [OAuth 2.1](../oauth/) for deployment, revocation, backup and provider details.
 
-## Deterministic Repo Ops boundary (v0.23.0)
+## Deterministic Repo Ops boundary (v0.23.1)
 
-Repo Ops is an independently gated Linux host capability, not an Agent execution mode. It reuses the authenticated host Bridge transport and shared writer lease, but its `repo.*` RPC path never creates an Agent task or invokes a provider adapter.
+Repo Ops is an independently gated host capability supported on Linux Host Bridge and validated native Apple Silicon macOS, not an Agent execution mode. It reuses the authenticated host Bridge transport and shared writer lease, but its `repo.*` RPC path never creates an Agent task or invokes a provider adapter.
 
 Git operations have fixed semantics. Callers cannot select executable, argv, environment, cwd, remote, ref, force, hooks, signing, askpass, repository SSH overrides, or custom remote helpers. Commit accepts explicit policy-valid paths only and refuses pre-existing staged state; push derives the current branch/upstream internally and supplies one exact refspec. Child environments are allowlisted so Bridge/provider secrets are not inherited wholesale.
 

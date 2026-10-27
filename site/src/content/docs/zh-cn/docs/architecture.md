@@ -76,7 +76,7 @@ serverfs-auth
 
 OAuth 属于 Linux remote-HTTP 部署形态，不属于 Windows/macOS 原生 stdio。公网 TLS/反向代理形态、provider callback、client 注册与 Tunnel 兼容边界详见 [OAuth 2.1](../oauth/)。
 
-## 可选 Deterministic Repo Ops 路径（v0.23.0）
+## 可选 Deterministic Repo Ops 路径（v0.23.1）
 
 ```text
 ServerFS MCP 容器
@@ -88,7 +88,7 @@ ServerFS MCP 容器
    └── 管理员定义、integrity-pinned 的 named actions
 ```
 
-Repo Ops 会复用宿主机 Bridge transport、宿主机 Workdir 路径、当前用户 Git 凭据上下文以及共享 writer lease，但它**不会**进入 Agent 执行路径。不会选择模型/Runtime，不会创建 Agent task/session，也不会调用 Provider adapter。Repo Ops 与 Agent delegation 按 Workdir 独立授权。v0.23.0 发布范围仅声明 Linux。详见 [Deterministic Repo Ops](../repo-ops/)。
+Repo Ops 会复用宿主机 Bridge transport、宿主机 Workdir 路径、当前用户 Git 凭据上下文以及共享 writer lease，但它**不会**进入 Agent 执行路径。不会选择模型/Runtime，不会创建 Agent task/session，也不会调用 Provider adapter。Repo Ops 与 Agent delegation 按 Workdir 独立授权。v0.23.1 支持 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS Repo Ops；原生 Windows Repo Ops 仍不支持。详见 [Deterministic Repo Ops](../repo-ops/)。
 
 ## 可选 Agent 路径
 
@@ -163,4 +163,4 @@ ServerFS 提供窄能力操作，而不是通用执行原语：
 - v0.23.0 Linux Deterministic Repo Ops：有界 Git inspection、固定 named action、显式文件 commit、精确当前 upstream push，以及面向已验证 `package.json` 发布形态的固定 npm 发布动作
 - 可选的宿主机 Jev advisory decision
 
-稳定版 **v0.23.0** 保留既有 11 / 13 / 21 / 23 工具组合，并可在 Linux 上独立增加 4 个 Repo Ops 工具，因此 Repo Ops-only 为 15 个、二进制 + Repo Ops 为 17 个、Agent + Repo Ops 为 25 个，三者全部启用为 27 个。Repo Ops 与 Agent delegation 分别门控，且 Repo Ops 不创建 Agent task、不接收通用 shell / argv / env / remote / ref / force。Linux bootstrap / 内部 E2E、公共 ChatGPT MCP E2E、刷新后的 root/Agent Bridge CI、MCP conformance、Windows/macOS 回归以及 documentation freeze 后的站点 build/deploy 均在发布前通过。完整契约与证据见 [Deterministic Repo Ops](../repo-ops/)。Jev 仍是 Agent Bridge 内部 advisor，而不是 MCP capability surface。
+稳定版 **v0.23.1** 保留既有 11 / 13 / 21 / 23 工具组合，并可在 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS 上独立增加 4 个 Repo Ops 工具，因此 Repo Ops-only 为 15 个、二进制 + Repo Ops 为 17 个、Agent + Repo Ops 为 25 个，三者全部启用为 27 个。Repo Ops 与 Agent delegation 分别门控，且 Repo Ops 不创建 Agent task、不接收通用 shell / argv / env / remote / ref / force。Linux bootstrap / 内部 E2E、公共 ChatGPT MCP E2E、刷新后的 root/Agent Bridge CI、MCP conformance、Windows/macOS 回归以及 documentation freeze 后的站点 build/deploy 均在发布前通过。完整契约与证据见 [Deterministic Repo Ops](../repo-ops/)。Jev 仍是 Agent Bridge 内部 advisor，而不是 MCP capability surface。

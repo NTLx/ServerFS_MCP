@@ -5,7 +5,7 @@ description: v0.23.0 Linux Deterministic Repo Ops：无需 Agent 委托即可执
 
 Deterministic Repo Ops 是 **v0.23.0** 正式发布的可选 **非 Agent 仓库能力**。它让 MCP 调用方可以完成机械性的仓库收尾步骤，而不获得 Shell，也不需要把这些步骤委托给服务器上的 AI Agent。
 
-当前稳定版为 **v0.23.0**。Repo Ops 已在 Linux Host Bridge 部署形态发布；v0.23.0 不声明 Windows/macOS 原生 Repo Ops 已启用。
+当前稳定版为 **v0.23.1**。Repo Ops 支持 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS；原生 Windows Repo Ops 仍不支持。
 
 ## 产品边界
 
@@ -162,9 +162,9 @@ Repo Ops 延续 ServerFS 现有信任模型：
 
 相邻信任边界见[安全模型](../security/)与[架构](../architecture/)。
 
-## v0.23.0 中的工具数量
+## v0.23.1 中的工具数量
 
-稳定版 v0.23.0 保留既有文件系统、二进制与 Agent 的 11 / 13 / 21 / 23 组合，并在 Linux 上独立增加 4 个 Repo Ops 工具：
+稳定版 v0.23.1 保留既有文件系统、二进制与 Agent 的 11 / 13 / 21 / 23 组合，并在 Linux Host Bridge 与已验收的 Apple Silicon 原生 macOS 上独立增加 4 个 Repo Ops 工具：
 
 | 能力面 | 工具数 |
 | --- | ---: |

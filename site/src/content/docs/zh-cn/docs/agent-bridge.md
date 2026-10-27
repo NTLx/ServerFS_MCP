@@ -50,7 +50,7 @@ Unix socket
 - 21 个工具：文件系统 + Agent
 - 23 个工具：文件系统 + 二进制 + Agent
 
-v0.23.0 还会复用已认证的 Host Bridge transport，提供独立门控的 **Deterministic Repo Ops**。Repo Ops 增加 4 个 MCP 工具（`inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`），不会创建 Agent task，也不会调用 provider adapter。Workdir 可以在 Agent mode 保持 disabled 时单独开启 Repo Ops。发布实现范围仅声明 Linux；不声明 macOS / Windows 原生启用。
+v0.23.0 还会复用已认证的 Host Bridge transport，提供独立门控的 **Deterministic Repo Ops**。Repo Ops 增加 4 个 MCP 工具（`inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`），不会创建 Agent task，也不会调用 provider adapter。Workdir 可以在 Agent mode 保持 disabled 时单独开启 Repo Ops。v0.23.1 支持 Linux Host Bridge 和已验收的 Apple Silicon 原生 macOS Repo Ops；原生 Windows Repo Ops 仍不支持。
 
 Repo Ops 不是通用命令通道：Git 操作语义固定；named action 使用运维人员固定 argv 与 SHA-256 integrity pins；调用方不能传 executable、argv、environment、remote、ref、force 或 shell syntax。Repo Ops 写操作与所有 named action 都复用现有 writer lease，与文件修改和 Agent workspace-write task 互斥。Linux bootstrap / 内部 E2E、公共 ChatGPT MCP E2E、刷新后的 root/Agent Bridge CI、MCP conformance、Windows/macOS 回归以及 documentation freeze 后的站点 build/deploy 均在 v0.23.0 发布前通过。完整配置、安全、工具与验收契约见 [Deterministic Repo Ops](../repo-ops/)。
 

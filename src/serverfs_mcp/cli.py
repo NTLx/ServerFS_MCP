@@ -257,11 +257,11 @@ def _load(path: Path):
 
 
 def _native_agent_settings(native_settings) -> tuple | None:
-    """Build Agent wiring for a native serve, or ``None`` when delegation is off.
+    """Build native Bridge wiring, or ``None`` when Agent and Repo Ops are both off.
 
-    ``serverfs.toml`` is the only operator-facing source of Agent policy: this function is gated on
-    ``native_settings.agent_enabled`` and never on an ambient environment variable, so a stray
-    ``SERVERFS_AGENT_BRIDGE_ENABLED`` in a shell cannot turn Agent delegation on.
+    ``serverfs.toml`` is the only operator-facing source of Bridge policy: this function is gated on
+    ``native_settings.bridge_required`` and never on an ambient environment variable, so a stray
+    ``SERVERFS_AGENT_BRIDGE_ENABLED`` in a shell cannot turn either capability on.
 
     The endpoint and lock directory are **derived**, not required from the environment. A direct
     ``serverfs serve`` is not a supervisor launcher. The Bridge lifecycle belongs to the
@@ -277,7 +277,7 @@ def _native_agent_settings(native_settings) -> tuple | None:
     """
     from .config import Settings
 
-    if not native_settings.agent_enabled:
+    if not native_settings.bridge_required:
         return None
 
     from .native_endpoint import NativeEndpointError, resolve_native_agent_wiring
@@ -385,7 +385,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     elif sys.platform != "win32":
         return _fail("native serve is supported only on Windows and macOS 27 (Apple Silicon)")
     workdirs, native_settings = _load(args.config)
-    if sys.platform == "darwin" and native_settings.agent_enabled:
+    if sys.platform == "darwin" and native_settings.bridge_required:
         from .darwin_bridge_policy import DarwinBridgePolicyError, policy_is_synced
 
         try:
@@ -574,8 +574,8 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
         from .darwin_bridge_policy import DarwinBridgePolicyError, configure_policy
 
         workdirs, native_settings = _load(args.config)
-        if not native_settings.agent_enabled:
-            return _fail("the native configuration does not enable Agent delegation")
+        if not native_settings.bridge_required:
+            return _fail("the native configuration does not require the Agent Bridge")
         try:
             configure_policy(workdirs, native_settings, env_file=args.env_file)
         except DarwinBridgePolicyError as exc:
@@ -586,8 +586,8 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
         from .darwin_bridge_policy import DarwinBridgePolicyError, sync_policy
 
         workdirs, native_settings = _load(args.config)
-        if not native_settings.agent_enabled:
-            return _fail("the native configuration does not enable Agent delegation")
+        if not native_settings.bridge_required:
+            return _fail("the native configuration does not require the Agent Bridge")
         try:
             sync_policy(workdirs, native_settings)
         except DarwinBridgePolicyError as exc:
@@ -609,8 +609,8 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
                 )
 
                 workdirs, native_settings = _load(args.config)
-                if not native_settings.agent_enabled:
-                    return _fail("the native configuration does not enable Agent delegation")
+                if not native_settings.bridge_required:
+                    return _fail("the native configuration does not require the Agent Bridge")
                 try:
                     if args.env_file is None:
                         sync_policy(workdirs, native_settings)
@@ -764,7 +764,7 @@ def cmd_service(args: argparse.Namespace) -> int:
                     return 0
 
             workdirs, native_settings = _load(config_path)
-            if native_settings.agent_enabled:
+            if native_settings.bridge_required:
                 from .darwin_bridge_policy import DarwinBridgePolicyError, configure_policy
 
                 try:
@@ -778,7 +778,7 @@ def cmd_service(args: argparse.Namespace) -> int:
             states = darwin_service.install(
                 config_path,
                 env_file,
-                bridge_enabled=native_settings.agent_enabled,
+                bridge_enabled=native_settings.bridge_required,
                 expected_unmanaged_roots=expected_roots,
             )
             for service, state in sorted(states.items()):

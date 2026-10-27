@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import re
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -60,6 +61,8 @@ MAX_ACP_ARGS = 32
 MAX_ACP_ARG_LENGTH = 4096
 MAX_ACP_PROFILE_BYTES = 65_536
 ACP_PROFILE_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,27}$")
+REPO_ACTION_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+MAX_REPO_ACTIONS = 16
 
 
 class NativeConfigError(Exception):
@@ -70,6 +73,8 @@ class NativeConfigError(Exception):
 class NativeServerSettings:
     log_level: str = "INFO"
     agent: NativeAgentSettings | None = None
+    repo_ops_enabled: bool = False
+    repo_actions: Mapping[str, tuple[NativeRepoAction, ...]] = field(default_factory=dict)
 
     @property
     def agent_enabled(self) -> bool:
@@ -79,6 +84,24 @@ class NativeServerSettings:
         v0.10 shape and must behave exactly as it did.
         """
         return self.agent is not None and self.agent.enabled
+
+    @property
+    def bridge_required(self) -> bool:
+        return self.agent_enabled or self.repo_ops_enabled
+
+
+@dataclass(frozen=True)
+class NativeRepoAction:
+    """Validated operator-owned named action, in the existing Bridge policy shape."""
+
+    name: str
+    argv: tuple[str, ...]
+    mutates: bool
+    argument: str
+    integrity: tuple[tuple[str, str], ...]
+    kind: str = "command"
+    repository: str | None = None
+    github_cli: str = "gh"
 
 
 @dataclass(frozen=True)
@@ -565,13 +588,122 @@ def _parse_agent_runtimes(where: str, value: object) -> frozenset[str]:
     return frozenset(runtimes)
 
 
+def _parse_repo_actions(where: str, value: object, *, enabled: bool, read_only: bool):
+    if value is None:
+        value = {}
+    if not isinstance(value, dict):
+        raise NativeConfigError(f"{where}.repo_actions must be a table of named actions")
+    if len(value) > MAX_REPO_ACTIONS:
+        raise NativeConfigError(
+            f"{where}.repo_actions must contain at most {MAX_REPO_ACTIONS} actions"
+        )
+    if value and not enabled:
+        raise NativeConfigError(f"{where}.repo_actions requires repo_ops_enabled = true")
+    actions: list[NativeRepoAction] = []
+    for name, entry in sorted(value.items()):
+        label = f"{where}.repo_actions.{name}"
+        if not isinstance(name, str) or not REPO_ACTION_ID_RE.fullmatch(name):
+            raise NativeConfigError(f"{where}.repo_actions contains an invalid action name")
+        if not isinstance(entry, dict):
+            raise NativeConfigError(f"{label} must be a table")
+        _reject_unknown(
+            entry,
+            {"argv", "mutates", "argument", "integrity", "kind", "repository", "github_cli"},
+            label,
+        )
+        kind = entry.get("kind", "command")
+        if not isinstance(kind, str) or kind not in {"command", "release_tag", "publish_npm"}:
+            raise NativeConfigError(f"{label}.kind is invalid")
+        argv = entry.get("argv", [] if kind != "command" else None)
+        if not isinstance(argv, list) or (kind == "command" and not argv) or len(argv) > 32:
+            raise NativeConfigError(f"{label}.argv must be 1-32 bounded strings")
+        if any(
+            not isinstance(arg, str)
+            or not arg
+            or len(arg.encode("utf-8")) > 4096
+            or any(c in arg for c in ("\x00", "\n", "\r"))
+            for arg in argv
+        ):
+            raise NativeConfigError(f"{label}.argv must be 1-32 bounded strings")
+        mutates = _require_strict_bool(label, "mutates", entry.get("mutates"), False)
+        argument = entry.get("argument", "none")
+        if not isinstance(argument, str) or argument not in {
+            "none",
+            "path",
+            "basename",
+            "release_tag",
+        }:
+            raise NativeConfigError(f"{label}.argument is invalid")
+        if read_only:
+            raise NativeConfigError(f"{label} cannot be configured on a read-only workdir")
+        repository = entry.get("repository")
+        if kind == "command":
+            if repository is not None or argument == "release_tag":
+                raise NativeConfigError(
+                    f"{label}: command cannot accept release tags or repository"
+                )
+        elif (
+            argv
+            or argument != "release_tag"
+            or not mutates
+            or not isinstance(repository, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}", repository)
+            is None
+        ):
+            raise NativeConfigError(f"{label}: invalid fixed release policy")
+        github_cli = entry.get("github_cli", "gh")
+        if (
+            not isinstance(github_cli, str)
+            or not github_cli
+            or any(c in github_cli for c in ("\x00", "\n", "\r"))
+            or (github_cli != "gh" and not Path(github_cli).is_absolute())
+            or (kind != "publish_npm" and github_cli != "gh")
+        ):
+            raise NativeConfigError(f"{label}: invalid fixed github_cli path")
+        integrity = entry.get("integrity")
+        if not isinstance(integrity, dict) or not integrity or len(integrity) > 32:
+            raise NativeConfigError(
+                f"{label}.integrity must be a non-empty table of at most 32 files"
+            )
+        pins: list[tuple[str, str]] = []
+        for path, digest in sorted(integrity.items()):
+            if (
+                not isinstance(path, str)
+                or not path
+                or path.startswith(("/", "-"))
+                or "\\" in path
+                or "\x00" in path
+                or any(part in {"", ".", ".."} for part in path.split("/"))
+            ):
+                raise NativeConfigError(f"{label}.integrity contains an invalid relative path")
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(c not in "0123456789abcdef" for c in digest)
+            ):
+                raise NativeConfigError(f"{label}.integrity digest must be lowercase sha256")
+            pins.append((path, digest))
+        if kind != "command" and not {"package.json", ".github/workflows/publish.yml"}.issubset(
+            {path for path, _ in pins}
+        ):
+            raise NativeConfigError(
+                f"{label}: release actions must pin package.json and publish.yml"
+            )
+        actions.append(
+            NativeRepoAction(
+                name, tuple(argv), mutates, argument, tuple(pins), kind, repository, github_cli
+            )
+        )
+    return tuple(actions)
+
+
 def _parse_workdir(
     entry: object,
     index: int,
     defaults: NativeDefaults,
     *,
     agent: NativeAgentSettings | None,
-) -> Workdir:
+) -> tuple[Workdir, tuple[NativeRepoAction, ...]]:
     """Validate one [[workdirs]] entry and build a platform-neutral Workdir."""
     where = f"workdirs[{index}]"
     if not isinstance(entry, dict):
@@ -583,6 +715,8 @@ def _parse_workdir(
         "read_only",
         "agent_mode",
         "agent_runtimes",
+        "repo_ops_enabled",
+        "repo_actions",
     }
     unknown = set(entry) - known
     if unknown:
@@ -623,6 +757,12 @@ def _parse_workdir(
 
     agent_mode = _parse_agent_mode(where, entry.get("agent_mode"))
     agent_runtimes = _parse_agent_runtimes(where, entry.get("agent_runtimes"))
+    repo_ops_enabled = _require_strict_bool(
+        where, "repo_ops_enabled", entry.get("repo_ops_enabled"), False
+    )
+    repo_actions = _parse_repo_actions(
+        where, entry.get("repo_actions"), enabled=repo_ops_enabled, read_only=read_only
+    )
 
     # A workspace-write workdir is only meaningful against a writable root. This is checked here
     # rather than left to the Bridge so the operator sees it as a configuration error at startup.
@@ -639,7 +779,7 @@ def _parse_workdir(
     # concept belonging to the Compose/env adapter alone.
     # The root is stored as a plain Path; on POSIX a Windows-shaped root is
     # inert data until the backend that can open it exists.
-    return Workdir(
+    workdir = Workdir(
         alias=alias,
         root=Path(raw_path),
         description=description,
@@ -653,10 +793,12 @@ def _parse_workdir(
             max_write_bytes=defaults.max_write_bytes,
             binary_transfer_enabled=defaults.binary_transfer_enabled,
             max_binary_transfer_bytes=defaults.max_binary_transfer_bytes,
+            repo_ops_enabled=repo_ops_enabled,
             agent_mode=agent_mode,
             agent_runtimes=agent_runtimes,
         ),
     )
+    return workdir, repo_actions
 
 
 def _cross_validate_agent(
@@ -731,7 +873,10 @@ def load_native_config(path: Path) -> tuple[list[Workdir], NativeServerSettings]
             f"too many workdirs: {len(entries)} exceeds the {MAX_NATIVE_WORKDIRS} limit"
         )
 
-    workdirs = [_parse_workdir(entry, i, defaults, agent=agent) for i, entry in enumerate(entries)]
+    parsed_workdirs = [
+        _parse_workdir(entry, i, defaults, agent=agent) for i, entry in enumerate(entries)
+    ]
+    workdirs = [workdir for workdir, _actions in parsed_workdirs]
     seen: dict[str, int] = {}
     for index, wd in enumerate(workdirs):
         if wd.alias in seen:
@@ -741,6 +886,12 @@ def load_native_config(path: Path) -> tuple[list[Workdir], NativeServerSettings]
             )
         seen[wd.alias] = index
     _cross_validate_agent(agent, workdirs)
+    server_settings = NativeServerSettings(
+        log_level=server_settings.log_level,
+        agent=agent,
+        repo_ops_enabled=any(w.policy.repo_ops_enabled for w in workdirs),
+        repo_actions={workdir.alias: actions for workdir, actions in parsed_workdirs if actions},
+    )
     return workdirs, server_settings
 
 
@@ -755,6 +906,7 @@ __all__ = [
     "NativeDefaults",
     "NativeProxySettings",
     "NativeQoderSettings",
+    "NativeRepoAction",
     "NativeServerSettings",
     "load_native_config",
 ]
