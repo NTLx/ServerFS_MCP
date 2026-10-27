@@ -146,7 +146,7 @@ Claude Code / Codex / Qoder / MCP hosts
 
 MCP Core 与宿主平台解耦。标准 MCP 客户端使用 stdio 或 Streamable HTTP；OpenAI Secure MCP Tunnel 保持为可选的、带认证的 ChatGPT ingress 适配器。Linux 上的通用 HTTP 需要显式开启，并默认仅向主机 loopback 发布；原有 Tunnel 部署方式继续受支持。Streamable HTTP 支持可选的单密钥 API Key 认证，或独立的 `serverfs-auth` OAuth 2.1 Broker，用于需要身份感知的部署。这两种认证方式都不会改变既有 Workdir 授权模型或原生 stdio。可选 file-ingress sidecar 仍维持独立的出站职责。
 
-Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持独立的主机进程边界；v0.23 Repo Ops 首版仍仅声明 Linux 支持。
+Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持独立的主机进程边界；v0.23.0 Repo Ops 首版仅声明 Linux 支持，v0.23.1 已扩展到经现场验收的 Apple Silicon 原生 macOS，原生 Windows Repo Ops 仍不支持。
 
 完整部署与信任边界模型见 [Architecture](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/architecture/)。
 
