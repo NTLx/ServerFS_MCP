@@ -89,6 +89,9 @@ jobs:
   linux-gate:
     name: Linux / Container gate
     needs: prepare
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/container.yml
 
   windows-native-gate:
@@ -109,6 +112,10 @@ jobs:
   pages-gate:
     name: Documentation site gate
     needs: prepare
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     uses: ./.github/workflows/pages.yml
     with:
       deploy_pages: false

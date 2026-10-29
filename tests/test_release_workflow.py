@@ -90,7 +90,12 @@ def test_release_gates_are_reusable_without_tag_push_side_effects() -> None:
     assert pages.count(side_effect_condition) == 3
 
     release = text("wheel-release.yml")
+    linux_gate = release.split("  linux-gate:", 1)[1].split("  windows-native-gate:", 1)[0]
+    assert "packages: write" in linux_gate
+
     pages_gate = release.split("  pages-gate:", 1)[1].split("  create-tag:", 1)[0]
+    assert "pages: write" in pages_gate
+    assert "id-token: write" in pages_gate
     assert "deploy_pages: false" in pages_gate
 
 
