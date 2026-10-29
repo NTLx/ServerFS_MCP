@@ -1,6 +1,6 @@
 ---
 title: Windows Native
-description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, v0.23.2 Deterministic Repo Ops, native Codex/Claude/Qoder and configurable ACP delegation, and the current-user Task Scheduler lifecycle.
+description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, v0.23.3 current Deterministic Repo Ops, native Codex/Claude/Qoder and configurable ACP delegation, and the current-user Task Scheduler lifecycle.
 ---
 
 Since v0.10.0 ServerFS runs natively on **Windows 11 x64 over local NTFS** as an MCP **stdio** service. Nothing listens on a port: the official OpenAI `tunnel-client` connects out to the control plane and speaks MCP through the child process's stdin/stdout, so the default native profile has no localhost listener. Linux Docker deployments are unchanged and remain the supported Linux shape.

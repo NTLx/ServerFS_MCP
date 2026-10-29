@@ -3,7 +3,7 @@ title: Agent Skills
 description: 使用 ServerFS 仓库内置 Skills，指导 AI Agent 安全完成安装、配置、升级、诊断和可选子系统运维。
 ---
 
-> **当前稳定版本：v0.23.2。** ServerFS 包含 7 个运维 Agent Skills 和一个 skills-only portable Agent Plugin。
+> **当前稳定版本：v0.23.3。** ServerFS 包含 7 个运维 Agent Skills 和一个 skills-only portable Agent Plugin。
 
 ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) 目录中维护运维 Agent Skills。它们告诉 Agent **如何安全使用 ServerFS 已有的正式产品接口**，而不是再建立一套配置格式或部署实现。
 
@@ -49,10 +49,10 @@ Skills 继续保持 ServerFS 手工运维时的核心约束：
 
 ## Portable Agent Plugin
 
-仓库根目录维护 portable Agent Plugins manifest：`plugin.json`。v0.23.2 GitHub Release 将 7 个运行时 Skill 及其参考文件统一打包为以下资产：
+仓库根目录维护 portable Agent Plugins manifest：`plugin.json`。v0.23.3 GitHub Release 将 7 个运行时 Skill 及其参考文件统一打包为以下资产：
 
 ```text
-serverfs-plugin-v0.23.2.zip
+serverfs-plugin-v0.23.3.zip
 ```
 
 该 ZIP 是 **skills-only Plugin**，不会内置 `mcp.json`、某个 ServerFS 实例 URL、凭据或 Provider 私有配置。Plugin 与 Skills 都直接跟随 ServerFS 项目版本，不建立独立版本生命周期。

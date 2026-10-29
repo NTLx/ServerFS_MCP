@@ -1,11 +1,11 @@
 ---
 title: Deterministic Repo Ops
-description: ServerFS v0.23.2 Deterministic Repo Ops for bounded Git inspection, integrity-pinned repository actions, explicit-file commits, exact current-upstream pushes, and fixed npm release actions without Agent delegation on Linux, validated native macOS, and validated native Windows.
+description: ServerFS v0.23.3 Deterministic Repo Ops for bounded Git inspection, integrity-pinned repository actions, explicit-file commits, exact current-upstream pushes, and fixed npm release actions without Agent delegation on Linux, validated native macOS, and validated native Windows.
 ---
 
 Deterministic Repo Ops is an optional **non-Agent repository capability** released on Linux Host Bridge in **v0.23.0**, extended to validated native Apple Silicon macOS in **v0.23.1**, and extended again to validated native Windows 11 x64 in **v0.23.2**. It lets an MCP caller finish mechanical repository steps without receiving a shell and without delegating those steps to a server-side AI Agent.
 
-The current stable release is **v0.23.2**. Repo Ops is supported on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64.
+The current stable release is **v0.23.3**. Repo Ops is supported on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64.
 
 ## Product boundary
 
@@ -203,9 +203,9 @@ Repo Ops keeps the existing ServerFS trust model:
 
 See [Security Model](../security/) and [Architecture](../architecture/) for the adjacent trust boundaries.
 
-## Capability counts in v0.23.2
+## Capability counts in v0.23.3
 
-Stable v0.23.2 keeps the existing 11 / 13 / 21 / 23 filesystem, binary, and Agent combinations and adds four independently gated Repo Ops tools on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64:
+Stable v0.23.3 keeps the existing 11 / 13 / 21 / 23 filesystem, binary, and Agent combinations and adds four independently gated Repo Ops tools on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64:
 
 | Surface | Tools |
 | --- | ---: |

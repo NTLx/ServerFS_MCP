@@ -4,8 +4,8 @@
 
 ## Current release
 
-- **v0.23.2 is the current stable release.** It extends independently gated Deterministic Repo Ops to validated native Windows 11 x64 while retaining the Linux Host Bridge, validated Apple Silicon macOS support, and the no-Agent-fallback contract.
-- **v0.23.1 is the previous released stable version.**
+- **v0.23.3 is the current stable release.** It retains the native Windows 11 x64 Deterministic Repo Ops support delivered in v0.23.2 and closes the stable-publication gate defect exposed by that release: the exact release SHA must pass Linux/Container, Windows Native, Windows Agent, macOS Native, and Pages gates before the stable tag is created.
+- **v0.23.2 is the previous released stable version.** Its Windows Repo Ops behavior remains valid, while its historical release record preserves the publication-gate exception.
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
 - Generic ACP v1 profiles are also supported when operator-configured with an absolute executable and fixed argv; OpenCode 2.1.2 passed real end-to-end acceptance on Linux, macOS and Windows.
@@ -59,7 +59,8 @@ These landmarks are navigation aids, not substitutes for their plans:
 
 - **v0.22.1** — previous stable maintenance release for the Linux Agent Bridge installer staged-Python fix, macOS restart readiness/health closure, one-shot self-restart hand-over with verified cleanup, and test-isolation regression fix; see [`dev_plan_v0.22.1.md`](../../dev_plan_v0.22.1.md) and [`v0.22.1-release-checklist-2026-10-23.md`](../v0.22.1-release-checklist-2026-10-23.md) for release evidence.
 - **v0.23.1** — previous stable maintenance release; enabled independently gated Deterministic Repo Ops on validated native Apple Silicon macOS while retaining Linux Host Bridge support. See [release notes](../releases/v0.23.1.md), [`v0.23.1 release checklist`](../v0.23.1-release-checklist-2026-10-27.md), and [`macOS native Repo Ops acceptance`](../v0.23.1-macos-repo-ops-acceptance-2026-10-27.md).
-- **v0.23.2** — current stable maintenance release; extends the same deterministic, no-Agent-fallback Repo Ops contract to validated native Windows 11 x64. See [release notes](../releases/v0.23.2.md), [`v0.23.2 release checklist`](../v0.23.2-release-checklist-2026-10-28.md), and [`Windows native Repo Ops acceptance`](../v0.23.2-windows-repo-ops-acceptance-2026-10-28.md). The v0.23.0 Linux and v0.23.1 macOS evidence remain in their original release records.
+- **v0.23.2** — previous stable maintenance release; extended the deterministic, no-Agent-fallback Repo Ops contract to validated native Windows 11 x64, but its immutable release record includes a publication-gate exception. See [release notes](../releases/v0.23.2.md), [`v0.23.2 release checklist`](../v0.23.2-release-checklist-2026-10-28.md), and [`Windows native Repo Ops acceptance`](../v0.23.2-windows-repo-ops-acceptance-2026-10-28.md).
+- **v0.23.3** — current stable release-hygiene patch; preserves the v0.23.2 Windows Repo Ops product contract and makes stable publication dispatch-first and exact-SHA gated across Linux/Container, Windows Native, Windows Agent, macOS Native, and Pages before tag creation. See [`dev_plan_v0.23.3.md`](../../dev_plan_v0.23.3.md) and [release notes](../releases/v0.23.3.md).
 
 ## Keep this index small
 

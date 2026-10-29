@@ -19,6 +19,8 @@ name: Windows Agent
 # tests. The Linux jobs in `Container` remain unchanged and independent.
 
 on:
+  workflow_call:
+
   push:
     branches:
       - main

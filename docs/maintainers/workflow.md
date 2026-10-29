@@ -166,18 +166,28 @@ Do not make a search result disappear by falsifying history.
 
 ## 6. Release workflow
 
-Use Semantic Versioning and the repository's established version surfaces. Before tagging, reconcile current version/status claims across the release-facing README/docs/site, package metadata/version gates, deployment examples and release notes/checklists that are intended to describe the upcoming/current release. For a release that introduces a new public MCP capability such as Repo Ops, public client E2E acceptance is a tag gate; internal/private RPC evidence alone is insufficient.
+Use Semantic Versioning and the repository's established version surfaces. Before publication, reconcile current version/status claims across the release-facing README/docs/site, package metadata/version gates, deployment examples and release notes/checklists that are intended to describe the upcoming/current release. For a release that introduces a new public MCP capability such as Repo Ops, public client E2E acceptance remains a release gate; internal/private RPC evidence alone is insufficient.
 
-Git tags drive published images:
+### Stable publication contract (v0.23.3+)
 
-- `main` publishes `:edge`;
-- stable `vX.Y.Z` tags publish `X.Y.Z`, `X.Y` and `latest`;
-- `latest` comes from a stable tag, not from a GitHub Release event;
+Stable publication is **dispatch-first, not tag-first**. Do not manually push a stable tag and then wait to see whether CI passes.
+
+1. Push the intended release commit to `main` and wait for its ordinary CI to complete.
+2. Start `.github/workflows/wheel-release.yml` (`Release`) with `workflow_dispatch` on `main`, supplying the exact `vMAJOR.MINOR.PATCH` release tag.
+3. The workflow validates that the requested tag matches all release version surfaces and that the dispatched SHA is still the current remote `main`.
+4. The exact SHA must then pass the reusable Linux/Container, Windows Native, Windows Agent, macOS Native, and Pages build gates.
+5. After those gates complete, the workflow fetches `origin/main` again. If `main` advanced, it fails closed and creates no tag.
+6. Only the fully gated SHA may receive the lightweight stable tag. Existing conflicting tags are never moved or force-updated.
+7. Wheels, Agent Plugin, GitHub Release, and stable GHCR tags are downstream of that tag creation. A failed publication step may be retried against the same immutable tag, but a failed validation gate cannot create the tag in the first place.
+
+Publication channels:
+
+- `main` publishes only `:edge` through the ordinary Container workflow;
+- a successful stable Release workflow publishes `X.Y.Z`, `X.Y` and `latest` to GHCR;
+- the same release run builds the product wheel, Agent Bridge wheel, Windows native abi3 wheel, and `serverfs-plugin-vX.Y.Z.zip`, then attaches the four assets to the GitHub Release;
 - production deployments pin exact versions; `edge`/`latest` are not production pins.
 
-A published stable tag is immutable. Post-release documentation/site/metadata corrections land on `main`; never move/recreate the stable tag to absorb them.
-
-Starting with v0.18, the established tag-driven release workflow also builds `serverfs-plugin-vX.Y.Z.zip` from the same immutable tag commit and attaches that single skills-only Plugin asset to the existing GitHub Release alongside the Windows wheels. The repository `skills/` tree remains canonical; do not maintain seven independent skill ZIPs, publish a private ChatGPT Plugin, submit to the Plugin Directory, or create a second release publisher as part of normal ServerFS release automation.
+A published stable tag is immutable. Post-release documentation/site/metadata corrections land on `main`; never move/recreate the stable tag to absorb them. The repository `skills/` tree remains canonical; do not maintain seven independent skill ZIPs, publish a private ChatGPT Plugin, submit to the Plugin Directory, or create a second stable-release publisher.
 
 Use supported GitHub CLI/API operations (`gh`) for GitHub actions when requested. If a required operation has no supported CLI/API path, report that exception rather than inventing an endpoint.
 

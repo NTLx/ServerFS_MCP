@@ -1,6 +1,6 @@
 ---
 title: Windows 原生部署
-description: Windows 11 x64 + 本地 NTFS 原生部署——预构建 Rust 内核、v0.23.2 Deterministic Repo Ops、Codex/Claude/Qoder 原生 runtime 与可配置 ACP 委派，以及当前用户 Task Scheduler 持久生命周期。
+description: Windows 11 x64 + 本地 NTFS 原生部署——预构建 Rust 内核、当前 v0.23.3 Deterministic Repo Ops、Codex/Claude/Qoder 原生 runtime 与可配置 ACP 委派，以及当前用户 Task Scheduler 持久生命周期。
 ---
 
 自 v0.10.0 起，ServerFS 可以在 **Windows 11 x64 + 本地 NTFS** 上以 MCP **stdio** 服务原生运行。没有任何端口监听：官方 OpenAI `tunnel-client` 主动连出到控制面，并通过子进程的 stdin/stdout 传输 MCP 帧，因此默认原生 profile 不存在 localhost 监听器。Linux Docker 部署保持不变，仍是 Linux 的受支持形态。

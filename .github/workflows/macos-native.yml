@@ -18,11 +18,11 @@ name: macOS Native
 # remain authoritative either way.
 
 on:
+  workflow_call:
+
   push:
     branches:
       - main
-    tags:
-      - "v*.*.*"
     paths-ignore:
       - "site/**"
       - ".github/workflows/pages.yml"
@@ -39,7 +39,7 @@ permissions:
 
 concurrency:
   group: macos-native-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  cancel-in-progress: true
 
 jobs:
   platform-assert:

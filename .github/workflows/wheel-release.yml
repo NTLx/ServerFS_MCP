@@ -1,40 +1,180 @@
-name: Windows wheel release
+name: Release
 
-# Three-wheel publication channel introduced by the v0.11 release contract and
-# carried forward for current releases. Runs only when the maintainer creates a release tag. All
-# THREE release artifacts are built first -- product (hatchling), Agent
-# Bridge (hatchling) and native kernel (maturin, whose Cargo.toml owns the
-# native version) -- and gated against the tag version through each wheel's
-# authoritative METADATA. Acceptance then installs the three release wheels
-# into the TWO ISOLATED ENVIRONMENTS defined by the frozen
-# ServerFS/Agent-Bridge process boundary -- no editable checkout, no
-# PYTHONPATH, provenance checked from outside the checkout -- proving the
-# release artifacts themselves are the sole providers of all three
-# distributions, that neither environment can import the other's package,
-# and that the real supervisor chain works across SERVERFS_BRIDGE_PYTHON.
-# All three wheels plus one skills-only portable Agent Plugin ZIP are attached
-# to the tag's GitHub Release; the wheel section in the release body is
-# regenerated in place under a management
-# marker, preserving any notes the maintainer wrote. The
-# "Private :: Do Not Upload" trove classifier in
-# native/windows/pyproject.toml remains a PyPI guard: this workflow does not
-# publish to any package index.
+# v0.23.3+ stable publication is deliberately dispatch-first rather than tag-first.
+# The exact main SHA must pass every reusable release gate before this workflow may
+# create the lightweight tag. Wheels, Plugin, GitHub Release and stable GHCR tags are
+# downstream of that tag creation. A red gate therefore cannot become a published
+# stable release merely because a maintainer pushed a tag too early.
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
-      - "v*.*.*-*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Stable release tag (vMAJOR.MINOR.PATCH)
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: wheel-release-${{ github.ref }}
+  group: release-${{ inputs.release_tag }}
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Validate release candidate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Validate tag, versions and current main
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "Stable releases must be dispatched from main" >&2
+            exit 1
+          }
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Invalid stable release tag: $RELEASE_TAG" >&2
+            exit 1
+          }
+          test -f "docs/releases/$RELEASE_TAG.md" || {
+            echo "Missing release notes: docs/releases/$RELEASE_TAG.md" >&2
+            exit 1
+          }
+          uv run --no-project --python 3.12 python - "$RELEASE_TAG" <<'PY'
+          import json
+          import pathlib
+          import sys
+          import tomllib
+
+          tag = sys.argv[1]
+          expected = tag[1:]
+          root = pathlib.Path('.')
+          versions = {
+              'root': tomllib.loads((root / 'pyproject.toml').read_text())['project']['version'],
+              'bridge': tomllib.loads((root / 'agent_bridge/pyproject.toml').read_text())['project']['version'],
+              'windows-native': tomllib.loads((root / 'native/windows/Cargo.toml').read_text())['package']['version'],
+              'plugin': json.loads((root / 'plugin.json').read_text())['version'],
+              'registry': json.loads((root / 'server.json').read_text())['version'],
+          }
+          bad = {name: version for name, version in versions.items() if version != expected}
+          if bad:
+              raise SystemExit(f'release version mismatch: expected {expected}, got {bad}')
+          print('release version surfaces:', versions)
+          PY
+          git fetch --prune origin main --tags
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || {
+            echo "origin/main does not equal the dispatched candidate SHA" >&2
+            exit 1
+          }
+          remote_tag="$(git ls-remote origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')"
+          if [ -n "$remote_tag" ] && [ "$remote_tag" != "$GITHUB_SHA" ]; then
+            echo "Existing remote tag points to another commit" >&2
+            exit 1
+          fi
+
+  linux-gate:
+    name: Linux / Container gate
+    needs: prepare
+    uses: ./.github/workflows/container.yml
+
+  windows-native-gate:
+    name: Windows Native gate
+    needs: prepare
+    uses: ./.github/workflows/windows-native.yml
+
+  windows-agent-gate:
+    name: Windows Agent gate
+    needs: prepare
+    uses: ./.github/workflows/windows-agent.yml
+
+  macos-gate:
+    name: macOS Native gate
+    needs: prepare
+    uses: ./.github/workflows/macos-native.yml
+
+  pages-gate:
+    name: Documentation site gate
+    needs: prepare
+    uses: ./.github/workflows/pages.yml
+    with:
+      deploy_pages: false
+
+  create-tag:
+    name: Create immutable release tag
+    needs:
+      - prepare
+      - linux-gate
+      - windows-native-gate
+      - windows-agent-gate
+      - macos-gate
+      - pages-gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact validated candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Compare-and-create lightweight tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          git fetch --prune origin main --tags
+          head="$(git rev-parse HEAD)"
+          remote_main="$(git rev-parse origin/main)"
+          if [ "$head" != "$GITHUB_SHA" ] || [ "$remote_main" != "$GITHUB_SHA" ]; then
+            echo "main advanced or candidate SHA changed while release gates were running" >&2
+            exit 1
+          fi
+
+          ref="refs/tags/$RELEASE_TAG"
+          remote_tag="$(git ls-remote origin "$ref" | awk '{print $1}')"
+          if [ -n "$remote_tag" ] && [ "$remote_tag" != "$GITHUB_SHA" ]; then
+            echo "Remote release tag conflict" >&2
+            exit 1
+          fi
+
+          if git show-ref --verify --quiet "$ref"; then
+            test "$(git rev-parse "$ref^{commit}")" = "$GITHUB_SHA" || {
+              echo "Local release tag conflict" >&2
+              exit 1
+            }
+          else
+            git update-ref "$ref" "$GITHUB_SHA" "0000000000000000000000000000000000000000"
+          fi
+
+          if [ -z "$remote_tag" ]; then
+            git push --porcelain --no-verify origin "$GITHUB_SHA:$ref"
+          fi
+          verified="$(git ls-remote origin "$ref" | awk '{print $1}')"
+          test "$verified" = "$GITHUB_SHA" || {
+            echo "Remote release tag verification failed" >&2
+            exit 1
+          }
+
   wheel:
+    name: Publish wheels, Plugin and GitHub Release
+    needs: create-tag
+    permissions:
+      contents: write
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -57,14 +197,14 @@ jobs:
           $product = (Get-ChildItem dist/serverfs_mcp-*.whl).FullName
           $bridge = (Get-ChildItem dist/serverfs_agent_bridge-*.whl).FullName
           uv run --no-project --python 3.12 python deployment/native/wheel_release.py version-gate `
-            --tag "${{ github.ref_name }}" --wheel $native --wheel $product --wheel $bridge
+            --tag "${{ inputs.release_tag }}" --wheel $native --wheel $product --wheel $bridge
         shell: pwsh
 
       - name: validate and build ServerFS Agent Plugin release ZIP
         run: |
           uv run --no-project --python 3.12 python deployment/plugin/package_plugin.py build `
             --output-dir dist `
-            --tag "${{ github.ref_name }}"
+            --tag "${{ inputs.release_tag }}"
         shell: pwsh
 
       - name: three-wheel clean-install acceptance across the frozen two-interpreter boundary
@@ -134,7 +274,7 @@ jobs:
           SERVER_URL: ${{ github.server_url }}
           COMMIT: ${{ github.sha }}
         run: |
-          $tag = "${{ github.ref_name }}"
+          $tag = "${{ inputs.release_tag }}"
           $native = Get-ChildItem native/windows/target/wheels/*.whl
           $product = Get-ChildItem dist/serverfs_mcp-*.whl
           $bridge = Get-ChildItem dist/serverfs_agent_bridge-*.whl
@@ -172,3 +312,99 @@ jobs:
           }
           gh release edit $tag --notes-file release-notes-out.md
         shell: pwsh
+
+  container-release:
+    name: Publish stable container
+    needs: wheel
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/container-publish.yml
+    with:
+      release_tag: ${{ inputs.release_tag }}
+
+  verify-publication:
+    name: Verify stable publication
+    needs:
+      - wheel
+      - container-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Verify immutable tag and exact GitHub Release asset set
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          ref_sha="$(gh api "repos/$REPO/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')"
+          test "$ref_sha" = "$GITHUB_SHA" || {
+            echo "Published tag does not point to the gated release SHA" >&2
+            exit 1
+          }
+
+          release_json="$(gh api "repos/$REPO/releases/tags/$RELEASE_TAG")"
+          jq -e --arg tag "$RELEASE_TAG" --arg sha "$GITHUB_SHA" '
+            .tag_name == $tag
+            and .target_commitish == $sha
+            and .draft == false
+            and .prerelease == false
+          ' <<<"$release_json" >/dev/null
+
+          version="${RELEASE_TAG#v}"
+          expected="$(printf '%s\n' \
+            "serverfs_agent_bridge-$version-py3-none-any.whl" \
+            "serverfs-plugin-v$version.zip" \
+            "serverfs_mcp-$version-py3-none-any.whl" \
+            "serverfs_windows_native-$version-cp312-abi3-win_amd64.whl" | sort)"
+          actual="$(jq -r '.assets[].name' <<<"$release_json" | sort)"
+          test "$actual" = "$expected" || {
+            echo "Unexpected GitHub Release asset set" >&2
+            diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") || true
+            exit 1
+          }
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR for verification
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify stable GHCR tags resolve to one dual-architecture OCI index
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          IMAGE: ghcr.io/ntlx/serverfs_mcp
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          minor="${version%.*}"
+          expected_hash=""
+          for label in "$version" "$minor" latest; do
+            raw="$(docker buildx imagetools inspect "$IMAGE:$label" --raw)"
+            printf '%s' "$raw" | jq -e '
+              [.manifests[]
+               | select(.platform.os == "linux")
+               | .platform.architecture] as $arch
+              | (($arch | index("amd64")) != null)
+                and
+                (($arch | index("arm64")) != null)
+            ' >/dev/null
+            hash="$(printf '%s' "$raw" | sha256sum | awk '{print $1}')"
+            if [ -z "$expected_hash" ]; then
+              expected_hash="$hash"
+            else
+              test "$hash" = "$expected_hash" || {
+                echo "Stable GHCR tags do not resolve to the same OCI index" >&2
+                exit 1
+              }
+            fi
+          done

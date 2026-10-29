@@ -11,8 +11,8 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 
 ## Current baseline
 
-- **Current stable release: v0.23.1.** Deterministic Repo Ops is an independently gated non-Agent capability supported on Linux Host Bridge and validated native Apple Silicon macOS; native Windows Repo Ops remains unsupported. It must never auto-fallback to `submit_agent_task`.
-- **v0.22.1 is the previous stable release.**
+- **Current stable release: v0.23.3.** Deterministic Repo Ops is an independently gated non-Agent capability supported on Linux Host Bridge and validated native Apple Silicon macOS and Windows 11 x64. v0.23.3 closes the stable-release gate defect exposed by v0.23.2; Repo Ops must never auto-fallback to `submit_agent_task`.
+- **v0.23.2 is the previous stable release.** Its Windows Repo Ops product behavior is retained, but its historical release record includes a publication-gate exception.
 - **v0.19.0 introduced generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes.** OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real Linux/macOS/Windows end-to-end acceptance; see `dev_plan_v0.19.md` for scope and evidence.
 - Native deployment families: Linux, Windows and macOS.
 - Native Agent runtimes: Codex, Claude and Qoder, subject to each platform/runtime gate.

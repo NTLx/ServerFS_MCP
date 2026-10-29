@@ -1,11 +1,11 @@
 ---
 title: Deterministic Repo Ops
-description: ServerFS v0.23.2 Deterministic Repo Ops：在 Linux、已验收原生 macOS 与已验收原生 Windows 上，无需 Agent 委托即可执行有界 Git 检查、完整性固定的仓库动作、显式文件提交、精确当前 upstream 推送和固定发布动作。
+description: ServerFS v0.23.3 Deterministic Repo Ops：在 Linux、已验收原生 macOS 与已验收原生 Windows 上，无需 Agent 委托即可执行有界 Git 检查、完整性固定的仓库动作、显式文件提交、精确当前 upstream 推送和固定发布动作。
 ---
 
 Deterministic Repo Ops 是可选的 **非 Agent 仓库能力**：Linux Host Bridge 在 **v0.23.0** 首次发布，已验收的 Apple Silicon 原生 macOS 在 **v0.23.1** 加入，已验收的 Windows 11 x64 原生支持在 **v0.23.2** 加入。它让 MCP 调用方可以完成机械性的仓库收尾步骤，而不获得 Shell，也不需要把这些步骤委托给服务器上的 AI Agent。
 
-当前稳定版为 **v0.23.2**。Repo Ops 支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署。
+当前稳定版为 **v0.23.3**。Repo Ops 支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署。
 
 ## 产品边界
 
@@ -163,9 +163,9 @@ Repo Ops 延续 ServerFS 现有信任模型：
 
 相邻信任边界见[安全模型](../security/)与[架构](../architecture/)。
 
-## v0.23.2 中的工具数量
+## v0.23.3 中的工具数量
 
-稳定版 v0.23.2 保留既有文件系统、二进制与 Agent 的 11 / 13 / 21 / 23 组合，并在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署上独立增加 4 个 Repo Ops 工具：
+稳定版 v0.23.3 保留既有文件系统、二进制与 Agent 的 11 / 13 / 21 / 23 组合，并在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署上独立增加 4 个 Repo Ops 工具：
 
 | 能力面 | 工具数 |
 | --- | ---: |
