@@ -18,6 +18,8 @@ const copy = {
     nav: { docs: 'Docs', connect: 'Connect', architecture: 'Architecture', security: 'Security' },
     languageSwitch: '简中',
     languageLabel: '切换到简体中文',
+    themeToLight: 'Switch to light theme',
+    themeToDark: 'Switch to dark theme',
     release: 'v0.23.3',
     heroEyebrow: 'SECURE MCP FOR LINUX · WINDOWS · MACOS WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
@@ -214,6 +216,8 @@ const copy = {
     nav: { docs: '文档', connect: '接入', architecture: '架构', security: '安全' },
     languageSwitch: 'EN',
     languageLabel: 'Switch to English',
+    themeToLight: '切换到浅色主题',
+    themeToDark: '切换到深色主题',
     release: 'v0.23.3',
     heroEyebrow: '面向 Linux · Windows · macOS Workdir 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
@@ -419,8 +423,19 @@ const canonicalUrl = isZh
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <meta name="description" content={c.description} />
-    <meta name="theme-color" content="#090b10" />
-    <script is:inline>document.documentElement.classList.add('motion-ready');</script>
+    <meta name="theme-color" content="#080a0f" />
+    <script is:inline>
+      (() => {
+        let theme = null;
+        try { theme = localStorage.getItem('serverfs-home-theme'); } catch {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        document.documentElement.dataset.theme = theme;
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f5f7fb' : '#080a0f');
+        document.documentElement.classList.add('motion-ready');
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
     <link rel="canonical" href={canonicalUrl} />
     <link rel="alternate" hreflang="en" href="https://ntlx.github.io/ServerFS_MCP/" />
@@ -450,6 +465,21 @@ const canonicalUrl = isZh
         <a class="language-link" href={languageUrl} aria-label={c.languageLabel}>
           {c.languageSwitch}
         </a>
+        <button class="theme-toggle" type="button" aria-label={c.themeToLight} title={c.themeToLight} data-to-light={c.themeToLight} data-to-dark={c.themeToDark} aria-pressed="false">
+          <span aria-hidden="true">◐</span>
+        </button>
+        <script is:inline>
+          (() => {
+            const button = document.currentScript?.previousElementSibling;
+            const light = document.documentElement.dataset.theme === 'light';
+            const label = light ? button?.dataset.toDark : button?.dataset.toLight;
+            if (button && label) {
+              button.setAttribute('aria-label', label);
+              button.setAttribute('title', label);
+              button.setAttribute('aria-pressed', String(light));
+            }
+          })();
+        </script>
         <a
           class="github-link"
           href="https://github.com/NTLx/ServerFS_MCP"
@@ -887,6 +917,31 @@ const canonicalUrl = isZh
 
     <script is:inline>
       (() => {
+        const toggle = document.querySelector('.theme-toggle');
+        const colorScheme = window.matchMedia('(prefers-color-scheme: light)');
+        const updateTheme = (theme, persist = false) => {
+          document.documentElement.dataset.theme = theme;
+          document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f5f7fb' : '#080a0f');
+          if (toggle) {
+            const label = theme === 'light' ? toggle.dataset.toDark : toggle.dataset.toLight;
+            toggle.setAttribute('aria-label', label);
+            toggle.setAttribute('title', label);
+            toggle.setAttribute('aria-pressed', String(theme === 'light'));
+          }
+          if (persist) {
+            try { localStorage.setItem('serverfs-home-theme', theme); } catch {}
+          }
+        };
+        updateTheme(document.documentElement.dataset.theme || 'dark');
+        colorScheme.addEventListener('change', (event) => {
+          let preference = null;
+          try { preference = localStorage.getItem('serverfs-home-theme'); } catch {}
+          if (!preference) updateTheme(event.matches ? 'light' : 'dark');
+        });
+        toggle?.addEventListener('click', () => {
+          updateTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light', true);
+        });
+
         const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
         const revealSections = document.querySelectorAll('[data-reveal]');
         const stage = document.querySelector('[data-system-stage]');
