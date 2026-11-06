@@ -10,7 +10,8 @@ MCP host
    │
    ├── stdio (native Windows/macOS)
    ├── Streamable HTTP (Linux; loopback/private by default)
-   └── OpenAI Secure MCP Tunnel (optional ChatGPT ingress)
+   ├── OpenAI Secure MCP Tunnel (optional ChatGPT ingress)
+   └── Cloudflare Tunnel (optional Linux v0.24.0 candidate ingress)
                │
                ▼
           ServerFS MCP Core
@@ -19,7 +20,7 @@ MCP host
        explicitly configured workdirs
 ```
 
-The MCP core and tool contract are host-neutral. Generic Linux HTTP publication is opt-in and binds loopback by default; public exposure requires explicit Host policy plus a TLS/authentication ingress boundary. The OpenAI Tunnel remains an optional authenticated outbound-only adapter with a separate control-plane network. The main MCP container still has no general Internet egress.
+The MCP core and tool contract are host-neutral. Generic Linux HTTP publication is opt-in and binds loopback by default; public exposure requires explicit Host policy plus a TLS/authentication ingress boundary. The OpenAI Tunnel remains an optional authenticated outbound-only adapter with a separate control-plane network. The v0.24.0 Linux Cloudflare Tunnel development overlay adds a separate cloudflared connector on the private ServerFS network and dedicated tunnel egress network, without host port publication; it requires independent API Key/OAuth admission. It remains unpublished, but its isolated read-only VPS staging instance has passed direct ChatGPT tool calls, long-lived public SSE and same-session reuse after Connector restart. In the Compose topology, `serverfs-mcp` also joins `serverfs_file_ingress`, a second Docker `internal:true` network; cloudflared never joins it. No production workdir/Agent or native Windows/macOS Cloudflare support has been validated. See [Cloudflare Tunnel](../cloudflare-tunnel/). The main MCP container still has no general Internet egress.
 
 ## Optional ChatGPT file-ingress path
 

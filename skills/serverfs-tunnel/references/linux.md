@@ -1,5 +1,7 @@
 # Linux / Docker Compose
 
+This page covers the existing **OpenAI Secure MCP Tunnel** path. For the independent Linux Cloudflare Tunnel ingress, use [Cloudflare Linux](cloudflare-linux.md); do not apply OpenAI control-plane environment or health diagnostics to cloudflared.
+
 Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
 
 The supported Tunnel deployment uses the base Compose path with Tunnel settings already present in the existing `.env`:

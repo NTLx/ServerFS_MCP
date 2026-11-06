@@ -20,7 +20,7 @@ Use this skill when the user explicitly wants to:
 
 Do not use this skill for:
 
-- OpenAI Tunnel control-plane credentials: `serverfs-tunnel`;
+- OpenAI Tunnel control-plane credentials or Cloudflare Tunnel connector Token: `serverfs-tunnel`;
 - workdir read/write authorization: `serverfs-configure`;
 - Agent runtime/provider authorization: `serverfs-agent-bridge`;
 - Windows/macOS native stdio, which does not use ServerFS HTTP API Key/OAuth.
@@ -61,7 +61,7 @@ Do not copy provider IDs/secrets or current `.env` values into tracked documenta
 1. **Choose the mode from explicit user intent.** If the user only needs a private/gateway/Tunnel-protected endpoint, no built-in auth may be correct. Use API Key for one shared-secret identity; use OAuth when federated identity/browser login and independently managed user admission are required. Record the requested mode and ingress/TLS boundary before editing.
 2. **Edit existing `.env` surgically.** Never replace it with `.env.example`. Review the local diff for only requested auth keys without emitting their values.
 3. **Preserve mutual exclusion.** API Key non-empty + OAuth enabled is invalid and must remain a startup error. Confirm effective configuration selects exactly one requested mode, or neither when explicitly intended.
-4. **Preserve transport security.** Public bearer/OAuth deployments require HTTPS at an explicit ingress boundary; ServerFS does not become a DNS/certificate manager. Establish the HTTPS termination and exact Host/Origin policy before public access.
+4. **Preserve transport security.** Public bearer/OAuth deployments, including Linux v0.24 Cloudflare Tunnel ingress, require HTTPS at an explicit ingress boundary; a Tunnel Token only authenticates the connector and cannot replace the independent ServerFS API Key/OAuth caller admission; ServerFS does not become a DNS/certificate manager. Establish the HTTPS termination and exact Host/Origin policy before public access.
 5. **Render the exact Compose shape before restart.** Generic HTTP uses `compose.http.yml`; OAuth additionally requires `compose.oauth.yml`; preserve any already-enabled Host Bridge overlay (`compose.agent.yml`) and other profiles. On v0.23 Linux that overlay may exist for Agent delegation, Repo Ops, or both; authentication work must not change either capability's authorization. Proceed only after config --quiet succeeds for the deployment being restarted.
 6. **Restart only the required services/deployment.** Provider secret rotation may only require `serverfs-auth`; introspection-secret rotation must be coordinated across the resource/auth services. Confirm affected services are healthy and both sides of any coordinated secret rotation agree.
 7. **Validate admission and rejection behavior without logging secrets.** Test the intended client path and at least one expected rejection where safe. Record redacted admission/rejection outcomes; unavailable live provider acceptance remains Not verified.

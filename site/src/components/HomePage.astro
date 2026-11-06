@@ -53,6 +53,7 @@ const copy = {
       ['Static API Key', 'Lightweight auth', 'One high-entropy secret for simple remote deployments'],
       ['OAuth 2.1', 'Identity-aware auth', 'Optional brokered authentication for production remote deployments'],
       ['OpenAI Tunnel', 'Optional ChatGPT ingress', 'Authenticated outbound tunnel path; no longer the generic MCP default'],
+      ['Cloudflare Tunnel', 'Linux v0.24 candidate', 'Outbound-only Docker connector; separate API Key/OAuth admission; read-only staging validated'],
     ],
     exploreHttp: 'HTTP setup',
     exploreApiKey: 'API Key',
@@ -82,7 +83,7 @@ const copy = {
         name: 'Linux',
         kicker: 'DOCKER-NATIVE SERVER DEPLOYMENT',
         title: 'Containers define the outer boundary.',
-        body: 'Linux is the server-oriented shape: Docker Compose on amd64 or arm64, standard Streamable HTTP by default, and optional overlays for authentication, file ingress, the host Bridge (Agent delegation and v0.23 Repo Ops), or the OpenAI Tunnel.',
+        body: 'Linux is the server-oriented shape: Docker Compose on amd64 or arm64, standard Streamable HTTP by default, and optional overlays for authentication, file ingress, the host Bridge (Agent delegation and v0.23 Repo Ops), the OpenAI Tunnel, or the Linux v0.24 Cloudflare Tunnel.',
         path: [
           ['01', 'INGRESS', 'Streamable HTTP', 'Authenticated TLS edge · optional OpenAI Tunnel'],
           ['02', 'RUNTIME', 'ServerFS container', 'Policy-bound MCP surface · no shell'],
@@ -153,7 +154,7 @@ const copy = {
       'Every layer has one job. Optional powers are explicit, narrow, and independently gated.',
     layers: [
       ['01', 'MCP hosts', 'Claude Code · Codex · Qoder · ChatGPT · harnesses'],
-      ['02', 'Ingress', 'stdio · Streamable HTTP · optional OpenAI Tunnel'],
+      ['02', 'Ingress', 'stdio · Streamable HTTP · optional OpenAI / Cloudflare Tunnel'],
       ['03', 'ServerFS MCP Core', 'Policy, path confinement, revisions, audit'],
       ['04', 'Deployment boundary', 'Linux Docker · Windows/macOS native stdio'],
       ['05', 'Scoped workdirs', 'Read-only unless explicitly released'],
@@ -193,7 +194,7 @@ const copy = {
     quickTitleLine1: 'One controlled service.',
     quickTitleLine2: 'Your machine. Your policy.',
     quickBody:
-      'Start with standard Streamable HTTP on Linux, then add only the capabilities you need. OpenAI Tunnel remains available for ChatGPT, while API Key, OAuth 2.1, file ingress, v0.23 Repo Ops, Agent delegation, Agent Skills, and Jev stay explicit opt-ins.',
+      'Start with standard Streamable HTTP on Linux, then add only the capabilities you need. OpenAI Tunnel remains available for ChatGPT, while v0.24 candidate Cloudflare Tunnel is an optional Docker ingress with separate API Key/OAuth admission. File ingress, v0.23 Repo Ops, Agent delegation, Agent Skills, and Jev stay explicit opt-ins.',
     readDeployment: 'Read the deployment guide',
     finalTitleLine1: 'Make your server legible to AI.',
     finalTitleLine2: 'Keep the boundary explicit.',
@@ -201,7 +202,7 @@ const copy = {
     skillsEyebrow: 'PORTABLE AGENT SKILLS',
     skillsTitle: 'Operational knowledge ships with the project.',
     skillsBody:
-      'The v0.23.3 release includes seven task-oriented Agent Skills for installation, configuration, upgrades, diagnostics, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations, plus a skills-only portable plugin.',
+      'The published v0.23.3 release carries seven Agent Skills and one skills-only Plugin. The v0.24.0 candidate adds Linux Cloudflare Tunnel guidance within the existing tunnel skill, preserving the same seven-skill packaging and a separate HTTP admission boundary.',
     exploreSkills: 'Explore Agent Skills',
     footer: 'Secure MCP access to explicitly configured workdirs on Linux, Windows, and macOS.',
     footerDocs: 'Docs',
@@ -251,6 +252,7 @@ const copy = {
       ['Static API Key', '轻量认证', '使用单个高熵密钥满足简单远程部署'],
       ['OAuth 2.1', '身份感知认证', '面向正式远程部署的可选代理认证层'],
       ['OpenAI Tunnel', '可选 ChatGPT 入口', '经过认证的出站 Tunnel；不再作为通用 MCP 默认入口'],
+      ['Cloudflare Tunnel', 'Linux v0.24 候选版', '纯 Docker 出站连接；独立 API Key/OAuth 认证；只读隔离环境已验收'],
     ],
     exploreHttp: 'HTTP 配置',
     exploreApiKey: 'API Key',
@@ -280,7 +282,7 @@ const copy = {
         name: 'Linux',
         kicker: 'DOCKER 原生服务器部署',
         title: '用容器定义外层边界。',
-        body: 'Linux 是面向服务器的部署形态：通过 Docker Compose 支持 amd64 与 arm64，默认采用标准 Streamable HTTP，并可按需叠加认证、文件入口、Host Bridge（Agent 委托与 v0.23 Repo Ops）或 OpenAI Tunnel。',
+        body: 'Linux 是面向服务器的部署形态：通过 Docker Compose 支持 amd64 与 arm64，默认采用标准 Streamable HTTP，并可按需叠加认证、文件入口、Host Bridge（Agent 委托与 v0.23 Repo Ops）、OpenAI Tunnel 或 Linux v0.24 的 Cloudflare Tunnel。',
         path: [
           ['01', '入口', 'Streamable HTTP', '带认证的 TLS 边界 · 可选 OpenAI Tunnel'],
           ['02', '运行时', 'ServerFS 容器', '策略约束的 MCP 能力面 · 无 Shell'],
@@ -351,7 +353,7 @@ const copy = {
       '每一层只做一件事。所有可选能力都显式启用、范围受限，并由独立策略门控。',
     layers: [
       ['01', 'MCP 宿主', 'Claude Code · Codex · Qoder · ChatGPT · harness'],
-      ['02', '入口', 'stdio · Streamable HTTP · 可选 OpenAI Tunnel'],
+      ['02', '入口', 'stdio · Streamable HTTP · 可选 OpenAI / Cloudflare Tunnel'],
       ['03', 'ServerFS MCP Core', '策略、路径约束、revision 与审计'],
       ['04', '部署边界', 'Linux Docker · Windows/macOS 原生 stdio'],
       ['05', '限定 Workdirs', '除非显式放开，否则保持只读'],
@@ -390,7 +392,7 @@ const copy = {
     quickTitleLine1: '一个受控服务。',
     quickTitleLine2: '你的机器，你的策略。',
     quickBody:
-      'Linux 上从标准 Streamable HTTP 开始，再按需增加能力。OpenAI Tunnel 仍可用于 ChatGPT；API Key、OAuth 2.1、文件入口、v0.23 Repo Ops、Agent 委托、Agent Skills 与 Jev 都保持显式 opt-in。',
+      'Linux 从标准 Streamable HTTP 开始，按需增加能力。OpenAI Tunnel 仍可用于 ChatGPT；v0.24 候选版 Cloudflare Tunnel 采用可选 Docker 入口，并独立要求 API Key/OAuth 认证。文件入口、v0.23 Repo Ops、Agent 委托、Agent Skills 与 Jev 仍然显式 opt-in。',
     readDeployment: '阅读部署指南',
     finalTitleLine1: '让 AI 理解你的服务器。',
     finalTitleLine2: '让边界始终清晰。',
@@ -398,7 +400,7 @@ const copy = {
     skillsEyebrow: '可移植 AGENT SKILLS',
     skillsTitle: '让运维知识随项目一起交付。',
     skillsBody:
-      '当前版本提供 7 个面向任务的 Agent Skills，覆盖安装、配置、升级、诊断、OpenAI Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维；Release 同时发布仅包含 Skills 的可移植 Plugin。',
+      '已发布的 v0.23.3 包含 7 个面向任务的 Agent Skills 与一个仅包含 Skills 的 Plugin。v0.24.0 候选版在既有 Tunnel Skill 中新增 Linux Cloudflare 接入分支，仍保持 7 个 Skills，并与 HTTP 认证边界分离。',
     exploreSkills: '了解 Agent Skills',
     footer: '让 MCP 在 Linux、Windows 和 macOS 上安全访问你明确配置的 workdir。',
     footerDocs: '文档',

@@ -17,7 +17,7 @@ Use it when the user has a specific configuration objective but is not primarily
 
 Use the dedicated skill instead for:
 
-- OpenAI Secure MCP Tunnel: `serverfs-tunnel`;
+- OpenAI Secure MCP Tunnel or Linux Docker Cloudflare Tunnel (v0.24.0): `serverfs-tunnel`;
 - static HTTP API Key or OAuth: `serverfs-auth`;
 - Agent Bridge installation/lifecycle, runtime allowlists, provider/Jev behavior: `serverfs-agent-bridge`; Repo Ops policy itself remains a normal per-workdir configuration concern, but its Linux host Bridge transport must follow the current Bridge deployment guide;
 - first installation with no existing configuration: `serverfs-install`;

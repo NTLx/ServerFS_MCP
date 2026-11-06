@@ -110,6 +110,11 @@ export default defineConfig({
           translations: { 'zh-CN': '运维' },
           items: [
             {
+              label: 'Cloudflare Tunnel (Linux v0.24 RC)',
+              translations: { 'zh-CN': 'Cloudflare Tunnel（Linux v0.24 候选版）' },
+              slug: 'docs/cloudflare-tunnel',
+            },
+            {
               label: 'Tunnel Diagnostics',
               translations: { 'zh-CN': 'Tunnel 诊断' },
               slug: 'docs/tunnel-diagnostics',

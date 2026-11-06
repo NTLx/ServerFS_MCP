@@ -5,7 +5,7 @@ description: A secure, standards-first MCP filesystem server for Linux, Windows 
 
 ServerFS MCP exposes explicitly configured directories — Linux containers, native Windows since v0.10.0, native macOS since v0.13.0 — as **controlled workdirs** through the Model Context Protocol.
 
-Current stable release: **v0.23.3**. ServerFS is now standards-first: compatible MCP hosts can use native stdio or standard Streamable HTTP, while the OpenAI Secure MCP Tunnel remains an optional ChatGPT ingress. The same filesystem, binary and Agent capability contracts remain shared across Linux, Windows and macOS.
+Current published stable release: **v0.23.3**. The v0.24.0 Linux Cloudflare Tunnel candidate has passed isolated real ChatGPT, SSE and session-reconnect acceptance but is not yet published. See [Cloudflare Tunnel](./cloudflare-tunnel/). ServerFS is now standards-first: compatible MCP hosts can use native stdio or standard Streamable HTTP, while the OpenAI Secure MCP Tunnel remains an optional ChatGPT ingress. The same filesystem, binary and Agent capability contracts remain shared across Linux, Windows and macOS.
 
 v0.22.0 adds Correlated Agent Diagnostics through the existing private Agent Bridge RPC: `serverfs diagnostics snapshot` for a bounded Bridge snapshot and `serverfs diagnostics task <task-id>` for one retained task. Diagnostic state is process-local and bounded; there is no new MCP tool, listener, persistent trace store, OpenTelemetry dependency, or telemetry egress. Phase F passed on Linux/VPS, supported macOS, and supported Windows; Phase G release-readiness acceptance is PASS. See [v0.22 Phase G preflight](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-g-preflight-2026-10-22.md).
 
@@ -28,7 +28,8 @@ Stable v0.23.3 keeps the existing 11 / 13 / 21 / 23 filesystem, binary and Agent
 
 ## Start here
 
-- [Getting Started](./getting-started/) — start with standard MCP connectivity; add the OpenAI Tunnel only for the ChatGPT Tunnel path.
+- [Getting Started](./getting-started/) — start with standard MCP connectivity; choose an authenticated ingress when remote access is required.
+- [Cloudflare Tunnel](./cloudflare-tunnel/) — optional Linux v0.24 candidate Docker connector, outbound-only and independently authenticated.
 - [Configuration](./configuration/) — define workdirs and effective per-workdir policy.
 - [Architecture](./architecture/) — understand the MCP core, transport/ingress adapters, deployment and Agent Bridge boundaries.
 - [Security Model](./security/) — review the defense-in-depth model.

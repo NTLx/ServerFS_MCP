@@ -56,9 +56,9 @@ macOS 仅支持 Apple M 系列、原生 arm64、macOS 27.x 与本地 APFS；不�
 
 ## Agent Skills
 
-仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
+仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Secure MCP Tunnel / Linux Cloudflare Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
 
-仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。v0.23.3 Release 包含 `serverfs-plugin-v0.23.3.zip`，其中有 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
+仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。**已发布**的 v0.23.3 Release 包含 `serverfs-plugin-v0.23.3.zip`，其中有 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
 
 ## 快速开始
 
@@ -103,6 +103,8 @@ docker compose -f compose.yml -f compose.http.yml ps
 ```
 
 通用 HTTP override 默认将 ServerFS 发布到 `http://127.0.0.1:8000/mcp`，且不会启动 OpenAI Tunnel。任何非 loopback 或公网部署前，都应将实际对外 Host 加入 `SERVERFS_HTTP_ALLOWED_HOSTS`，并配置 HTTPS 与认证（内置 API Key/OAuth 或上游网关）。
+
+**v0.24.0 Linux 候选版本：Cloudflare Tunnel 接入。** 对于无法开放公网入站端口的服务器，项目新增可选的 [`compose.cloudflare.yml`](compose.cloudflare.yml) 与 [Cloudflare Tunnel 部署指南](docs/cloudflare-tunnel.md)。它复用 Streamable HTTP，不发布主机端口；需要 Cloudflare 远程管理 Tunnel、仓库外的 Token 文件、精确 Host allowlist 和独立 API Key/OAuth 身份验证。此能力尚未作为稳定版本发布，但独立、只读的 VPS 测试环境已通过真实 ChatGPT 工具调用、公网 SSE 长连接及 Connector 重启后的会话复用。生产 Workdir/Agent、Windows/macOS 原生 Cloudflare 接入不属于此次验收范围。
 
 如果要通过现有 OpenAI Secure MCP Tunnel 接入 ChatGPT，请配置 `CONTROL_PLANE_TUNNEL_ID` 和 `CONTROL_PLANE_API_KEY`，并使用基础 Compose 部署。Agent 委托、二进制传输、文件输入、代理路由或生产环境加固请继续阅读 [快速开始](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/getting-started/) 与 [配置](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/configuration/) 文档。
 

@@ -1,17 +1,20 @@
 ---
 name: serverfs-tunnel
-description: Connect ChatGPT through OpenAI Secure MCP Tunnel; manage client bootstrap, credentials, proxy, lifecycle, or layered health failures.
+description: Operate the optional OpenAI Secure MCP Tunnel or Linux Cloudflare Tunnel ingress; manage credentials, lifecycle and health evidence within each distinct trust boundary.
 ---
 
-# Operate the OpenAI Secure MCP Tunnel
+# Operate optional ServerFS tunnel ingresses
 
-The Tunnel is an optional authenticated ChatGPT ingress adapter. Treat it as a separate subsystem with its own control-plane credentials, lifecycle and health evidence.
+**Two separate transport adapters:** OpenAI Secure MCP Tunnel (existing) and Cloudflare Tunnel (Linux Compose, v0.24.0 candidate; live validated only on isolated read-only staging). Never mix their credentials, configuration or health evidence.
+
+The OpenAI Tunnel is an optional authenticated ChatGPT ingress adapter. Treat it as a separate subsystem with its own control-plane credentials, lifecycle and health evidence.
 
 ## When to use
 
 Use this skill when the user explicitly wants to:
 
 - connect ServerFS to ChatGPT through the OpenAI Secure MCP Tunnel;
+- expose Linux Streamable HTTP through an independently authenticated Cloudflare Tunnel;
 - configure Tunnel control-plane credentials or Tunnel-specific proxy routing;
 - bootstrap/update the official Tunnel client on native Windows/macOS;
 - restart/re-establish the Tunnel after a ServerFS deployment change;
@@ -28,7 +31,7 @@ Do not use this skill for:
 - Agent provider/Jev proxy routing: `serverfs-agent-bridge`;
 - a broad unknown outage before confirming Tunnel is the failing boundary: `serverfs-diagnose`.
 
-Tunnel control-plane credentials are not ServerFS HTTP credentials and must never be reused as API Keys/OAuth secrets.
+Tunnel control-plane credentials are not ServerFS HTTP credentials and must never be reused as API Keys/OAuth secrets. A Cloudflare Tunnel token is a **connector credential**, not caller authentication; Cloudflare-routed MCP endpoints require separately verified API Key/OAuth or an equivalent admission boundary.
 
 ## Preflight
 
@@ -37,7 +40,7 @@ First locate the target ServerFS checkout or deployed installation and establish
 Paths below are relative to the located **ServerFS checkout root**, never to this skill or the Plugin ZIP. Resolve repository paths only after locating that checkout. For an installed deployment without a checkout, use its version-matched deployment documentation, installed CLI help and active configuration; obtain matching sources before a step that needs missing repository material.
 
 1. Identify Linux Compose vs Windows/macOS native Tunnel deployment.
-2. Confirm the user explicitly wants/uses OpenAI Tunnel; do not enable it merely because ChatGPT is involved if another MCP connection is intended.
+2. Identify whether the user wants OpenAI Tunnel or Cloudflare Tunnel. Never activate one merely because ChatGPT is mentioned.
 3. Locate current Tunnel configuration without printing key contents.
 4. Determine whether Tunnel is currently managed by the supported platform lifecycle or is a bounded manual diagnostic invocation.
 5. Check for duplicate ownership. Multiple active Tunnel clients for the same Tunnel ID are unsupported; do not start a second one until ownership is understood.
@@ -67,7 +70,7 @@ Paths below are relative to the located **ServerFS checkout root**, never to thi
 
 Load only the matching branch after identifying the deployment and requested mode:
 
-- Linux / Docker Compose: read [linux branch](references/linux.md) before platform/mode-specific changes.
+- Linux / Docker Compose: read [linux branch](references/linux.md) and, for Cloudflare, [Cloudflare Linux branch](references/cloudflare-linux.md) before platform/mode-specific changes.
 - Windows native: read [windows branch](references/windows.md) before platform/mode-specific changes.
 - macOS native: read [macos branch](references/macos.md) before platform/mode-specific changes.
 
@@ -95,7 +98,7 @@ Use an evidence ladder appropriate to the observed failure:
 5. response delivery succeeds when ChatGPT commands are being processed;
 6. local queue/dispatcher evidence shows no unexplained backlog when relevant.
 
-For Linux, `/healthz` or container `Up` alone is insufficient. A component endpoint returning HTTP 200 may still report a degraded JSON state; inspect the payload.
+For Linux, choose the correct ingress-specific gate: OpenAI Tunnel requires applicable control-plane/response evidence, while Cloudflare Tunnel requires actual Cloudflare connected status, HTTPS authentication, direct MCP tooling and SSE/session recovery when applicable. Never apply OpenAI's poll requirements to cloudflared. `/healthz` or container `Up` alone is insufficient. A component endpoint returning HTTP 200 may still report a degraded JSON state; inspect the payload.
 
 For native managed deployments, also prove exactly one intended Tunnel owner and healthy ServerFS service state.
 

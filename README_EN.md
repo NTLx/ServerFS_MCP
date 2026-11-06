@@ -56,7 +56,7 @@ For native setup, use the dedicated guides:
 
 ## Agent Skills
 
-The repository carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
+The repository carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Secure MCP Tunnel / Linux Cloudflare Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
 
 The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The published v0.23.3 GitHub Release includes `serverfs-plugin-v0.23.3.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
 
@@ -103,6 +103,8 @@ docker compose -f compose.yml -f compose.http.yml ps
 ```
 
 The generic HTTP override publishes ServerFS on `http://127.0.0.1:8000/mcp` by default and does not start the OpenAI Tunnel. Before any non-loopback/public deployment, add the actual external Host to `SERVERFS_HTTP_ALLOWED_HOSTS` and configure HTTPS and authentication (built-in API Key/OAuth or an upstream gateway).
+
+**v0.24.0 Linux release candidate: Cloudflare Tunnel ingress.** For servers without inbound public ports, the optional [`compose.cloudflare.yml`](compose.cloudflare.yml) and [Cloudflare Tunnel runbook](docs/cloudflare-tunnel.md) reuse Streamable HTTP without publishing a host port. This requires a remotely managed Cloudflare Tunnel, an external token file, an exact HTTP Host allowlist, and independent API Key/OAuth admission. This is not yet a stable release. An isolated, read-only VPS staging instance has passed direct ChatGPT MCP tool calls, public long-lived SSE and existing session reuse after a Connector restart. Production workdir/Agent and native Windows/macOS Cloudflare support have not been validated.
 
 For ChatGPT through the existing OpenAI Secure MCP Tunnel, configure `CONTROL_PLANE_TUNNEL_ID` and `CONTROL_PLANE_API_KEY` and use the base Compose deployment. For Agent delegation, binary transfer, file ingress, proxy routing, or production hardening, continue with the [Getting Started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) and [Configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) guides.
 

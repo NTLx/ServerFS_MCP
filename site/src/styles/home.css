@@ -1748,7 +1748,7 @@ h1 {
 
 .connection-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   overflow: hidden;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
@@ -1761,8 +1761,12 @@ h1 {
   background: linear-gradient(180deg, rgba(156, 171, 255, 0.025), transparent 74%);
 }
 
-.connection-card:last-child {
+.connection-card:nth-child(3n) {
   border-right: 0;
+}
+
+.connection-card:nth-child(-n + 3) {
+  border-bottom: 1px solid var(--line);
 }
 
 .connection-card code {
@@ -2464,6 +2468,10 @@ h1 {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .connection-card:nth-child(3n) {
+    border-right: 1px solid var(--line);
+  }
+
   .connection-card:nth-child(2n) {
     border-right: 0;
   }
@@ -2473,7 +2481,7 @@ h1 {
   }
 
   .connection-card:last-child {
-    grid-column: 1 / -1;
+    grid-column: auto;
   }
 
   .skills-section {

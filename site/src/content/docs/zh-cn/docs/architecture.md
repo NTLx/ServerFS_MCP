@@ -10,7 +10,8 @@ MCP 宿主
    │
    ├── stdio（Windows/macOS 原生）
    ├── Streamable HTTP（Linux；默认 loopback/私有）
-   └── OpenAI Secure MCP Tunnel（可选 ChatGPT 入口）
+   ├── OpenAI Secure MCP Tunnel（可选 ChatGPT 入口）
+   └── Cloudflare Tunnel（Linux v0.24.0 候选版）
                │
                ▼
           ServerFS MCP Core
@@ -19,7 +20,7 @@ MCP 宿主
           明确配置的 workdir
 ```
 
-MCP Core 与工具契约不依赖特定宿主。Linux 的通用 HTTP 发布为显式 opt-in，默认只绑定 loopback；对公网开放时必须显式配置 Host 策略，并在明确的入口边界终止 TLS 与认证。OpenAI Tunnel 继续作为可选、经过认证、仅出站的 ChatGPT 适配器，并使用独立控制面网络。MCP 主容器仍然没有通用互联网出口。
+MCP Core 与工具契约不依赖特定宿主。Linux 的通用 HTTP 发布为显式 opt-in，默认只绑定 loopback；对公网开放时必须显式配置 Host 策略，并在明确的入口边界终止 TLS 与认证。OpenAI Tunnel 继续作为可选、经过认证、仅出站的 ChatGPT 适配器，并使用独立控制面网络。v0.24.0 Linux 开发中的 Cloudflare Tunnel 则增加独立 Connector，共享私有 ServerFS 网络和专用的隧道出站网络，不发布主机端口，客户端必须另行通过 API Key/OAuth 认证；该能力尚未正式发布，但独立只读的 VPS 测试实例已通过 ChatGPT 直接工具调用、公网 SSE 长连接与 Connector 重启后复用原 MCP Session 的验收。基础 Compose 的 MCP 容器还接入第二个 `internal:true` 网络 `serverfs_file_ingress`，cloudflared 不加入该网络；生产工作目录/Agent 和 Windows/macOS 原生 Cloudflare 接入均未验收。详见 [Cloudflare Tunnel](../cloudflare-tunnel/)。MCP 主容器仍然没有通用互联网出口。
 
 ## 可选 ChatGPT 文件入口路径
 

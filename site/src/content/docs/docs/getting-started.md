@@ -80,6 +80,10 @@ docker compose --env-file .env \
 
 Public deployments should expose the MCP and authorization-server loopback ports only through an HTTPS reverse proxy. See [OAuth 2.1](../oauth/) for provider callbacks, CIMD/DCR, backup/revocation and the OpenAI Tunnel compatibility boundary.
 
+## Optional Cloudflare Tunnel ingress (Linux v0.24.0 candidate)
+
+For outbound-only connectivity with a fixed public HTTPS hostname, add `compose.cloudflare.yml` to `compose.yml`. This connects cloudflared to the private Docker network without publishing a host port. Configure a remotely managed Tunnel with the origin `http://serverfs-mcp:8000`, an external token file, an exact public Host allowlist and ServerFS API Key/OAuth. The connector token does **not** authenticate MCP callers. See [Cloudflare Tunnel](../cloudflare-tunnel/) for the full security and verification procedure. The v0.24.0 code has not yet been published as a stable release. An isolated read-only VPS staging instance has passed actual ChatGPT tool calls, long-lived SSE and MCP session reuse after Connector restart. That evidence does not include production workdirs, Agent/Repo Ops, or native Windows/macOS Cloudflare integration.
+
 ## Optional ChatGPT / OpenAI Tunnel deployment
 
 Set `CONTROL_PLANE_TUNNEL_ID` and `CONTROL_PLANE_API_KEY` in `.env`, then use the historical base Compose path:

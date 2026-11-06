@@ -22,6 +22,10 @@ The listener address is independent from publication. `compose.http.yml` publish
 
 The default host/port/path continue to match the existing OpenAI Tunnel's Docker-internal path, so Tunnel deployments do not require a migration merely because generic MCP HTTP is now supported.
 
+### Optional Cloudflare Tunnel ingress (Linux v0.24.0 candidate)
+
+Use `compose.cloudflare.yml` with a remotely managed Tunnel; the connector reads a read-only token file from the absolute `CLOUDFLARE_TUNNEL_TOKEN_FILE` path outside checkout/workdirs. `CLOUDFLARED_IMAGE` selects its image. The public Host must be allowlisted, and client API Key/OAuth is independent from the Tunnel Token. See [Cloudflare Tunnel](../cloudflare-tunnel/). The Linux v0.24.0 capability has passed real ChatGPT/SSE/session-recovery tests with an isolated read-only staging fixture but is not yet a published stable release or a production workdir/Agent acceptance. `CLOUDFLARED_UID/GID` control the Connector token reader independently of `SERVERFS_UID/GID`; keep the token file `0600` outside all workdirs.
+
 ### Optional static API Key
 
 v0.17 adds one shared HTTP bearer secret through `SERVERFS_HTTP_API_KEY`. Leave it empty to disable. Clients should prefer `Authorization: Bearer <key>`; `?key=<key>` is also supported for one-line MCP URL compatibility but may be captured by upstream URL logs. API Key mode is mutually exclusive with built-in OAuth and does not apply to native stdio. See [Static API Key](../api-key/).

@@ -22,6 +22,10 @@ SERVERFS_HTTP_API_KEY=
 
 默认 host/port/path 继续与既有 OpenAI Tunnel 的 Docker 内部路径一致，因此新增通用 MCP HTTP 支持不会强迫现有 Tunnel 部署迁移。
 
+### 可选 Cloudflare Tunnel 接入（Linux v0.24.0 候选版）
+
+通过 `compose.cloudflare.yml` 接入远程管理型 Cloudflare Tunnel。Connector 仅从仓库及所有 Workdir 外部的绝对路径 `CLOUDFLARE_TUNNEL_TOKEN_FILE` 只读挂载 Token 文件；`CLOUDFLARED_IMAGE` 指定镜像。必须单独为公网 Host 加白名单，并配置客户端 API Key/OAuth；Tunnel Token 不等于 MCP 客户端身份认证。详见 [Cloudflare Tunnel](../cloudflare-tunnel/)。Linux v0.24.0 已在隔离、只读测试环境通过真实 ChatGPT 工具调用、SSE 与会话恢复验收，但尚未正式发布，也不代表生产 Workdir/Agent 已验收。`CLOUDFLARED_UID/GID` 独立于 `SERVERFS_UID/GID`，Token 文件必须以 `0600` 权限存于所有工作目录之外。
+
 ### 可选静态 API Key
 
 v0.17 通过 `SERVERFS_HTTP_API_KEY` 提供一个共享 HTTP bearer secret。留空即关闭。客户端优先使用 `Authorization: Bearer <key>`；也支持 `?key=<key>` 以兼容只接受一行 MCP URL 的产品，但 query secret 可能被上游 URL 日志记录。API Key 与内置 OAuth 互斥，并且不适用于原生 stdio。详见[静态 API Key](../api-key/)。

@@ -92,7 +92,7 @@ docker compose -f compose.yml -f compose.http.yml ps
 
 Before public/non-loopback exposure, route to `serverfs-auth` if ServerFS-owned authentication is requested and ensure the separate TLS/Host/Origin boundary from current documentation is satisfied.
 
-Do not add `compose.agent.yml`, `compose.oauth.yml`, file-ingress profile or the historical base Tunnel shape unless requested. On v0.23 Linux, `compose.agent.yml` is the Host Bridge transport overlay for Agent delegation and/or Repo Ops; adding it does not itself authorize either capability.
+Do not add `compose.agent.yml`, `compose.oauth.yml`, the v0.24 Linux `compose.cloudflare.yml` overlay, file-ingress profile or the historical OpenAI Tunnel shape unless requested. For a specifically requested Linux Cloudflare ingress, use `serverfs-tunnel` plus `serverfs-auth`: never publish the default unauthenticated ServerFS instance or reuse an existing production Compose project without checking the active project name and full overlay set. On v0.23 Linux, `compose.agent.yml` is the Host Bridge transport overlay for Agent delegation and/or Repo Ops; adding it does not itself authorize either capability.
 
 ### Windows native
 

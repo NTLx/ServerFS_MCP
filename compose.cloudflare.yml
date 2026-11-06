@@ -1,0 +1,49 @@
+# Optional Linux Cloudflare Tunnel ingress, independent of OpenAI Secure MCP Tunnel.
+# Usage (dedicated NEW deployment only): specify the intended Compose project,
+# env file and complete overlay set before starting serverfs-mcp + cloudflared.
+# For an existing production project, read docs/cloudflare-tunnel.md first;
+# never run a generic up that could recreate existing ServerFS/Agent services.
+# Create a remotely managed Cloudflare Tunnel and route its public hostname to
+# http://serverfs-mcp:8000 (use the configured SERVERFS_HTTP_PORT if changed).
+# Put the original Tunnel token in an operator-owned file OUTSIDE the checkout
+# and all configured workdirs, mode 0600, owned/readable by CLOUDFLARED_UID.
+# Set CLOUDFLARE_TUNNEL_TOKEN_FILE to that absolute path in the untracked .env.
+# ServerFS HTTP authentication is configured separately (API Key or OAuth).
+services:
+  # The base Compose keeps its historical OpenAI Tunnel default. Do not start
+  # that separate control-plane client for the Cloudflare-only deployment.
+  openai-tunnel:
+    profiles: ["openai-tunnel"]
+
+  cloudflared:
+    # Tested example: 2026.10.7 on Linux amd64; override CLOUDFLARED_IMAGE as needed.
+    # This is a recommended version tag, not a locked image digest.
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2026.10.7}
+    restart: unless-stopped
+    # Independent connector identity permits a user-owned 0600 token file
+    # without altering the ServerFS MCP container UID/GID.
+    user: "${CLOUDFLARED_UID:-10001}:${CLOUDFLARED_GID:-10001}"
+    depends_on:
+      serverfs-mcp:
+        condition: service_healthy
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token-file
+      - /run/secrets/cloudflare-tunnel-token
+    volumes:
+      - type: bind
+        source: ${CLOUDFLARE_TUNNEL_TOKEN_FILE:?Set an absolute external token file path in .env}
+        target: /run/secrets/cloudflare-tunnel-token
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - serverfs_internal
+      - tunnel_egress
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

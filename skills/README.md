@@ -12,7 +12,7 @@ The skills teach an AI Agent how to choose and execute the **existing** ServerFS
 | Change workdirs or ordinary ServerFS policy, including v0.23 Linux Repo Ops policy | [`serverfs-configure`](serverfs-configure/SKILL.md) |
 | Upgrade an existing deployment | [`serverfs-upgrade`](serverfs-upgrade/SKILL.md) |
 | Investigate a failure or verify current health | [`serverfs-diagnose`](serverfs-diagnose/SKILL.md) |
-| Configure or troubleshoot the OpenAI Secure MCP Tunnel | [`serverfs-tunnel`](serverfs-tunnel/SKILL.md) |
+| Configure or troubleshoot OpenAI Secure MCP Tunnel or Linux Cloudflare Tunnel (v0.24.0 RC) | [`serverfs-tunnel`](serverfs-tunnel/SKILL.md) |
 | Configure remote HTTP API Key or OAuth authentication | [`serverfs-auth`](serverfs-auth/SKILL.md) |
 | Configure or troubleshoot the Host Bridge lifecycle, Agent runtimes or Jev | [`serverfs-agent-bridge`](serverfs-agent-bridge/SKILL.md) |
 
@@ -60,6 +60,10 @@ All ServerFS operational skills follow these rules:
 9. Stop on failed validation or ambiguous ownership/state rather than layering speculative changes.
 10. Never silently enable optional Tunnel, HTTP Auth, Repo Ops, or Agent delegation during an unrelated install/upgrade.
 11. On v0.23+, treat Repo Ops as deterministic non-Agent authority: use its fixed public surface when authorized and available; never substitute Agent delegation merely to perform mechanical Git/action/commit/push work.
+
+## v0.24.0 Linux Cloudflare branch
+
+The existing `serverfs-tunnel` skill routes to `references/cloudflare-linux.md` for optional Linux Docker Compose Cloudflare Tunnel ingress. `serverfs-auth` covers the separate ServerFS HTTP API Key/OAuth admission boundary; `serverfs-install`, `serverfs-upgrade`, and `serverfs-diagnose` must preserve the exact active Compose project and overlays. The connector token file stays outside every ServerFS workdir and is readable by `CLOUDFLARED_UID`, **not** by inference from `SERVERFS_UID`. The public staging acceptance covered one read-only fixture, real ChatGPT tools, SSE and Connector restart; no production workdir, Agent, or native macOS/Windows Cloudflare capability is implied. See `docs/cloudflare-tunnel.md` for current evidence.
 
 ## Plugin distribution
 

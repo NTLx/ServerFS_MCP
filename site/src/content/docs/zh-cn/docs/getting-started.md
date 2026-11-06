@@ -80,6 +80,10 @@ docker compose --env-file .env \
 
 启动前需要设置 `SERVERFS_OAUTH_ENABLED=true`、canonical 公网 MCP resource URL、`serverfs-auth` public/issuer URL、introspection secret、至少一个 provider，以及精确的稳定 principal allowlist。公网部署应继续让 MCP/auth 容器只绑定 loopback，再通过 HTTPS 反向代理发布。Provider callback、CIMD/DCR、备份/撤销与 OpenAI Tunnel 兼容边界详见 [OAuth 2.1](../oauth/)。
 
+## 可选 Cloudflare Tunnel 接入（Linux v0.24.0 候选版）
+
+没有公网入站端口且希望使用固定 HTTPS 域名时，可以叠加 `compose.cloudflare.yml`。该方式将 cloudflared 接入私有 Docker 网络，不发布主机端口。需要在 Cloudflare 建立远程管理型 Tunnel，Origin 配置为 `http://serverfs-mcp:8000`，令牌文件存放仓库外，并配置精确 Host 白名单和 ServerFS API Key/OAuth。**Cloudflare Tunnel Token 不承担 MCP 客户端认证。** 详见 [Cloudflare Tunnel](../cloudflare-tunnel/)。该能力尚未正式发布，但独立、只读的 VPS 测试环境已经通过 ChatGPT 直接工具调用、公网 SSE 长连接及 Connector 重启后的原 MCP 会话复用验收。生产工作目录、Agent/Repo Ops 与 Windows/macOS 原生 Cloudflare 接入不在该验收范围内。
+
 ## 可选 ChatGPT / OpenAI Tunnel 部署
 
 在 `.env` 中设置 `CONTROL_PLANE_TUNNEL_ID` 与 `CONTROL_PLANE_API_KEY`，然后使用既有基础 Compose 路径：

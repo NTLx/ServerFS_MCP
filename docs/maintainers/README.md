@@ -4,6 +4,7 @@
 
 ## Current release
 
+- **v0.24.0 is being prepared as a Linux Cloudflare Tunnel release candidate.** Isolated read-only staging passed direct ChatGPT tools, public SSE and same-session continuation after a Connector restart. Production workdir/Agent exposure and native Windows/macOS cloudflared integration have not been validated; no v0.24.0 stable tag has been published. See [`dev_plan_v0.24.md`](../../dev_plan_v0.24.md) and [Linux runbook](../cloudflare-tunnel.md).
 - **v0.23.3 is the current stable release.** It retains the native Windows 11 x64 Deterministic Repo Ops support delivered in v0.23.2 and closes the stable-publication gate defect exposed by that release: the exact release SHA must pass Linux/Container, Windows Native, Windows Agent, macOS Native, and Pages gates before the stable tag is created.
 - **v0.23.2 is the previous released stable version.** Its Windows Repo Ops behavior remains valid, while its historical release record preserves the publication-gate exception.
 - Native deployment families: Linux, Windows and macOS.
