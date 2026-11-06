@@ -1,10 +1,10 @@
-# macOS Native Deployment (v0.23.1)
+# macOS Native Deployment (v0.24.0)
 
-ServerFS **v0.23.1 is the current published stable release**. The macOS deployment shape introduced
+ServerFS **v0.24.0 is the current published stable release**. The macOS deployment shape introduced
 in v0.13.2 remains pure Python over POSIX/Darwin primitives (`fcopyfile`, `getpeereid`, `confstr`
 via narrow ctypes bindings); v0.13.2 adds a small headless Swift ServiceManagement companion solely for persistent
 per-user service registration. There is still no `serverfs-macos-native` wheel, Docker/VM,
-LaunchDaemon, root helper or Rosetta requirement. The v0.23.1 Deterministic Repo Ops release scope is Linux Host Bridge and validated native Apple Silicon macOS support; native Windows Repo Ops remains unsupported.
+LaunchDaemon, root helper or Rosetta requirement. Deterministic Repo Ops shipped on Linux Host Bridge in v0.23.0, validated native Apple Silicon macOS in v0.23.1, and validated native Windows 11 x64 in v0.23.2. Native macOS Cloudflare Tunnel is **planned** for v0.24.1; the current native persistent Tunnel remains the existing OpenAI adapter.
 
 ## Supported platform
 

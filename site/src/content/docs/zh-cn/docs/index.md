@@ -5,7 +5,7 @@ description: 面向 Linux、Windows 与 macOS 的安全、标准优先 MCP 文�
 
 ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux 容器为既有形态，v0.10.0 起支持 Windows 原生，v0.13.0 起支持 macOS 原生）暴露为**受控 workdir**。
 
-目前已发布的稳定版本：**v0.23.3**。Linux v0.24.0 候选版的 Cloudflare Tunnel 已通过只读隔离环境中的 ChatGPT、SSE 与会话恢复验收，但尚未正式发布。见 [Cloudflare Tunnel](./cloudflare-tunnel/)。ServerFS 现在以标准 MCP 为中心：兼容 MCP 的宿主可使用原生 stdio 或标准 Streamable HTTP；OpenAI Secure MCP Tunnel 继续作为可选的 ChatGPT 入口。Linux、Windows 与 macOS 继续共享同一套文件系统、二进制与 Agent 能力契约。
+目前已发布的稳定版本：**v0.24.0**。Linux Docker Cloudflare Tunnel 已随 v0.24.0 正式发布，曾在只读隔离环境通过真实 ChatGPT、SSE 与会话恢复验收；macOS/Windows 原生 Cloudflare 接入分别规划到 v0.24.1 / v0.24.2。见 [Cloudflare Tunnel](./cloudflare-tunnel/)。ServerFS 现在以标准 MCP 为中心：兼容 MCP 的宿主可使用原生 stdio 或标准 Streamable HTTP；OpenAI Secure MCP Tunnel 继续作为可选的 ChatGPT 入口。Linux、Windows 与 macOS 继续共享同一套文件系统、二进制与 Agent 能力契约。
 
 v0.22.0 通过既有 Agent Bridge 私有 RPC 增加 Correlated Agent Diagnostics：`serverfs diagnostics snapshot` 提供有界的 Bridge 诊断快照，`serverfs diagnostics task <task-id>` 提供单个已保留任务的诊断投影。诊断状态仅驻留于 Bridge 进程内并保持有界；不新增 MCP tool、监听端口、持久 trace store、OpenTelemetry 依赖或 telemetry egress。Linux/VPS、受支持 macOS 与受支持 Windows 的 Phase F 均已通过，Phase G 发布就绪验收为 PASS。详见 [v0.22 Phase G 预检](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-g-preflight-2026-10-22.md)。
 
@@ -22,14 +22,14 @@ v0.22.0 通过既有 Agent Bridge 私有 RPC 增加 Correlated Agent Diagnostics
 | 文件系统 + Agent | 21 | 启用 Agent overlay |
 | 文件系统 + 二进制 + Agent | 23 | 同时启用二进制 + Agent |
 | 文件系统 + Agent + Repo Ops | 25 | 同时启用 Agent + Repo Ops |
-| v0.23.3 完整能力 | 27 | 同时启用二进制 + Agent + Repo Ops |
+| v0.24.0 完整能力 | 27 | 同时启用二进制 + Agent + Repo Ops |
 
-稳定版 v0.23.3 保留既有 11 / 13 / 21 / 23 文件系统、二进制与 Agent 组合，并在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署上增加上表所示独立门控的 Repo Ops 组合。ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
+稳定版 v0.24.0 保留既有 11 / 13 / 21 / 23 文件系统、二进制与 Agent 组合，并在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署上增加上表所示独立门控的 Repo Ops 组合。ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
 
 ## 从这里开始
 
 - [快速开始](./getting-started/) — 从标准 MCP 开始，需要远程访问时再选择经过认证的入口。
-- [Cloudflare Tunnel](./cloudflare-tunnel/) — Linux v0.24 候选版可选 Docker 连接器，仅出站并独立启用客户端认证。
+- [Cloudflare Tunnel](./cloudflare-tunnel/) — Linux v0.24.0 稳定版可选 Docker 连接器，仅出站并独立启用客户端认证。
 - [配置](./configuration/) — 定义 workdir 与每个 workdir 的最终生效策略。
 - [架构](./architecture/) — 理解 MCP Core、传输/入口适配器、部署边界与 Agent Bridge。
 - [安全模型](./security/) — 查看纵深防御模型。

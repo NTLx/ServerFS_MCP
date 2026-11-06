@@ -80,9 +80,9 @@ docker compose --env-file .env \
 
 启动前需要设置 `SERVERFS_OAUTH_ENABLED=true`、canonical 公网 MCP resource URL、`serverfs-auth` public/issuer URL、introspection secret、至少一个 provider，以及精确的稳定 principal allowlist。公网部署应继续让 MCP/auth 容器只绑定 loopback，再通过 HTTPS 反向代理发布。Provider callback、CIMD/DCR、备份/撤销与 OpenAI Tunnel 兼容边界详见 [OAuth 2.1](../oauth/)。
 
-## 可选 Cloudflare Tunnel 接入（Linux v0.24.0 候选版）
+## 可选 Cloudflare Tunnel 接入（Linux v0.24.0 稳定版）
 
-没有公网入站端口且希望使用固定 HTTPS 域名时，可以叠加 `compose.cloudflare.yml`。该方式将 cloudflared 接入私有 Docker 网络，不发布主机端口。需要在 Cloudflare 建立远程管理型 Tunnel，Origin 配置为 `http://serverfs-mcp:8000`，令牌文件存放仓库外，并配置精确 Host 白名单和 ServerFS API Key/OAuth。**Cloudflare Tunnel Token 不承担 MCP 客户端认证。** 详见 [Cloudflare Tunnel](../cloudflare-tunnel/)。该能力尚未正式发布，但独立、只读的 VPS 测试环境已经通过 ChatGPT 直接工具调用、公网 SSE 长连接及 Connector 重启后的原 MCP 会话复用验收。生产工作目录、Agent/Repo Ops 与 Windows/macOS 原生 Cloudflare 接入不在该验收范围内。
+没有公网入站端口且希望使用固定 HTTPS 域名时，可以叠加 `compose.cloudflare.yml`。该方式将 cloudflared 接入私有 Docker 网络，不发布主机端口。需要在 Cloudflare 建立远程管理型 Tunnel，Origin 配置为 `http://serverfs-mcp:8000`，令牌文件存放仓库外，并配置精确 Host 白名单和 ServerFS API Key/OAuth。**Cloudflare Tunnel Token 不承担 MCP 客户端认证。** 详见 [Cloudflare Tunnel](../cloudflare-tunnel/)。该能力已随 v0.24.0 正式发布，且独立、只读的 VPS 测试环境已经通过 ChatGPT 直接工具调用、公网 SSE 长连接及 Connector 重启后的原 MCP 会话复用验收。生产工作目录、Agent/Repo Ops 与 Windows/macOS 原生 Cloudflare 接入不在该验收范围内。
 
 ## 可选 ChatGPT / OpenAI Tunnel 部署
 
@@ -159,16 +159,16 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 引入的文件入口主机策略与网络边界详见[二进制传输](../binary-transfer/)和[安全模型](../security/)。
 
-## 当前稳定版本：v0.23.3
+## 当前稳定版本：v0.24.0
 
-已发布的 v0.23.3 使用不可变标签 `v0.23.3`，并提供以下 GHCR 稳定标签：
+已发布的 v0.24.0 使用不可变标签 `v0.24.0`，并提供以下 GHCR 稳定标签：
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.23
-ghcr.io/ntlx/serverfs_mcp:0.23.3
+ghcr.io/ntlx/serverfs_mcp:0.24
+ghcr.io/ntlx/serverfs_mcp:0.24.0
 ```
 
-生产环境应固定使用 `0.23.3`，而不是长期跟随 `latest` 或 `edge`。v0.23.3 GitHub Release 包含三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）以及 skills-only portable Agent Plugin `serverfs-plugin-v0.23.3.zip`；发布证据见 [v0.23.3 发布清单](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.3-release-checklist-2026-10-29.md)；见 [Agent Skills](../agent-skills/)。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.19.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](../windows-native/)和 [macOS 原生部署](../macos-native/)。
+生产环境应固定使用 `0.24.0`，而不是长期跟随 `latest` 或 `edge`。v0.24.0 GitHub Release 包含三个 Windows 安装 wheel（产品包 + `serverfs-agent-bridge` + `serverfs-windows-native` abi3）以及 skills-only portable Agent Plugin `serverfs-plugin-v0.24.0.zip`；发布证据见 [v0.24.0 发行说明](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/releases/v0.24.0.md)；见 [Agent Skills](../agent-skills/)。macOS 直接使用产品包与 Bridge Python 包，不存在单独的文件系统 native wheel；v0.19.0 延续 v0.13.2 引入的小型 ServiceManagement companion，用于持久化 Tunnel/Bridge 服务。见 [Windows 原生部署](../windows-native/)和 [macOS 原生部署](../macos-native/)。
 
 ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](../acp/)。

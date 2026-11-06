@@ -80,9 +80,9 @@ docker compose --env-file .env \
 
 Public deployments should expose the MCP and authorization-server loopback ports only through an HTTPS reverse proxy. See [OAuth 2.1](../oauth/) for provider callbacks, CIMD/DCR, backup/revocation and the OpenAI Tunnel compatibility boundary.
 
-## Optional Cloudflare Tunnel ingress (Linux v0.24.0 candidate)
+## Optional Cloudflare Tunnel ingress (Linux v0.24.0 stable)
 
-For outbound-only connectivity with a fixed public HTTPS hostname, add `compose.cloudflare.yml` to `compose.yml`. This connects cloudflared to the private Docker network without publishing a host port. Configure a remotely managed Tunnel with the origin `http://serverfs-mcp:8000`, an external token file, an exact public Host allowlist and ServerFS API Key/OAuth. The connector token does **not** authenticate MCP callers. See [Cloudflare Tunnel](../cloudflare-tunnel/) for the full security and verification procedure. The v0.24.0 code has not yet been published as a stable release. An isolated read-only VPS staging instance has passed actual ChatGPT tool calls, long-lived SSE and MCP session reuse after Connector restart. That evidence does not include production workdirs, Agent/Repo Ops, or native Windows/macOS Cloudflare integration.
+For outbound-only connectivity with a fixed public HTTPS hostname, add `compose.cloudflare.yml` to `compose.yml`. This connects cloudflared to the private Docker network without publishing a host port. Configure a remotely managed Tunnel with the origin `http://serverfs-mcp:8000`, an external token file, an exact public Host allowlist and ServerFS API Key/OAuth. The connector token does **not** authenticate MCP callers. See [Cloudflare Tunnel](../cloudflare-tunnel/) for the full security and verification procedure. The Linux Cloudflare ingress shipped in v0.24.0. An isolated read-only VPS staging instance passed actual ChatGPT tool calls, long-lived SSE and MCP session reuse after Connector restart. That evidence does not include production workdirs, Agent/Repo Ops, or native Windows/macOS Cloudflare integration.
 
 ## Optional ChatGPT / OpenAI Tunnel deployment
 
@@ -159,16 +159,16 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](../binary-transfer/) and [Security Model](../security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
-## Current stable release: v0.23.3
+## Current stable release: v0.24.0
 
-The published v0.23.3 release uses immutable tag `v0.23.3` and these GHCR stable tags:
+The published v0.24.0 release uses immutable tag `v0.24.0` and these GHCR stable tags:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.23
-ghcr.io/ntlx/serverfs_mcp:0.23.3
+ghcr.io/ntlx/serverfs_mcp:0.24
+ghcr.io/ntlx/serverfs_mcp:0.24.0
 ```
 
-For production deployments, pin `0.23.3` rather than following `latest` or `edge`. The v0.23.3 GitHub Release includes the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) and the skills-only portable Agent Plugin `serverfs-plugin-v0.23.3.zip`, with release evidence recorded in the [v0.23.3 release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.3-release-checklist-2026-10-29.md); see [Agent Skills](../agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
+For production deployments, pin `0.24.0` rather than following `latest` or `edge`. The v0.24.0 GitHub Release includes the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) and the skills-only portable Agent Plugin `serverfs-plugin-v0.24.0.zip`, with release evidence recorded in the [v0.24.0 release notes](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/releases/v0.24.0.md); see [Agent Skills](../agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
 
 For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).

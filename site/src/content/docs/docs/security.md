@@ -47,7 +47,7 @@ Admission is default-deny and uses exact stable provider subjects. Provider-nati
 
 The OpenAI Tunnel OAuth path keeps the same validation. A known upstream resource-rewrite issue is documented rather than bypassed with wildcard audiences. See [OAuth 2.1](../oauth/) for deployment, revocation, backup and provider details.
 
-## Deterministic Repo Ops boundary (v0.23.3 current; v0.23+)
+## Deterministic Repo Ops boundary (v0.23+; current v0.24.0)
 
 Repo Ops is an independently gated host capability supported on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64, not an Agent execution mode. It reuses the authenticated host Bridge transport and shared writer lease, but its `repo.*` RPC path never creates an Agent task or invokes a provider adapter.
 

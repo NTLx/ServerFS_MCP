@@ -22,9 +22,9 @@ SERVERFS_HTTP_API_KEY=
 
 默认 host/port/path 继续与既有 OpenAI Tunnel 的 Docker 内部路径一致，因此新增通用 MCP HTTP 支持不会强迫现有 Tunnel 部署迁移。
 
-### 可选 Cloudflare Tunnel 接入（Linux v0.24.0 候选版）
+### 可选 Cloudflare Tunnel 接入（Linux v0.24.0 稳定版）
 
-通过 `compose.cloudflare.yml` 接入远程管理型 Cloudflare Tunnel。Connector 仅从仓库及所有 Workdir 外部的绝对路径 `CLOUDFLARE_TUNNEL_TOKEN_FILE` 只读挂载 Token 文件；`CLOUDFLARED_IMAGE` 指定镜像。必须单独为公网 Host 加白名单，并配置客户端 API Key/OAuth；Tunnel Token 不等于 MCP 客户端身份认证。详见 [Cloudflare Tunnel](../cloudflare-tunnel/)。Linux v0.24.0 已在隔离、只读测试环境通过真实 ChatGPT 工具调用、SSE 与会话恢复验收，但尚未正式发布，也不代表生产 Workdir/Agent 已验收。`CLOUDFLARED_UID/GID` 独立于 `SERVERFS_UID/GID`，Token 文件必须以 `0600` 权限存于所有工作目录之外。
+通过 `compose.cloudflare.yml` 接入远程管理型 Cloudflare Tunnel。Connector 仅从仓库及所有 Workdir 外部的绝对路径 `CLOUDFLARE_TUNNEL_TOKEN_FILE` 只读挂载 Token 文件；`CLOUDFLARED_IMAGE` 指定镜像。必须单独为公网 Host 加白名单，并配置客户端 API Key/OAuth；Tunnel Token 不等于 MCP 客户端身份认证。详见 [Cloudflare Tunnel](../cloudflare-tunnel/)。Linux v0.24.0 已在隔离、只读测试环境通过真实 ChatGPT 工具调用、SSE 与会话恢复验收，现已随 v0.24.0 正式发布，但不代表生产 Workdir/Agent 已验收。`CLOUDFLARED_UID/GID` 独立于 `SERVERFS_UID/GID`，Token 文件必须以 `0600` 权限存于所有工作目录之外。
 
 ### 可选静态 API Key
 
@@ -78,7 +78,7 @@ WORKDIR_02_READ_ONLY=false
 - 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
 - 静态 API Key 默认关闭。非空 `SERVERFS_HTTP_API_KEY` 会使用一个共享密钥保护 Streamable HTTP，并且不能与内置 OAuth 同时启用。
 - OAuth 默认关闭。启用时需要 OAuth Compose overlay；loopback 之外必须使用 HTTPS resource/auth URL；必须配置非空 introspection secret、至少一个身份 provider，以及精确的 default-deny principal allowlist。
-- Repo Ops 默认关闭，通过 `WORKDIR_XX_REPO_OPS_ENABLED=true` 按 Workdir 独立启用。当前稳定版 v0.23.3 支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署；Windows 原生支持最早在 v0.23.2 完成验收。Repo Ops 要求已认证的 Host Bridge transport，但不要求启用任何 Agent Runtime。
+- Repo Ops 默认关闭，通过 `WORKDIR_XX_REPO_OPS_ENABLED=true` 按 Workdir 独立启用。当前稳定版 v0.24.0 支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署；Windows 原生支持最早在 v0.23.2 完成验收。Repo Ops 要求已认证的 Host Bridge transport，但不要求启用任何 Agent Runtime。
 - `WORKDIR_XX_REPO_ACTIONS_JSON` 是 Repo Ops named action 的宿主机私有运维策略，只会被渲染到 Host Bridge 配置，不会转发进入 MCP 容器。Named action 要求 read-write Workdir，并强制配置 SHA-256 integrity pins。
 - Agent 策略只有在显式配置后才启用。
 - v0.12.0 把 Tunnel、Agent runtime 与 Jev 的代理选择保持独立：`SERVERFS_OPENAI_TUNNEL_USE_PROXY`、`SERVERFS_AGENT_USE_PROXY`、`SERVERFS_JEV_USE_PROXY` 复用同一组 `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` 端点字段，但不会互相隐式启用。

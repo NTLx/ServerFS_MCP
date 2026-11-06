@@ -11,8 +11,9 @@ This file is the repository-wide maintainer entry point. Keep it short. Detailed
 
 ## Current baseline
 
-- **v0.24.0 is in Linux release-candidate preparation only:** optional Cloudflare Tunnel Compose ingress. Isolated read-only Linux staging passed real ChatGPT MCP tool calls, >60-second SSE, and session reuse across a Connector restart. Do not claim production workdir/Agent acceptance, native Windows/macOS Cloudflare integration, or a published v0.24.0 release. See `dev_plan_v0.24.md` and `docs/cloudflare-tunnel.md`.
-- **Current stable release: v0.23.3.** Deterministic Repo Ops is an independently gated non-Agent capability supported on Linux Host Bridge and validated native Apple Silicon macOS and Windows 11 x64. v0.23.3 closes the stable-release gate defect exposed by v0.23.2; Repo Ops must never auto-fallback to `submit_agent_task`.
+- **Current stable release: v0.24.0.** Optional Linux Docker Compose Cloudflare Tunnel ingress is published after exact-SHA cross-platform CI; isolated read-only Linux staging passed real ChatGPT MCP tool calls, >60-second SSE and session reuse after a Connector restart. This is **not** evidence of native Windows/macOS Cloudflare integration or production workdir/Agent acceptance. See `dev_plan_v0.24.md` and `docs/cloudflare-tunnel.md`.
+- **Next planned releases:** v0.24.1 = native Apple Silicon/macOS 27 Cloudflare Tunnel; v0.24.2 = native Windows 11 x64 Cloudflare Tunnel. Both are **planning only**, gated by evidence and per-platform acceptance: see `dev_plan_v0.24.1.md` and `dev_plan_v0.24.2.md`.
+- **v0.23.3 was the previous stable release.** Its exact-SHA, dispatch-first publication fix remains mandatory, and Repo Ops remains an independently gated non-Agent capability on Linux Host Bridge and validated native Apple Silicon macOS/Windows 11 x64. Repo Ops must never auto-fallback to `submit_agent_task`.
 - **v0.23.2 is the previous stable release.** Its Windows Repo Ops product behavior is retained, but its historical release record includes a publication-gate exception.
 - **v0.19.0 introduced generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes.** OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real Linux/macOS/Windows end-to-end acceptance; see `dev_plan_v0.19.md` for scope and evidence.
 - Native deployment families: Linux, Windows and macOS.

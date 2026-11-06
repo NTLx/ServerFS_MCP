@@ -5,7 +5,7 @@ description: A secure, standards-first MCP filesystem server for Linux, Windows 
 
 ServerFS MCP exposes explicitly configured directories — Linux containers, native Windows since v0.10.0, native macOS since v0.13.0 — as **controlled workdirs** through the Model Context Protocol.
 
-Current published stable release: **v0.23.3**. The v0.24.0 Linux Cloudflare Tunnel candidate has passed isolated real ChatGPT, SSE and session-reconnect acceptance but is not yet published. See [Cloudflare Tunnel](./cloudflare-tunnel/). ServerFS is now standards-first: compatible MCP hosts can use native stdio or standard Streamable HTTP, while the OpenAI Secure MCP Tunnel remains an optional ChatGPT ingress. The same filesystem, binary and Agent capability contracts remain shared across Linux, Windows and macOS.
+Current published stable release: **v0.24.0**. Optional Linux Docker Cloudflare Tunnel ingress shipped in v0.24.0 after real isolated ChatGPT, SSE and session-reconnect acceptance; native macOS/Windows Cloudflare integration is planned separately for v0.24.1/v0.24.2. See [Cloudflare Tunnel](./cloudflare-tunnel/). ServerFS is now standards-first: compatible MCP hosts can use native stdio or standard Streamable HTTP, while the OpenAI Secure MCP Tunnel remains an optional ChatGPT ingress. The same filesystem, binary and Agent capability contracts remain shared across Linux, Windows and macOS.
 
 v0.22.0 adds Correlated Agent Diagnostics through the existing private Agent Bridge RPC: `serverfs diagnostics snapshot` for a bounded Bridge snapshot and `serverfs diagnostics task <task-id>` for one retained task. Diagnostic state is process-local and bounded; there is no new MCP tool, listener, persistent trace store, OpenTelemetry dependency, or telemetry egress. Phase F passed on Linux/VPS, supported macOS, and supported Windows; Phase G release-readiness acceptance is PASS. See [v0.22 Phase G preflight](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-g-preflight-2026-10-22.md).
 
@@ -22,14 +22,14 @@ It is **read-only by default**. Administrators can opt individual workdirs into 
 | Filesystem + Agent | 21 | Agent overlay enabled |
 | Filesystem + binary + Agent | 23 | Binary + Agent enabled |
 | Filesystem + Agent + Repo Ops | 25 | Agent + Repo Ops enabled |
-| Full v0.23.3 surface | 27 | Binary + Agent + Repo Ops enabled |
+| Full v0.24.0 surface | 27 | Binary + Agent + Repo Ops enabled |
 
-Stable v0.23.3 keeps the existing 11 / 13 / 21 / 23 filesystem, binary and Agent combinations and adds the independently gated Repo Ops combinations shown above on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64. There is no shell, generic command executor, recursive delete, or unguarded overwrite.
+Stable v0.24.0 keeps the existing 11 / 13 / 21 / 23 filesystem, binary and Agent combinations and adds the independently gated Repo Ops combinations shown above on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64. There is no shell, generic command executor, recursive delete, or unguarded overwrite.
 
 ## Start here
 
 - [Getting Started](./getting-started/) — start with standard MCP connectivity; choose an authenticated ingress when remote access is required.
-- [Cloudflare Tunnel](./cloudflare-tunnel/) — optional Linux v0.24 candidate Docker connector, outbound-only and independently authenticated.
+- [Cloudflare Tunnel](./cloudflare-tunnel/) — optional Linux v0.24.0 stable Docker connector, outbound-only and independently authenticated.
 - [Configuration](./configuration/) — define workdirs and effective per-workdir policy.
 - [Architecture](./architecture/) — understand the MCP core, transport/ingress adapters, deployment and Agent Bridge boundaries.
 - [Security Model](./security/) — review the defense-in-depth model.

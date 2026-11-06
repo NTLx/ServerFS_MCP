@@ -1,4 +1,4 @@
-# Cloudflare Tunnel on Linux / Docker Compose (v0.24.0 candidate)
+# Cloudflare Tunnel on Linux / Docker Compose (v0.24.0 stable)
 
 This is **not** the OpenAI Secure MCP Tunnel. Do not use OpenAI control-plane credentials, client bootstrap, or health commands here.
 

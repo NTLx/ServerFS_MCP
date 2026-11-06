@@ -3,7 +3,7 @@ title: Agent Skills
 description: Use ServerFS repository skills to guide AI Agents through safe installation, configuration, upgrade, diagnosis and optional subsystem operations.
 ---
 
-> **Current stable release: v0.23.3.** ServerFS includes seven operational Agent Skills and one skills-only portable Agent Plugin.
+> **Current stable release: v0.24.0.** ServerFS includes seven operational Agent Skills and one skills-only portable Agent Plugin.
 
 ServerFS keeps operational Agent Skills in the repository [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) directory. They teach an Agent **how to use the existing ServerFS product interfaces safely**; they are not another configuration format or deployment implementation.
 
@@ -15,11 +15,11 @@ ServerFS keeps operational Agent Skills in the repository [`skills/`](https://gi
 | Workdir and ordinary policy changes, including v0.23 Repo Ops policy | `serverfs-configure` |
 | Existing deployment upgrade | `serverfs-upgrade` |
 | Read-first diagnosis and health verification | `serverfs-diagnose` |
-| OpenAI Secure MCP Tunnel or Linux Docker Cloudflare Tunnel (v0.24.0 candidate) | `serverfs-tunnel` |
+| OpenAI Secure MCP Tunnel or Linux Docker Cloudflare Tunnel (v0.24.0 stable) | `serverfs-tunnel` |
 | Remote HTTP API Key / OAuth | `serverfs-auth` |
 | Host Bridge lifecycle / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
-The v0.24.0 candidate retains exactly **seven** Skills. Cloudflare Linux support is a new branch inside the existing `serverfs-tunnel` Skill (`references/cloudflare-linux.md`), not an eighth Skill. It uses the separate `serverfs-auth` admission guidance; token files must be owned/readable by `CLOUDFLARED_UID`, not inferred from the MCP container user. The isolated read-only VPS route has passed real ChatGPT/SSE/session-recovery acceptance, but production workdirs and native Windows/macOS Cloudflare lifecycle are not covered.
+The published v0.24.0 release retains exactly **seven** Skills. Cloudflare Linux support is a new branch inside the existing `serverfs-tunnel` Skill (`references/cloudflare-linux.md`), not an eighth Skill. It uses the separate `serverfs-auth` admission guidance; token files must be owned/readable by `CLOUDFLARED_UID`, not inferred from the MCP container user. The isolated read-only VPS route has passed real ChatGPT/SSE/session-recovery acceptance, but production workdirs and native Windows/macOS Cloudflare lifecycle are not covered.
 
 The repository-level `AGENTS.md` contains only a thin index. An Agent should load the smallest matching `SKILL.md` rather than placing all operational procedures in its base context.
 
@@ -51,12 +51,12 @@ The skills preserve the same ServerFS invariants as manual operation:
 
 ## Portable Agent Plugin
 
-The repository root contains the portable Agent Plugins manifest `plugin.json`. The currently published v0.23.3 GitHub Release packages the seven runtime skills and their references as this asset:
+The repository root contains the portable Agent Plugins manifest `plugin.json`. The currently published v0.24.0 GitHub Release packages the seven runtime skills and their references as this asset:
 
 ```text
-serverfs-plugin-v0.23.3.zip
+serverfs-plugin-v0.24.0.zip
 ```
 
-The ZIP is a **skills-only** Plugin. It does not bundle `mcp.json`, a ServerFS instance URL, credentials, or provider-private settings. For the pending v0.24.0 release candidate, the same seven Skill directories and their references will be packaged as `serverfs-plugin-v0.24.0.zip` **only after** the exact-SHA release gate. Plugin and skill content follow the ServerFS release version; there is no independent skill version lifecycle.
+The ZIP is a **skills-only** Plugin. It does not bundle `mcp.json`, a ServerFS instance URL, credentials, or provider-private settings. The v0.24.0 Plugin was published after the successful exact-SHA cross-platform release gate; it contains the same seven Skill directories and references, including the Linux Cloudflare Tunnel reference. Plugin and skill content follow the ServerFS release version; there is no independent skill version lifecycle.
 
 The Git repository remains canonical. ServerFS does not automatically copy these skills into `~/.codex/skills`, Claude configuration, or other provider-private directories.

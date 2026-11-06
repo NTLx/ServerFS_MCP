@@ -1,6 +1,6 @@
 # ServerFS v0.24.0 — Linux Cloudflare Tunnel ingress
 
-Status: **Linux release-candidate preparation; NOT published.** Current published stable release remains v0.23.3.
+Status: **v0.24.0 released 2026-11-06** from immutable SHA `62573553db8660c28736f32d64cb7a83cf525606`; exact-SHA [release workflow](https://github.com/NTLx/ServerFS_MCP/actions/runs/42178152341) and [GitHub Release](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.24.0) succeeded. Native macOS and Windows Cloudflare lifecycle support is planned separately for v0.24.1 and v0.24.2.
 
 ## Objective
 
@@ -49,7 +49,7 @@ Linux Docker: cloudflared -- private HTTP --> serverfs-mcp:8000/mcp
 
 ## Release boundary
 
-Develop on the VPS `ServerFS` checkout. Keep the published stable version v0.23.3 in live-facing metadata until the v0.24.0 release-candidate gate. Version changes, tag creation, push, GitHub Release and GHCR publication are separate, explicitly authorized steps under the repository dispatch-first release workflow. Never create Cloudflare routes or activate public access as a side-effect of repository tests.
+During development on the VPS `ServerFS` checkout, the published stable version was kept at v0.23.3 until the v0.24.0 release-candidate gate; v0.24.0 was later published successfully. Version changes, tag creation, push, GitHub Release and GHCR publication remained separate, explicitly authorized steps under the repository dispatch-first release workflow. Repository tests must never create Cloudflare routes or activate public access as a side effect.
 
 ## Cloudflare staging state (2026-11-06)
 

@@ -1,6 +1,6 @@
-# Cloudflare Tunnel — Linux remote MCP ingress (v0.24.0 candidate)
+# Cloudflare Tunnel — Linux remote MCP ingress (v0.24.0)
 
-> **Release status:** Linux v0.24.0 remains in development; v0.23.3 is the published stable release. Isolated Cloudflare staging has passed public MCP wire-protocol, direct ChatGPT client tooling, long-lived SSE, and MCP session reuse across a Connector restart. This does not imply production workdir or Agent acceptance.
+> **Release status:** Linux Docker Cloudflare Tunnel ingress was **published in v0.24.0** after exact-SHA, dispatch-first cross-platform CI. Isolated staging passed public MCP protocol, direct ChatGPT tool calls, long-lived SSE and session reuse after Connector restart. This does not imply production workdir/Agent acceptance or native macOS/Windows Cloudflare support; those are planned separately for v0.24.1/v0.24.2.
 
 Cloudflare Tunnel provides an outbound-only network ingress for ServerFS Streamable HTTP. It does not replace MCP authentication or the existing OpenAI Secure MCP Tunnel. The Linux Compose connector has no host-published port and shares only the private ServerFS MCP network with the application.
 

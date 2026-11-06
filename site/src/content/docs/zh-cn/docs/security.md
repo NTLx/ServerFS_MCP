@@ -47,7 +47,7 @@ v0.16 可通过隔离的 `serverfs-auth` Authorization Server 保护远程 Strea
 
 OpenAI Tunnel 的 OAuth 路径同样保持这些校验。已知上游 resource rewrite 问题会被明确记录，而不是通过 wildcard audience 绕过。部署、撤销、备份和 provider 细节见 [OAuth 2.1](../oauth/)。
 
-## Deterministic Repo Ops 边界（当前 v0.23.3；v0.23+）
+## Deterministic Repo Ops 边界（v0.23+；当前 v0.24.0）
 
 Repo Ops 是独立门控的宿主机能力，支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署，不属于 Agent 执行模式。它复用已认证的 Host Bridge transport 和共享 writer lease，但 `repo.*` RPC 路径不会创建 Agent task，也不会调用 Provider adapter。
 

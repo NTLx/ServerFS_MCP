@@ -5,7 +5,7 @@ description: Operate the optional OpenAI Secure MCP Tunnel or Linux Cloudflare T
 
 # Operate optional ServerFS tunnel ingresses
 
-**Two separate transport adapters:** OpenAI Secure MCP Tunnel (existing) and Cloudflare Tunnel (Linux Compose, v0.24.0 candidate; live validated only on isolated read-only staging). Never mix their credentials, configuration or health evidence.
+**Two separate transport adapters:** OpenAI Secure MCP Tunnel (existing) and Cloudflare Tunnel (Linux Compose, shipped in v0.24.0; live validated only on isolated read-only staging). Never mix their credentials, configuration or health evidence.
 
 The OpenAI Tunnel is an optional authenticated ChatGPT ingress adapter. Treat it as a separate subsystem with its own control-plane credentials, lifecycle and health evidence.
 
