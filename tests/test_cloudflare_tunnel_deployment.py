@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,7 @@ def test_cloudflare_overlay_static_boundaries() -> None:
     assert "CONTROL_PLANE_API_KEY" not in compose
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Cloudflare Compose runtime is Linux-only")
 def test_cloudflare_overlay_render_isolated_from_openai_tunnel() -> None:
     docker_version = subprocess.run(
         ["docker", "compose", "version"], capture_output=True, check=False
