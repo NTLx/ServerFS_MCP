@@ -194,16 +194,46 @@ def run_api_key_streamable_http(mcp: MCPServer, settings: Settings, registry) ->
     """Serve the SDK Streamable HTTP app behind the static API Key boundary."""
     import uvicorn
 
-    app = mcp.streamable_http_app(
+    app = create_streamable_http_app(mcp, settings, registry)
+    protected_app = StaticAPIKeyMiddleware(app, settings.http_api_key)
+    config = uvicorn.Config(
+        protected_app,
+        host=settings.http_host,
+        port=settings.http_port,
+        log_level=settings.log_level.lower(),
+        access_log=False,
+    )
+    asyncio.run(uvicorn.Server(config).serve())
+
+
+def create_streamable_http_app(mcp: MCPServer, settings: Settings, registry):
+    """Construct the shared SDK HTTP app with ServerFS transport security."""
+    return mcp.streamable_http_app(
         streamable_http_path=settings.http_path,
         stateless_http=False,
         max_request_body_size=streamable_http_max_request_body_size(registry),
         transport_security=streamable_http_transport_security(settings),
         host=settings.http_host,
     )
-    protected_app = StaticAPIKeyMiddleware(app, settings.http_api_key)
+
+
+def run_streamable_http(mcp: MCPServer, settings: Settings, registry) -> None:
+    """Serve Streamable HTTP with the configured API Key or SDK OAuth boundary."""
+    if settings.http_host != "127.0.0.1":
+        raise ValueError("native Streamable HTTP must bind to 127.0.0.1")
+    if not 1 <= settings.http_port <= 65535:
+        raise ValueError("Streamable HTTP port must be from 1 to 65535")
+    if not settings.http_api_key and not settings.oauth_enabled:
+        raise ValueError("Streamable HTTP requires API Key or OAuth authentication")
+    if settings.oauth_enabled and settings.http_api_key:
+        raise ValueError("API Key and OAuth cannot both be enabled")
+    import uvicorn
+
+    app = create_streamable_http_app(mcp, settings, registry)
+    if settings.http_api_key:
+        app = StaticAPIKeyMiddleware(app, settings.http_api_key)
     config = uvicorn.Config(
-        protected_app,
+        app,
         host=settings.http_host,
         port=settings.http_port,
         log_level=settings.log_level.lower(),

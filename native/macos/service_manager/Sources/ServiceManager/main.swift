@@ -6,9 +6,13 @@ private struct ServiceSpec {
     let plistName: String
 }
 
-private let serviceSpecs = [
+private let legacyServiceSpecs = [
     ServiceSpec(id: "tunnel", plistName: "com.ntlx.serverfs.tunnel.plist"),
     ServiceSpec(id: "agent-bridge", plistName: "com.ntlx.serverfs.bridge.plist"),
+]
+private let serviceSpecs = legacyServiceSpecs + [
+    ServiceSpec(id: "http-origin", plistName: "com.ntlx.serverfs.http-origin.plist"),
+    ServiceSpec(id: "cloudflare", plistName: "com.ntlx.serverfs.cloudflare.plist"),
 ]
 
 private func statusName(_ status: SMAppService.Status) -> String {
@@ -31,7 +35,7 @@ private func service(_ spec: ServiceSpec) -> SMAppService {
 }
 
 private func selectedSpecs(_ raw: String?) -> [ServiceSpec]? {
-    guard let raw, raw != "all" else { return serviceSpecs }
+    guard let raw, raw != "all" else { return legacyServiceSpecs }
     guard let spec = serviceSpecs.first(where: { $0.id == raw }) else { return nil }
     return [spec]
 }
@@ -50,7 +54,7 @@ private func emit(_ fields: [String: Any], exitCode: Int32 = 0) -> Never {
 
 private func usage() -> Never {
     fputs(
-        "usage: serverfs-service-manager {register|unregister|status} [all|tunnel|agent-bridge]\n" +
+        "usage: serverfs-service-manager {register|unregister|status} [all|tunnel|agent-bridge|http-origin|cloudflare]\n" +
             "       serverfs-service-manager open-settings\n" +
             "       serverfs-service-manager legacy-status <plist>\n" +
             "       serverfs-service-manager info\n",

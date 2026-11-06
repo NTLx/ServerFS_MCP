@@ -1,7 +1,7 @@
 import Foundation
 import Darwin
 
-private let allowedServices: Set<String> = ["tunnel", "agent-bridge"]
+private let allowedServices: Set<String> = ["tunnel", "agent-bridge", "http-origin", "cloudflare"]
 private let environmentKeyPattern = try! NSRegularExpression(pattern: "^[A-Za-z_][A-Za-z0-9_]*$")
 
 private struct Manifest: Decodable {
@@ -42,7 +42,7 @@ private enum LauncherError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .invalidArguments:
-            return "expected exactly one service id: tunnel or agent-bridge"
+            return "expected exactly one service id: tunnel, agent-bridge, http-origin, or cloudflare"
         case let .invalidManifest(reason):
             return "invalid service manifest: \(reason)"
         case let .invalidPath(reason):

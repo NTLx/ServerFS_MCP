@@ -14,9 +14,12 @@ import plistlib
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from .native_tunnel import parse_env_value
@@ -26,12 +29,19 @@ APP_BUNDLE_ID = "com.ntlx.serverfs.service-manager"
 APP_VERSION = "0.13.2"
 TUNNEL_SERVICE = "tunnel"
 BRIDGE_SERVICE = "agent-bridge"
+HTTP_ORIGIN_SERVICE = "http-origin"
+CLOUDFLARE_SERVICE = "cloudflare"
 ALL_SERVICES = (TUNNEL_SERVICE, BRIDGE_SERVICE)
+_CLOUDFLARE_SERVICES = (HTTP_ORIGIN_SERVICE, CLOUDFLARE_SERVICE)
+_CLOUDFLARE_RESTART_WAIT_SECONDS = 10.0
+_CLOUDFLARE_RESTART_POLL_SECONDS = 0.25
 BRIDGE_LABEL = "com.ntlx.serverfs.bridge"
 LEGACY_BRIDGE_LABEL = "com.ntlx.serverfs.agent-bridge"
 _SERVICE_LABELS = {
     TUNNEL_SERVICE: "com.ntlx.serverfs.tunnel",
     BRIDGE_SERVICE: BRIDGE_LABEL,
+    HTTP_ORIGIN_SERVICE: "com.ntlx.serverfs.http-origin",
+    CLOUDFLARE_SERVICE: "com.ntlx.serverfs.cloudflare",
 }
 MANIFEST_SCHEMA_VERSION = 1
 HANDOVER_LABEL = "com.ntlx.serverfs.v0132-handover"
@@ -39,6 +49,20 @@ HANDOVER_SCHEMA_VERSION = 1
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _TUNNEL_ENV_KEYS = frozenset({"CONTROL_PLANE_API_KEY", "SERVERFS_DATA_HOME"})
+_HTTP_ORIGIN_ENV_KEYS = frozenset(
+    {
+        "SERVERFS_HTTP_API_KEY",
+        "SERVERFS_HTTP_ALLOWED_HOSTS",
+        "SERVERFS_OAUTH_ENABLED",
+        "SERVERFS_OAUTH_RESOURCE_URL",
+        "SERVERFS_OAUTH_ISSUER_URL",
+        "SERVERFS_OAUTH_REQUIRED_SCOPES",
+        "SERVERFS_OAUTH_INTROSPECTION_URL",
+        "SERVERFS_OAUTH_INTROSPECTION_SECRET",
+        "SERVERFS_OAUTH_INTROSPECTION_TIMEOUT_SECONDS",
+    }
+)
+_HTTP_ORIGIN_ENV_SNAPSHOT = "http-origin-environment.json"
 _PROXY_KEYS = (
     "SERVERFS_PROXY_HOST",
     "SERVERFS_PROXY_PORT",
@@ -255,6 +279,13 @@ def _write_manifest(config_path: Path, values: dict[str, str], *, bridge_enabled
             "stdout_log": str(logs / "bridge.stdout.log"),
             "stderr_log": str(logs / "bridge.stderr.log"),
         }
+    # Legacy installation/update owns only its two entries. Preserve independently
+    # installed opt-in services so updating the old pair cannot orphan their plists.
+    existing = _load_manifest_document(optional=True)
+    for service in _CLOUDFLARE_SERVICES:
+        spec = existing.get("services", {}).get(service)
+        if isinstance(spec, dict):
+            services[service] = spec
     document = {"schema_version": MANIFEST_SCHEMA_VERSION, "services": services}
     _atomic_private_write(
         manifest_path(), json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -1113,6 +1144,421 @@ def _register_and_wait(service: str) -> dict[str, str]:
     return states
 
 
+def _secure_input_file(path: Path, name: str) -> Path:
+    candidate = path.expanduser()
+    if not candidate.is_absolute():
+        raise DarwinServiceError(f"{name} must be an absolute path")
+    current = Path(candidate.anchor)
+    for part in candidate.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            raise DarwinServiceError(f"{name} path must not contain symlinks")
+    try:
+        stat = candidate.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise DarwinServiceError(f"{name} is unavailable") from exc
+    if not candidate.is_file() or stat.st_uid != os.getuid() or stat.st_mode & 0o777 != 0o600:
+        raise DarwinServiceError(f"{name} must be a current-user regular file with mode 0600")
+    return candidate
+
+
+def _reject_symlink_components(path: Path, name: str) -> None:
+    current = Path(path.anchor)
+    for part in path.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            raise DarwinServiceError(f"{name} path must not contain symlinks")
+
+
+def _validate_private_service_home() -> None:
+    home = service_home()
+    _reject_symlink_components(home, "private service directory")
+    if not home.exists():
+        return
+    try:
+        stat = home.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise DarwinServiceError("private service directory is unavailable") from exc
+    if not home.is_dir() or stat.st_uid != os.getuid() or stat.st_mode & 0o077:
+        raise DarwinServiceError("private service directory must be current-user mode 0700")
+
+
+def _validate_private_location(path: Path, forbidden_roots: tuple[Path, ...], name: str) -> Path:
+    resolved = path.resolve(strict=True)
+    if any(resolved == root or root in resolved.parents for root in forbidden_roots):
+        raise DarwinServiceError(f"{name} must be outside the checkout and every workdir")
+    return resolved
+
+
+def _validated_http_origin_environment(env: dict[str, str], hostname: str) -> dict[str, str]:
+    """Validate and return only the HTTP-origin settings safe to snapshot."""
+    unexpected_env = set(env) - _HTTP_ORIGIN_ENV_KEYS
+    if unexpected_env:
+        raise DarwinServiceError("HTTP origin env file contains unsupported settings")
+    if env.get("SERVERFS_HTTP_ALLOWED_HOSTS") != hostname:
+        raise DarwinServiceError("SERVERFS_HTTP_ALLOWED_HOSTS must exactly match public hostname")
+    from .config import settings_from_env
+
+    try:
+        auth_settings = settings_from_env(env)
+    except ValueError as exc:
+        raise DarwinServiceError("HTTP origin authentication configuration is invalid") from exc
+    api_key = bool(auth_settings.http_api_key)
+    oauth = auth_settings.oauth_enabled
+    if api_key == oauth:
+        raise DarwinServiceError("configure exactly one HTTP API Key or OAuth authentication")
+    if oauth and not env.get("SERVERFS_OAUTH_INTROSPECTION_SECRET", "").strip():
+        raise DarwinServiceError("OAuth requires SERVERFS_OAUTH_INTROSPECTION_SECRET")
+    if "SERVERFS_HTTP_API_KEY" in env and oauth:
+        raise DarwinServiceError("HTTP API Key and OAuth cannot be combined")
+    return dict(env)
+
+
+def _loopback_port_available(port: int) -> bool:
+    try:
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", port))
+    except OSError:
+        return False
+    return True
+
+
+def _cloudflare_service_specs(
+    config_path: Path,
+    cloudflared: Path,
+    token_file: Path,
+    env_file: Path,
+    port: int,
+    hostname: str,
+) -> dict[str, dict[str, object]]:
+    from .native_config import load_native_config
+
+    valid_hostname = len(hostname) <= 253 and all(
+        1 <= len(label) <= 63 and re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", label)
+        for label in hostname.split(".")
+    )
+    if not 1 <= port <= 65535 or not valid_hostname:
+        raise DarwinServiceError("invalid Cloudflare origin port or hostname")
+    if not _loopback_port_available(port):
+        raise DarwinServiceError("HTTP origin loopback port is unavailable")
+    config_path = config_path.expanduser()
+    if not config_path.is_absolute():
+        raise DarwinServiceError("Cloudflare serverfs.toml path must be absolute")
+    _reject_symlink_components(config_path, "Cloudflare serverfs.toml")
+    config_path = config_path.resolve(strict=True)
+    if not config_path.is_file() or config_path.suffix.lower() != ".toml":
+        raise DarwinServiceError("Cloudflare service requires a native serverfs.toml file")
+    try:
+        workdirs, _settings = load_native_config(config_path)
+    except Exception as exc:
+        raise DarwinServiceError("Cloudflare native configuration is invalid") from exc
+    if not workdirs or any(not item.read_only for item in workdirs):
+        raise DarwinServiceError("Cloudflare service requires read-only staging workdirs")
+    roots_list: list[Path] = []
+    for item in workdirs:
+        root = Path(item.root).expanduser()
+        _reject_symlink_components(root, "staging workdir")
+        roots_list.append(root.resolve(strict=True))
+    roots = tuple(roots_list)
+    checkout = Path(__file__).resolve().parents[2]
+    token_file = _secure_input_file(token_file, "Cloudflare connector token file")
+    env_file = _secure_input_file(env_file, "HTTP origin env file")
+    _validate_private_location(token_file, (checkout, *roots), "Cloudflare token file")
+    _validate_private_location(env_file, (checkout, *roots), "HTTP origin env file")
+    cloudflared = cloudflared.expanduser()
+    if not cloudflared.is_absolute():
+        raise DarwinServiceError("cloudflared must be an existing fixed absolute executable")
+    _reject_symlink_components(cloudflared, "cloudflared")
+    try:
+        binary_stat = cloudflared.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise DarwinServiceError("cloudflared is unavailable") from exc
+    if (
+        not cloudflared.is_file()
+        or binary_stat.st_uid != os.getuid()
+        or binary_stat.st_mode & 0o022
+    ):
+        raise DarwinServiceError("cloudflared must be an existing fixed absolute executable")
+    if not os.access(cloudflared, os.X_OK):
+        raise DarwinServiceError("cloudflared is not executable")
+    env = _read_env_file(env_file)
+    _validated_http_origin_environment(env, hostname)
+    _validate_private_service_home()
+    environment_file = service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT
+    logs = service_log_dir()
+    _reject_symlink_components(logs, "service log directory")
+    _ensure_private_dir(logs)
+    return {
+        HTTP_ORIGIN_SERVICE: {
+            # Keep the venv interpreter path: resolving the symlink would bypass
+            # the virtual environment and make `-m serverfs_mcp.cli` unimportable.
+            "executable": str(Path(sys.executable).absolute()),
+            "arguments": [
+                "-m",
+                "serverfs_mcp.cli",
+                "serve",
+                "--transport",
+                "streamable-http",
+                "--config",
+                str(config_path),
+                "--http-port",
+                str(port),
+            ],
+            "environment_file": str(environment_file.resolve()),
+            "working_directory": str(config_path.parent),
+            "stdout_log": str(logs / "http-origin.stdout.log"),
+            "stderr_log": str(logs / "http-origin.stderr.log"),
+        },
+        CLOUDFLARE_SERVICE: {
+            "executable": str(cloudflared),
+            "arguments": ["tunnel", "--no-autoupdate", "run", "--token-file", str(token_file)],
+            "environment_file": None,
+            "working_directory": str(config_path.parent),
+            "stdout_log": str(logs / "cloudflare.stdout.log"),
+            "stderr_log": str(logs / "cloudflare.stderr.log"),
+        },
+    }
+
+
+def install_cloudflare_service(
+    config_path: Path, cloudflared: Path, token_file: Path, env_file: Path, port: int, hostname: str
+) -> dict[str, str]:
+    _validate_private_service_home()
+    if not manager_executable().is_file():
+        raise DarwinServiceError("installed macOS Service Manager is unavailable")
+    _verify_app(installed_app_path())
+    _verify_opt_in_agents(installed_app_path())
+    current = native_status("http-origin") | native_status("cloudflare")
+    if any(
+        current.get(service) not in {"not-registered", "not-found"}
+        for service in _CLOUDFLARE_SERVICES
+    ):
+        raise DarwinServiceError(
+            "Cloudflare service pair is already registered; refusing replacement"
+        )
+    _refuse_unmanaged_cloudflared()
+    specs = _cloudflare_service_specs(
+        config_path, cloudflared, token_file, env_file, port, hostname
+    )
+    origin_environment = _validated_http_origin_environment(
+        _read_env_file(_secure_input_file(env_file, "HTTP origin env file")), hostname
+    )
+    document = _load_manifest_document(optional=True)
+    services = document.get("services", {})
+    if any(service in services for service in _CLOUDFLARE_SERVICES):
+        raise DarwinServiceError("Cloudflare manifest entries already exist; refusing replacement")
+    manifest_existed = manifest_path().exists()
+    services.update(specs)
+    try:
+        _atomic_private_write(
+            service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT,
+            json.dumps(origin_environment, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        )
+        _atomic_private_write(
+            manifest_path(),
+            json.dumps(
+                {"schema_version": MANIFEST_SCHEMA_VERSION, "services": services},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode(),
+        )
+    except Exception:
+        try:
+            (service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT).unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    attempted: list[str] = []
+    try:
+        for service in _CLOUDFLARE_SERVICES:
+            attempted.append(service)
+            result = _register(service)
+            state = result.get(service)
+            if state != "enabled":
+                raise DarwinServiceError(f"{service} registration did not become enabled")
+            _wait_managed_job(service)
+            if service == HTTP_ORIGIN_SERVICE:
+                _wait_http_origin(port)
+        return {**native_status("http-origin"), **native_status("cloudflare")}
+    except Exception as original_error:
+        rollback_complete = True
+        for service in reversed(attempted):
+            try:
+                state = native_status(service).get(service)
+                if state not in {"not-registered", "not-found"}:
+                    result = _unregister_and_wait(service)
+                    state = result.get(service)
+                    if state not in {"not-registered", "not-found"}:
+                        rollback_complete = False
+            except Exception:
+                rollback_complete = False
+        if not rollback_complete:
+            raise DarwinServiceError(
+                "Cloudflare installation rollback incomplete; preserved for recovery"
+            ) from None
+        document["services"] = {
+            key: value for key, value in services.items() if key not in _CLOUDFLARE_SERVICES
+        }
+        if manifest_existed:
+            _atomic_private_write(
+                manifest_path(),
+                json.dumps(document, sort_keys=True, separators=(",", ":")).encode(),
+            )
+        else:
+            try:
+                manifest_path().unlink()
+            except FileNotFoundError:
+                pass
+        try:
+            (service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT).unlink()
+        except FileNotFoundError:
+            pass
+        raise original_error
+
+
+def _wait_http_origin(port: int, *, timeout_seconds: float = 15.0) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    url = f"http://127.0.0.1:{port}/mcp"
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=1):
+                return
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401:
+                return
+        except (OSError, urllib.error.URLError):
+            pass
+        time.sleep(0.2)
+    raise DarwinServiceError("HTTP origin failed its bounded loopback health probe")
+
+
+def _verify_opt_in_agents(app: Path) -> None:
+    expected = {
+        "com.ntlx.serverfs.http-origin.plist": (
+            "com.ntlx.serverfs.http-origin",
+            HTTP_ORIGIN_SERVICE,
+        ),
+        "com.ntlx.serverfs.cloudflare.plist": (
+            "com.ntlx.serverfs.cloudflare",
+            CLOUDFLARE_SERVICE,
+        ),
+    }
+    agents = app / "Contents" / "Library" / "LaunchAgents"
+    for filename, (label, service_id) in expected.items():
+        try:
+            document = plistlib.loads((agents / filename).read_bytes())
+        except (OSError, ValueError, TypeError) as exc:
+            raise DarwinServiceError(
+                "installed Service Manager does not include the opt-in Cloudflare LaunchAgents"
+            ) from exc
+        if (
+            not isinstance(document, dict)
+            or document.get("Label") != label
+            or document.get("BundleProgram") != "Contents/Resources/serverfs-service-launcher"
+            or document.get("ProgramArguments") != ["serverfs-service-launcher", service_id]
+        ):
+            raise DarwinServiceError("installed opt-in LaunchAgent contract is invalid")
+
+
+def cloudflare_status() -> dict[str, object]:
+    states: dict[str, str] = {}
+    processes: dict[str, int | None] = {}
+    for service in _CLOUDFLARE_SERVICES:
+        state = native_status(service).get(service, "unknown")
+        pid = _managed_job_pid(service)
+        processes[service] = pid
+        if state == "enabled" and pid is None:
+            state = "enabled-no-process"
+        elif state in {"not-registered", "not-found"} and pid is not None:
+            state = "unexpected-process"
+        states[service] = state
+    return {"services": states, "processes": processes}
+
+
+def _refuse_unmanaged_cloudflared() -> None:
+    managed_pid = _managed_job_pid(CLOUDFLARE_SERVICE)
+    try:
+        completed = subprocess.run(
+            ["ps", "-axo", "pid=,command="], capture_output=True, text=True, timeout=5, check=False
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DarwinServiceError("cannot verify cloudflared process ownership") from exc
+    if completed.returncode != 0:
+        raise DarwinServiceError("cannot verify cloudflared process ownership")
+    for line in completed.stdout.splitlines():
+        fields = line.strip().split(maxsplit=1)
+        if len(fields) != 2 or not fields[0].isdecimal():
+            continue
+        pid, command = int(fields[0]), fields[1]
+        if (
+            pid != managed_pid
+            and "cloudflared" in command
+            and "tunnel" in command
+            and "run" in command
+        ):
+            raise DarwinServiceError("an unmanaged cloudflared tunnel process is already running")
+
+
+def cloudflare_start() -> dict[str, str]:
+    manifest = _require_cloudflare_manifest()
+    _refuse_unmanaged_cloudflared()
+    result: dict[str, str] = {}
+    for service in _CLOUDFLARE_SERVICES:
+        result.update(_register_and_wait(service))
+        if service == HTTP_ORIGIN_SERVICE:
+            spec = manifest["services"][service]
+            port = int(spec["arguments"][spec["arguments"].index("--http-port") + 1])
+            _wait_http_origin(port)
+    return result
+
+
+def cloudflare_stop() -> dict[str, str]:
+    _require_cloudflare_manifest()
+    result: dict[str, str] = {}
+    for service in reversed(_CLOUDFLARE_SERVICES):
+        result.update(_unregister_and_wait(service))
+    return result
+
+
+def cloudflare_restart() -> dict[str, str]:
+    cloudflare_stop()
+    deadline = time.monotonic() + _CLOUDFLARE_RESTART_WAIT_SECONDS
+    while True:
+        try:
+            _refuse_unmanaged_cloudflared()
+            break
+        except DarwinServiceError as exc:
+            if str(exc) != "an unmanaged cloudflared tunnel process is already running":
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(_CLOUDFLARE_RESTART_POLL_SECONDS, remaining))
+    return cloudflare_start()
+
+
+def cloudflare_uninstall() -> None:
+    cloudflare_stop()
+    document = _load_manifest_document()
+    document["services"] = {
+        key: value for key, value in document["services"].items() if key not in _CLOUDFLARE_SERVICES
+    }
+    _atomic_private_write(
+        manifest_path(), json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+    )
+    try:
+        (service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT).unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _require_cloudflare_manifest() -> dict:
+    manifest = _load_manifest_document()
+    if not all(service in manifest["services"] for service in _CLOUDFLARE_SERVICES):
+        raise DarwinServiceError("Cloudflare service pair is not installed")
+    return manifest
+
+
 def restart_service(service: str) -> dict[str, str]:
     if service not in ALL_SERVICES:
         raise DarwinServiceError("unknown persistent service")
@@ -1123,14 +1569,20 @@ def restart_service(service: str) -> dict[str, str]:
 def start() -> dict[str, str]:
     manifest = _load_manifest_document()
     states: dict[str, str] = {}
-    for service in manifest["services"]:
+    for service in ALL_SERVICES:
+        if service not in manifest["services"]:
+            continue
         states.update(_register_and_wait(service))
     return states
 
 
 def stop() -> dict[str, str]:
     manifest = _load_manifest_document(optional=True)
-    services = list(manifest.get("services", ALL_SERVICES)) if manifest else list(ALL_SERVICES)
+    services = (
+        [service for service in ALL_SERVICES if service in manifest.get("services", ALL_SERVICES)]
+        if manifest
+        else list(ALL_SERVICES)
+    )
     states: dict[str, str] = {}
     for service in services:
         try:
@@ -1142,7 +1594,7 @@ def stop() -> dict[str, str]:
 
 def restart() -> dict[str, str]:
     manifest = _load_manifest_document()
-    services = list(manifest["services"])
+    services = [service for service in ALL_SERVICES if service in manifest["services"]]
     states: dict[str, str] = {}
     for service in services:
         _unregister_and_wait(service)
@@ -1155,13 +1607,35 @@ def uninstall() -> None:
     try:
         stop()
     finally:
+        manifest = _load_manifest_document(optional=True)
+        preserved = {
+            key: value
+            for key, value in manifest.get("services", {}).items()
+            if key in _CLOUDFLARE_SERVICES
+        }
+        if preserved:
+            _atomic_private_write(
+                manifest_path(),
+                json.dumps(
+                    {"schema_version": MANIFEST_SCHEMA_VERSION, "services": preserved},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode(),
+            )
+        else:
+            try:
+                manifest_path().unlink()
+            except FileNotFoundError:
+                pass
         for path in (manifest_path(), tunnel_environment_path(), tunnel_proxy_env_path()):
+            if path == manifest_path() and preserved:
+                continue
             try:
                 path.unlink()
             except FileNotFoundError:
                 pass
         app = installed_app_path()
-        if app.exists():
+        if app.exists() and not preserved:
             shutil.rmtree(app)
 
 
@@ -1175,6 +1649,12 @@ def _load_manifest_document(*, optional: bool = False) -> dict:
         if optional:
             return {}
         raise DarwinServiceError("persistent service manifest is not installed")
+    try:
+        stat = path.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise DarwinServiceError("persistent service manifest is invalid") from exc
+    if path.is_symlink() or stat.st_uid != os.getuid() or stat.st_mode & 0o777 != 0o600:
+        raise DarwinServiceError("persistent service manifest must be current-user mode 0600")
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
