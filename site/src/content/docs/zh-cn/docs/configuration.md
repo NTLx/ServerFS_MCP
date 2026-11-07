@@ -5,7 +5,7 @@ description: 定义受控 workdir，并继承安全默认值。
 
 ServerFS 在启动时为每个已启用 workdir 解析出一份不可变的最终生效策略。
 
-macOS 原生 Cloudflare 是尚未发布的 v0.24.1 候选功能，与下方稳定版 Linux Docker 配置分开。它要求只读 staging workdir，并将当前用户 Token/认证文件以 `0600` 权限存放于所有 workdir 之外。支持的 CLI 与精确 Host 匹配要求见 [macOS 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241-candidate-unreleased)；不要将 Linux Compose 变量复制到原生配置。
+macOS 原生 Cloudflare 已随 v0.24.1 提供，与下方稳定版 Linux Docker 配置分开。它要求只读 staging workdir，并将当前用户 Token/认证文件以 `0600` 权限存放于所有 workdir 之外。支持的 CLI 与精确 Host 匹配要求见 [macOS 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241)；不要将 Linux Compose 变量复制到原生配置。
 
 ## MCP 传输配置
 
@@ -80,7 +80,7 @@ WORKDIR_02_READ_ONLY=false
 - 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
 - 静态 API Key 默认关闭。非空 `SERVERFS_HTTP_API_KEY` 会使用一个共享密钥保护 Streamable HTTP，并且不能与内置 OAuth 同时启用。
 - OAuth 默认关闭。启用时需要 OAuth Compose overlay；loopback 之外必须使用 HTTPS resource/auth URL；必须配置非空 introspection secret、至少一个身份 provider，以及精确的 default-deny principal allowlist。
-- Repo Ops 默认关闭，通过 `WORKDIR_XX_REPO_OPS_ENABLED=true` 按 Workdir 独立启用。当前稳定版 v0.24.0 支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署；Windows 原生支持最早在 v0.23.2 完成验收。Repo Ops 要求已认证的 Host Bridge transport，但不要求启用任何 Agent Runtime。
+- Repo Ops 默认关闭，通过 `WORKDIR_XX_REPO_OPS_ENABLED=true` 按 Workdir 独立启用。当前稳定版 v0.24.1 支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署；Windows 原生支持最早在 v0.23.2 完成验收。Repo Ops 要求已认证的 Host Bridge transport，但不要求启用任何 Agent Runtime。
 - `WORKDIR_XX_REPO_ACTIONS_JSON` 是 Repo Ops named action 的宿主机私有运维策略，只会被渲染到 Host Bridge 配置，不会转发进入 MCP 容器。Named action 要求 read-write Workdir，并强制配置 SHA-256 integrity pins。
 - Agent 策略只有在显式配置后才启用。
 - v0.12.0 把 Tunnel、Agent runtime 与 Jev 的代理选择保持独立：`SERVERFS_OPENAI_TUNNEL_USE_PROXY`、`SERVERFS_AGENT_USE_PROXY`、`SERVERFS_JEV_USE_PROXY` 复用同一组 `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` 端点字段，但不会互相隐式启用。

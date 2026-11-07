@@ -3,7 +3,7 @@ title: Cloudflare Tunnel
 description: Optional outbound-only Linux Docker MCP ingress (released in v0.24.0).
 ---
 
-> **Release status:** Linux Compose Cloudflare Tunnel was **published in v0.24.0**. Native macOS Cloudflare is an **unreleased v0.24.1 candidate** for Apple Silicon/macOS 27; version and packaging metadata are aligned for the unreleased candidate; exact-SHA cross-platform CI and stable release remain pending. Native Windows Cloudflare remains planned for v0.24.2. Existing OpenAI Secure MCP Tunnel and Agent Bridge are preserved. Candidate staging evidence and operator steps are documented in the [macOS Native guide](../macos-native/).
+> **Release status:** Linux Compose Cloudflare Tunnel was **published in v0.24.0**. Native macOS Cloudflare shipped in v0.24.1 for Apple Silicon/macOS 27. Native Windows Cloudflare remains planned for v0.24.2. Existing OpenAI Secure MCP Tunnel and Agent Bridge are preserved. Staging evidence and operator steps are documented in the [macOS Native guide](../macos-native/).
 
 Cloudflare Tunnel is an alternative to the OpenAI Secure MCP Tunnel and the generic HTTP reverse-proxy deployment. It publishes the existing Streamable HTTP `/mcp` endpoint via a Cloudflare-managed hostname **without opening any inbound port on the server**. It does not change ServerFS workdir policy or MCP tools and is **not** MCP caller authentication.
 

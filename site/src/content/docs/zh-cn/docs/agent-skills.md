@@ -3,7 +3,7 @@ title: Agent Skills
 description: 使用 ServerFS 仓库内置 Skills，指导 AI Agent 安全完成安装、配置、升级、诊断和可选子系统运维。
 ---
 
-> **当前稳定版本：v0.24.0。** 七个运维 Agent Skills 均已加入 v0.24.1 候选功能指引。v0.24.1 Plugin 打包尚未发布；目前已发布的 Plugin 仍是 v0.24.0 资产。
+> **当前稳定版本：v0.24.1。** 七个运维 Agent Skills 均包含 macOS 原生 Cloudflare 指引，v0.24.1 Release 打包这七个运行时 Skill 及其 references。
 
 ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) 目录中维护运维 Agent Skills。它们告诉 Agent **如何安全使用 ServerFS 已有的正式产品接口**，而不是再建立一套配置格式或部署实现。
 
@@ -15,11 +15,11 @@ ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/sk
 | Workdir 与普通策略配置，包括 v0.23 Repo Ops 策略 | `serverfs-configure` |
 | 已有部署升级 | `serverfs-upgrade` |
 | 只读优先的诊断与健康核验 | `serverfs-diagnose` |
-| OpenAI Secure MCP Tunnel、Linux Cloudflare 稳定版或 macOS 原生 Cloudflare（v0.24.1 候选版） | `serverfs-tunnel` |
+| OpenAI Secure MCP Tunnel、Linux Cloudflare 稳定版或 macOS 原生 Cloudflare（v0.24.1） | `serverfs-tunnel` |
 | 远程 HTTP API Key / OAuth | `serverfs-auth` |
 | Host Bridge 生命周期 / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
-已发布的 v0.24.0 保持**恰好 7 个 Skills**。Linux Cloudflare 接入和 v0.24.1 尚未发布的 macOS 原生 Cloudflare 候选指南均纳入现有 Skills 与 references，不新增第 8 个 Skill；客户端认证由独立的 `serverfs-auth` 指南处理。候选 macOS 证据仅覆盖只读隔离 staging，不代表生产 Workdir/Agent 已验收。Windows 原生 Cloudflare 仍计划于 v0.24.2 提供。v0.24.1 候选版 Plugin 验证已通过；目前已发布的 Plugin 仍为 v0.24.0。exact-SHA CI 与稳定版发布仍待完成。
+v0.24.1 保持**恰好 7 个 Skills**。Linux 与 macOS 原生 Cloudflare 指引均纳入现有 `serverfs-tunnel` Skill 和 references，不新增第 8 个 Skill；客户端认证由独立的 `serverfs-auth` 指南处理。macOS 证据仅覆盖只读隔离 staging，不代表生产 Workdir/Agent 已验收。Windows 原生 Cloudflare 仍计划于 v0.24.2 提供。
 
 仓库根 `AGENTS.md` 只保留很薄的索引。Agent 应根据具体任务加载最小匹配的 `SKILL.md`，而不是把全部运维流程长期塞进基础上下文。
 
@@ -51,12 +51,12 @@ Skills 继续保持 ServerFS 手工运维时的核心约束：
 
 ## Portable Agent Plugin
 
-仓库根目录维护 portable Agent Plugins manifest：`plugin.json`。已发布的 v0.24.0 GitHub Release 将 7 个运行时 Skill 及其参考文件统一打包为以下资产：
+仓库根目录维护 portable Agent Plugins manifest：`plugin.json`。v0.24.1 GitHub Release 将 7 个运行时 Skill 及其参考文件统一打包为以下资产：
 
 ```text
-serverfs-plugin-v0.24.0.zip
+serverfs-plugin-v0.24.1.zip
 ```
 
-该 ZIP 是 **skills-only Plugin**，不会内置 `mcp.json`、某个 ServerFS 实例 URL、凭据或 Provider 私有配置。v0.24.0 已通过 exact-SHA 跨平台发布门禁并正式交付相同的 7 个 Skills 及其 references，包括 Linux Cloudflare Tunnel 参考文件。Plugin 与 Skills 都直接跟随 ServerFS 项目版本，不建立独立版本生命周期。
+该 ZIP 是 **skills-only Plugin**，不会内置 `mcp.json`、某个 ServerFS 实例 URL、凭据或 Provider 私有配置。v0.24.1 Release 按稳定版发布流程交付相同的 7 个 Skills 及其 references，包括 Linux Cloudflare Tunnel 参考文件。Plugin 与 Skills 都直接跟随 ServerFS 项目版本，不建立独立版本生命周期。
 
 Git 仓库始终是唯一源码。ServerFS 不会自动把这些 Skills 复制到 `~/.codex/skills`、Claude 配置目录或其他 Provider 私有目录。

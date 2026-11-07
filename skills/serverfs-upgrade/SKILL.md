@@ -24,7 +24,7 @@ An upgrade does not silently opt the operator into newly introduced optional fea
 
 ## Preflight
 
-For macOS, native Cloudflare Tunnel is an unreleased v0.24.1 candidate, not part of the v0.24.0 stable upgrade target. Preserve any separately installed candidate Cloudflare service pair and private files during unrelated upgrades; use the candidate's `deployment/macos/README.md` procedure only when that exact candidate is in scope.
+For macOS, v0.24.1 adds optional native Cloudflare Tunnel support. Preserve its separately managed service pair and private files during unrelated upgrades; follow `deployment/macos/README.md` when Cloudflare lifecycle changes are in scope.
 
 First locate the target ServerFS checkout or deployed installation and establish its version, active configuration and lifecycle owner. In imported/standalone mode, if no authoritative checkout/deployment source is accessible, stop at bounded guidance; do not mutate or infer target commands/settings.
 

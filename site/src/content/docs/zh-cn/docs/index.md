@@ -5,7 +5,7 @@ description: 面向 Linux、Windows 与 macOS 的安全、标准优先 MCP 文�
 
 ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux 容器为既有形态，v0.10.0 起支持 Windows 原生，v0.13.0 起支持 macOS 原生）暴露为**受控 workdir**。
 
-目前已发布的稳定版本：**v0.24.0**。Linux Docker Cloudflare Tunnel 已随 v0.24.0 正式发布，并通过隔离环境中的 ChatGPT、SSE 与会话重连验收。macOS 原生 Cloudflare 是**尚未发布的 v0.24.1 候选功能**；Windows 原生 Cloudflare 仍计划在 v0.24.2 提供。现有 OpenAI Secure MCP Tunnel 和 Agent Bridge 保持可用。见 [Cloudflare Tunnel](./cloudflare-tunnel/) 与 [macOS 原生部署](./macos-native/)。ServerFS 以标准 MCP 为中心：兼容 MCP 的宿主可使用原生 stdio 或标准 Streamable HTTP。
+当前稳定版本：**v0.24.1**。Linux Docker Cloudflare Tunnel 已随 v0.24.0 正式发布，并通过隔离环境中的 ChatGPT、SSE 与会话重连验收。macOS 原生 Cloudflare 已随 v0.24.1 提供；Windows 原生 Cloudflare 仍计划在 v0.24.2 提供。现有 OpenAI Secure MCP Tunnel 和 Agent Bridge 保持可用。见 [Cloudflare Tunnel](./cloudflare-tunnel/) 与 [macOS 原生部署](./macos-native/)。ServerFS 以标准 MCP 为中心：兼容 MCP 的宿主可使用原生 stdio 或标准 Streamable HTTP。
 
 v0.22.0 通过既有 Agent Bridge 私有 RPC 增加 Correlated Agent Diagnostics：`serverfs diagnostics snapshot` 提供有界的 Bridge 诊断快照，`serverfs diagnostics task <task-id>` 提供单个已保留任务的诊断投影。诊断状态仅驻留于 Bridge 进程内并保持有界；不新增 MCP tool、监听端口、持久 trace store、OpenTelemetry 依赖或 telemetry egress。Linux/VPS、受支持 macOS 与受支持 Windows 的 Phase F 均已通过，Phase G 发布就绪验收为 PASS。详见 [v0.22 Phase G 预检](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-g-preflight-2026-10-22.md)。
 
@@ -29,7 +29,7 @@ v0.22.0 通过既有 Agent Bridge 私有 RPC 增加 Correlated Agent Diagnostics
 ## 从这里开始
 
 - [快速开始](./getting-started/) — 从标准 MCP 开始，需要远程访问时再选择经过认证的入口。
-- [Cloudflare Tunnel](./cloudflare-tunnel/) — Linux v0.24.0 稳定版 Docker 连接器；macOS v0.24.1 尚未发布候选版。
+- [Cloudflare Tunnel](./cloudflare-tunnel/) — Linux v0.24.0 稳定版 Docker 连接器；macOS v0.24.1。
 - [配置](./configuration/) — 定义 workdir 与每个 workdir 的最终生效策略。
 - [架构](./architecture/) — 理解 MCP Core、传输/入口适配器、部署边界与 Agent Bridge。
 - [安全模型](./security/) — 查看纵深防御模型。

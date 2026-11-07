@@ -1,6 +1,6 @@
 # Cloudflare Tunnel — Linux remote MCP ingress (v0.24.0)
 
-> **Release status:** Linux Docker Cloudflare Tunnel ingress was **published in v0.24.0** after exact-SHA, dispatch-first cross-platform CI. Isolated staging passed public MCP protocol, direct ChatGPT tool calls, long-lived SSE and same-session reuse after Connector restart. Native Apple Silicon/macOS 27 Cloudflare is an **unreleased v0.24.1 candidate**, documented separately in [`deployment/macos/README.md`](../deployment/macos/README.md); this Linux runbook does not describe that native lifecycle or establish its acceptance. Native Windows Cloudflare remains planned for v0.24.2.
+> **Release status:** Linux Docker Cloudflare Tunnel ingress was **published in v0.24.0** after exact-SHA, dispatch-first cross-platform CI. Isolated staging passed public MCP protocol, direct ChatGPT tool calls, long-lived SSE and same-session reuse after Connector restart. Native Apple Silicon/macOS 27 Cloudflare shipped in v0.24.1 and is documented separately in [`deployment/macos/README.md`](../deployment/macos/README.md); this Linux runbook does not describe that native lifecycle or establish its acceptance. Native Windows Cloudflare remains planned for v0.24.2.
 
 Cloudflare Tunnel provides an outbound-only network ingress for ServerFS Streamable HTTP. It does not replace MCP authentication or the existing OpenAI Secure MCP Tunnel. The Linux Compose connector has no host-published port and shares only the private ServerFS MCP network with the application.
 
@@ -97,7 +97,7 @@ These tests do **not** establish production workdir/Agent access or lossless rep
 
 **Runtime security evidence:** the staging Connector actually runs non-root with read-only root filesystem, capability drops, no-new-privileges, a readonly Token-only mount, no host port bindings and no ServerFS API Key environment variable. The MCP container has only internal Docker networks `serverfs_internal` and `serverfs_file_ingress` (the latter remains defined for optional file-ingress compatibility), all workdir bind mounts read-only, and no connection to the Connector's `tunnel_egress` network. No production container shares the staging private networks. The first topology probe assumed only one private network and was corrected after consulting the base Compose schema; the actual separation passed.
 
-**Credential note:** the ChatGPT connector was configured with a URL query API Key for compatibility. URL query secrets can be recorded by intermediaries; prefer OAuth or Bearer support for production and rotate the staging key before any broader access. Deployment does not imply authority to commit, push or publish the v0.24.0 release.
+**Credential note:** the ChatGPT connector was configured with a URL query API Key for compatibility. URL query secrets can be recorded by intermediaries; prefer OAuth or Bearer support for production and rotate the staging key before any broader access.
 
 ## Remote MCP client URL and authentication
 

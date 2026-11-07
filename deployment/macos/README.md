@@ -1,6 +1,6 @@
-# macOS Native Deployment (v0.24.0 stable; v0.24.1 candidate)
+# macOS Native Deployment (v0.24.1 stable)
 
-ServerFS **v0.24.0 is the current published stable release**. Native macOS Cloudflare Tunnel is an **unreleased v0.24.1 candidate**; it is optional and does not replace the existing OpenAI Secure MCP Tunnel, stdio, Agent Bridge or their lifecycle. Native Windows Cloudflare Tunnel remains planned for v0.24.2. The macOS deployment shape introduced
+ServerFS **v0.24.1 is the current stable release**. Native macOS Cloudflare Tunnel is an **v0.24.1 release**; it is optional and does not replace the existing OpenAI Secure MCP Tunnel, stdio, Agent Bridge or their lifecycle. Native Windows Cloudflare Tunnel remains planned for v0.24.2. The macOS deployment shape introduced
 in v0.13.2 remains pure Python over POSIX/Darwin primitives (`fcopyfile`, `getpeereid`, `confstr`
 via narrow ctypes bindings); v0.13.2 adds a small headless Swift ServiceManagement companion solely for persistent
 per-user service registration. There is still no `serverfs-macos-native` wheel, Docker/VM,
@@ -66,9 +66,9 @@ The default native `service status` JSON includes this bounded hand-over evidenc
 `uninstall` removes only v0.13.2-owned registration/runtime artifacts; operator configuration and
 normal ServerFS data are preserved.
 
-## Optional Cloudflare Tunnel (v0.24.1 candidate; unreleased)
+## Optional Cloudflare Tunnel (v0.24.1 release)
 
-This candidate adds a separate native Cloudflare Connector and private loopback Streamable HTTP origin. It does not change the existing OpenAI Tunnel or Agent Bridge and is not present in the published v0.24.0 stable release. Use it only with a matching candidate build on the supported native Apple Silicon/macOS 27 platform. It does not create or edit Cloudflare Tunnels, DNS routes, or public hostname configuration; configure the named remotely managed Tunnel and route through Cloudflare's operator controls first.
+v0.24.1 adds a separate native Cloudflare Connector and private loopback Streamable HTTP origin. It does not change the existing OpenAI Tunnel or Agent Bridge. Use it only with a v0.24.1 build on the supported native Apple Silicon/macOS 27 platform. It does not create or edit Cloudflare Tunnels, DNS routes, or public hostname configuration; configure the named remotely managed Tunnel and route through Cloudflare's operator controls first.
 
 The bootstrap command installs the pinned official Cloudflare `cloudflared` macOS arm64 release, verifying its archive and binary digests, code signature and version. With no flag it downloads the pinned artifact; `--artifact` accepts a local archive for offline installation:
 

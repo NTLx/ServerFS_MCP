@@ -5,7 +5,7 @@ description: Choose or change remote HTTP API Key/OAuth authentication; rotate s
 
 # Configure ServerFS HTTP authentication
 
-Treat authentication as a remote Streamable HTTP ingress decision. Do not apply ServerFS HTTP authentication to native Windows/macOS stdio deployments. The unreleased v0.24.1 macOS Cloudflare candidate also runs an explicit native HTTP origin and requires exactly one supported ServerFS caller-auth mode; its connector Token is not caller authentication.
+Treat authentication as a remote Streamable HTTP ingress decision. Do not apply ServerFS HTTP authentication to native Windows/macOS stdio deployments. The v0.24.1 macOS Cloudflare ingress also runs an explicit native HTTP origin and requires exactly one supported ServerFS caller-auth mode; its connector Token is not caller authentication.
 
 ## When to use
 
@@ -34,8 +34,8 @@ First locate the target ServerFS checkout or deployed installation and establish
 
 Paths below are relative to the located **ServerFS checkout root**, never to this skill or the Plugin ZIP. Resolve repository paths only after locating that checkout. For an installed deployment without a checkout, use its version-matched deployment documentation, installed CLI help and active configuration; obtain matching sources before a step that needs missing repository material.
 
-1. Confirm the target is Linux remote Streamable HTTP or the unreleased v0.24.1 native macOS Cloudflare candidate, and identify the exact public/private ingress shape.
-2. Read the active auth source without printing secrets: the existing `.env` for Linux Compose, or the explicit `--env-file` owned by `serverfs service cloudflare install` for the macOS candidate. Determine the effective ServerFS-owned auth mode:
+1. Confirm the target is Linux remote Streamable HTTP or the native macOS Cloudflare ingress in v0.24.1, and identify the exact public/private ingress shape.
+2. Read the active auth source without printing secrets: the existing `.env` for Linux Compose, or the explicit `--env-file` owned by `serverfs service cloudflare install` for the macOS release. Determine the effective ServerFS-owned auth mode:
    - no built-in auth;
    - static API Key;
    - OAuth 2.1.

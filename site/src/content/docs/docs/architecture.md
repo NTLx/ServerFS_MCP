@@ -12,7 +12,7 @@ MCP host
    ├── Streamable HTTP (Linux; loopback/private by default)
    ├── OpenAI Secure MCP Tunnel (optional ChatGPT ingress)
    ├── Cloudflare Tunnel (Linux v0.24.0 stable ingress)
-   └── Cloudflare Tunnel (optional native macOS v0.24.1 unreleased candidate)
+   └── Cloudflare Tunnel (native macOS v0.24.1)
                │
                ▼
           ServerFS MCP Core
@@ -21,7 +21,7 @@ MCP host
        explicitly configured workdirs
 ```
 
-The MCP core and tool contract are host-neutral. Generic Linux HTTP publication is opt-in and binds loopback by default; public exposure requires explicit Host policy plus a TLS/authentication ingress boundary. The OpenAI Tunnel remains an optional authenticated outbound-only adapter. The v0.24.0 Linux Cloudflare Tunnel overlay adds a separate cloudflared connector on the private ServerFS network and dedicated tunnel egress network, without host port publication; it requires independent API Key/OAuth admission and is published. Native macOS Cloudflare is a separate unreleased v0.24.1 candidate: a loopback HTTP origin and Connector use the existing app-associated SMAppService LaunchAgent mechanism, with private credentials and exact Host admission. Isolated staging passed HTTPS 401/200, 11-tool discovery, read-only negative cases, 65.1-second SSE and fresh-session recovery on 8/8 Connector restarts; the old session returned 404. No SSE replay is claimed. Login Items architecture parity was reviewed, but logout/login and reboot were not performed. Version and packaging metadata are aligned for the unreleased candidate; exact-SHA CI and stable release remain pending. The existing OpenAI Tunnel and Bridge remain available; native Windows Cloudflare remains planned for v0.24.2. See [Cloudflare Tunnel](../cloudflare-tunnel/) and [macOS Native](../macos-native/). In the Compose topology, `serverfs-mcp` also joins `serverfs_file_ingress`, a second Docker `internal:true` network; cloudflared never joins it. The main MCP container still has no general Internet egress.
+The MCP core and tool contract are host-neutral. Generic Linux HTTP publication is opt-in and binds loopback by default; public exposure requires explicit Host policy plus a TLS/authentication ingress boundary. The OpenAI Tunnel remains an optional authenticated outbound-only adapter. The v0.24.0 Linux Cloudflare Tunnel overlay adds a separate cloudflared connector on the private ServerFS network and dedicated tunnel egress network, without host port publication; it requires independent API Key/OAuth admission and is published. Native macOS Cloudflare is a separate v0.24.1 feature: a loopback HTTP origin and Connector use the existing app-associated SMAppService LaunchAgent mechanism, with private credentials and exact Host admission. Isolated staging passed HTTPS 401/200, 11-tool discovery, read-only negative cases, 65.1-second SSE and fresh-session recovery on 8/8 Connector restarts; the old session returned 404. No SSE replay is claimed. Login Items architecture parity was reviewed, but logout/login and reboot were not performed.  The existing OpenAI Tunnel and Bridge remain available; native Windows Cloudflare remains planned for v0.24.2. See [Cloudflare Tunnel](../cloudflare-tunnel/) and [macOS Native](../macos-native/). In the Compose topology, `serverfs-mcp` also joins `serverfs_file_ingress`, a second Docker `internal:true` network; cloudflared never joins it. The main MCP container still has no general Internet egress.
 
 ## Optional ChatGPT file-ingress path
 
