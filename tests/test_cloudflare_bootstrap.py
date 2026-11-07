@@ -1,5 +1,6 @@
 import hashlib
 import io
+import re
 import subprocess
 import tarfile
 
@@ -137,6 +138,22 @@ def windows_binary(tmp_path, monkeypatch):
     monkeypatch.setattr(bootstrap, "_host_platform", lambda: "win32")
     monkeypatch.setattr(bootstrap.platform, "machine", lambda: "AMD64")
     return binary
+
+
+@pytest.mark.parametrize(
+    ("subject", "valid"),
+    [
+        ('CN="Cloudflare, Inc.", O="Cloudflare, Inc.", C=US', True),
+        ("CN=Cloudflare, Inc., O=Cloudflare, Inc., C=US", True),
+        ("CN=Cloudflare Inc., O=Cloudflare Inc., C=US", True),
+        ('CN="Cloudflare, Inc. Evil", O=Wrong, C=US', False),
+        ('O=Wrong, CN="Cloudflare, Inc.", C=US', False),
+        ("CN=Malicious Cloudflare, Inc., O=Wrong", False),
+        ("CN=Cloudflare, Inc. Evil, O=Wrong", False),
+    ],
+)
+def test_windows_signer_cn_matches_only_expected_issuer(subject, valid):
+    assert bool(re.search(bootstrap.WINDOWS_SIGNER_SUBJECT_RE, subject)) is valid
 
 
 def test_windows_signature_probe_drops_inherited_pwsh7_module_path(windows_binary, monkeypatch):

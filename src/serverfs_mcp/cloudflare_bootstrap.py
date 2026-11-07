@@ -29,6 +29,8 @@ IDENTITY = "Developer ID Application: Cloudflare Inc. (68WVV388M8)"
 RELEASE_URL = f"https://github.com/cloudflare/cloudflared/releases/download/{VERSION}/{ASSET}"
 WINDOWS_ASSET = "cloudflared-windows-amd64.exe"
 WINDOWS_BINARY_SHA256 = "2493dbc168923bb3e59e5e7716f71deced92992eea9acd6e9d74f84ac7751343"
+# Windows cert subject formatting can quote the comma in the verified CN.
+WINDOWS_SIGNER_SUBJECT_RE = r'^CN=(?:"Cloudflare, Inc\."|Cloudflare, Inc\.|Cloudflare Inc\.)(?:,|$)'
 WINDOWS_RELEASE_URL = (
     f"https://github.com/cloudflare/cloudflared/releases/download/{VERSION}/{WINDOWS_ASSET}"
 )
@@ -174,7 +176,7 @@ def _verify_windows_binary(binary: Path, runner: Callable = subprocess.run) -> N
     script = (
         "$s = Get-AuthenticodeSignature -LiteralPath $env:SERVERFS_CLOUDFLARED_VERIFY_PATH; "
         "if ($s.Status -ne 'Valid' -or $null -eq $s.SignerCertificate) { exit 3 }; "
-        "if ($s.SignerCertificate.Subject -notmatch 'CN=Cloudflare,?\\s+Inc\\.') { exit 4 }; "
+        f"if ($s.SignerCertificate.Subject -notmatch '{WINDOWS_SIGNER_SUBJECT_RE}') {{ exit 4 }}; "
         "Write-Output 'valid-cloudflare-signature'"
     )
     environment = os.environ.copy()

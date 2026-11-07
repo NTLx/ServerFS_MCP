@@ -268,7 +268,7 @@ jobs:
             '(none)'
           }
           Write-Output "AUTHENTICODE_SIGNER=$subject"
-          if ($signature.Status -ne 'Valid' -or $subject -notmatch 'CN=Cloudflare,?\s+Inc\.') {
+          if ($signature.Status -ne 'Valid' -or $subject -notmatch '^CN=(?:"Cloudflare, Inc\."|Cloudflare, Inc\.|Cloudflare Inc\.)(?:,|$)') {
             throw 'Official Windows cloudflared Authenticode signer gate failed'
           }
           $version = & $binary --version
@@ -276,6 +276,12 @@ jobs:
             throw 'Pinned Windows cloudflared version check failed'
           }
           Write-Output 'OFFICIAL_SIGNATURE_AND_VERSION_VALID=True'
+          # Exercise the actual ServerFS bootstrap verifier on the same
+          # official SHA-matched executable, not only the workflow's guard.
+          $env:SERVERFS_CLOUDFLARED_GATE_FILE = $binary
+          uv run python -c "import os; from pathlib import Path; from serverfs_mcp.cloudflare_bootstrap import _verify_windows_binary; _verify_windows_binary(Path(os.environ['SERVERFS_CLOUDFLARED_GATE_FILE']))"
+          if ($LASTEXITCODE -ne 0) { throw 'ServerFS Windows cloudflared verifier rejected official signed asset' }
+          Write-Output 'SERVERFS_WINDOWS_SIGNER_VERIFIER_VALID=True'
 
       - name: upload native wheel
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
