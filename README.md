@@ -14,6 +14,8 @@
 
 **当前稳定版本：v0.24.0**
 
+Linux Docker Cloudflare Tunnel 已随 v0.24.0 正式发布。Apple Silicon/macOS 27 原生 Cloudflare 是尚未发布的 v0.24.1 候选功能；版本与打包元数据已对齐至尚未发布的 v0.24.1 候选版；exact-SHA 跨平台 CI 与稳定版发布仍待完成。Windows 原生 Cloudflare 仍计划在 v0.24.2 提供。该候选功能通过独立 loopback HTTP origin 与 Connector 接入 Cloudflare，复用当前用户 `SMAppService` 生命周期，不替换现有 OpenAI Tunnel 或 Agent Bridge。候选 staging、服务命令、安全要求与回滚流程见[macOS 部署指南](deployment/macos/README.md#optional-cloudflare-tunnel-v0241-candidate-unreleased)。
+
 [项目网站](https://ntlx.github.io/ServerFS_MCP/zh-cn/) ·
 [文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/) ·
 [快速开始](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/getting-started/) ·
@@ -56,7 +58,7 @@ macOS 仅支持 Apple M 系列、原生 arm64、macOS 27.x 与本地 APFS；不�
 
 ## Agent Skills
 
-仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Secure MCP Tunnel / Linux Cloudflare Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
+仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Secure MCP Tunnel / Linux Cloudflare Tunnel / macOS v0.24.1 候选 Cloudflare、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
 
 仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。**已发布**的 v0.24.0 Release 包含 `serverfs-plugin-v0.24.0.zip`，其中有 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
 

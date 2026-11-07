@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "serverfs",
-  "version": "0.24.0",
-  "description": "Deploy, configure, upgrade, and diagnose ServerFS on supported Linux, Windows, and macOS systems, including optional Linux Docker Cloudflare Tunnel ingress.",
+  "version": "0.24.1",
+  "description": "Deploy, configure, upgrade, and diagnose ServerFS on supported Linux, Windows, and macOS systems, including optional Linux Docker and native macOS Cloudflare Tunnel ingress.",
   "author": {
     "name": "NTLx"
   },

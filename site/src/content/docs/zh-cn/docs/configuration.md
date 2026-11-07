@@ -5,6 +5,8 @@ description: 定义受控 workdir，并继承安全默认值。
 
 ServerFS 在启动时为每个已启用 workdir 解析出一份不可变的最终生效策略。
 
+macOS 原生 Cloudflare 是尚未发布的 v0.24.1 候选功能，与下方稳定版 Linux Docker 配置分开。它要求只读 staging workdir，并将当前用户 Token/认证文件以 `0600` 权限存放于所有 workdir 之外。支持的 CLI 与精确 Host 匹配要求见 [macOS 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241-candidate-unreleased)；不要将 Linux Compose 变量复制到原生配置。
+
 ## MCP 传输配置
 
 Linux Streamable HTTP 使用以下显式配置：

@@ -93,6 +93,8 @@ uv build --wheel --out-dir /tmp/serverfs-wheel-check
 
 Real `SMAppService` registration, Login Items approval and reboot/login recovery are local operator acceptance steps; hosted CI must not mutate a runner's Login Items.
 
+**v0.24.1 macOS Cloudflare exception (decision 2026-11-06):** The new opt-in Cloudflare Connector and HTTP origin use the same already accepted user-level ServiceManager.app, `SMAppService.agent(plistName:)`, app-owned LaunchAgents and `RunAtLoad`/`KeepAlive` restart policy as the existing OpenAI Tunnel and Agent Bridge. Verify those shared contracts through code review and platform-specific tests, plus isolated service registration, functional and security acceptance. An additional real user logout/login or whole-machine reboot of the production Mac is **not required** for v0.24.1 and must not be performed solely for this release. Record this as *architecture equivalence, not a performed login/reboot test*. Do not weaken the generic acceptance requirement for future changes that alter lifecycle architecture.
+
 ### Deterministic Repo Ops (v0.23+)
 
 Repo Ops crosses the root MCP surface, host Bridge service, Linux deployment rendering, Git/process execution, writer-lease coordination and release-facing documentation. Run every affected root + `agent_bridge/` gate, plus Linux Compose/render checks and `bash -n deployment/agent-bridge/*.sh` when deployment scripts/config rendering change.

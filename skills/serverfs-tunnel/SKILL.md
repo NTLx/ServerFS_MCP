@@ -1,11 +1,11 @@
 ---
 name: serverfs-tunnel
-description: Operate the optional OpenAI Secure MCP Tunnel or Linux Cloudflare Tunnel ingress; manage credentials, lifecycle and health evidence within each distinct trust boundary.
+description: Operate the optional OpenAI Secure MCP Tunnel, Linux Cloudflare Tunnel, or unreleased native macOS Cloudflare candidate; manage credentials, lifecycle and health evidence within each distinct trust boundary.
 ---
 
 # Operate optional ServerFS tunnel ingresses
 
-**Two separate transport adapters:** OpenAI Secure MCP Tunnel (existing) and Cloudflare Tunnel (Linux Compose, shipped in v0.24.0; live validated only on isolated read-only staging). Never mix their credentials, configuration or health evidence.
+**Separate transport adapters:** OpenAI Secure MCP Tunnel (existing), Cloudflare Tunnel on Linux Compose (shipped in v0.24.0; live validated on isolated read-only staging), and native macOS Cloudflare (v0.24.1 candidate, unreleased). Never mix their credentials, configuration or health evidence. Native Windows Cloudflare remains planned for v0.24.2.
 
 The OpenAI Tunnel is an optional authenticated ChatGPT ingress adapter. Treat it as a separate subsystem with its own control-plane credentials, lifecycle and health evidence.
 
@@ -15,6 +15,7 @@ Use this skill when the user explicitly wants to:
 
 - connect ServerFS to ChatGPT through the OpenAI Secure MCP Tunnel;
 - expose Linux Streamable HTTP through an independently authenticated Cloudflare Tunnel;
+- configure or diagnose the unreleased native macOS Cloudflare Connector and HTTP origin;
 - configure Tunnel control-plane credentials or Tunnel-specific proxy routing;
 - bootstrap/update the official Tunnel client on native Windows/macOS;
 - restart/re-establish the Tunnel after a ServerFS deployment change;
@@ -73,6 +74,8 @@ Load only the matching branch after identifying the deployment and requested mod
 - Linux / Docker Compose: read [linux branch](references/linux.md) and, for Cloudflare, [Cloudflare Linux branch](references/cloudflare-linux.md) before platform/mode-specific changes.
 - Windows native: read [windows branch](references/windows.md) before platform/mode-specific changes.
 - macOS native: read [macos branch](references/macos.md) before platform/mode-specific changes.
+
+For native macOS Cloudflare, also read `deployment/macos/README.md`. Its candidate commands must only be used with the matching unreleased v0.24.1 build; preserve the existing OpenAI Tunnel path independently.
 
 ## Safety / stop conditions
 

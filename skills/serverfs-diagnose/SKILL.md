@@ -92,7 +92,7 @@ docker compose ps
 
 If the deployment uses the Host Bridge for Agent delegation and/or Repo Ops, include `-f compose.agent.yml`; for generic HTTP include `-f compose.http.yml`; for OAuth include `-f compose.oauth.yml`. Do not validate a different Compose shape from the one actually deployed, and do not infer Agent mode merely from the presence of the Host Bridge overlay.
 
-Inspect bounded logs only for the affected service. A container being `Up` is not proof of OpenAI Tunnel control-plane continuity, Cloudflare Tunnel connected status, or MCP response delivery. For v0.24 Linux Cloudflare, distinguish Cloudflare DNS/edge/Tunnel from ServerFS API Key/Host admission and actual JSON-or-SSE MCP session behavior; route to `serverfs-tunnel` and `serverfs-auth` without changing production ingress as a diagnostic shortcut.
+Inspect bounded logs only for the affected service. A container being `Up` is not proof of OpenAI Tunnel control-plane continuity, Cloudflare Tunnel connected status, or MCP response delivery. For v0.24 Linux Cloudflare, distinguish Cloudflare DNS/edge/Tunnel from ServerFS API Key/Host admission and actual JSON-or-SSE MCP session behavior. For the unreleased v0.24.1 macOS candidate, check the separate `http-origin` and `cloudflare` service statuses, then verify HTTPS 401/200 and MCP/SSE behavior; do not infer candidate support on stable v0.24.0. Route to `serverfs-tunnel` and `serverfs-auth` without changing production ingress as a diagnostic shortcut.
 
 ### Windows native
 

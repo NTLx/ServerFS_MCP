@@ -1,10 +1,10 @@
-# macOS Native Deployment (v0.24.0)
+# macOS Native Deployment (v0.24.0 stable; v0.24.1 candidate)
 
-ServerFS **v0.24.0 is the current published stable release**. The macOS deployment shape introduced
+ServerFS **v0.24.0 is the current published stable release**. Native macOS Cloudflare Tunnel is an **unreleased v0.24.1 candidate**; it is optional and does not replace the existing OpenAI Secure MCP Tunnel, stdio, Agent Bridge or their lifecycle. Native Windows Cloudflare Tunnel remains planned for v0.24.2. The macOS deployment shape introduced
 in v0.13.2 remains pure Python over POSIX/Darwin primitives (`fcopyfile`, `getpeereid`, `confstr`
 via narrow ctypes bindings); v0.13.2 adds a small headless Swift ServiceManagement companion solely for persistent
 per-user service registration. There is still no `serverfs-macos-native` wheel, Docker/VM,
-LaunchDaemon, root helper or Rosetta requirement. Deterministic Repo Ops shipped on Linux Host Bridge in v0.23.0, validated native Apple Silicon macOS in v0.23.1, and validated native Windows 11 x64 in v0.23.2. Native macOS Cloudflare Tunnel is **planned** for v0.24.1; the current native persistent Tunnel remains the existing OpenAI adapter.
+LaunchDaemon, root helper or Rosetta requirement. Deterministic Repo Ops shipped on Linux Host Bridge in v0.23.0, validated native Apple Silicon macOS in v0.23.1, and validated native Windows 11 x64 in v0.23.2. The existing native persistent Tunnel remains the OpenAI adapter unless the operator separately opts into the Cloudflare pair below.
 
 ## Supported platform
 
@@ -65,6 +65,50 @@ The default native `service status` JSON includes this bounded hand-over evidenc
 
 `uninstall` removes only v0.13.2-owned registration/runtime artifacts; operator configuration and
 normal ServerFS data are preserved.
+
+## Optional Cloudflare Tunnel (v0.24.1 candidate; unreleased)
+
+This candidate adds a separate native Cloudflare Connector and private loopback Streamable HTTP origin. It does not change the existing OpenAI Tunnel or Agent Bridge and is not present in the published v0.24.0 stable release. Use it only with a matching candidate build on the supported native Apple Silicon/macOS 27 platform. It does not create or edit Cloudflare Tunnels, DNS routes, or public hostname configuration; configure the named remotely managed Tunnel and route through Cloudflare's operator controls first.
+
+The bootstrap command installs the pinned official Cloudflare `cloudflared` macOS arm64 release, verifying its archive and binary digests, code signature and version. With no flag it downloads the pinned artifact; `--artifact` accepts a local archive for offline installation:
+
+```bash
+serverfs bootstrap cloudflare-client
+serverfs bootstrap cloudflare-client --artifact /absolute/path/to/cloudflared-darwin-arm64.tgz
+```
+
+Prepare two current-user regular files with mode `0600`, stored outside the checkout and every configured workdir:
+
+- a connector Token file, containing only the remotely managed Tunnel token;
+- an HTTP-origin environment file containing only supported settings. Use either a non-empty `SERVERFS_HTTP_API_KEY` with OAuth disabled, or OAuth enabled with its required public resource/issuer/introspection settings and secret. Do not combine API Key and OAuth. Set `SERVERFS_HTTP_ALLOWED_HOSTS` to exactly the public hostname passed to install. The Token authenticates only the Connector; it does not authenticate MCP callers.
+
+Use absolute paths for all install paths. `--http-port` has no default and must be available for the loopback origin. Configure `serverfs.toml` with at least one staging workdir and ensure every workdir is read-only before installing. Replace the path and hostname placeholders below with the operator's own values; never put secret values in command arguments:
+
+```bash
+serverfs service cloudflare install \
+  --config /absolute/path/to/serverfs.toml \
+  --cloudflared /absolute/path/to/cloudflared \
+  --token-file /absolute/path/outside-workdirs/cloudflare-token \
+  --env-file /absolute/path/outside-workdirs/cloudflare-origin.env \
+  --http-port 18765 \
+  --hostname mcp.example.invalid
+serverfs service cloudflare status
+```
+
+The installer registers an HTTP-origin/Connector pair through the same current-user, app-associated `SMAppService` LaunchAgent mechanism as the existing native services. The origin binds to `127.0.0.1`; public TLS terminates at Cloudflare. The hostname must match exactly in ServerFS Host admission. Verify both service statuses, then verify public HTTPS rejects missing/wrong caller credentials with 401 and accepts the intended API Key/OAuth identity with 200. Continue with MCP tools and a persistent SSE connection longer than 60 seconds. After a controlled Connector-only restart, establish a **fresh MCP session** and verify tools; the previously established session may return 404 (the observed staging result was 8/8 successful fresh-session checks). Do not claim old-session continuity or SSE event replay. Keep this acceptance on an isolated read-only staging workdir and a separate test hostname; do not claim production workdir/Agent acceptance from it.
+
+If registration fails, the installer attempts to unregister the services it registered and restore its manifest state. If rollback is reported incomplete, stop and preserve the recovery state; do not layer another install over it. The explicit lifecycle commands are:
+
+```bash
+serverfs service cloudflare start
+serverfs service cloudflare stop
+serverfs service cloudflare restart
+serverfs service cloudflare uninstall
+```
+
+`uninstall` unregisters this Cloudflare service pair and removes its private origin-environment snapshot; it preserves the operator's source Token/env files, `serverfs.toml`, workdirs, existing OpenAI Tunnel and Agent Bridge. Cloudflare service registration can require user approval in System Settings > General > Login Items; respect that decision and do not bypass it.
+
+For v0.24.1 lifecycle acceptance, architectural equivalence to the previously verified app-associated `SMAppService`/LaunchAgent mechanism is accepted. An additional real logout/login or whole-Mac reboot is not required for this release and must not be claimed as performed. This exception applies only while the lifecycle architecture remains the same.
 
 ## Agent policy updates
 

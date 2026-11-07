@@ -18,7 +18,7 @@ This is **not** the OpenAI Secure MCP Tunnel. Do not use OpenAI control-plane cr
 5. Require exact ServerFS public Host allowlist and independent ServerFS API Key/OAuth. Prefer OAuth/Bearer; query-key compatibility has URL-leakage risks. Do not disable DNS rebinding or log full URLs.
 6. For an existing Agent/Repo Ops deployment, preserve the same Compose overlay chain and service mounts; only create/recreate the connector and necessary MCP container when authorized.
 7. Validate each layer: safe Compose render, Cloudflare-connected connector, DNS/HTTPS, valid MCP initialize (JSON or SSE response), `notifications/initialized` before persistent GET SSE, session/tools, read-only/hidden-deny policy, long-running streaming and same-session recovery after an isolated Connector restart. Cloudflare connected status alone is insufficient. Record unverified portions explicitly.
-8. Record the exact scope of client E2E evidence: the VPS isolated read-only staging connection has now passed direct ChatGPT tool calls, SSE hold and same-session reconnect. Do **not** generalize this result to production workdirs, Agent/Repo Ops, macOS/Windows native runtimes, or a published v0.24.0 release.
+8. Record the exact scope of client E2E evidence: the VPS isolated read-only staging connection passed direct ChatGPT tool calls, SSE hold and same-session reconnect before v0.24.0 publication. Do **not** generalize this result to production workdirs, Agent/Repo Ops, or native macOS/Windows acceptance; native macOS is an unreleased v0.24.1 candidate and Windows remains planned for v0.24.2.
 
 ## Stop conditions
 

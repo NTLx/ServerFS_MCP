@@ -5,6 +5,8 @@ description: Define scoped workdirs and inherit secure defaults.
 
 ServerFS resolves an immutable effective policy for each enabled workdir at startup.
 
+Native macOS Cloudflare is an unreleased v0.24.1 candidate, separate from the stable Linux Docker configuration below. It requires a read-only staging workdir and private current-user Token/auth files (`0600`) outside all workdirs. See the [macOS deployment runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241-candidate-unreleased) for the supported CLI and exact Host matching requirements; do not copy Linux Compose variables into native configuration.
+
 ## MCP transport settings
 
 Linux Streamable HTTP uses these explicit settings:

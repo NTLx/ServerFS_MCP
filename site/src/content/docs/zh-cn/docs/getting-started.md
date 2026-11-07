@@ -12,6 +12,8 @@ description: 使用标准 Streamable HTTP 部署 ServerFS MCP；仅在需要时�
 
 OpenAI Secure MCP Tunnel 与 Runtime API Key 都是可选项，仅在需要 ChatGPT Tunnel 入口时使用。
 
+Linux Docker Cloudflare Tunnel 已随 v0.24.0 稳定发布。macOS 原生 Cloudflare 是面向 Apple Silicon/macOS 27 的尚未发布 v0.24.1 候选功能；Windows 原生支持仍计划于 v0.24.2 提供。现有 OpenAI Tunnel 和 Agent Bridge 保持可用。候选范围及隔离 staging/生命周期步骤见 [macOS 原生部署](../macos-native/)与[macOS 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241-candidate-unreleased)。
+
 ## 标准 MCP 部署
 
 ```bash

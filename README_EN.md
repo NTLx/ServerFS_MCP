@@ -14,6 +14,8 @@ Expose only the directories you choose. Keep them read-only by default. Opt into
 
 **Current stable release: v0.24.0**
 
+Linux Docker Cloudflare Tunnel shipped in v0.24.0. Native Cloudflare on Apple Silicon/macOS 27 is an unreleased v0.24.1 candidate; Version and packaging metadata are aligned for the unreleased v0.24.1 candidate; exact-SHA cross-platform CI and stable release remain pending. Native Windows Cloudflare remains planned for v0.24.2. The candidate uses a separate loopback HTTP origin and Connector with the current-user `SMAppService` lifecycle; it does not replace the existing OpenAI Tunnel or Agent Bridge. See the [macOS deployment guide](deployment/macos/README.md#optional-cloudflare-tunnel-v0241-candidate-unreleased) for staging, service commands, security requirements and rollback.
+
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
 [Getting started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) ·
@@ -56,7 +58,7 @@ For native setup, use the dedicated guides:
 
 ## Agent Skills
 
-The repository carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Secure MCP Tunnel / Linux Cloudflare Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
+The repository carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Secure MCP Tunnel / Linux Cloudflare Tunnel / the macOS v0.24.1 Cloudflare candidate, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
 
 The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The published v0.24.0 GitHub Release includes `serverfs-plugin-v0.24.0.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
 
