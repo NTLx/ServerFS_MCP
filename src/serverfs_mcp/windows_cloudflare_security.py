@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 import re
 import stat
-import subprocess
 import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -17,14 +16,61 @@ from pathlib import Path
 _REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 _SID_RE = re.compile(r"S-1-(?:[0-9]+-)+[0-9]+\Z")
 
-# PowerShell Get-Acl.Sddl is available even in ConstrainedLanguage. Avoid
-# invoking arbitrary .NET methods on ACL objects (blocked on locked-down hosts).
-# Trust decisions are made in Python against the normalized SDDL SID identifiers.
-_READ_SDDL_SCRIPT = (
-    "$ErrorActionPreference = 'Stop'; "
-    "$acl = Get-Acl -LiteralPath $env:SERVERFS_PRIVATE_FILE_PATH -ErrorAction Stop; "
-    "Write-Output $acl.Sddl"
-)
+
+# Use native Win32 security descriptors rather than a PowerShell subprocess.
+# A pwsh-parent / Windows PowerShell 5.1 module-path mismatch broke Get-Acl
+# autoload on GitHub Actions. Direct Advapi32 calls keep validation fail-closed
+# without depending on shell state or exposing credential paths in argv.
+def _read_windows_file_sddl(path: Path) -> str:
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi32.GetNamedSecurityInfoW.argtypes = [
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    advapi32.GetNamedSecurityInfoW.restype = wintypes.DWORD
+    advapi32.ConvertSecurityDescriptorToStringSecurityDescriptorW.argtypes = [
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.c_void_p,
+    ]
+    advapi32.ConvertSecurityDescriptorToStringSecurityDescriptorW.restype = wintypes.BOOL
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+
+    owner_and_dacl = 0x00000001 | 0x00000004
+    descriptor = ctypes.c_void_p()
+    result = advapi32.GetNamedSecurityInfoW(
+        str(path), 1, owner_and_dacl, None, None, None, None, ctypes.byref(descriptor)
+    )
+    if result != 0 or not descriptor.value:
+        raise WindowsPrivateFileError("Windows credential DACL verification unavailable")
+    try:
+        sddl = ctypes.c_void_p()
+        if (
+            not advapi32.ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                descriptor, 1, owner_and_dacl, ctypes.byref(sddl), None
+            )
+            or not sddl.value
+        ):
+            raise WindowsPrivateFileError("Windows credential DACL verification unavailable")
+        try:
+            return ctypes.wstring_at(sddl.value)
+        finally:
+            kernel32.LocalFree(sddl)
+    finally:
+        kernel32.LocalFree(descriptor)
 
 
 def _sddl_sections(sddl: str) -> dict[str, str]:
@@ -117,14 +163,12 @@ def validate_private_file(
     checkout_root: Path,
     workdir_roots: Iterable[Path],
     user_sid: str,
-    runner: Callable = subprocess.run,
+    sddl_reader: Callable[[Path], str] = _read_windows_file_sddl,
 ) -> Path:
     """Validate existing token/env file; return its fixed resolved absolute path.
 
-    No credentials appear in argv: PowerShell receives only a filename via
-    a subprocess-local environment. Python validates SDDL against the current SID;
-    ACL checks are
-    fail-closed and do not attempt to modify operator-owned files.
+    Native Win32 reads the owner and DACL into SDDL without spawning a
+    subprocess. ACL checks fail closed and never modify operator-owned files.
     """
     if not _is_windows():
         raise WindowsPrivateFileError("Windows credential validation requires Windows")
@@ -146,29 +190,11 @@ def validate_private_file(
     except OSError as exc:
         raise WindowsPrivateFileError("credential path cannot be validated") from exc
 
-    environment = os.environ.copy()
-    # A PowerShell 7 parent can pass incompatible PSModulePath entries to
-    # Windows PowerShell 5.1, breaking Get-Acl autoload in GitHub Actions.
-    environment.pop("PSModulePath", None)
-    environment["SERVERFS_PRIVATE_FILE_PATH"] = str(resolved)
     try:
-        result = runner(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                _READ_SDDL_SCRIPT,
-            ],
-            env=environment,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=20,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
+        sddl = sddl_reader(resolved)
+    except WindowsPrivateFileError:
+        raise
+    except (OSError, ValueError) as exc:
         raise WindowsPrivateFileError("Windows credential DACL verification unavailable") from exc
-    if result.returncode != 0:
-        raise WindowsPrivateFileError("credential file owner or DACL is not private")
-    _validate_private_sddl(result.stdout.strip(), user_sid)
+    _validate_private_sddl(sddl, user_sid)
     return resolved

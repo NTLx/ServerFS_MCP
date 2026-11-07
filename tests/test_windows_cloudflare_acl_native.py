@@ -7,7 +7,6 @@ established using only normal user privileges on the Windows CI runner.
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -51,17 +50,6 @@ def _icacls(token: Path, *arguments: str) -> None:
     assert completed.returncode == 0, "temporary Windows NTFS ACL fixture setup failed"
 
 
-def _safe_acl_runner(*args, **kwargs):
-    result = subprocess.run(*args, **kwargs)
-    if result.returncode:
-        error = result.stderr or ""
-        match = re.search(r"FullyQualifiedErrorId\s*:\s*([A-Za-z0-9.,-]+)", error)
-        identifier = match.group(1) if match else "unspecified"
-        # CI logs must never include raw SID, file path or credential contents.
-        pytest.fail(f"protected fixture Get-Acl failed (exit={result.returncode}, id={identifier})")
-    return result
-
-
 def test_windows_private_acl_accepts_owner_and_rejects_foreign_allow(
     tmp_path: Path,
 ) -> None:
@@ -81,7 +69,6 @@ def test_windows_private_acl_accepts_owner_and_rejects_foreign_allow(
             checkout_root=checkout,
             workdir_roots=[workdir],
             user_sid=user_sid,
-            runner=_safe_acl_runner,
         )
         == secret_file.resolve()
     )
@@ -93,5 +80,4 @@ def test_windows_private_acl_accepts_owner_and_rejects_foreign_allow(
             checkout_root=checkout,
             workdir_roots=[workdir],
             user_sid=user_sid,
-            runner=_safe_acl_runner,
         )

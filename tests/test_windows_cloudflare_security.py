@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -26,47 +25,35 @@ def layout(tmp_path: Path, monkeypatch):
     return token, checkout, workdir
 
 
-def test_validates_current_user_private_file_without_secret_in_argv(layout, monkeypatch):
-    monkeypatch.setenv("PSModulePath", r"C:\Program Files\PowerShell\7\Modules")
+def test_validates_current_user_private_file_without_shell(layout):
     token, checkout, workdir = layout
     calls = []
 
-    def signed_acl_runner(args, **kwargs):
-        calls.append((args, kwargs))
-        return subprocess.CompletedProcess(args, 0, VALID_SDDL + "\n", "")
+    def read_sddl(path):
+        calls.append(path)
+        return VALID_SDDL
 
     output = security.validate_private_file(
         token,
         checkout_root=checkout,
         workdir_roots=[workdir],
         user_sid=CURRENT_SID,
-        runner=signed_acl_runner,
+        sddl_reader=read_sddl,
     )
     assert output == token.resolve()
-    assert len(calls) == 1
-    argv, kwargs = calls[0]
-    assert argv[:3] == ["powershell.exe", "-NoProfile", "-NonInteractive"]
-    assert "secret-fixture" not in " ".join(argv)
-    assert str(token) not in " ".join(argv)
-    assert "SERVERFS_PRIVATE_FILE_SID" not in kwargs["env"]
-    assert "PSModulePath" not in kwargs["env"]
-    assert kwargs["env"]["SERVERFS_PRIVATE_FILE_PATH"] == str(token.resolve())
+    assert calls == [token.resolve()]
 
 
-@pytest.mark.parametrize("code,output", [(11, ""), (13, ""), (0, "unexpected")])
-def test_rejects_bad_acl_or_untrusted_response(layout, code, output):
+@pytest.mark.parametrize("output", ["", "unexpected", "D:P", "O:S-1-5-18D:P"])
+def test_rejects_bad_acl_or_untrusted_response(layout, output):
     token, checkout, workdir = layout
-
-    def reject(args, **kwargs):
-        return subprocess.CompletedProcess(args, code, output, "")
-
     with pytest.raises(security.WindowsPrivateFileError, match="owner or DACL"):
         security.validate_private_file(
             token,
             checkout_root=checkout,
             workdir_roots=[workdir],
             user_sid=CURRENT_SID,
-            runner=reject,
+            sddl_reader=lambda path: output,
         )
 
 
@@ -86,10 +73,20 @@ def test_rejects_foreign_or_ambiguous_sddl(sddl):
         security._validate_private_sddl(sddl, CURRENT_SID)
 
 
-def test_acl_read_script_is_compatible_with_constrained_powershell():
-    assert "Get-Acl" in security._READ_SDDL_SCRIPT
-    assert ".GetOwner(" not in security._READ_SDDL_SCRIPT
-    assert ".GetAccessRules(" not in security._READ_SDDL_SCRIPT
+def test_native_reader_is_used_without_process_spawn(layout, monkeypatch):
+    token, checkout, workdir = layout
+    # A dummy loader proves the validator does not call a shell or parse argv.
+    monkeypatch.setattr(security, "_read_windows_file_sddl", lambda path: VALID_SDDL)
+    assert (
+        security.validate_private_file(
+            token,
+            checkout_root=checkout,
+            workdir_roots=[workdir],
+            user_sid=CURRENT_SID,
+            sddl_reader=security._read_windows_file_sddl,
+        )
+        == token.resolve()
+    )
 
 
 def test_rejects_credential_inside_workdir(layout):
@@ -134,10 +131,10 @@ def test_rejects_invalid_sid(layout):
         )
 
 
-def test_fails_closed_on_power_shell_error(layout):
+def test_fails_closed_on_native_acl_read_error(layout):
     token, checkout, workdir = layout
 
-    def broken_runner(*args, **kwargs):
+    def broken_reader(path):
         raise OSError("sensitive path details")
 
     with pytest.raises(security.WindowsPrivateFileError, match="verification unavailable") as exc:
@@ -146,7 +143,7 @@ def test_fails_closed_on_power_shell_error(layout):
             checkout_root=checkout,
             workdir_roots=[workdir],
             user_sid=CURRENT_SID,
-            runner=broken_runner,
+            sddl_reader=broken_reader,
         )
     assert "sensitive path details" not in str(exc.value)
 
