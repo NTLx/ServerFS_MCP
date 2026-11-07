@@ -178,6 +178,8 @@ def _verify_windows_binary(binary: Path, runner: Callable = subprocess.run) -> N
         "Write-Output 'valid-cloudflare-signature'"
     )
     environment = os.environ.copy()
+    # Do not inherit PowerShell 7 module paths into Windows PowerShell 5.1.
+    environment.pop("PSModulePath", None)
     environment["SERVERFS_CLOUDFLARED_VERIFY_PATH"] = str(binary)
     try:
         signature = runner(

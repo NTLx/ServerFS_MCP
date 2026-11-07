@@ -26,7 +26,8 @@ def layout(tmp_path: Path, monkeypatch):
     return token, checkout, workdir
 
 
-def test_validates_current_user_private_file_without_secret_in_argv(layout):
+def test_validates_current_user_private_file_without_secret_in_argv(layout, monkeypatch):
+    monkeypatch.setenv("PSModulePath", r"C:\Program Files\PowerShell\7\Modules")
     token, checkout, workdir = layout
     calls = []
 
@@ -48,6 +49,7 @@ def test_validates_current_user_private_file_without_secret_in_argv(layout):
     assert "secret-fixture" not in " ".join(argv)
     assert str(token) not in " ".join(argv)
     assert "SERVERFS_PRIVATE_FILE_SID" not in kwargs["env"]
+    assert "PSModulePath" not in kwargs["env"]
     assert kwargs["env"]["SERVERFS_PRIVATE_FILE_PATH"] == str(token.resolve())
 
 

@@ -139,6 +139,19 @@ def windows_binary(tmp_path, monkeypatch):
     return binary
 
 
+def test_windows_signature_probe_drops_inherited_pwsh7_module_path(windows_binary, monkeypatch):
+    monkeypatch.setenv("PSModulePath", r"C:\Program Files\PowerShell\7\Modules")
+    probed = []
+
+    def runner(args, **kwargs):
+        probed.append((args, kwargs))
+        return windows_signed_runner()(args, **kwargs)
+
+    bootstrap._verify_windows_binary(windows_binary, runner=runner)
+    assert probed[0][0][0] == "powershell.exe"
+    assert "PSModulePath" not in probed[0][1]["env"]
+
+
 def test_windows_bootstrap_installs_and_is_idempotent(windows_binary, tmp_path):
     target = tmp_path / "data" / "bin"
     path = bootstrap.bootstrap_cloudflare_client(

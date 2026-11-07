@@ -147,6 +147,9 @@ def validate_private_file(
         raise WindowsPrivateFileError("credential path cannot be validated") from exc
 
     environment = os.environ.copy()
+    # A PowerShell 7 parent can pass incompatible PSModulePath entries to
+    # Windows PowerShell 5.1, breaking Get-Acl autoload in GitHub Actions.
+    environment.pop("PSModulePath", None)
     environment["SERVERFS_PRIVATE_FILE_PATH"] = str(resolved)
     try:
         result = runner(
