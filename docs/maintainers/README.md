@@ -4,7 +4,7 @@
 
 ## Current release
 
-- **v0.24.0 is the current stable release.** The optional Linux Docker Cloudflare Tunnel shipped via exact-SHA dispatch-first Release on 2026-11-06. Isolated read-only staging passed direct ChatGPT tools, public SSE and same-session continuation after a Connector restart. No production workdir/Agent exposure or native macOS/Windows Cloudflare lifecycle is claimed. See [v0.24.0 release](../releases/v0.24.0.md), [`dev_plan_v0.24.md`](../../dev_plan_v0.24.md) and [Linux runbook](../cloudflare-tunnel.md).
+- **v0.24.1 is the current stable release.** Optional native Apple Silicon/macOS 27 Cloudflare Tunnel shipped after isolated public ChatGPT, security and lifecycle acceptance; no actual logout/login or reboot is claimed. Linux Docker Cloudflare shipped in v0.24.0. Neither release proves Windows native Cloudflare or production workdir/Agent acceptance. See [v0.24.1 release](../releases/v0.24.1.md), [v0.24.0 release](../releases/v0.24.0.md), and the [macOS](../../deployment/macos/README.md) / [Linux](../cloudflare-tunnel.md) runbooks.
 - **v0.23.3 is the previous stable release.** It retains the native Windows 11 x64 Deterministic Repo Ops support delivered in v0.23.2 and closes the stable-publication gate defect exposed by that release: the exact release SHA must pass Linux/Container, Windows Native, Windows Agent, macOS Native, and Pages gates before the stable tag is created.
 - **v0.23.2 is the previous released stable version.** Its Windows Repo Ops behavior remains valid, while its historical release record preserves the publication-gate exception.
 - Native deployment families: Linux, Windows and macOS.
@@ -63,9 +63,9 @@ These landmarks are navigation aids, not substitutes for their plans:
 - **v0.23.2** — previous stable maintenance release; extended the deterministic, no-Agent-fallback Repo Ops contract to validated native Windows 11 x64, but its immutable release record includes a publication-gate exception. See [release notes](../releases/v0.23.2.md), [`v0.23.2 release checklist`](../v0.23.2-release-checklist-2026-10-28.md), and [`Windows native Repo Ops acceptance`](../v0.23.2-windows-repo-ops-acceptance-2026-10-28.md).
 - **v0.23.3** — previous stable release-hygiene patch; preserves the v0.23.2 Windows Repo Ops product contract and makes stable publication dispatch-first and exact-SHA gated across Linux/Container, Windows Native, Windows Agent, macOS Native, and Pages before tag creation. See [`dev_plan_v0.23.3.md`](../../dev_plan_v0.23.3.md) and [release notes](../releases/v0.23.3.md).
 
-- **v0.24.0** — current stable release, optional Linux Docker Cloudflare Tunnel ingress; real isolated ChatGPT/SSE/reconnect acceptance and exact-SHA CI. See [release notes](../releases/v0.24.0.md).
-- **v0.24.1 planned** — native Apple Silicon/macOS 27 Cloudflare Tunnel using existing `SMAppService`/LaunchAgent ownership. [Development plan](../../dev_plan_v0.24.1.md); planning only, not implemented or released.
-- **v0.24.2 planned** — native non-admin Windows 11 x64 Cloudflare Tunnel using existing Task Scheduler/Runner lifecycle. [Development plan](../../dev_plan_v0.24.2.md); planning only, not implemented or released.
+- **v0.24.0** — previous stable release, optional Linux Docker Cloudflare Tunnel ingress; real isolated ChatGPT/SSE/reconnect acceptance and exact-SHA CI. See [release notes](../releases/v0.24.0.md).
+- **v0.24.1** — current stable release, optional native Apple Silicon/macOS 27 Cloudflare Tunnel using existing `SMAppService`/LaunchAgent ownership; isolated public MCP/security/lifecycle acceptance. See [release notes](../releases/v0.24.1.md) and [development record](../../dev_plan_v0.24.1.md).
+- **v0.24.2 candidate** — native non-admin Windows 11 x64 Cloudflare Tunnel using existing Task Scheduler/Runner lifecycle; implementation and local/hosted verification progressed, but independent Windows Connector/public ChatGPT E2E and final release CI remain incomplete. See [development plan](../../dev_plan_v0.24.2.md) and [release gate](../v0.24.2-release-checklist-2026-11-07.md); **not released**.
 
 ## Keep this index small
 
