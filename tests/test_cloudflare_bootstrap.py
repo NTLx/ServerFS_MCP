@@ -113,7 +113,7 @@ def test_refuses_unsupported_platform(archive, tmp_path, monkeypatch):
 
 def windows_signed_runner(*, unsigned=False, wrong_version=False):
     def run(args, **_kwargs):
-        if args[0] == "powershell.exe":
+        if str(args[0]).lower().endswith(("powershell.exe", "pwsh.exe", "pwsh")):
             return subprocess.CompletedProcess(
                 args,
                 3 if unsigned else 0,
@@ -156,7 +156,10 @@ def test_windows_signer_cn_matches_only_expected_issuer(subject, valid):
     assert bool(re.search(bootstrap.WINDOWS_SIGNER_SUBJECT_RE, subject)) is valid
 
 
-def test_windows_signature_probe_drops_inherited_pwsh7_module_path(windows_binary, monkeypatch):
+def test_windows_signature_probe_legacy_shell_drops_inherited_module_path(
+    windows_binary, monkeypatch
+):
+    monkeypatch.setattr(bootstrap.shutil, "which", lambda name: None)
     monkeypatch.setenv("PSModulePath", r"C:\Program Files\PowerShell\7\Modules")
     probed = []
 
@@ -166,7 +169,32 @@ def test_windows_signature_probe_drops_inherited_pwsh7_module_path(windows_binar
 
     bootstrap._verify_windows_binary(windows_binary, runner=runner)
     assert probed[0][0][0] == "powershell.exe"
-    assert "PSModulePath" not in probed[0][1]["env"]
+    assert not any(key.casefold() == "psmodulepath" for key in probed[0][1]["env"])
+
+
+def test_windows_signature_probe_prefers_pwsh7_when_available(windows_binary, monkeypatch):
+    pwsh = r"C:\Program Files\PowerShell\7\pwsh.exe"
+    monkeypatch.setattr(bootstrap.shutil, "which", lambda name: pwsh if name == "pwsh" else None)
+    monkeypatch.setenv("PSModulePath", r"C:\Program Files\PowerShell\7\Modules")
+    probed = []
+
+    def runner(args, **kwargs):
+        probed.append((args, kwargs))
+        return windows_signed_runner()(args, **kwargs)
+
+    bootstrap._verify_windows_binary(windows_binary, runner=runner)
+    assert probed[0][0][0] == pwsh
+    assert not any(key.casefold() == "psmodulepath" for key in probed[0][1]["env"])
+
+
+def test_windows_signature_probe_distinguishes_unavailable_shell(windows_binary, monkeypatch):
+    monkeypatch.setattr(bootstrap.shutil, "which", lambda name: None)
+
+    def broken_shell(args, **kwargs):
+        return subprocess.CompletedProcess(args, 1, "", "Security module did not load")
+
+    with pytest.raises(bootstrap.CloudflareBootstrapError, match="verification unavailable"):
+        bootstrap._verify_windows_binary(windows_binary, runner=broken_shell)
 
 
 def test_windows_bootstrap_installs_and_is_idempotent(windows_binary, tmp_path):

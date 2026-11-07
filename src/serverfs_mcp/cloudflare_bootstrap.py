@@ -180,18 +180,27 @@ def _verify_windows_binary(binary: Path, runner: Callable = subprocess.run) -> N
         "Write-Output 'valid-cloudflare-signature'"
     )
     environment = os.environ.copy()
-    # Do not inherit PowerShell 7 module paths into Windows PowerShell 5.1.
-    environment.pop("PSModulePath", None)
+    # Prefer pwsh when installed; Windows PowerShell 5.1 can fail to auto-load
+    # Security cmdlets under a pwsh parent (observed on GitHub Windows CI).
+    powershell = shutil.which("pwsh") or "powershell.exe"
+    # os.environ.copy() is an ordinary case-sensitive dict; Windows can store
+    # this variable as PSModulePath or PSMODULEPATH casing.
+    # Let the chosen shell populate its own trusted default module paths.
+    for name in tuple(environment):
+        if name.casefold() == "psmodulepath":
+            del environment[name]
     environment["SERVERFS_CLOUDFLARED_VERIFY_PATH"] = str(binary)
     try:
         signature = runner(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
             env=environment,
             capture_output=True,
             text=True,
             timeout=TIMEOUT,
             check=False,
         )
+        if signature.returncode not in {0, 3, 4}:
+            raise CloudflareBootstrapError("cloudflared Windows signature verification unavailable")
         if signature.returncode or signature.stdout.strip() != "valid-cloudflare-signature":
             raise CloudflareBootstrapError("cloudflared Windows Authenticode signature is invalid")
         version = runner(
