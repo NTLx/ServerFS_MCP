@@ -38,6 +38,11 @@ def _read_windows_file_sddl(path: Path) -> str:
         ctypes.POINTER(ctypes.c_void_p),
     ]
     advapi32.GetNamedSecurityInfoW.restype = wintypes.DWORD
+    advapi32.ConvertSidToStringSidW.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    advapi32.ConvertSidToStringSidW.restype = wintypes.BOOL
     advapi32.ConvertSecurityDescriptorToStringSecurityDescriptorW.argtypes = [
         ctypes.c_void_p,
         wintypes.DWORD,
@@ -51,12 +56,31 @@ def _read_windows_file_sddl(path: Path) -> str:
 
     owner_and_dacl = 0x00000001 | 0x00000004
     descriptor = ctypes.c_void_p()
+    owner_pointer = ctypes.c_void_p()
     result = advapi32.GetNamedSecurityInfoW(
-        str(path), 1, owner_and_dacl, None, None, None, None, ctypes.byref(descriptor)
+        str(path),
+        1,
+        owner_and_dacl,
+        ctypes.byref(owner_pointer),
+        None,
+        None,
+        None,
+        ctypes.byref(descriptor),
     )
     if result != 0 or not descriptor.value:
         raise WindowsPrivateFileError("Windows credential DACL verification unavailable")
     try:
+        owner_text = ctypes.c_void_p()
+        if (
+            not owner_pointer.value
+            or not advapi32.ConvertSidToStringSidW(owner_pointer, ctypes.byref(owner_text))
+            or not owner_text.value
+        ):
+            raise WindowsPrivateFileError("Windows credential owner SID is unavailable")
+        try:
+            canonical_owner = ctypes.wstring_at(owner_text.value)
+        finally:
+            kernel32.LocalFree(owner_text)
         sddl = ctypes.c_void_p()
         if (
             not advapi32.ConvertSecurityDescriptorToStringSecurityDescriptorW(
@@ -66,7 +90,7 @@ def _read_windows_file_sddl(path: Path) -> str:
         ):
             raise WindowsPrivateFileError("Windows credential DACL verification unavailable")
         try:
-            return ctypes.wstring_at(sddl.value)
+            return _canonicalize_windows_sddl(ctypes.wstring_at(sddl.value), canonical_owner)
         finally:
             kernel32.LocalFree(sddl)
     finally:
@@ -96,6 +120,22 @@ def _sddl_sections(sddl: str) -> dict[str, str]:
     return sections
 
 
+def _canonicalize_windows_sddl(sddl: str, owner_sid: str) -> str:
+    """Normalize the native owner's numeric SID rather than guessing from aliases.
+
+    Win32 may encode built-in local Administrator as LA. Normalize a LA ACE
+    only when the actual owner is verified as local Administrator (RID 500).
+    """
+    original_owner = _sddl_sections(sddl).get("O")
+    if not original_owner or not _SID_RE.fullmatch(owner_sid):
+        raise WindowsPrivateFileError("credential file owner or DACL is not private")
+    if original_owner == "LA":
+        if not owner_sid.endswith("-500"):
+            raise WindowsPrivateFileError("credential file owner or DACL is not private")
+        sddl = sddl.replace(";;;LA)", f";;;{owner_sid})")
+    return sddl.replace(f"O:{original_owner}", f"O:{owner_sid}", 1)
+
+
 def _validate_private_sddl(sddl: str, user_sid: str) -> None:
     parts = _sddl_sections(sddl.strip())
     if parts.get("O") != user_sid:
@@ -109,7 +149,7 @@ def _validate_private_sddl(sddl: str, user_sid: str) -> None:
     aces = re.findall(r"\([^()]*\)", ace_text)
     if not aces or "".join(aces) != ace_text:
         raise WindowsPrivateFileError("credential file owner or DACL is not private")
-    allowed_sids = {user_sid, "SY", "BA", "S-1-5-18", "S-1-5-32-544"}
+    allowed_sids = {user_sid, "SY", "BA", "OW", "S-1-5-18", "S-1-5-32-544", "S-1-3-4"}
     owner_grant = False
     for ace in aces:
         fields = ace[1:-1].split(";")

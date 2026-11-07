@@ -239,6 +239,44 @@ jobs:
           .venv-wheel/Scripts/python.exe -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py tests/test_windows_service.py tests/test_windows_cloudflare_config.py tests/test_windows_cloudflare_runtime.py tests/test_windows_cloudflare_security.py tests/test_windows_cloudflare_acl_native.py tests/test_windows_cloudflare_service.py tests/test_windows_cloudflare_isolated_http.py tests/test_cloudflare_bootstrap.py tests/test_native_http.py -q
         shell: pwsh
 
+      # Separate from the staged Python mocks: a real GitHub-hosted Windows
+      # runner must verify the pinned official executable and its signer.
+      # No machine service, account key, Tunnel Token or public DNS is used.
+      - name: Official Windows cloudflared binary integrity and signer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folder = Join-Path $env:RUNNER_TEMP 'serverfs-v0242-cloudflared-authenticity'
+          New-Item -ItemType Directory -Path $folder -Force | Out-Null
+          $binary = Join-Path $folder 'cloudflared.exe'
+          $url = 'https://github.com/cloudflare/cloudflared/releases/download/2026.10.7/cloudflared-windows-amd64.exe'
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $binary -MaximumRedirection 5
+          } catch {
+            throw 'Pinned official Windows cloudflared download failed'
+          }
+          $digest = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($digest -cne '2493dbc168923bb3e59e5e7716f71deced92992eea9acd6e9d74f84ac7751343') {
+            throw 'Pinned official Windows cloudflared SHA256 mismatch'
+          }
+          Write-Output 'OFFICIAL_SHA256_MATCH=True'
+          $signature = Get-AuthenticodeSignature -LiteralPath $binary
+          Write-Output "AUTHENTICODE_STATUS=$($signature.Status)"
+          $subject = if ($null -ne $signature.SignerCertificate) {
+            $signature.SignerCertificate.Subject
+          } else {
+            '(none)'
+          }
+          Write-Output "AUTHENTICODE_SIGNER=$subject"
+          if ($signature.Status -ne 'Valid' -or $subject -notmatch 'CN=Cloudflare,?\s+Inc\.') {
+            throw 'Official Windows cloudflared Authenticode signer gate failed'
+          }
+          $version = & $binary --version
+          if ($LASTEXITCODE -ne 0 -or ($version -join ' ') -notmatch '2026\.10\.7') {
+            throw 'Pinned Windows cloudflared version check failed'
+          }
+          Write-Output 'OFFICIAL_SIGNATURE_AND_VERSION_VALID=True'
+
       - name: upload native wheel
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

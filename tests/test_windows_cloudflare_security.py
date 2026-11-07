@@ -73,6 +73,28 @@ def test_rejects_foreign_or_ambiguous_sddl(sddl):
         security._validate_private_sddl(sddl, CURRENT_SID)
 
 
+def test_win32_local_administrator_alias_normalizes_to_actual_owner_sid():
+    admin = "S-1-5-21-100-200-300-500"
+    sddl = "O:LAD:PAI(A;;FA;;;LA)(A;;FA;;;SY)(A;;FA;;;BA)(A;IO;FA;;;OW)"
+    canonical = security._canonicalize_windows_sddl(sddl, admin)
+    assert canonical.startswith(f"O:{admin}D:PAI")
+    security._validate_private_sddl(canonical, admin)
+
+
+def test_win32_alias_cannot_be_mapped_to_unrelated_account():
+    user = "S-1-5-21-100-200-300-1001"
+    sddl = "O:LAD:P(A;;FA;;;LA)(A;;FA;;;BA)"
+    with pytest.raises(security.WindowsPrivateFileError, match="owner or DACL"):
+        security._canonicalize_windows_sddl(sddl, user)
+
+
+def test_local_administrator_ace_is_foreign_when_owner_is_not_administrator():
+    sddl = f"O:{CURRENT_SID}D:P(A;;FA;;;{CURRENT_SID})(A;;FA;;;LA)"
+    canonical = security._canonicalize_windows_sddl(sddl, CURRENT_SID)
+    with pytest.raises(security.WindowsPrivateFileError, match="owner or DACL"):
+        security._validate_private_sddl(canonical, CURRENT_SID)
+
+
 def test_native_reader_is_used_without_process_spawn(layout, monkeypatch):
     token, checkout, workdir = layout
     # A dummy loader proves the validator does not call a shell or parse argv.
