@@ -1,6 +1,6 @@
 # ServerFS v0.24.2 — Native Windows Cloudflare Tunnel
 
-Status: **planning only**. No Windows Cloudflare implementation or live acceptance is claimed. Depends on v0.24.1's accepted provider-selection and credential/lifecycle contract; do not silently inherit macOS operating-system assumptions.
+Status: **implementation and local Windows acceptance in progress**. Native HTTP, cloudflared bootstrap, single-owner Windows service provider, credential ACL validation, and tests have been implemented. **No actual Windows Cloudflare public Connector/ChatGPT E2E or stable release is claimed.** Depends on v0.24.1's accepted provider-selection and credential/lifecycle contract; do not silently inherit macOS operating-system assumptions.
 
 ## Objective and supported scope
 

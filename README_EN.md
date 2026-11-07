@@ -14,7 +14,7 @@ Expose only the directories you choose. Keep them read-only by default. Opt into
 
 **Current stable release: v0.24.1**
 
-Linux Docker Cloudflare Tunnel shipped in v0.24.0. v0.24.1 adds native Cloudflare Tunnel ingress for Apple Silicon/macOS 27 through a separate loopback HTTP origin and Connector, with exact Host matching and independent API Key/OAuth caller authentication. Isolated read-only staging passed HTTPS 401/200, 11-tool discovery, 65.1-second SSE, and fresh-session recovery on 8/8 Connector restarts; the old session returned 404, and no SSE replay is claimed. The current-user `SMAppService` lifecycle leaves the existing OpenAI Tunnel and Agent Bridge available. Native Windows Cloudflare remains planned for v0.24.2. See the [macOS deployment guide](deployment/macos/README.md#optional-cloudflare-tunnel-v0241) for commands, security requirements and rollback.
+Linux Docker Cloudflare Tunnel shipped in v0.24.0. v0.24.1 adds native Cloudflare Tunnel ingress for Apple Silicon/macOS 27 through a separate loopback HTTP origin and Connector, with exact Host matching and independent API Key/OAuth caller authentication. Isolated read-only staging passed HTTPS 401/200, 11-tool discovery, 65.1-second SSE, and fresh-session recovery on 8/8 Connector restarts; the old session returned 404, and no SSE replay is claimed. The current-user `SMAppService` lifecycle leaves the existing OpenAI Tunnel and Agent Bridge available. Native Windows Cloudflare is implemented and locally validated in the v0.24.2 candidate but remains **unreleased** pending real Connector/public ChatGPT MCP and exact-SHA Release gates. Windows selects a Tunnel provider through the **same Task Scheduler owner**; never switch a running production OpenAI Tunnel to test Cloudflare. See the [Windows Cloudflare runbook](docs/windows-cloudflare-tunnel.md). See the [macOS deployment guide](deployment/macos/README.md#optional-cloudflare-tunnel-v0241) for commands, security requirements and rollback.
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -58,7 +58,7 @@ For native setup, use the dedicated guides:
 
 ## Agent Skills
 
-The repository carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Secure MCP Tunnel / Linux and macOS Cloudflare Tunnel, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
+The repository carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Secure MCP Tunnel / released Linux and macOS Cloudflare plus the Windows v0.24.2 candidate, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
 
 The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The v0.24.1 release asset is `serverfs-plugin-v0.24.1.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
 

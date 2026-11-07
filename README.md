@@ -14,7 +14,7 @@
 
 **当前稳定版本：v0.24.1**
 
-Linux Docker Cloudflare Tunnel 已随 v0.24.0 发布；v0.24.1 增加 Apple Silicon/macOS 27 原生 Cloudflare Tunnel。它通过独立 loopback HTTP origin 与 Connector 接入 Cloudflare，复用当前用户 `SMAppService` 生命周期，不替换现有 OpenAI Tunnel 或 Agent Bridge。隔离只读 staging 通过 401/200 认证、11 工具发现、65.1 秒 SSE，以及 Connector 重启后 8/8 次新会话恢复；旧会话返回 404，不保证 SSE 重放。Windows 原生 Cloudflare 仍计划在 v0.24.2 提供。服务命令、安全要求与回滚流程见[macOS 部署指南](deployment/macos/README.md#optional-cloudflare-tunnel-v0241)。
+Linux Docker Cloudflare Tunnel 已随 v0.24.0 发布；v0.24.1 增加 Apple Silicon/macOS 27 原生 Cloudflare Tunnel。它通过独立 loopback HTTP origin 与 Connector 接入 Cloudflare，复用当前用户 `SMAppService` 生命周期，不替换现有 OpenAI Tunnel 或 Agent Bridge。隔离只读 staging 通过 401/200 认证、11 工具发现、65.1 秒 SSE，以及 Connector 重启后 8/8 次新会话恢复；旧会话返回 404，不保证 SSE 重放。Windows 原生 Cloudflare 已完成 v0.24.2 候选版本的源码与本地 Windows 验收，但尚未发布：仍需完成真实 Connector、公网 ChatGPT MCP 和精确 SHA 的 Release 门禁。Windows 使用**同一 Task Scheduler 所有者**选择 Tunnel Provider，绝不能把运行中的 OpenAI Tunnel 当作测试服务切换；见 [Windows Cloudflare 运维手册](docs/windows-cloudflare-tunnel.md)。服务命令、安全要求与回滚流程见[macOS 部署指南](deployment/macos/README.md#optional-cloudflare-tunnel-v0241)。
 
 [项目网站](https://ntlx.github.io/ServerFS_MCP/zh-cn/) ·
 [文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/) ·
@@ -58,7 +58,7 @@ macOS 仅支持 Apple M 系列、原生 arm64、macOS 27.x 与本地 APFS；不�
 
 ## Agent Skills
 
-仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Secure MCP Tunnel / Linux 与 macOS Cloudflare Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
+仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Secure MCP Tunnel / 已发布 Linux、macOS Cloudflare 与 Windows v0.24.2 候选分支、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
 
 仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。v0.24.1 Release 资产为 `serverfs-plugin-v0.24.1.zip`，其中有 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
 

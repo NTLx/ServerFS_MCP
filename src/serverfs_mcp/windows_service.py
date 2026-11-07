@@ -471,6 +471,11 @@ def _manifest_document() -> dict[str, Any]:
         raise WindowsServiceError("Windows persistent service manifest is invalid") from exc
     if not isinstance(document, dict) or document.get("schema_version") != MANIFEST_SCHEMA_VERSION:
         raise WindowsServiceError("Windows persistent service manifest is invalid")
+    provider = document.get("provider", "openai")
+    if provider not in {"openai", "cloudflare"}:
+        raise WindowsServiceError("Windows persistent service provider is invalid")
+    if provider == "cloudflare" and not isinstance(document.get("cloudflare"), dict):
+        raise WindowsServiceError("Windows Cloudflare provider manifest is invalid")
     return document
 
 
@@ -481,6 +486,7 @@ def _write_manifest(
     user_sid: str,
     task_executable: Path,
     task_xml: bytes,
+    cloudflare_spec: Any | None = None,
 ) -> None:
     document = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -494,6 +500,14 @@ def _write_manifest(
         "task_arguments": _watchdog_argv(config_path, env_file),
         "task_xml_sha256": hashlib.sha256(task_xml).hexdigest(),
     }
+    if cloudflare_spec is not None:
+        document["provider"] = "cloudflare"
+        document["cloudflare"] = {
+            "cloudflared": str(cloudflare_spec.cloudflared),
+            "token_file": str(cloudflare_spec.token_file),
+            "http_port": cloudflare_spec.port,
+            "hostname": cloudflare_spec.hostname,
+        }
     _atomic_write(
         manifest_path(),
         json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8"),
@@ -860,7 +874,9 @@ def _perform_pending_handover() -> None:
     _append_lifecycle_event("legacy_handover_completed", roots=len(roots))
 
 
-def install(config_path: Path, env_file: Path) -> dict[str, Any]:
+def install(
+    config_path: Path, env_file: Path, *, cloudflare_spec: Any | None = None
+) -> dict[str, Any]:
     _ensure_windows()
     _validate_persistent_runtime_location()
     _validate_runtime_backend()
@@ -869,15 +885,29 @@ def install(config_path: Path, env_file: Path) -> dict[str, Any]:
     if not config.is_file():
         raise WindowsServiceError("native serverfs.toml does not exist")
     values = _read_env_file(env)
-    _tunnel_id(values)
-    key_path = default_api_key_path()
-    if not key_path.is_file():
-        raise WindowsServiceError("Control Plane API key file is unavailable")
+    if cloudflare_spec is None:
+        _tunnel_id(values)
+        key_path = default_api_key_path()
+        if not key_path.is_file():
+            raise WindowsServiceError("Control Plane API key file is unavailable")
+    elif cloudflare_spec.config_path != config or cloudflare_spec.env_file != env:
+        raise WindowsServiceError("Cloudflare configuration path mismatch")
 
     user_sid = _current_user_sid()
     task_executable = _runner_executable()
     legacy_roots = _find_legacy_tunnel_roots()
+    if cloudflare_spec is not None and legacy_roots:
+        raise WindowsServiceError("unmanaged OpenAI Tunnel is present; refusing provider switch")
     previous_registered_xml = _query_task_xml(optional=True)
+    if previous_registered_xml is not None:
+        previous_status = status()
+        if cloudflare_spec is not None or previous_status.get("provider") == "cloudflare":
+            if not previous_status.get("task_valid"):
+                raise WindowsServiceError("existing Windows task contract is invalid")
+            if any(
+                previous_status.get(key) for key in ("enabled", "watchdog_alive", "runner_alive")
+            ):
+                raise WindowsServiceError("stop the existing provider before switching modes")
     enabled = (
         _registered_enabled(previous_registered_xml)
         if previous_registered_xml is not None
@@ -904,13 +934,16 @@ def install(config_path: Path, env_file: Path) -> dict[str, Any]:
     try:
         _ensure_directory(service_log_dir())
         _atomic_write(task_xml_path(), task_xml)
-        _write_manifest(
-            config_path=config,
-            env_file=env,
-            user_sid=user_sid,
-            task_executable=task_executable,
-            task_xml=task_xml,
-        )
+        manifest_args = {
+            "config_path": config,
+            "env_file": env,
+            "user_sid": user_sid,
+            "task_executable": task_executable,
+            "task_xml": task_xml,
+        }
+        if cloudflare_spec is not None:
+            manifest_args["cloudflare_spec"] = cloudflare_spec
+        _write_manifest(**manifest_args)
         if legacy_roots:
             _write_handover(legacy_roots)
         else:
@@ -1043,6 +1076,15 @@ def _runner_identity_state() -> dict[str, object]:
 def _watchdog_identity_state() -> dict[str, object]:
     """Capture the Task Scheduler-owned watchdog process identity."""
     return _current_identity_state("watchdog")
+
+
+def _cloudflare_child_alive(state: dict[str, Any], prefix: str) -> bool:
+    identity = _managed_identity(state, prefix)
+    if identity is None:
+        return False
+    from .windows_process import same_process
+
+    return same_process(identity)
 
 
 def _runner_alive(state: dict[str, Any], manifest: dict[str, Any] | None) -> bool:
@@ -1289,6 +1331,17 @@ def status() -> dict[str, Any]:
     )
     result: dict[str, Any] = {
         "backend": BACKEND,
+        "provider": (manifest.get("provider", "openai") if manifest is not None else None),
+        "http_origin_alive": (
+            _cloudflare_child_alive(state, "origin")
+            if manifest is not None and manifest.get("provider") == "cloudflare"
+            else None
+        ),
+        "cloudflare_connector_alive": (
+            _cloudflare_child_alive(state, "connector")
+            if manifest is not None and manifest.get("provider") == "cloudflare"
+            else None
+        ),
         "task_name": TASK_NAME,
         "registered": registered,
         "enabled": (
@@ -1408,16 +1461,59 @@ def _background_creationflags() -> int:
     return getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
 
-def _open_tunnel_logs() -> tuple[BinaryIO, BinaryIO]:
+def _open_tunnel_logs(provider: str = "openai") -> tuple[BinaryIO, BinaryIO]:
     _ensure_directory(service_log_dir())
     try:
-        stdout = tunnel_stdout_path().open("ab", buffering=0)
-        stderr = tunnel_stderr_path().open("ab", buffering=0)
+        stdout_path = (
+            service_log_dir() / "cloudflare.stdout.log"
+            if provider == "cloudflare"
+            else tunnel_stdout_path()
+        )
+        stderr_path = (
+            service_log_dir() / "cloudflare.stderr.log"
+            if provider == "cloudflare"
+            else tunnel_stderr_path()
+        )
+        stdout = stdout_path.open("ab", buffering=0)
+        stderr = stderr_path.open("ab", buffering=0)
     except OSError as exc:
         raise WindowsServiceError(
             f"Windows Tunnel logs could not be opened ({type(exc).__name__})"
         ) from exc
     return stdout, stderr
+
+
+def _cloudflare_spec_from_manifest(
+    manifest: dict[str, Any], config_path: Path, env_file: Path
+) -> Any:
+    """Recheck credentials and pinned executable at each managed startup."""
+    if manifest.get("provider") != "cloudflare":
+        raise WindowsServiceError("Windows Cloudflare provider is not configured")
+    if (
+        Path(str(manifest.get("config_path", ""))).resolve() != config_path.resolve()
+        or Path(str(manifest.get("env_file", ""))).resolve() != env_file.resolve()
+    ):
+        raise WindowsServiceError("Windows Cloudflare manifest path mismatch")
+    config = manifest.get("cloudflare")
+    if not isinstance(config, dict):
+        raise WindowsServiceError("Windows Cloudflare manifest is invalid")
+    from .windows_cloudflare_config import (
+        WindowsCloudflareConfigurationError,
+        validate_install,
+    )
+
+    try:
+        return validate_install(
+            config_path,
+            Path(str(config["cloudflared"])),
+            Path(str(config["token_file"])),
+            env_file,
+            config["http_port"],
+            config["hostname"],
+            user_sid=_current_user_sid(),
+        )
+    except (KeyError, TypeError, WindowsCloudflareConfigurationError) as exc:
+        raise WindowsServiceError("Windows Cloudflare provider configuration is invalid") from exc
 
 
 def run_watchdog(config_path: Path, env_file: Path) -> int:
@@ -1428,9 +1524,13 @@ def run_watchdog(config_path: Path, env_file: Path) -> int:
     if not config.is_file():
         raise WindowsServiceError("watchdog native serverfs.toml does not exist")
     values = _read_env_file(env)
-    _tunnel_id(values)
-    if not default_api_key_path().is_file():
-        raise WindowsServiceError("Control Plane API key file is unavailable")
+    manifest = _manifest_document()
+    if manifest.get("provider", "openai") == "cloudflare":
+        _cloudflare_spec_from_manifest(manifest, config, env)
+    else:
+        _tunnel_id(values)
+        if not default_api_key_path().is_file():
+            raise WindowsServiceError("Control Plane API key file is unavailable")
 
     watchdog_started_at = time.time()
     watchdog_identity = _watchdog_identity_state()
@@ -1540,10 +1640,17 @@ def run_managed(config_path: Path, env_file: Path) -> int:
     if not config.is_file():
         raise WindowsServiceError("managed native serverfs.toml does not exist")
     values = _read_env_file(env)
-    tunnel_id = _tunnel_id(values)
-    api_key = default_api_key_path()
-    if not api_key.is_file():
-        raise WindowsServiceError("Control Plane API key file is unavailable")
+    manifest = _manifest_document()
+    cloudflare_spec = None
+    tunnel_id = None
+    api_key = None
+    if manifest.get("provider", "openai") == "cloudflare":
+        cloudflare_spec = _cloudflare_spec_from_manifest(manifest, config, env)
+    else:
+        tunnel_id = _tunnel_id(values)
+        api_key = default_api_key_path()
+        if not api_key.is_file():
+            raise WindowsServiceError("Control Plane API key file is unavailable")
     _apply_runtime_environment(values)
 
     runner_started_at = time.time()
@@ -1579,26 +1686,85 @@ def run_managed(config_path: Path, env_file: Path) -> int:
                     "last_tunnel_started_at": started_wall,
                     "next_restart_delay_seconds": None,
                 }
+                if cloudflare_spec is not None:
+                    for role in ("origin", "connector"):
+                        current_state.update(
+                            {
+                                f"{role}_pid": None,
+                                f"{role}_image_path": None,
+                                f"{role}_creation_time": None,
+                            }
+                        )
                 _write_state(current_state)
                 _append_lifecycle_event("tunnel_generation_started", generation=generation)
 
-                stdout, stderr = _open_tunnel_logs()
+                stdout, stderr = _open_tunnel_logs(
+                    "cloudflare" if cloudflare_spec is not None else "openai"
+                )
                 job = WindowsJob()
                 exit_code = 2
                 error_class = ""
                 try:
                     job.open()
-                    exit_code = run_native_tunnel(
-                        config_path=config,
-                        env_file=env,
-                        tunnel_client=None,
-                        tunnel_id=tunnel_id,
-                        api_key_file=api_key,
-                        job=job,
-                        stdout=stdout,
-                        stderr=stderr,
-                        instance_lock_held=True,
-                    )
+                    if cloudflare_spec is None:
+                        exit_code = run_native_tunnel(
+                            config_path=config,
+                            env_file=env,
+                            tunnel_client=None,
+                            tunnel_id=tunnel_id,
+                            api_key_file=api_key,
+                            job=job,
+                            stdout=stdout,
+                            stderr=stderr,
+                            instance_lock_held=True,
+                        )
+                    else:
+                        from .windows_cloudflare_runtime import run_cloudflare_generation
+
+                        with (
+                            (service_log_dir() / "http-origin.stdout.log").open(
+                                "ab", buffering=0
+                            ) as origin_stdout,
+                            (service_log_dir() / "http-origin.stderr.log").open(
+                                "ab", buffering=0
+                            ) as origin_stderr,
+                        ):
+                            from .windows_process import process_identity
+
+                            def on_child_started(
+                                role: str, process: Any, *, state: dict[str, Any] = current_state
+                            ) -> None:
+                                identity = process_identity(process.pid)
+                                if identity is None:
+                                    raise WindowsServiceError(
+                                        "Cloudflare managed child identity is unavailable"
+                                    )
+                                state.update(
+                                    {
+                                        f"{role}_pid": identity.pid,
+                                        f"{role}_image_path": str(identity.image_path),
+                                        f"{role}_creation_time": identity.creation_time,
+                                    }
+                                )
+                                _write_state(state)
+                                _append_lifecycle_event(
+                                    "cloudflare_child_started", role=role, pid=identity.pid
+                                )
+
+                            exit_code = run_cloudflare_generation(
+                                on_child_started=on_child_started,
+                                python_executable=Path(sys.executable),
+                                config_path=config,
+                                cloudflared_executable=cloudflare_spec.cloudflared,
+                                token_file=cloudflare_spec.token_file,
+                                http_port=cloudflare_spec.port,
+                                origin_environment=cloudflare_spec.origin_environment,
+                                job=job,
+                                origin_stdout=origin_stdout,
+                                origin_stderr=origin_stderr,
+                                connector_stdout=stdout,
+                                connector_stderr=stderr,
+                            )
                 except Exception as exc:  # noqa: BLE001 - one generation may fail
                     error_class = type(exc).__name__
                     exit_code = 2
@@ -1633,6 +1799,68 @@ def run_managed(config_path: Path, env_file: Path) -> int:
                 delay = _next_restart_delay(runtime, restart_delay)
     except NativeTunnelError as exc:
         raise WindowsServiceError(str(exc)) from exc
+
+
+def install_cloudflare_service(
+    config_path: Path,
+    cloudflared: Path,
+    token_file: Path,
+    env_file: Path,
+    port: int,
+    hostname: str,
+) -> dict[str, Any]:
+    """Opt into Cloudflare using the same single Windows Task Scheduler owner."""
+    _ensure_windows()
+    from .windows_cloudflare_config import (
+        WindowsCloudflareConfigurationError,
+        validate_install,
+    )
+
+    try:
+        spec = validate_install(
+            config_path,
+            cloudflared,
+            token_file,
+            env_file,
+            port,
+            hostname,
+            user_sid=_current_user_sid(),
+        )
+    except WindowsCloudflareConfigurationError as exc:
+        raise WindowsServiceError(str(exc)) from exc
+    return install(spec.config_path, spec.env_file, cloudflare_spec=spec)
+
+
+def _require_cloudflare_provider() -> dict[str, Any]:
+    document = _manifest_document()
+    if document.get("provider", "openai") != "cloudflare":
+        raise WindowsServiceError("Windows Cloudflare provider is not installed")
+    return document
+
+
+def cloudflare_status() -> dict[str, Any]:
+    _require_cloudflare_provider()
+    return status()
+
+
+def cloudflare_start() -> dict[str, Any]:
+    _require_cloudflare_provider()
+    return start()
+
+
+def cloudflare_stop() -> dict[str, Any]:
+    _require_cloudflare_provider()
+    return stop()
+
+
+def cloudflare_restart() -> dict[str, Any]:
+    _require_cloudflare_provider()
+    return restart()
+
+
+def cloudflare_uninstall() -> None:
+    _require_cloudflare_provider()
+    uninstall()
 
 
 __all__ = [

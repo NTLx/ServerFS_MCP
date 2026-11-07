@@ -1,11 +1,11 @@
 ---
 name: serverfs-tunnel
-description: Operate the optional OpenAI Secure MCP Tunnel, Linux Cloudflare Tunnel, or native macOS Cloudflare release; manage credentials, lifecycle and health evidence within each distinct trust boundary.
+description: Operate the optional OpenAI Secure MCP Tunnel and Linux/macOS Cloudflare ingresses; plan and validate the Windows v0.24.2 Cloudflare branch without affecting existing service ownership.
 ---
 
 # Operate optional ServerFS tunnel ingresses
 
-**Separate transport adapters:** OpenAI Secure MCP Tunnel (existing), Cloudflare Tunnel on Linux Compose (shipped in v0.24.0; live validated on isolated read-only staging), and native macOS Cloudflare (v0.24.1). Never mix their credentials, configuration or health evidence. Native Windows Cloudflare remains planned for v0.24.2.
+**Separate transport adapters:** OpenAI Secure MCP Tunnel (existing), Cloudflare Tunnel on Linux Compose (shipped in v0.24.0; live validated on isolated read-only staging), and native macOS Cloudflare (v0.24.1). Never mix their credentials, configuration or health evidence. The Windows Cloudflare v0.24.2 implementation remains in development/acceptance until its exact-SHA release and public MCP gates pass; never treat its commands as available in the published v0.24.1 Windows installation.
 
 The OpenAI Tunnel is an optional authenticated ChatGPT ingress adapter. Treat it as a separate subsystem with its own control-plane credentials, lifecycle and health evidence.
 
@@ -16,6 +16,7 @@ Use this skill when the user explicitly wants to:
 - connect ServerFS to ChatGPT through the OpenAI Secure MCP Tunnel;
 - expose Linux Streamable HTTP through an independently authenticated Cloudflare Tunnel;
 - configure or diagnose the native macOS Cloudflare Connector and HTTP origin;
+- assess the opt-in Windows Cloudflare HTTP Origin/Connector on a dedicated v0.24.2 test installation (never alongside an active OpenAI managed provider);
 - configure Tunnel control-plane credentials or Tunnel-specific proxy routing;
 - bootstrap/update the official Tunnel client on native Windows/macOS;
 - restart/re-establish the Tunnel after a ServerFS deployment change;
@@ -72,7 +73,7 @@ Paths below are relative to the located **ServerFS checkout root**, never to thi
 Load only the matching branch after identifying the deployment and requested mode:
 
 - Linux / Docker Compose: read [linux branch](references/linux.md) and, for Cloudflare, [Cloudflare Linux branch](references/cloudflare-linux.md) before platform/mode-specific changes.
-- Windows native: read [windows branch](references/windows.md) before platform/mode-specific changes.
+- Windows native: read [windows branch](references/windows.md) before platform/mode-specific changes. For a v0.24.2 candidate Windows Cloudflare integration, also read [Cloudflare Windows branch](references/cloudflare-windows.md) and the version-matched runbook; **do not repurpose the active OpenAI Tunnel service for testing**.
 - macOS native: read [macos branch](references/macos.md) before platform/mode-specific changes.
 
 For native macOS Cloudflare, also read `deployment/macos/README.md`. Use its v0.24.1 commands with the v0.24.1 build; preserve the existing OpenAI Tunnel path independently.

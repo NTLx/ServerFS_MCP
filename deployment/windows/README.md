@@ -81,6 +81,26 @@ the persistent task and removes its local lifecycle artifacts.
 
 Configuration changes in `serverfs.toml` or `.env` take effect after `service restart`.
 
+## Optional native Cloudflare Tunnel (v0.24.2 development)
+
+**Not yet a published Windows feature.** This source-tree implementation is undergoing Windows-specific acceptance. The published stable baseline remains v0.24.1. Full preflight, private-ACL contract, commands, negative cases, rollback, and outstanding release gates: [Windows Cloudflare runbook](../../docs/windows-cloudflare-tunnel.md).
+
+It is an alternative **provider for the same Windows Task Scheduler 2.0 service**, not a parallel persistent service. Both the HTTP Origin and cloudflared Connector are contained in the existing managed runner's kill-on-close Job Object; no Windows SCM service, administrator, or new watchdog is introduced. The provider must not be switched while the existing OpenAI Tunnel task is enabled or has live watchdog/runner processes. **Never use these Cloudflare lifecycle commands on a WorkPC that is still serving production OpenAI Tunnel.** Use a dedicated acceptance installation with a separate service owner and private test hostname/token; local source smoke tests are intentionally short-lived and cannot prove public Cloudflare health.
+
+On the separate test installation only:
+
+```powershell
+$serverfs = "$env:LOCALAPPDATA\ServerFS\connector-env\Scripts\serverfs.exe"
+& $serverfs bootstrap cloudflare-client   # pinned cloudflared 2026.10.7 with SHA-256 + signature
+& $serverfs service cloudflare install --config 'C:\stage\serverfs.toml' --cloudflared "$env:LOCALAPPDATA\ServerFS\bin\cloudflared-2026.10.7-windows-amd64\cloudflared.exe" --token-file 'C:\private\cloudflare.token' --env-file 'C:\private\origin.env' --http-port 18765 --hostname 'mcp.example.invalid'
+& $serverfs service cloudflare status
+# After verifying the operator intentionally chose this dedicated service:
+& $serverfs service cloudflare start
+& $serverfs service cloudflare status
+```
+
+`origin.env` must configure **exactly one** HTTP API Key or OAuth and set `SERVERFS_HTTP_ALLOWED_HOSTS` to the exact external hostname. Both private input files must be owned by the current user with protected Windows DACL and be outside the checkout/all workdirs. This path is not the existing OpenAI `.env`; the raw Connector Token must never appear in command arguments or Git. A successful `enabled` status alone does not mean the connector is connected or that ChatGPT MCP works.
+
 ## Compatibility / emergency launcher
 
 `deployment\windows\start-native.ps1` is retained for bounded compatibility and emergency

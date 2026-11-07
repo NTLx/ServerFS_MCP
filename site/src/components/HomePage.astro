@@ -20,7 +20,7 @@ const copy = {
     languageLabel: '切换到简体中文',
     themeToLight: 'Switch to light theme',
     themeToDark: 'Switch to dark theme',
-    release: 'v0.24.0',
+    release: 'v0.24.1',
     heroEyebrow: 'SECURE MCP FOR LINUX · WINDOWS · MACOS WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
@@ -42,7 +42,7 @@ const copy = {
     workdirDefault: 'read-only by default',
     userSocket: 'user-owned socket',
     internalNetwork: 'Linux: loopback/private HTTP by default',
-    noPorts: 'Windows/macOS: stdio · no MCP listener',
+    noPorts: 'Native default: stdio · HTTP ingress opt-in',
     connectEyebrow: 'STANDARD MCP CONNECTIVITY',
     connectTitle: 'Connect your way. Keep one policy boundary.',
     connectBody:
@@ -53,7 +53,7 @@ const copy = {
       ['Static API Key', 'Lightweight auth', 'One high-entropy secret for simple remote deployments'],
       ['OAuth 2.1', 'Identity-aware auth', 'Optional brokered authentication for production remote deployments'],
       ['OpenAI Tunnel', 'Optional ChatGPT ingress', 'Authenticated outbound tunnel path; no longer the generic MCP default'],
-      ['Cloudflare Tunnel', 'Linux v0.24.0 stable', 'Outbound-only Docker connector; separate API Key/OAuth admission; read-only staging validated'],
+      ['Cloudflare Tunnel', 'Linux + macOS stable', 'v0.24.0 Linux / v0.24.1 Apple Silicon; Windows v0.24.2 undergoing validation'],
     ],
     exploreHttp: 'HTTP setup',
     exploreApiKey: 'API Key',
@@ -219,7 +219,7 @@ const copy = {
     languageLabel: 'Switch to English',
     themeToLight: '切换到浅色主题',
     themeToDark: '切换到深色主题',
-    release: 'v0.24.0',
+    release: 'v0.24.1',
     heroEyebrow: '面向 Linux · Windows · macOS Workdir 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
@@ -241,7 +241,7 @@ const copy = {
     workdirDefault: '默认只读',
     userSocket: '用户自有 socket',
     internalNetwork: 'Linux：默认仅 loopback / 私有 HTTP',
-    noPorts: 'Windows/macOS：stdio · 无 MCP 监听端口',
+    noPorts: '原生默认 stdio · HTTP 入口须主动启用',
     connectEyebrow: '标准 MCP 接入',
     connectTitle: '按需选择接入方式，始终保持同一策略边界。',
     connectBody:
@@ -252,7 +252,7 @@ const copy = {
       ['Static API Key', '轻量认证', '使用单个高熵密钥满足简单远程部署'],
       ['OAuth 2.1', '身份感知认证', '面向正式远程部署的可选代理认证层'],
       ['OpenAI Tunnel', '可选 ChatGPT 入口', '经过认证的出站 Tunnel；不再作为通用 MCP 默认入口'],
-      ['Cloudflare Tunnel', 'Linux v0.24.0 稳定版', '纯 Docker 出站连接；独立 API Key/OAuth 认证；只读隔离环境已验收'],
+      ['Cloudflare Tunnel', 'Linux + macOS 稳定版', 'Linux v0.24.0、Apple Silicon v0.24.1；Windows v0.24.2 验收中'],
     ],
     exploreHttp: 'HTTP 配置',
     exploreApiKey: 'API Key',

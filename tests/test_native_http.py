@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
+from serverfs_mcp import cli
+from serverfs_mcp import main as native_main
 from serverfs_mcp.cli import build_parser
 from serverfs_mcp.config import Settings
 from serverfs_mcp.http_auth import StaticAPIKeyMiddleware
@@ -244,3 +247,36 @@ def test_native_http_initialize_tools_read_and_security(
         assert initialized["result"]["serverInfo"]["name"] == "ServerFS"
 
     asyncio.run(exercise())
+
+
+def test_windows_native_http_uses_explicit_auth_and_loopback(tmp_path: Path, monkeypatch) -> None:
+    if sys.platform != "win32":
+        pytest.skip("native Windows HTTP acceptance runs only on Windows")
+
+    workdir = tmp_path / "readonly"
+    workdir.mkdir()
+    config = tmp_path / "serverfs.toml"
+    config.write_text(
+        "[[workdirs]]\nalias = 'repo'\npath = " + json.dumps(str(workdir)) + "\nread_only = true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SERVERFS_HTTP_API_KEY", "integration-test-key")
+    monkeypatch.setenv("SERVERFS_HTTP_ALLOWED_HOSTS", "mcp.example.invalid")
+    monkeypatch.delenv("SERVERFS_OAUTH_ENABLED", raising=False)
+    observed = []
+
+    def capture(server, settings, registry):
+        observed.append((server, settings, registry))
+
+    monkeypatch.setattr(native_main, "run_streamable_http", capture)
+    args = cli.build_parser().parse_args(
+        ["serve", "--config", str(config), "--transport", "streamable-http", "--http-port", "18765"]
+    )
+    assert cli.cmd_serve(args) == 0
+    assert len(observed) == 1
+    _server, settings, registry = observed[0]
+    assert settings.http_host == "127.0.0.1"
+    assert settings.http_port == 18765
+    assert settings.http_api_key == "integration-test-key"
+    assert "mcp.example.invalid" in settings.http_allowed_hosts
+    assert registry.all_workdirs()[0].read_only is True

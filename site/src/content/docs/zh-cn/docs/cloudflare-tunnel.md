@@ -3,7 +3,7 @@ title: Cloudflare Tunnel
 description: 可选的 Linux Docker 出站隧道 MCP 接入模式（v0.24.0 正式支持）。
 ---
 
-> **发布状态：**Linux Docker Compose Cloudflare Tunnel 已随 **v0.24.0 正式发布**。macOS 原生 Cloudflare 已随 v0.24.1 提供，适用于 Apple Silicon/macOS 27。Windows 原生 Cloudflare 仍计划在 v0.24.2 提供。现有 OpenAI Secure MCP Tunnel 与 Agent Bridge 保持可用。隔离 staging 证据和操作步骤见 [macOS 原生部署指南](../macos-native/)。
+> **发布状态：**Linux Docker Compose Cloudflare Tunnel 已随 **v0.24.0 正式发布**。macOS 原生 Cloudflare 已随 v0.24.1 提供，适用于 Apple Silicon/macOS 27。Windows 原生 Cloudflare 已进入 v0.24.2 候选版本实现阶段，但**尚未通过完整公网 MCP 和精确 SHA 发布门禁**。与 macOS 不同，Windows 必须复用同一当前用户 Task Scheduler 所有者；不得切换 WorkPC 正在运行的 OpenAI 服务。见 [Windows 原生指南](../windows-native/) 和 [Windows Cloudflare 专用运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md)。现有 OpenAI Secure MCP Tunnel 与 Agent Bridge 保持可用。隔离 staging 证据和操作步骤见 [macOS 原生部署指南](../macos-native/)。
 
 Cloudflare Tunnel 为既有 Streamable HTTP `/mcp` 端点提供固定 Cloudflare 公网 HTTPS 域名，**无需在服务器开放公网入站端口**。它与 OpenAI Secure MCP Tunnel、普通 HTTP 反向代理是独立的接入方式，不改变 MCP 工具、Workdir 权限；**Tunnel Token 不能代替 MCP 客户端认证**。
 

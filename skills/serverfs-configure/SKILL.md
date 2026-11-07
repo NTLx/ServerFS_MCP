@@ -19,6 +19,7 @@ Use the dedicated skill instead for:
 
 - OpenAI Secure MCP Tunnel or Linux Docker Cloudflare Tunnel (v0.24.0): `serverfs-tunnel`;
 - native macOS Cloudflare Tunnel (v0.24.1): `serverfs-tunnel`; do not place its connector token or HTTP-origin credentials in `serverfs.toml`;
+- Windows Cloudflare v0.24.2 candidate: `serverfs-tunnel` and its Windows Cloudflare reference; keep token and HTTP env in separate protected-DACL private files outside workdirs, never in `serverfs.toml` or the production OpenAI `.env`;
 - static HTTP API Key or OAuth: `serverfs-auth`;
 - Agent Bridge installation/lifecycle, runtime allowlists, provider/Jev behavior: `serverfs-agent-bridge`; Repo Ops policy itself remains a normal per-workdir configuration concern, but its Linux host Bridge transport must follow the current Bridge deployment guide;
 - first installation with no existing configuration: `serverfs-install`;

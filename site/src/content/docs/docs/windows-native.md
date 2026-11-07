@@ -3,6 +3,8 @@ title: Windows Native
 description: Native Windows 11 x64 + NTFS deployment — prebuilt Rust kernel, v0.24.0 stable Deterministic Repo Ops, native Codex/Claude/Qoder and configurable ACP delegation, and the current-user Task Scheduler lifecycle.
 ---
 
+> **Windows Cloudflare v0.24.2 candidate:** The native loopback HTTP Origin and Connector have implementation/tests under acceptance, but are **not yet a published Windows capability**. The current Windows OpenAI Tunnel remains the stable default and must not be switched on a production WorkPC for testing. The [version-specific Windows Cloudflare operator runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md) defines the separate test owner, protected-DACL credential files, single Task Scheduler owner and remaining live/public release gates.
+
 Since v0.10.0 ServerFS runs natively on **Windows 11 x64 over local NTFS** as an MCP **stdio** service. Nothing listens on a port: the official OpenAI `tunnel-client` connects out to the control plane and speaks MCP through the child process's stdin/stdout, so the default native profile has no localhost listener. Linux Docker deployments are unchanged and remain the supported Linux shape.
 
 v0.11 adds **Agent delegation** to this deployment for Codex, Claude Code and Qoder through the same ten Agent tools over a Named-Pipe Bridge, accepted through the live ChatGPT tunnel E2E. v0.23.2 adds validated native Windows 11 x64 **Deterministic Repo Ops**, using the same independently gated, no-Agent-fallback Bridge transport already used by Linux and validated native Apple Silicon macOS.

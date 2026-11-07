@@ -12,7 +12,7 @@ The skills teach an AI Agent how to choose and execute the **existing** ServerFS
 | Change workdirs or ordinary ServerFS policy, including v0.23 Linux Repo Ops policy | [`serverfs-configure`](serverfs-configure/SKILL.md) |
 | Upgrade an existing deployment | [`serverfs-upgrade`](serverfs-upgrade/SKILL.md) |
 | Investigate a failure or verify current health | [`serverfs-diagnose`](serverfs-diagnose/SKILL.md) |
-| Configure or troubleshoot OpenAI Secure MCP Tunnel, Linux Cloudflare Tunnel, or native macOS Cloudflare Tunnel (v0.24.1 release) | [`serverfs-tunnel`](serverfs-tunnel/SKILL.md) |
+| Configure OpenAI Tunnel, released Linux/macOS Cloudflare, or validate the Windows v0.24.2 Cloudflare candidate without switching an active provider | [`serverfs-tunnel`](serverfs-tunnel/SKILL.md) |
 | Configure remote HTTP API Key or OAuth authentication | [`serverfs-auth`](serverfs-auth/SKILL.md) |
 | Configure or troubleshoot the Host Bridge lifecycle, Agent runtimes or Jev | [`serverfs-agent-bridge`](serverfs-agent-bridge/SKILL.md) |
 
@@ -63,7 +63,7 @@ All ServerFS operational skills follow these rules:
 
 ## Cloudflare Tunnel platform branches
 
-Linux Docker Compose Cloudflare Tunnel ingress shipped in v0.24.0; its operator branch is [`serverfs-tunnel/references/cloudflare-linux.md`](serverfs-tunnel/references/cloudflare-linux.md). Native Apple Silicon/macOS 27 Cloudflare Tunnel shipped in v0.24.1 and is documented in `deployment/macos/README.md` and the macOS branch of `serverfs-tunnel`. Native Windows Cloudflare Tunnel remains planned for v0.24.2.
+Linux Docker Compose Cloudflare Tunnel ingress shipped in v0.24.0; its operator branch is [`serverfs-tunnel/references/cloudflare-linux.md`](serverfs-tunnel/references/cloudflare-linux.md). Native Apple Silicon/macOS 27 Cloudflare Tunnel shipped in v0.24.1 and is documented in `deployment/macos/README.md` and the macOS branch of `serverfs-tunnel`. Windows native Cloudflare is implemented in the v0.24.2 candidate but remains **unreleased** until the Windows live/public acceptance and exact-SHA Release gates complete. Its operator reference is [`serverfs-tunnel/references/cloudflare-windows.md`](serverfs-tunnel/references/cloudflare-windows.md). Unlike native macOS, Windows uses a single Task Scheduler owner and must refuse Cloudflare provider switching while the existing OpenAI service is active. Do not use the WorkPC production service for Cloudflare staging.
 
 `serverfs-auth` covers the independent ServerFS HTTP API Key/OAuth caller admission boundary. The Linux connector token stays outside every ServerFS workdir and is readable by `CLOUDFLARED_UID`, not by inference from `SERVERFS_UID`. Linux staging acceptance does not imply production workdir/Agent acceptance or native platform acceptance. See `docs/cloudflare-tunnel.md` for Linux runbook and release-scoped evidence.
 

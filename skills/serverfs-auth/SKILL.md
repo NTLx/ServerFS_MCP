@@ -5,7 +5,7 @@ description: Choose or change remote HTTP API Key/OAuth authentication; rotate s
 
 # Configure ServerFS HTTP authentication
 
-Treat authentication as a remote Streamable HTTP ingress decision. Do not apply ServerFS HTTP authentication to native Windows/macOS stdio deployments. The v0.24.1 macOS Cloudflare ingress also runs an explicit native HTTP origin and requires exactly one supported ServerFS caller-auth mode; its connector Token is not caller authentication.
+Treat authentication as a remote Streamable HTTP ingress decision. Do not apply ServerFS HTTP authentication to native Windows/macOS stdio deployments. The v0.24.1 macOS Cloudflare ingress and the candidate Windows v0.24.2 Cloudflare ingress also run explicit native loopback HTTP origins and require exactly one supported ServerFS caller-auth mode; the Cloudflare Connector Token is never MCP caller authentication. Windows v0.24.2 remains unreleased until the release gates pass.
 
 ## When to use
 

@@ -38,7 +38,7 @@ def signed_runner(*, unsigned=False, wrong_version=False):
 
 @pytest.fixture(autouse=True)
 def supported_platform(monkeypatch):
-    monkeypatch.setattr(bootstrap.sys, "platform", "darwin")
+    monkeypatch.setattr(bootstrap, "_host_platform", lambda: "darwin")
     monkeypatch.setattr(bootstrap.platform, "machine", lambda: "arm64")
 
 
@@ -108,3 +108,91 @@ def test_refuses_unsupported_platform(archive, tmp_path, monkeypatch):
     monkeypatch.setattr(bootstrap.platform, "machine", lambda: "x86_64")
     with pytest.raises(bootstrap.CloudflareBootstrapError, match="macOS arm64"):
         install(archive, tmp_path / "bin")
+
+
+def windows_signed_runner(*, unsigned=False, wrong_version=False):
+    def run(args, **_kwargs):
+        if args[0] == "powershell.exe":
+            return subprocess.CompletedProcess(
+                args,
+                3 if unsigned else 0,
+                "" if unsigned else "valid-cloudflare-signature\n",
+                "",
+            )
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            "2025.1.1" if wrong_version else bootstrap.VERSION,
+            "",
+        )
+
+    return run
+
+
+@pytest.fixture
+def windows_binary(tmp_path, monkeypatch):
+    binary = tmp_path / bootstrap.WINDOWS_ASSET
+    binary.write_bytes(b"fixture Windows cloudflared executable")
+    monkeypatch.setattr(bootstrap, "WINDOWS_BINARY_SHA256", bootstrap._sha256(binary))
+    monkeypatch.setattr(bootstrap, "_host_platform", lambda: "win32")
+    monkeypatch.setattr(bootstrap.platform, "machine", lambda: "AMD64")
+    return binary
+
+
+def test_windows_bootstrap_installs_and_is_idempotent(windows_binary, tmp_path):
+    target = tmp_path / "data" / "bin"
+    path = bootstrap.bootstrap_cloudflare_client(
+        artifact=windows_binary, dest_parent=target, runner=windows_signed_runner()
+    )
+    assert path == target / f"cloudflared-{bootstrap.VERSION}-windows-amd64" / "cloudflared.exe"
+    assert path.read_bytes() == windows_binary.read_bytes()
+    assert (
+        bootstrap.bootstrap_cloudflare_client(
+            artifact=windows_binary, dest_parent=target, runner=windows_signed_runner()
+        )
+        == path
+    )
+
+
+def test_windows_bootstrap_rejects_digest_mismatch(windows_binary, tmp_path, monkeypatch):
+    monkeypatch.setattr(bootstrap, "WINDOWS_BINARY_SHA256", "0" * 64)
+    with pytest.raises(bootstrap.CloudflareBootstrapError, match="digest mismatch"):
+        bootstrap.bootstrap_cloudflare_client(
+            artifact=windows_binary,
+            dest_parent=tmp_path / "bin",
+            runner=windows_signed_runner(),
+        )
+
+
+@pytest.mark.parametrize("unsigned,wrong_version", [(True, False), (False, True)])
+def test_windows_bootstrap_rejects_bad_signature_or_version(
+    windows_binary, tmp_path, unsigned, wrong_version
+):
+    with pytest.raises(bootstrap.CloudflareBootstrapError, match="signature|version"):
+        bootstrap.bootstrap_cloudflare_client(
+            artifact=windows_binary,
+            dest_parent=tmp_path / "bin",
+            runner=windows_signed_runner(unsigned=unsigned, wrong_version=wrong_version),
+        )
+
+
+def test_windows_bootstrap_requires_x64(windows_binary, tmp_path, monkeypatch):
+    monkeypatch.setattr(bootstrap.platform, "machine", lambda: "ARM64")
+    with pytest.raises(bootstrap.CloudflareBootstrapError, match="Windows x64"):
+        bootstrap.bootstrap_cloudflare_client(
+            artifact=windows_binary,
+            dest_parent=tmp_path / "bin",
+            runner=windows_signed_runner(),
+        )
+
+
+def test_windows_bootstrap_rejects_tampered_existing_binary(windows_binary, tmp_path):
+    destination = tmp_path / "bin"
+    path = bootstrap.bootstrap_cloudflare_client(
+        artifact=windows_binary, dest_parent=destination, runner=windows_signed_runner()
+    )
+    path.write_bytes(b"tampered")
+    with pytest.raises(bootstrap.CloudflareBootstrapError, match="existing cloudflared install"):
+        bootstrap.bootstrap_cloudflare_client(
+            artifact=windows_binary, dest_parent=destination, runner=windows_signed_runner()
+        )

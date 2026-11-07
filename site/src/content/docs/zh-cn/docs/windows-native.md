@@ -3,6 +3,8 @@ title: Windows 原生部署
 description: Windows 11 x64 + 本地 NTFS 原生部署——预构建 Rust 内核、当前 v0.24.0 Deterministic Repo Ops、Codex/Claude/Qoder 原生 runtime 与可配置 ACP 委派，以及当前用户 Task Scheduler 持久生命周期。
 ---
 
+> **Windows Cloudflare v0.24.2 候选版本：**原生 loopback HTTP Origin 与 Connector 已进入开发测试，但**尚未作为 Windows 稳定功能发布**。Windows 现有 OpenAI Tunnel 仍为默认方案，不允许为了测试而切换正在使用的 WorkPC 生产服务。具体的独立测试所有权、凭据文件受保护 DACL、单一 Task Scheduler 生命周期和剩余公网发布门禁见 [Windows Cloudflare 专用运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md)。
+
 自 v0.10.0 起，ServerFS 可以在 **Windows 11 x64 + 本地 NTFS** 上以 MCP **stdio** 服务原生运行。没有任何端口监听：官方 OpenAI `tunnel-client` 主动连出到控制面，并通过子进程的 stdin/stdout 传输 MCP 帧，因此默认原生 profile 不存在 localhost 监听器。Linux Docker 部署保持不变，仍是 Linux 的受支持形态。
 
 v0.11 为该部署加入 **Agent 委派**：通过同一组十个 Agent 工具与 Named-Pipe Bridge 驱动 Codex、Claude Code 与 Qoder 三个运行时，并已通过真实 ChatGPT 隧道 E2E 验收。v0.23.2 新增已验收的 Windows 11 x64 原生 **Deterministic Repo Ops**，复用 Linux 与已验收 Apple Silicon 原生 macOS 所使用的独立门控、无 Agent fallback Bridge transport。

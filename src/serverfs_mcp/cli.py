@@ -134,7 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
     bw.add_argument("--url", required=True, help="Exact https release URL of the .whl")
     bw.add_argument("--sha256", required=True, help="Release-recorded SHA-256 of the wheel")
     bc = bootstrap_sub.add_parser(
-        "cloudflare-client", help="Install the pinned official macOS cloudflared binary"
+        "cloudflare-client", help="Install pinned official macOS/Windows cloudflared"
     )
     bc.add_argument(
         "--artifact", type=Path, help="Local official release archive (for offline use)"
@@ -236,7 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     service_sub.add_parser("open-settings", help="Open System Settings > Login Items (macOS)")
     cloudflare = service_sub.add_parser(
-        "cloudflare", help="Manage the opt-in macOS HTTP origin and Cloudflare connector pair"
+        "cloudflare", help="Manage opt-in macOS or Windows Cloudflare HTTP ingress"
     )
     cloudflare_sub = cloudflare.add_subparsers(dest="cloudflare_command", required=True)
     cloudflare_install = cloudflare_sub.add_parser("install")
@@ -457,8 +457,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     else:
         settings, client = agent_wiring
     if args.transport == "streamable-http":
-        if sys.platform != "darwin":
-            return _fail("native Streamable HTTP is currently supported only on macOS")
+        if sys.platform not in {"darwin", "win32"}:
+            return _fail("native Streamable HTTP is supported only on macOS and Windows")
         from dataclasses import replace
 
         from .config import settings_from_env
@@ -759,8 +759,46 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
 def cmd_service(args: argparse.Namespace) -> int:
     command = args.service_command
     if command == "cloudflare":
+        if sys.platform == "win32":
+            from . import windows_service
+            from .windows_service import WindowsServiceError
+
+            try:
+                action = args.cloudflare_command
+                if action == "install":
+                    state = windows_service.install_cloudflare_service(
+                        args.config,
+                        args.cloudflared,
+                        args.token_file,
+                        args.env_file,
+                        args.http_port,
+                        args.hostname,
+                    )
+                    sys.stderr.write(json.dumps(state, sort_keys=True) + "\n")
+                elif action == "status":
+                    sys.stderr.write(
+                        json.dumps(windows_service.cloudflare_status(), sort_keys=True) + "\n"
+                    )
+                elif action == "start":
+                    sys.stderr.write(
+                        json.dumps(windows_service.cloudflare_start(), sort_keys=True) + "\n"
+                    )
+                elif action == "stop":
+                    sys.stderr.write(
+                        json.dumps(windows_service.cloudflare_stop(), sort_keys=True) + "\n"
+                    )
+                elif action == "restart":
+                    sys.stderr.write(
+                        json.dumps(windows_service.cloudflare_restart(), sort_keys=True) + "\n"
+                    )
+                elif action == "uninstall":
+                    windows_service.cloudflare_uninstall()
+                    sys.stderr.write("Windows Cloudflare provider uninstalled\n")
+                return 0
+            except WindowsServiceError as exc:
+                return _fail(str(exc))
         if sys.platform != "darwin":
-            return _fail("Cloudflare service lifecycle is macOS-only")
+            return _fail("Cloudflare service lifecycle requires macOS or Windows")
         from . import darwin_service
         from .darwin_service import DarwinServiceError
 

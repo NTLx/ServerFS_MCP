@@ -22,6 +22,7 @@ on:
       - "src/serverfs_mcp/paths.py"
       - "src/serverfs_mcp/tools.py"
       - "src/serverfs_mcp/cli.py"
+      - "src/serverfs_mcp/cloudflare_bootstrap.py"
       - "src/serverfs_mcp/config.py"
       - "src/serverfs_mcp/main.py"
       - "src/serverfs_mcp/http_auth.py"
@@ -36,6 +37,8 @@ on:
       - "pyproject.toml"
       - "src/serverfs_mcp/search_glob.py"
       - "tests/test_cli.py"
+      - "tests/test_cloudflare_bootstrap.py"
+      - "tests/test_native_http.py"
       - "tests/test_native_tunnel.py"
       - "tests/test_doctor.py"
       - "tests/test_tunnel_bootstrap.py"
@@ -66,6 +69,7 @@ on:
       - "src/serverfs_mcp/paths.py"
       - "src/serverfs_mcp/tools.py"
       - "src/serverfs_mcp/cli.py"
+      - "src/serverfs_mcp/cloudflare_bootstrap.py"
       - "src/serverfs_mcp/config.py"
       - "src/serverfs_mcp/main.py"
       - "src/serverfs_mcp/http_auth.py"
@@ -80,6 +84,8 @@ on:
       - "pyproject.toml"
       - "src/serverfs_mcp/search_glob.py"
       - "tests/test_cli.py"
+      - "tests/test_cloudflare_bootstrap.py"
+      - "tests/test_native_http.py"
       - "tests/test_native_tunnel.py"
       - "tests/test_doctor.py"
       - "tests/test_tunnel_bootstrap.py"
@@ -198,6 +204,14 @@ jobs:
           tests/test_cli.py
           tests/test_native_tunnel.py
           tests/test_windows_service.py
+          tests/test_windows_cloudflare_config.py
+          tests/test_windows_cloudflare_runtime.py
+          tests/test_windows_cloudflare_security.py
+          tests/test_windows_cloudflare_acl_native.py
+          tests/test_windows_cloudflare_service.py
+          tests/test_windows_cloudflare_isolated_http.py
+          tests/test_cloudflare_bootstrap.py
+          tests/test_native_http.py
           tests/test_doctor.py
           tests/test_tunnel_bootstrap.py
           tests/test_paths.py
@@ -222,7 +236,7 @@ jobs:
           uv pip install --python .venv-wheel/Scripts/python.exe $wheel pytest
           uv pip install --python .venv-wheel/Scripts/python.exe -e .
           Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
-          .venv-wheel/Scripts/python.exe -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py tests/test_windows_service.py -q
+          .venv-wheel/Scripts/python.exe -m pytest tests/test_native_windows.py tests/test_windows_backend.py tests/test_windows_mcp_e2e.py tests/test_windows_service.py tests/test_windows_cloudflare_config.py tests/test_windows_cloudflare_runtime.py tests/test_windows_cloudflare_security.py tests/test_windows_cloudflare_acl_native.py tests/test_windows_cloudflare_service.py tests/test_windows_cloudflare_isolated_http.py tests/test_cloudflare_bootstrap.py tests/test_native_http.py -q
         shell: pwsh
 
       - name: upload native wheel
