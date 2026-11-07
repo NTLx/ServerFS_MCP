@@ -48,6 +48,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Path to serverfs.toml (operator configuration; never agent input)",
     )
+    serve.add_argument(
+        "--transport",
+        choices=("stdio", "streamable-http"),
+        default="stdio",
+        help="Native transport (default: stdio)",
+    )
+    serve.add_argument("--port", "--http-port", dest="port", type=_http_port_arg, default=8765)
+    serve.add_argument("--path", type=_http_path_arg, default="/mcp")
 
     doctor = sub.add_parser("doctor", help="Report configuration/platform diagnostics (read-only)")
     doctor.add_argument("--config", required=True, type=Path, help="Path to serverfs.toml")
@@ -125,6 +133,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bw.add_argument("--url", required=True, help="Exact https release URL of the .whl")
     bw.add_argument("--sha256", required=True, help="Release-recorded SHA-256 of the wheel")
+    bc = bootstrap_sub.add_parser(
+        "cloudflare-client", help="Install the pinned official macOS cloudflared binary"
+    )
+    bc.add_argument(
+        "--artifact", type=Path, help="Local official release archive (for offline use)"
+    )
 
     agent = sub.add_parser(
         "agent-bridge",
@@ -221,6 +235,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Unregister services and remove platform-owned persistent lifecycle artifacts",
     )
     service_sub.add_parser("open-settings", help="Open System Settings > Login Items (macOS)")
+    cloudflare = service_sub.add_parser(
+        "cloudflare", help="Manage the opt-in macOS HTTP origin and Cloudflare connector pair"
+    )
+    cloudflare_sub = cloudflare.add_subparsers(dest="cloudflare_command", required=True)
+    cloudflare_install = cloudflare_sub.add_parser("install")
+    cloudflare_install.add_argument("--config", required=True, type=Path)
+    cloudflare_install.add_argument("--cloudflared", required=True, type=Path)
+    cloudflare_install.add_argument("--token-file", required=True, type=Path)
+    cloudflare_install.add_argument("--env-file", required=True, type=Path)
+    cloudflare_install.add_argument("--http-port", required=True, type=_http_port_arg)
+    cloudflare_install.add_argument("--hostname", required=True)
+    for lifecycle in ("status", "start", "stop", "restart", "uninstall"):
+        cloudflare_sub.add_parser(lifecycle)
     service_watchdog = service_sub.add_parser("_watchdog", help=argparse.SUPPRESS)
     service_watchdog.add_argument("--config", required=True, type=Path, help=argparse.SUPPRESS)
     service_watchdog.add_argument("--env-file", required=True, type=Path, help=argparse.SUPPRESS)
@@ -235,6 +262,28 @@ def _fail(message: str) -> int:
     sys.stderr.write(f"serverfs: {message}\n")
     jsonlog.error("cli_failed", reason=message)
     return 2
+
+
+def _http_port_arg(value: str) -> int:
+    try:
+        port = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("port must be an integer from 1 to 65535") from exc
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be an integer from 1 to 65535")
+    return port
+
+
+def _http_path_arg(value: str) -> str:
+    if (
+        not value.startswith("/")
+        or value.startswith("//")
+        or any(char.isspace() for char in value)
+        or "?" in value
+        or "#" in value
+    ):
+        raise argparse.ArgumentTypeError("path must be an absolute URL path without query/fragment")
+    return value
 
 
 def _register_handover_finalizer(darwin_service) -> None:
@@ -407,6 +456,35 @@ def cmd_serve(args: argparse.Namespace) -> int:
         client = None
     else:
         settings, client = agent_wiring
+    if args.transport == "streamable-http":
+        if sys.platform != "darwin":
+            return _fail("native Streamable HTTP is currently supported only on macOS")
+        from dataclasses import replace
+
+        from .config import settings_from_env
+
+        try:
+            http_settings = settings_from_env(os.environ)
+            if not http_settings.http_api_key and not http_settings.oauth_enabled:
+                return _fail("Streamable HTTP requires SERVERFS_HTTP_API_KEY or configured OAuth")
+            settings = replace(
+                settings,
+                http_host="127.0.0.1",
+                http_port=args.port,
+                http_path=args.path,
+                http_allowed_hosts=http_settings.http_allowed_hosts,
+                http_allowed_origins=(f"http://127.0.0.1:{args.port}",),
+                http_api_key=http_settings.http_api_key,
+                oauth_enabled=http_settings.oauth_enabled,
+                oauth_resource_url=http_settings.oauth_resource_url,
+                oauth_issuer_url=http_settings.oauth_issuer_url,
+                oauth_required_scopes=http_settings.oauth_required_scopes,
+                oauth_introspection_url=http_settings.oauth_introspection_url,
+                oauth_introspection_secret=http_settings.oauth_introspection_secret,
+                oauth_introspection_timeout_seconds=http_settings.oauth_introspection_timeout_seconds,
+            )
+        except ValueError as exc:
+            return _fail(f"Streamable HTTP configuration error: {exc}")
     settings = _overlay_ingress_env(settings)
     file_ingress_client = None
     if settings.file_ingress_enabled and sys.platform == "darwin":
@@ -423,8 +501,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
         agent_bridge_enabled=settings.agent_bridge_enabled,
         file_ingress_enabled=file_ingress_client is not None,
     )
-    server = create_server(settings, registry, client, file_ingress_client)
-    server.run("stdio")
+    if args.transport == "streamable-http":
+        from .main import run_streamable_http
+
+        try:
+            server = create_server(settings, registry, client, file_ingress_client)
+            run_streamable_http(server, settings, registry)
+        except ValueError as exc:
+            return _fail(f"Streamable HTTP configuration error: {exc}")
+    else:
+        server = create_server(settings, registry, client, file_ingress_client)
+        server.run("stdio")
     return 0
 
 
@@ -513,6 +600,19 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     )
 
     try:
+        if args.bootstrap_target == "cloudflare-client":
+            from .cloudflare_bootstrap import (
+                VERSION,
+                CloudflareBootstrapError,
+                bootstrap_cloudflare_client,
+            )
+
+            try:
+                path = bootstrap_cloudflare_client(artifact=args.artifact)
+            except CloudflareBootstrapError as exc:
+                return _fail(f"bootstrap failed: {exc}")
+            sys.stderr.write(f"cloudflared {VERSION} installed: {path.resolve()}\n")
+            return 0
         if args.bootstrap_target == "tunnel-client":
             if sys.platform == "darwin":
                 # v0.13 ships and accepts only the darwin-arm64 official
@@ -658,6 +758,46 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
 
 def cmd_service(args: argparse.Namespace) -> int:
     command = args.service_command
+    if command == "cloudflare":
+        if sys.platform != "darwin":
+            return _fail("Cloudflare service lifecycle is macOS-only")
+        from . import darwin_service
+        from .darwin_service import DarwinServiceError
+
+        try:
+            action = args.cloudflare_command
+            if action == "install":
+                states = darwin_service.install_cloudflare_service(
+                    args.config,
+                    args.cloudflared,
+                    args.token_file,
+                    args.env_file,
+                    args.http_port,
+                    args.hostname,
+                )
+                sys.stderr.write(json.dumps(states, sort_keys=True) + "\n")
+            elif action == "status":
+                sys.stderr.write(
+                    json.dumps(darwin_service.cloudflare_status(), sort_keys=True) + "\n"
+                )
+            elif action == "start":
+                sys.stderr.write(
+                    json.dumps(darwin_service.cloudflare_start(), sort_keys=True) + "\n"
+                )
+            elif action == "stop":
+                sys.stderr.write(
+                    json.dumps(darwin_service.cloudflare_stop(), sort_keys=True) + "\n"
+                )
+            elif action == "restart":
+                sys.stderr.write(
+                    json.dumps(darwin_service.cloudflare_restart(), sort_keys=True) + "\n"
+                )
+            elif action == "uninstall":
+                darwin_service.cloudflare_uninstall()
+                sys.stderr.write("Cloudflare service pair uninstalled\n")
+            return 0
+        except DarwinServiceError as exc:
+            return _fail(str(exc))
     if sys.platform == "win32":
         from . import windows_service
         from .windows_service import WindowsServiceError

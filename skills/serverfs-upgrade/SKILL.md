@@ -24,6 +24,8 @@ An upgrade does not silently opt the operator into newly introduced optional fea
 
 ## Preflight
 
+For macOS, v0.24.1 adds optional native Cloudflare Tunnel support. Preserve its separately managed service pair and private files during unrelated upgrades; follow `deployment/macos/README.md` when Cloudflare lifecycle changes are in scope.
+
 First locate the target ServerFS checkout or deployed installation and establish its version, active configuration and lifecycle owner. In imported/standalone mode, if no authoritative checkout/deployment source is accessible, stop at bounded guidance; do not mutate or infer target commands/settings.
 
 Paths below are relative to the located **ServerFS checkout root**, never to this skill or the Plugin ZIP. Resolve repository paths only after locating that checkout. For an installed deployment without a checkout, use its version-matched deployment documentation, installed CLI help and active configuration; obtain matching sources before a step that needs missing repository material.

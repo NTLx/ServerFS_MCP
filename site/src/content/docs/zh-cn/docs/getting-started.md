@@ -12,6 +12,8 @@ description: 使用标准 Streamable HTTP 部署 ServerFS MCP；仅在需要时�
 
 OpenAI Secure MCP Tunnel 与 Runtime API Key 都是可选项，仅在需要 ChatGPT Tunnel 入口时使用。
 
+Linux Docker Cloudflare Tunnel 已随 v0.24.0 稳定发布。macOS 原生 Cloudflare 已随 v0.24.1 提供，适用于 Apple Silicon/macOS 27；Windows 原生支持仍计划于 v0.24.2 提供。现有 OpenAI Tunnel 和 Agent Bridge 保持可用。功能范围及隔离 staging/生命周期步骤见 [macOS 原生部署](../macos-native/)与[macOS 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241)。
+
 ## 标准 MCP 部署
 
 ```bash
@@ -159,7 +161,7 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 Sidecar 不挂载 workdir、不持有 Tunnel/OpenAI 凭据，也不发布端口。项目不支持通用主机名通配符；v0.5.0 引入的文件入口主机策略与网络边界详见[二进制传输](../binary-transfer/)和[安全模型](../security/)。
 
-## 当前稳定版本：v0.24.0
+## 当前稳定版本：v0.24.1
 
 已发布的 v0.24.0 使用不可变标签 `v0.24.0`，并提供以下 GHCR 稳定标签：
 

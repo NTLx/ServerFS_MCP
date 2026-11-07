@@ -14,6 +14,8 @@ mkdir -p "$MACOS" "$RESOURCES" "$AGENTS"
 cp "$ROOT/Info.plist" "$CONTENTS/Info.plist"
 cp "$ROOT/LaunchAgents/com.ntlx.serverfs.tunnel.plist" "$AGENTS/"
 cp "$ROOT/LaunchAgents/com.ntlx.serverfs.bridge.plist" "$AGENTS/"
+cp "$ROOT/LaunchAgents/com.ntlx.serverfs.http-origin.plist" "$AGENTS/"
+cp "$ROOT/LaunchAgents/com.ntlx.serverfs.cloudflare.plist" "$AGENTS/"
 
 xcrun swiftc \
   -O \
@@ -31,7 +33,9 @@ xcrun swiftc \
 plutil -lint \
   "$CONTENTS/Info.plist" \
   "$AGENTS/com.ntlx.serverfs.tunnel.plist" \
-  "$AGENTS/com.ntlx.serverfs.bridge.plist" >/dev/null
+  "$AGENTS/com.ntlx.serverfs.bridge.plist" \
+  "$AGENTS/com.ntlx.serverfs.http-origin.plist" \
+  "$AGENTS/com.ntlx.serverfs.cloudflare.plist" >/dev/null
 codesign --force --sign - --timestamp=none "$RESOURCES/serverfs-service-launcher"
 codesign --force --sign - --timestamp=none "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"

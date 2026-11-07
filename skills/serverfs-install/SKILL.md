@@ -35,6 +35,7 @@ Paths below are relative to the located **ServerFS checkout root**, never to thi
 5. Determine the minimum requested ingress:
    - Linux generic Streamable HTTP is the normal base deployment;
    - Windows/macOS native use stdio plus optional Tunnel for ChatGPT connectivity.
+- Native macOS Cloudflare is an optional v0.24.1 capability. Finish and verify the base native install first, then follow `serverfs-tunnel` and `deployment/macos/README.md` if Cloudflare ingress is explicitly requested.
 6. Keep Tunnel, Auth, binary/file ingress, Repo Ops and Agent delegation disabled unless they are explicitly part of the requested installation. Repo Ops and Agent delegation are independent opt-ins even though Linux uses the same Host Bridge transport for both.
 
 If an existing operator config is found, stop the new-install path. Never treat it as disposable merely because it differs from the example.

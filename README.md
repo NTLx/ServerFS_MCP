@@ -12,7 +12,9 @@
 
 只暴露你明确选择的目录，并默认保持只读。仅在需要的位置按需开启受限文件修改、基于 revision 的并发保护、有限制的二进制传输，以及结构化的 Codex / Claude Code / Qoder 原生 runtime 或运维人员配置的 ACP Agent 委托能力。Deterministic Repo Ops 自 v0.23.0 起支持 Linux Host Bridge，v0.23.1 扩展到已验收的 Apple Silicon 原生 macOS，v0.23.2 进一步扩展到已验收的 Windows 11 x64 原生部署，用于无需 Agent 委托的确定性仓库收尾操作。
 
-**当前稳定版本：v0.24.0**
+**当前稳定版本：v0.24.1**
+
+Linux Docker Cloudflare Tunnel 已随 v0.24.0 发布；v0.24.1 增加 Apple Silicon/macOS 27 原生 Cloudflare Tunnel。它通过独立 loopback HTTP origin 与 Connector 接入 Cloudflare，复用当前用户 `SMAppService` 生命周期，不替换现有 OpenAI Tunnel 或 Agent Bridge。隔离只读 staging 通过 401/200 认证、11 工具发现、65.1 秒 SSE，以及 Connector 重启后 8/8 次新会话恢复；旧会话返回 404，不保证 SSE 重放。Windows 原生 Cloudflare 仍计划在 v0.24.2 提供。服务命令、安全要求与回滚流程见[macOS 部署指南](deployment/macos/README.md#optional-cloudflare-tunnel-v0241)。
 
 [项目网站](https://ntlx.github.io/ServerFS_MCP/zh-cn/) ·
 [文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/) ·
@@ -56,9 +58,9 @@ macOS 仅支持 Apple M 系列、原生 arm64、macOS 27.x 与本地 APFS；不�
 
 ## Agent Skills
 
-仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Secure MCP Tunnel / Linux Cloudflare Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
+仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Secure MCP Tunnel / Linux 与 macOS Cloudflare Tunnel、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
 
-仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。**已发布**的 v0.24.0 Release 包含 `serverfs-plugin-v0.24.0.zip`，其中有 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
+仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。v0.24.1 Release 资产为 `serverfs-plugin-v0.24.1.zip`，其中有 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
 
 ## 快速开始
 
@@ -82,9 +84,9 @@ chmod 600 .env
 
 编辑 `.env`，固定镜像版本、允许本地客户端的 Host，并至少配置一个 Workdir：
 
-# 当前稳定版本示例（v0.24.0）：
+# 当前稳定版本示例（v0.24.1）：
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.24.0
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.24.1
 SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
 WORKDIR_01_ALIAS=projects
 WORKDIR_01_PATH=/srv/projects
@@ -104,7 +106,7 @@ docker compose -f compose.yml -f compose.http.yml ps
 
 通用 HTTP override 默认将 ServerFS 发布到 `http://127.0.0.1:8000/mcp`，且不会启动 OpenAI Tunnel。任何非 loopback 或公网部署前，都应将实际对外 Host 加入 `SERVERFS_HTTP_ALLOWED_HOSTS`，并配置 HTTPS 与认证（内置 API Key/OAuth 或上游网关）。
 
-**v0.24.0 Linux 正式支持：Cloudflare Tunnel 接入。** 对于无法开放公网入站端口的服务器，项目新增可选的 [`compose.cloudflare.yml`](compose.cloudflare.yml) 与 [Cloudflare Tunnel 部署指南](docs/cloudflare-tunnel.md)。它复用 Streamable HTTP，不发布主机端口；需要 Cloudflare 远程管理 Tunnel、仓库外的 Token 文件、精确 Host allowlist 和独立 API Key/OAuth 身份验证。此能力已随 v0.24.0 正式发布；独立、只读的 VPS 测试环境通过了真实 ChatGPT 工具调用、公网 SSE 长连接及 Connector 重启后的会话复用。生产 Workdir/Agent、Windows/macOS 原生 Cloudflare 接入不属于此次验收范围。
+**Cloudflare Tunnel ingress：** Linux Docker ingress shipped in v0.24.0. v0.24.1 adds optional native ingress for Apple Silicon/macOS 27 through a separate loopback HTTP origin and Connector, with exact Host matching and independent API Key/OAuth caller authentication. Isolated read-only macOS staging passed HTTPS 401/200, 11-tool discovery, 65.1-second SSE, and fresh-session recovery on 8/8 Connector restarts; the old session returned 404, and no SSE replay is claimed. Production workdir/Agent/Repo Ops and native Windows Cloudflare are not included in that acceptance; Windows native support remains planned for v0.24.2.
 
 如果要通过现有 OpenAI Secure MCP Tunnel 接入 ChatGPT，请配置 `CONTROL_PLANE_TUNNEL_ID` 和 `CONTROL_PLANE_API_KEY`，并使用基础 Compose 部署。Agent 委托、二进制传输、文件输入、代理路由或生产环境加固请继续阅读 [快速开始](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/getting-started/) 与 [配置](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/configuration/) 文档。
 
@@ -154,7 +156,7 @@ Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持
 
 ## 能力边界
 
-稳定版 v0.24.0 在既有 11 / 13 / 21 / 23 文件、二进制与 Agent 能力组合之上，可在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 与 Windows 11 x64 原生部署上独立、默认关闭地增加 4 个 Deterministic Repo Ops 工具；它们不启用 Agent runtime，也不改变既有 Agent 工具语义。默认仍注册 5 个文件修改工具，但只读 Workdir 会拒绝修改。
+稳定版 v0.24.1 在既有 11 / 13 / 21 / 23 文件、二进制与 Agent 能力组合之上，可在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 与 Windows 11 x64 原生部署上独立、默认关闭地增加 4 个 Deterministic Repo Ops 工具；它们不启用 Agent runtime，也不改变既有 Agent 工具语义。默认仍注册 5 个文件修改工具，但只读 Workdir 会拒绝修改。
 
 | 能力层 | 工具数 | 增加的能力 |
 | --- | ---: | --- |
@@ -251,10 +253,10 @@ ChatGPT 文件参数通过可选的隔离 ingress helper 处理，而不是让 M
 
 ## 发布版本
 
-- Linux 镜像：`ghcr.io/ntlx/serverfs_mcp`；当前稳定版：`v0.24.0`
-- 当前稳定版本标签：`v0.24.0`
+- Linux 镜像：`ghcr.io/ntlx/serverfs_mcp`；当前稳定版：`v0.24.1`
+- 当前稳定版本标签：`v0.24.1`
 - 生产部署应固定到明确版本，不建议使用 `latest` 或 `edge`。
-- 可移植 Agent Plugin：v0.24.0 Release 中的 skills-only `serverfs-plugin-v0.24.0.zip` 资产。
+- 可移植 Agent Plugin：v0.24.1 Release 中的 skills-only `serverfs-plugin-v0.24.1.zip` 资产。
 - Windows Release 资产包含产品本体、Agent Bridge 与原生 kernel wheel。
 - macOS 直接使用产品与 Agent Bridge 的 Python distribution；不提供单独的 macOS native wheel，并在本地构建用于当前用户持久化服务的轻量 ServiceManagement companion。
 

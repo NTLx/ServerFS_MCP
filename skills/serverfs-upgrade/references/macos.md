@@ -4,6 +4,8 @@ Use this branch after the source-resolution and preflight gates in `SKILL.md`. R
 
 Update the ServerFS/Bridge Python environments through the current project/release path, then validate. v0.23.1+ supports validated native Apple Silicon macOS Deterministic Repo Ops. Preserve existing per-workdir Repo Ops enablement and action policy exactly; do not infer Repo Ops from Agent mode or vice versa.
 
+v0.24.1 supports optional native Cloudflare Tunnel. If a Cloudflare service pair already exists, preserve its operator-owned Token/env files and separate `http-origin`/`cloudflare` state during an unrelated upgrade. Follow `deployment/macos/README.md` when Cloudflare lifecycle changes are explicitly in scope.
+
 Then validate:
 
 ```bash

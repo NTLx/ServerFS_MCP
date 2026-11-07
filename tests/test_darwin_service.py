@@ -31,6 +31,47 @@ def test_service_manager_build_contract_uses_bundled_bridge_plist() -> None:
     assert "LaunchAgents/com.ntlx.serverfs.agent-bridge.plist" not in build_script
 
 
+def test_service_manager_defaults_to_legacy_services_with_explicit_opt_in_services() -> None:
+    root = Path(__file__).resolve().parents[1] / "native" / "macos" / "service_manager"
+    manager = (root / "Sources" / "ServiceManager" / "main.swift").read_text(encoding="utf-8")
+    launcher = (root / "Sources" / "ServiceLauncher" / "main.swift").read_text(encoding="utf-8")
+
+    assert "private let legacyServiceSpecs = [" in manager
+    assert 'guard let raw, raw != "all" else { return legacyServiceSpecs }' in manager
+    assert (
+        'ServiceSpec(id: "http-origin", plistName: "com.ntlx.serverfs.http-origin.plist")'
+        in manager
+    )
+    assert (
+        'ServiceSpec(id: "cloudflare", plistName: "com.ntlx.serverfs.cloudflare.plist")' in manager
+    )
+    assert (
+        "private let allowedServices: Set<String> = "
+        '["tunnel", "agent-bridge", "http-origin", "cloudflare"]' in launcher
+    )
+
+
+@pytest.mark.parametrize(
+    ("service_id", "label"),
+    [
+        ("http-origin", "com.ntlx.serverfs.http-origin"),
+        ("cloudflare", "com.ntlx.serverfs.cloudflare"),
+    ],
+)
+def test_opt_in_service_plists_keep_narrow_app_associated_launcher_contract(
+    service_id: str, label: str
+) -> None:
+    root = Path(__file__).resolve().parents[1] / "native" / "macos" / "service_manager"
+    path = root / "LaunchAgents" / f"{label}.plist"
+    document = darwin_service.plistlib.loads(path.read_bytes())
+
+    assert document["Label"] == label
+    assert document["BundleProgram"] == "Contents/Resources/serverfs-service-launcher"
+    assert document["ProgramArguments"] == ["serverfs-service-launcher", service_id]
+    assert document["RunAtLoad"] is True
+    assert document["KeepAlive"] is True
+
+
 def test_read_env_file_supports_export_and_quotes(tmp_path: Path) -> None:
     env = tmp_path / "service.env"
     env.write_text(
