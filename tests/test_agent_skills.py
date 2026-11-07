@@ -180,7 +180,7 @@ def test_packaged_references_resolve_without_checkout(tmp_path: Path) -> None:
     assert not (root / "deployment").exists()
     expected_references = {
         "serverfs-upgrade": {"linux", "windows", "macos"},
-        "serverfs-tunnel": {"linux", "windows", "macos", "cloudflare-linux"},
+        "serverfs-tunnel": {"linux", "windows", "macos", "cloudflare-linux", "cloudflare-windows"},
         "serverfs-auth": {"no-built-in-auth", "api-key", "oauth", "native-stdio"},
         "serverfs-agent-bridge": {"linux", "windows", "macos"},
     }
