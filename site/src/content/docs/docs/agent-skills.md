@@ -19,7 +19,7 @@ ServerFS keeps operational Agent Skills in the repository [`skills/`](https://gi
 | Remote HTTP API Key / OAuth | `serverfs-auth` |
 | Host Bridge lifecycle / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
-The v0.24.1 release retains exactly **seven** Skills. Linux and native macOS Cloudflare guidance live in the existing `serverfs-tunnel` Skill and references, not an eighth Skill. macOS evidence covers isolated read-only staging only; it does not establish production workdir/Agent acceptance. Native Windows Cloudflare remains planned for v0.24.2.
+The v0.24.1 release retains exactly **seven** Skills. Linux and native macOS Cloudflare guidance live in the existing `serverfs-tunnel` Skill and references, not an eighth Skill. macOS evidence covers isolated read-only staging only; it does not establish production workdir/Agent acceptance. Native Windows Cloudflare is implemented in the v0.24.2 candidate, but the separate Windows Connector/public MCP acceptance gate remains open; it is not yet published.
 
 The repository-level `AGENTS.md` contains only a thin index. An Agent should load the smallest matching `SKILL.md` rather than placing all operational procedures in its base context.
 

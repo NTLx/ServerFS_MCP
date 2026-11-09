@@ -19,7 +19,7 @@ ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/sk
 | 远程 HTTP API Key / OAuth | `serverfs-auth` |
 | Host Bridge 生命周期 / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
-v0.24.1 保持**恰好 7 个 Skills**。Linux 与 macOS 原生 Cloudflare 指引均纳入现有 `serverfs-tunnel` Skill 和 references，不新增第 8 个 Skill；客户端认证由独立的 `serverfs-auth` 指南处理。macOS 证据仅覆盖只读隔离 staging，不代表生产 Workdir/Agent 已验收。Windows 原生 Cloudflare 仍计划于 v0.24.2 提供。
+v0.24.1 保持**恰好 7 个 Skills**。Linux 与 macOS 原生 Cloudflare 指引均纳入现有 `serverfs-tunnel` Skill 和 references，不新增第 8 个 Skill；客户端认证由独立的 `serverfs-auth` 指南处理。macOS 证据仅覆盖只读隔离 staging，不代表生产 Workdir/Agent 已验收。Windows 原生 Cloudflare 已进入 v0.24.2 候选版本，但独立 Windows Connector 与公网 MCP 验收门禁仍未通过，尚未正式发布。
 
 仓库根 `AGENTS.md` 只保留很薄的索引。Agent 应根据具体任务加载最小匹配的 `SKILL.md`，而不是把全部运维流程长期塞进基础上下文。
 
