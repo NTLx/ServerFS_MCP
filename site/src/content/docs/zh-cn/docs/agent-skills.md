@@ -3,7 +3,7 @@ title: Agent Skills
 description: 使用 ServerFS 仓库内置 Skills，指导 AI Agent 安全完成安装、配置、升级、诊断和可选子系统运维。
 ---
 
-> **当前稳定版本：v0.24.1。** 七个运维 Agent Skills 均包含 macOS 原生 Cloudflare 指引，v0.24.1 Release 打包这七个运行时 Skill 及其 references。
+> **当前稳定版本：v0.24.2；发布 workflow 仍待运行。** 七个运维 Agent Skills 覆盖 Linux、macOS 与 Windows Cloudflare 指引；v0.24.2 Plugin 打包这七个运行时 Skill 及其 references。
 
 ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) 目录中维护运维 Agent Skills。它们告诉 Agent **如何安全使用 ServerFS 已有的正式产品接口**，而不是再建立一套配置格式或部署实现。
 
@@ -15,11 +15,11 @@ ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/sk
 | Workdir 与普通策略配置，包括 v0.23 Repo Ops 策略 | `serverfs-configure` |
 | 已有部署升级 | `serverfs-upgrade` |
 | 只读优先的诊断与健康核验 | `serverfs-diagnose` |
-| OpenAI Secure MCP Tunnel、Linux/macOS Cloudflare 或 Windows v0.24.2 Cloudflare 候选版本 | `serverfs-tunnel` |
+| OpenAI Secure MCP Tunnel、Linux/macOS/Windows Cloudflare | `serverfs-tunnel` |
 | 远程 HTTP API Key / OAuth | `serverfs-auth` |
 | Host Bridge 生命周期 / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
-当前仍为**恰好 7 个 Skills**。Linux、macOS 与 Windows 原生 Cloudflare 指引均纳入现有 `serverfs-tunnel` Skill 和 references，不新增第 8 个 Skill；客户端认证由独立的 `serverfs-auth` 指南处理。Windows v0.24.2 尚未发布，仍待最终精确 SHA CI 和整代恢复证据；真实公网 SSE 子门槛已通过（三次分别为 75.0、70.0、65.0 秒，约每 15 秒收到 keepalive；同一 session 的 `tools/list` 返回 200（27 个工具），新 session 返回 200）；两个独立、同用户 Task Scheduler owner 已通过公网 ChatGPT 工具与跨入口文件操作验收。Windows 恢复验收会验证 Connector 故障后有界地 restart 整个 HTTP origin + cloudflared Job generation，并验证新 session 恢复。这是符合架构的等价验收，不是“仅重启 Connector”通过；旧内存 session 不保证存活或重放。
+v0.24.2 仍包含**恰好 7 个 Skills**。Linux、macOS 与 Windows 原生 Cloudflare 指引均纳入现有 `serverfs-tunnel` Skill 和 references，不新增第 8 个 Skill；客户端认证由独立的 `serverfs-auth` 指南处理。两个独立、同用户 Task Scheduler owner 已通过公网 ChatGPT 工具与跨入口文件操作验收。真实公网 SSE 子门槛已通过（三次分别为 75.0、70.0、65.0 秒，约每 15 秒收到 keepalive；同一 session 的 `tools/list` 返回 200（27 个工具），新 session 返回 200）。Operator 于 2026-11-10 豁免本次 Windows 整代 restart/recovery 测试；该测试未测试、未通过。最终精确 SHA CI 与 Release workflow 仍待运行；不得声称 Connector-only restart 或 lossless SSE replay 已通过。
 
 仓库根 `AGENTS.md` 只保留很薄的索引。Agent 应根据具体任务加载最小匹配的 `SKILL.md`，而不是把全部运维流程长期塞进基础上下文。
 
@@ -54,7 +54,7 @@ Skills 继续保持 ServerFS 手工运维时的核心约束：
 仓库根目录维护 portable Agent Plugins manifest：`plugin.json`。v0.24.1 GitHub Release 将 7 个运行时 Skill 及其参考文件统一打包为以下资产：
 
 ```text
-serverfs-plugin-v0.24.1.zip
+serverfs-plugin-v0.24.2.zip
 ```
 
 该 ZIP 是 **skills-only Plugin**，不会内置 `mcp.json`、某个 ServerFS 实例 URL、凭据或 Provider 私有配置。v0.24.1 Release 按稳定版发布流程交付相同的 7 个 Skills 及其 references，包括 Linux Cloudflare Tunnel 参考文件。Plugin 与 Skills 都直接跟随 ServerFS 项目版本，不建立独立版本生命周期。

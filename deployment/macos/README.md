@@ -1,6 +1,6 @@
 # macOS Native Deployment (v0.24.1 stable)
 
-ServerFS **v0.24.1 is the current stable release**. Native macOS Cloudflare Tunnel is an **v0.24.1 release**; it is optional and does not replace the existing OpenAI Secure MCP Tunnel, stdio, Agent Bridge or their lifecycle. Native Windows Cloudflare Tunnel remains planned for v0.24.2. The macOS deployment shape introduced
+ServerFS **v0.24.2 is the current stable release**. Native macOS Cloudflare Tunnel shipped in v0.24.1; it is optional and does not replace the existing OpenAI Secure MCP Tunnel, stdio, Agent Bridge or their lifecycle. Native Windows Cloudflare Tunnel was added in v0.24.2. The macOS deployment shape introduced
 in v0.13.2 remains pure Python over POSIX/Darwin primitives (`fcopyfile`, `getpeereid`, `confstr`
 via narrow ctypes bindings); v0.13.2 adds a small headless Swift ServiceManagement companion solely for persistent
 per-user service registration. There is still no `serverfs-macos-native` wheel, Docker/VM,

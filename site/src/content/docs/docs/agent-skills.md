@@ -3,7 +3,7 @@ title: Agent Skills
 description: Use ServerFS repository skills to guide AI Agents through safe installation, configuration, upgrade, diagnosis and optional subsystem operations.
 ---
 
-> **Current stable release: v0.24.1.** All seven operational Agent Skills now include v0.24.1 release guidance. The v0.24.1 Plugin asset contains the seven runtime Skills and their references.
+> **Intended current stable release: v0.24.2.** All seven operational Agent Skills now include v0.24.2 release guidance. The v0.24.2 Plugin contains the seven runtime Skills and their references.
 
 ServerFS keeps operational Agent Skills in the repository [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) directory. They teach an Agent **how to use the existing ServerFS product interfaces safely**; they are not another configuration format or deployment implementation.
 
@@ -15,11 +15,11 @@ ServerFS keeps operational Agent Skills in the repository [`skills/`](https://gi
 | Workdir and ordinary policy changes, including v0.23 Repo Ops policy | `serverfs-configure` |
 | Existing deployment upgrade | `serverfs-upgrade` |
 | Read-first diagnosis and health verification | `serverfs-diagnose` |
-| OpenAI Secure MCP Tunnel, Linux/macOS Cloudflare, or Windows v0.24.2 Cloudflare candidate | `serverfs-tunnel` |
+| OpenAI Secure MCP Tunnel, Linux/macOS Cloudflare, or Windows v0.24.2 Cloudflare | `serverfs-tunnel` |
 | Remote HTTP API Key / OAuth | `serverfs-auth` |
 | Host Bridge lifecycle / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
-The release retains exactly **seven** Skills. Linux, native macOS and Windows Cloudflare guidance live in the existing `serverfs-tunnel` Skill and references, not an eighth Skill. Windows v0.24.2 remains unreleased pending final exact-SHA CI and full-generation recovery evidence; the real public SSE gate passed with 75.0/70.0/65.0-second holds, approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200; public ChatGPT tools and cross-ingress file-operation acceptance passed through two independent same-user Task Scheduler owners. Windows recovery acceptance remains pending: verify bounded restart of the full HTTP origin + cloudflared Job generation after Connector failure and fresh-session recovery. This is architecture-equivalent acceptance, not a Connector-only restart pass; older in-memory sessions are not guaranteed to survive or replay.
+The v0.24.2 release retains exactly **seven** Skills. Linux, native macOS and Windows Cloudflare guidance live in the existing `serverfs-tunnel` Skill and references, not an eighth Skill. Two independent same-user Task Scheduler owners passed public ChatGPT tools and cross-ingress file-operation acceptance. The public SSE gate passed with 75.0/70.0/65.0-second holds, approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200. The operator waived full-generation Windows restart/recovery testing on 2026-11-10; it was not tested and did not pass.  Connector-only restart and lossless SSE replay are not claimed.
 
 The repository-level `AGENTS.md` contains only a thin index. An Agent should load the smallest matching `SKILL.md` rather than placing all operational procedures in its base context.
 
@@ -51,12 +51,12 @@ The skills preserve the same ServerFS invariants as manual operation:
 
 ## Portable Agent Plugin
 
-The repository root contains the portable Agent Plugins manifest `plugin.json`. The v0.24.1 GitHub Release packages the seven runtime skills and their references as this asset:
+The repository root contains the portable Agent Plugins manifest `plugin.json`. The intended v0.24.2 GitHub Release will package the seven runtime skills and their references as this asset:
 
 ```text
-serverfs-plugin-v0.24.1.zip
+serverfs-plugin-v0.24.2.zip
 ```
 
-The ZIP is a **skills-only** Plugin. It does not bundle `mcp.json`, a ServerFS instance URL, credentials, or provider-private settings. The v0.24.1 Plugin follows the stable release packaging workflow; it contains the same seven Skill directories and references, including the Linux Cloudflare Tunnel reference. Plugin and skill content follow the ServerFS release version; there is no independent skill version lifecycle.
+The ZIP is a **skills-only** Plugin. It does not bundle `mcp.json`, a ServerFS instance URL, credentials, or provider-private settings. The v0.24.2 Plugin is intended to follow the stable release packaging workflow; it contains the same seven Skill directories and references, including the Linux Cloudflare Tunnel reference. Plugin and skill content follow the ServerFS release version; there is no independent skill version lifecycle.
 
 The Git repository remains canonical. ServerFS does not automatically copy these skills into `~/.codex/skills`, Claude configuration, or other provider-private directories.

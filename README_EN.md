@@ -12,9 +12,9 @@
 
 Expose only the directories you choose. Keep them read-only by default. Opt into narrow, revision-guarded file mutations, bounded binary transfer, or structured delegation to native Codex / Claude Code / Qoder runtimes and operator-configured ACP Agents only where you need them. Deterministic Repo Ops shipped on Linux Host Bridge in v0.23.0, expanded to validated native Apple Silicon macOS in v0.23.1, and now extends to validated native Windows 11 x64 in v0.23.2 for deterministic repository completion without Agent delegation.
 
-**Current stable release: v0.24.1**
+**Current stable release: v0.24.2**
 
-Linux Docker Cloudflare Tunnel shipped in v0.24.0. v0.24.1 adds native Cloudflare Tunnel ingress for Apple Silicon/macOS 27 through a separate loopback HTTP origin and Connector, with exact Host matching and independent API Key/OAuth caller authentication. Isolated read-only staging passed HTTPS 401/200, 11-tool discovery, 65.1-second SSE, and fresh-session recovery on 8/8 Connector restarts; the old session returned 404, and no SSE replay is claimed. The current-user `SMAppService` lifecycle leaves the existing OpenAI Tunnel and Agent Bridge available. Native Windows Cloudflare is an **unreleased v0.24.2 release candidate**. Its OpenAI default and separate `ServerFS Cloudflare WorkPC` ingress passed public ChatGPT 401/200, tools, cross-ingress file operations on shared writable workdirs, and Codex/Claude. Final exact-SHA CI and >60-second SSE/Connector-only restart evidence remain pending. The two same-user Task Scheduler owners have separate venvs, state, watchdogs and runners, and share one Agent Bridge/Repo Ops service. The old single-owner provider exclusion still applies within that owner; it does not prohibit two independent owners, and there is no universal automated handover. If retiring the OpenAI owner, preserve the shared Agent Bridge while Cloudflare depends on it. See the [Windows Cloudflare runbook](docs/windows-cloudflare-tunnel.md) and [release gate](docs/v0.24.2-release-checklist-2026-11-07.md). See the [macOS deployment guide](deployment/macos/README.md#optional-cloudflare-tunnel-v0241) for commands, security requirements and rollback.
+Linux Docker Cloudflare Tunnel shipped in v0.24.0. v0.24.1 adds native Cloudflare Tunnel ingress for Apple Silicon/macOS 27 through a separate loopback HTTP origin and Connector, with exact Host matching and independent API Key/OAuth caller authentication. Isolated read-only staging passed HTTPS 401/200, 11-tool discovery, 65.1-second SSE, and fresh-session recovery on 8/8 Connector restarts; the old session returned 404, and no SSE replay is claimed. The current-user `SMAppService` lifecycle leaves the existing OpenAI Tunnel and Agent Bridge available. v0.24.2 adds native Windows Cloudflare. Two independent same-user owners passed public ChatGPT 401/200, tools, cross-ingress file operations on shared writable workdirs, Codex/Claude, and public SSE holds of 75.0/70.0/65.0 seconds. Under the operator waiver dated 2026-11-10, full-generation restart/recovery was not tested and did not pass; Connector-only restart and lossless SSE replay are not claimed. Final exact-SHA CI and the Release workflow remain to be run;  The two same-user Task Scheduler owners have separate venvs, state, watchdogs and runners, and share one Agent Bridge/Repo Ops service. The old single-owner provider exclusion still applies within that owner; it does not prohibit two independent owners, and there is no universal automated handover. If retiring the OpenAI owner, preserve the shared Agent Bridge while Cloudflare depends on it. See the [Windows Cloudflare runbook](docs/windows-cloudflare-tunnel.md) and [release gate](docs/v0.24.2-release-checklist-2026-11-07.md). See the [macOS deployment guide](deployment/macos/README.md#optional-cloudflare-tunnel-v0241) for commands, security requirements and rollback.
 
 [Website](https://ntlx.github.io/ServerFS_MCP/) ·
 [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) ·
@@ -58,9 +58,9 @@ For native setup, use the dedicated guides:
 
 ## Agent Skills
 
-The repository carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Secure MCP Tunnel / released Linux and macOS Cloudflare plus the Windows v0.24.2 release candidate, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
+The repository carries task-oriented [ServerFS Agent Skills](skills/README.md) for installation, configuration, upgrade, diagnosis, OpenAI Secure MCP Tunnel / released Linux and macOS Cloudflare plus the Windows v0.24.2, HTTP authentication, and Agent Bridge/runtime operations. They are a thin workflow layer over the current CLI, configuration templates, Compose/deployment files, and product documentation rather than a second configuration system.
 
-The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The v0.24.1 release asset is `serverfs-plugin-v0.24.1.zip`, containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
+The repository root also contains a portable skills-only [`plugin.json`](plugin.json). The intended v0.24.2 Plugin asset is `serverfs-plugin-v0.24.2.zip` (to be generated and verified by the Release workflow), containing the seven runtime skills and their packaged references. The Plugin does not bundle a ServerFS MCP URL, credentials, or provider-private configuration.
 
 ## Quick start
 
@@ -84,9 +84,9 @@ chmod 600 .env
 
 Edit `.env` to pin the image, allow the local client Host values, and configure at least one workdir:
 
-# Current stable release example (v0.24.1):
+# Stable release example (v0.24.2):
 ```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.24.1
+SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.24.2
 SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
 WORKDIR_01_ALIAS=projects
 WORKDIR_01_PATH=/srv/projects
@@ -106,7 +106,7 @@ docker compose -f compose.yml -f compose.http.yml ps
 
 The generic HTTP override publishes ServerFS on `http://127.0.0.1:8000/mcp` by default and does not start the OpenAI Tunnel. Before any non-loopback/public deployment, add the actual external Host to `SERVERFS_HTTP_ALLOWED_HOSTS` and configure HTTPS and authentication (built-in API Key/OAuth or an upstream gateway).
 
-**Cloudflare Tunnel ingress:** Linux Docker ingress shipped in v0.24.0. v0.24.1 adds optional native ingress for Apple Silicon/macOS 27 through a separate loopback HTTP origin and Connector, with exact Host matching and independent API Key/OAuth caller authentication. Isolated read-only macOS staging passed HTTPS 401/200, 11-tool discovery, 65.1-second SSE, and fresh-session recovery on 8/8 Connector restarts; the old session returned 404, and no SSE replay is claimed. Windows v0.24.2 remains an unreleased candidate. Two independent same-user Task Scheduler owners passed public 401/200, ChatGPT tools, cross-ingress file operations on shared writable workdirs, and Codex/Claude. Final exact-SHA CI and long-lived SSE/Connector-only restart evidence remain pending. A Qoder provider error predated acceptance; Python urllib's default User-Agent received edge WAF 1010 and is an edge configuration caveat.
+**Cloudflare Tunnel ingress:** Linux Docker ingress shipped in v0.24.0. v0.24.1 adds optional native ingress for Apple Silicon/macOS 27 through a separate loopback HTTP origin and Connector, with exact Host matching and independent API Key/OAuth caller authentication. Isolated read-only macOS staging passed HTTPS 401/200, 11-tool discovery, 65.1-second SSE, and fresh-session recovery on 8/8 Connector restarts; the old session returned 404, and no SSE replay is claimed. v0.24.2 adds Windows Cloudflare. Two independent same-user Task Scheduler owners passed public 401/200, ChatGPT tools, cross-ingress file operations on shared writable workdirs, Codex/Claude, and public SSE holds of 75.0/70.0/65.0 seconds. Under the 2026-11-10 operator waiver, full-generation restart/recovery was not tested and did not pass; Connector-only restart and lossless SSE replay are not claimed.  A Qoder provider error predated acceptance; Python urllib's default User-Agent received edge WAF 1010 and is an edge configuration caveat.
 
 For ChatGPT through the existing OpenAI Secure MCP Tunnel, configure `CONTROL_PLANE_TUNNEL_ID` and `CONTROL_PLANE_API_KEY` and use the base Compose deployment. For Agent delegation, binary transfer, file ingress, proxy routing, or production hardening, continue with the [Getting Started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/) and [Configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) guides.
 
@@ -154,7 +154,7 @@ See [Architecture](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) for t
 
 ## Capability surface
 
-These are registered MCP tool counts. The default surface includes all 5 mutation tools, but read-only workdirs reject mutations. Binary tools require binary policy on at least one workdir; Agent tools require both the Bridge switch and an enabled workdir Agent policy. Stable v0.24.1 keeps the existing 11 / 13 / 21 / 23 filesystem, binary and Agent combinations and can independently add four Deterministic Repo Ops tools on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64.
+These are registered MCP tool counts. The default surface includes all 5 mutation tools, but read-only workdirs reject mutations. Binary tools require binary policy on at least one workdir; Agent tools require both the Bridge switch and an enabled workdir Agent policy. Stable v0.24.2 keeps the existing 11 / 13 / 21 / 23 filesystem, binary and Agent combinations and can independently add four Deterministic Repo Ops tools on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64.
 
 | Surface | Tools | What it adds |
 | --- | ---: | --- |
@@ -251,10 +251,10 @@ Release history and upgrade-specific notes belong in [GitHub Releases](https://g
 
 ## Releases
 
-- Linux images: `ghcr.io/ntlx/serverfs_mcp`; current stable release: `v0.24.1`
-- Current stable release tag: `v0.24.1`
+- Linux images: `ghcr.io/ntlx/serverfs_mcp`; current stable release: `v0.24.2`
+- Stable release tag: `v0.24.2`
 - Production deployments should pin an exact release rather than `latest` or `edge`.
-- Portable Agent Plugin: skills-only `serverfs-plugin-v0.24.1.zip` asset in the v0.24.1 GitHub Release.
+- Portable Agent Plugin: intended skills-only `serverfs-plugin-v0.24.2.zip` asset, to be generated and verified by the Release workflow.
 - Windows release assets include the product, Agent Bridge, and native kernel wheels.
 - macOS uses the product and Agent Bridge Python distributions directly; there is no separate macOS native wheel. Installation locally builds the small bundled ServiceManagement companion used for persistent per-user services.
 

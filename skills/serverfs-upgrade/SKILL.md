@@ -24,7 +24,7 @@ An upgrade does not silently opt the operator into newly introduced optional fea
 
 ## Preflight
 
-For Windows, v0.24.2 is an unreleased Cloudflare release candidate pending final exact-SHA CI and long-lived SSE/reconnect evidence. The accepted topology uses a separate same-user Task Scheduler owner (`ServerFS Cloudflare WorkPC`) with its own venv/state/watchdog/runner, alongside the OpenAI default owner; the old single-owner provider guard remains scoped to that owner. Upgrade must not activate either owner implicitly or assume a universal automatic handover. Read `docs/windows-cloudflare-tunnel.md` before an authorized Windows Cloudflare change. Preserve the shared Agent Bridge while the Cloudflare owner depends on it, including when retiring OpenAI.
+For Windows, v0.24.2 adds Cloudflare. The accepted topology uses a separate same-user Task Scheduler owner (`ServerFS Cloudflare WorkPC`) with its own venv/state/watchdog/runner, alongside the OpenAI default owner; the old single-owner provider guard remains scoped to that owner. Public SSE passed at 75.0/70.0/65.0 seconds. Full-generation restart/recovery was waived on 2026-11-10, not tested and did not pass. Upgrade must not activate either owner implicitly or assume a universal automatic handover. Read `docs/windows-cloudflare-tunnel.md` before an authorized Windows Cloudflare change. Preserve the shared Agent Bridge while the Cloudflare owner depends on it, including when retiring OpenAI.
 
 For macOS, v0.24.1 adds optional native Cloudflare Tunnel support. Preserve its separately managed service pair and private files during unrelated upgrades; follow `deployment/macos/README.md` when Cloudflare lifecycle changes are in scope.
 

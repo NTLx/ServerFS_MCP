@@ -19,7 +19,7 @@ Use the dedicated skill instead for:
 
 - OpenAI Secure MCP Tunnel or Linux Docker Cloudflare Tunnel (v0.24.0): `serverfs-tunnel`;
 - native macOS Cloudflare Tunnel (v0.24.1): `serverfs-tunnel`; do not place its connector token or HTTP-origin credentials in `serverfs.toml`;
-- Windows Cloudflare v0.24.2 release candidate: `serverfs-tunnel` and its Windows Cloudflare reference; keep token and HTTP env in separate protected-DACL private files outside workdirs, never in `serverfs.toml` or the OpenAI `.env`. The accepted parallel owner has separate venv/state/watchdog/runner while sharing intended writable workdirs and the Agent Bridge/Repo Ops service; keep that Bridge running if Cloudflare still depends on it after OpenAI retirement. Final CI and long-lived SSE/reconnect evidence remain pending;
+- Windows Cloudflare in v0.24.2: `serverfs-tunnel` and its Windows Cloudflare reference; keep token and HTTP env in separate protected-DACL private files outside workdirs, never in `serverfs.toml` or the OpenAI `.env`. The accepted parallel owner has separate venv/state/watchdog/runner while sharing intended writable workdirs and the Agent Bridge/Repo Ops service; keep that Bridge running if Cloudflare still depends on it after OpenAI retirement. Public SSE passed at 75.0/70.0/65.0 seconds. Full-generation restart/recovery was waived on 2026-11-10, not tested and did not pass.
 - static HTTP API Key or OAuth: `serverfs-auth`;
 - Agent Bridge installation/lifecycle, runtime allowlists, provider/Jev behavior: `serverfs-agent-bridge`; Repo Ops policy itself remains a normal per-workdir configuration concern, but its Linux host Bridge transport must follow the current Bridge deployment guide;
 - first installation with no existing configuration: `serverfs-install`;

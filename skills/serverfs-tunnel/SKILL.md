@@ -1,11 +1,11 @@
 ---
 name: serverfs-tunnel
-description: Operate the optional OpenAI Secure MCP Tunnel and Linux/macOS Cloudflare ingresses; configure or diagnose the Windows v0.24.2 Cloudflare release candidate while preserving independent service owners.
+description: Operate optional OpenAI Secure MCP Tunnel and Linux/macOS/Windows Cloudflare ingresses while preserving independent service owners.
 ---
 
 # Operate optional ServerFS tunnel ingresses
 
-**Separate transport adapters:** OpenAI Secure MCP Tunnel (existing), Cloudflare Tunnel on Linux Compose (shipped in v0.24.0; live validated on isolated read-only staging), and native macOS Cloudflare (v0.24.1). Never mix their credentials, configuration or health evidence. Windows Cloudflare is an unreleased v0.24.2 candidate: two independent same-user Task Scheduler owners passed public tools and cross-ingress file operations; final exact-SHA CI, full-generation recovery evidence remains pending; the real public SSE gate passed with 75.0/70.0/65.0-second holds and approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200. On Windows, the HTTP origin and cloudflared share a kill-on-close Job generation: Connector failure tears down the full generation for bounded caller restart. Acceptance must verify fresh-session recovery after that restart; it is architecture-equivalent Windows acceptance, not a Connector-only restart pass. Older in-memory sessions are not guaranteed to survive or replay. Each owner runs one provider, but the separate OpenAI and Cloudflare owners can run in parallel. There is no universal automatic handover. Preserve the shared Agent Bridge while Cloudflare depends on it, including after retiring OpenAI.
+**Separate transport adapters:** OpenAI Secure MCP Tunnel (existing), Cloudflare Tunnel on Linux Compose (shipped in v0.24.0; live validated on isolated read-only staging), and native macOS Cloudflare (v0.24.1). Never mix their credentials, configuration or health evidence. v0.24.2 adds Windows Cloudflare. Two independent same-user Task Scheduler owners passed public tools and cross-ingress file operations; the public SSE gate passed with 75.0/70.0/65.0-second holds and approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200. The operator waived full-generation restart/recovery testing on 2026-11-10; it was not tested and did not pass.  Connector-only restart and lossless SSE replay are not claimed. Each owner runs one provider, but the separate OpenAI and Cloudflare owners can run in parallel. There is no universal automatic handover. Preserve the shared Agent Bridge while Cloudflare depends on it, including after retiring OpenAI.
 
 The OpenAI Tunnel is an optional authenticated ChatGPT ingress adapter. Treat it as a separate subsystem with its own control-plane credentials, lifecycle and health evidence.
 
@@ -73,7 +73,7 @@ Paths below are relative to the located **ServerFS checkout root**, never to thi
 Load only the matching branch after identifying the deployment and requested mode:
 
 - Linux / Docker Compose: read [linux branch](references/linux.md) and, for Cloudflare, [Cloudflare Linux branch](references/cloudflare-linux.md) before platform/mode-specific changes.
-- Windows native: read [windows branch](references/windows.md) before platform/mode-specific changes. For a v0.24.2 candidate Windows Cloudflare integration, also read [Cloudflare Windows branch](references/cloudflare-windows.md) and the version-matched runbook; **do not repurpose the active OpenAI Tunnel service for testing**.
+- Windows native: read [windows branch](references/windows.md) before platform/mode-specific changes. For Windows Cloudflare, also read [Cloudflare Windows branch](references/cloudflare-windows.md) and the version-matched runbook; **do not repurpose the active OpenAI Tunnel service for testing**.
 - macOS native: read [macos branch](references/macos.md) before platform/mode-specific changes.
 
 For native macOS Cloudflare, also read `deployment/macos/README.md`. Use its v0.24.1 commands with the v0.24.1 build; preserve the existing OpenAI Tunnel path independently.

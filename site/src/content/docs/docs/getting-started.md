@@ -12,7 +12,7 @@ This page covers the Linux/Docker deployment. For native deployments, use [Windo
 
 An OpenAI Secure MCP Tunnel and Runtime API Key are optional and only needed for the ChatGPT Tunnel ingress path.
 
-Linux Docker Cloudflare Tunnel is stable in v0.24.0. Native macOS Cloudflare is a v0.24.1 release for Apple Silicon/macOS 27. Native Windows Cloudflare is an unreleased v0.24.2 candidate: two independent same-user Task Scheduler owners passed public 401/200, ChatGPT tools and cross-ingress file operations. Final exact-SHA CI and full-generation recovery evidence remain pending; the real public SSE gate passed with 75.0/70.0/65.0-second holds and approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200. Windows recovery acceptance remains pending: verify bounded teardown/restart of the shared HTTP origin + cloudflared Job generation after Connector failure, followed by fresh-session recovery. This is architecture-equivalent acceptance, not a Connector-only restart pass; an older in-memory session is not guaranteed to survive or replay. The owners share one Agent Bridge/Repo Ops service; preserve it if OpenAI is retired while Cloudflare still depends on it. See the [Windows Native guide](../windows-native/), [Windows runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md), and [macOS Native](../macos-native/).
+Linux Docker Cloudflare Tunnel shipped in v0.24.0. Native macOS Cloudflare shipped in v0.24.1 for Apple Silicon/macOS 27. v0.24.2 adds native Windows Cloudflare. Two independent same-user Task Scheduler owners passed public 401/200, ChatGPT tools and cross-ingress file operations. The public SSE gate passed with 75.0/70.0/65.0-second holds, approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200. The operator waived full-generation Windows restart/recovery testing on 2026-11-10; it was not tested and did not pass.  Connector-only restart and lossless SSE replay are not claimed. The owners share one Agent Bridge/Repo Ops service; preserve it if OpenAI is retired while Cloudflare still depends on it. See the [Windows Native guide](../windows-native/), [Windows runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md), and [macOS Native](../macos-native/).
 
 ## Standard MCP deployment
 
@@ -161,16 +161,16 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](../binary-transfer/) and [Security Model](../security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
-## Current stable release: v0.24.1
+## Intended current stable release: v0.24.2
 
-The v0.24.1 release uses immutable tag `v0.24.1` and these GHCR stable tags:
+The v0.24.2 release workflow will create an immutable tag and these GHCR stable tags after its exact-SHA gates pass:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
 ghcr.io/ntlx/serverfs_mcp:0.24
-ghcr.io/ntlx/serverfs_mcp:0.24.1
+ghcr.io/ntlx/serverfs_mcp:0.24.2
 ```
 
-For production deployments, pin `0.24.1` rather than following `latest` or `edge`. The v0.24.1 GitHub Release includes the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) and the skills-only portable Agent Plugin `serverfs-plugin-v0.24.1.zip`, with release evidence recorded in the [v0.24.0 release notes](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/releases/v0.24.0.md); see [Agent Skills](../agent-skills/). macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
+For production deployments, pin the intended version `0.24.2` after publication rather than following `latest` or `edge`. The Release workflow is expected to attach the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) and skills-only portable Agent Plugin `serverfs-plugin-v0.24.2.zip`; these outputs have not yet been verified. macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Agent Skills](../agent-skills/), [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
 
 For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).

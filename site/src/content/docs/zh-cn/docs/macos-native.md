@@ -3,7 +3,7 @@ title: macOS 原生部署
 description: ServerFS v0.24.0 macOS 原生部署 —— Apple M 系列、macOS 27、Darwin FD 安全边界，以及基于 Apple SMAppService 的 Tunnel / Agent Bridge 持久化。
 ---
 
-当前项目稳定版本为 **v0.24.1**。macOS 原生 Cloudflare 功能范围限于 Apple Silicon/macOS 27。除此之外，**v0.13.2** 引入的 macOS 原生支持形态保持不变：仅限原生 **arm64**，不支持 Rosetta/x86_64，仅支持 macOS 27.x 与**本地 APFS** workdir。Intel Mac、Hackintosh、macOS 26 及更早版本、macOS 28 及更新版本都会以 `NATIVE_PLATFORM_UNSUPPORTED` 失败关闭。v0.23.1 新增已验收的 Apple Silicon 原生 macOS Repo Ops；v0.23.2 保持该能力，并在 Linux Host Bridge 支持之外新增已验收的 Windows 11 x64 原生 Repo Ops。现有 OpenAI Tunnel 与 Agent Bridge 保持可用。
+当前稳定版本为 **v0.24.2**。macOS 原生 Cloudflare 功能范围限于 Apple Silicon/macOS 27。除此之外，**v0.13.2** 引入的 macOS 原生支持形态保持不变：仅限原生 **arm64**，不支持 Rosetta/x86_64，仅支持 macOS 27.x 与**本地 APFS** workdir。Intel Mac、Hackintosh、macOS 26 及更早版本、macOS 28 及更新版本都会以 `NATIVE_PLATFORM_UNSUPPORTED` 失败关闭。v0.23.1 新增已验收的 Apple Silicon 原生 macOS Repo Ops；v0.23.2 保持该能力，并在 Linux Host Bridge 支持之外新增已验收的 Windows 11 x64 原生 Repo Ops。现有 OpenAI Tunnel 与 Agent Bridge 保持可用。
 
 该功能新增独立、可选的 loopback HTTP origin 与 Cloudflare Connector，并复用现有 app-associated `SMAppService` LaunchAgent 生命周期。它要求远程管理型 Tunnel、精确 hostname 准入、官方验证过的 `cloudflared`，以及存放于 checkout 和所有 workdir 之外、权限为 `0600` 的当前用户 Token/认证文件。命令、staging、生命周期、回滚与验收步骤请遵循[macOS 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241)。
 
