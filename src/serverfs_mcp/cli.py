@@ -248,6 +248,30 @@ def build_parser() -> argparse.ArgumentParser:
     cloudflare_install.add_argument("--hostname", required=True)
     for lifecycle in ("status", "start", "stop", "restart", "uninstall"):
         cloudflare_sub.add_parser(lifecycle)
+    parallel = service_sub.add_parser(
+        "cloudflare-parallel",
+        help="Manage the independent second Windows Cloudflare instance (WorkPC)",
+    )
+    parallel_sub = parallel.add_subparsers(dest="parallel_command", required=True)
+    parallel_install = parallel_sub.add_parser("install")
+    parallel_install.add_argument("--config", required=True, type=Path)
+    parallel_install.add_argument("--cloudflared", required=True, type=Path)
+    parallel_install.add_argument("--token-file", required=True, type=Path)
+    parallel_install.add_argument("--env-file", required=True, type=Path)
+    for lifecycle in ("status", "start", "stop", "restart", "uninstall"):
+        parallel_sub.add_parser(lifecycle)
+    for internal in ("_watchdog", "_run"):
+        parallel_internal = parallel_sub.add_parser(internal, help=argparse.SUPPRESS)
+        parallel_internal.add_argument("--config", required=True, type=Path, help=argparse.SUPPRESS)
+        parallel_internal.add_argument(
+            "--cloudflared", required=True, type=Path, help=argparse.SUPPRESS
+        )
+        parallel_internal.add_argument(
+            "--token-file", required=True, type=Path, help=argparse.SUPPRESS
+        )
+        parallel_internal.add_argument(
+            "--env-file", required=True, type=Path, help=argparse.SUPPRESS
+        )
     service_watchdog = service_sub.add_parser("_watchdog", help=argparse.SUPPRESS)
     service_watchdog.add_argument("--config", required=True, type=Path, help=argparse.SUPPRESS)
     service_watchdog.add_argument("--env-file", required=True, type=Path, help=argparse.SUPPRESS)
@@ -758,6 +782,46 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
 
 def cmd_service(args: argparse.Namespace) -> int:
     command = args.service_command
+    if command == "cloudflare-parallel":
+        if sys.platform != "win32":
+            return _fail("parallel Cloudflare service lifecycle requires Windows")
+        from . import windows_cloudflare_parallel as parallel
+        from .windows_cloudflare_parallel import WindowsCloudflareParallelError
+
+        try:
+            action = args.parallel_command
+            if action == "install":
+                snapshot = parallel.install_instance(
+                    args.config,
+                    args.cloudflared,
+                    args.token_file,
+                    args.env_file,
+                )
+                sys.stderr.write(json.dumps(snapshot, sort_keys=True) + "\n")
+            elif action == "status":
+                sys.stderr.write(json.dumps(parallel.status_instance(), sort_keys=True) + "\n")
+            elif action == "start":
+                sys.stderr.write(json.dumps(parallel.start_instance(), sort_keys=True) + "\n")
+            elif action == "stop":
+                sys.stderr.write(json.dumps(parallel.stop_instance(), sort_keys=True) + "\n")
+            elif action == "restart":
+                sys.stderr.write(json.dumps(parallel.restart_instance(), sort_keys=True) + "\n")
+            elif action == "uninstall":
+                parallel.uninstall_instance()
+                sys.stderr.write("parallel Cloudflare instance uninstalled\n")
+            elif action == "_watchdog":
+                return parallel.run_watchdog(
+                    args.config, args.cloudflared, args.token_file, args.env_file
+                )
+            elif action == "_run":
+                return parallel.run_managed(
+                    args.config, args.cloudflared, args.token_file, args.env_file
+                )
+            else:
+                return _fail(f"unknown cloudflare-parallel command {action!r}")
+            return 0
+        except WindowsCloudflareParallelError as exc:
+            return _fail(str(exc))
     if command == "cloudflare":
         if sys.platform == "win32":
             from . import windows_service

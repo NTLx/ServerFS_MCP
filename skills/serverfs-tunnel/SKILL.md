@@ -1,11 +1,11 @@
 ---
 name: serverfs-tunnel
-description: Operate the optional OpenAI Secure MCP Tunnel and Linux/macOS Cloudflare ingresses; plan and validate the Windows v0.24.2 Cloudflare branch without affecting existing service ownership.
+description: Operate the optional OpenAI Secure MCP Tunnel and Linux/macOS Cloudflare ingresses; configure or diagnose the Windows v0.24.2 Cloudflare release candidate while preserving independent service owners.
 ---
 
 # Operate optional ServerFS tunnel ingresses
 
-**Separate transport adapters:** OpenAI Secure MCP Tunnel (existing), Cloudflare Tunnel on Linux Compose (shipped in v0.24.0; live validated on isolated read-only staging), and native macOS Cloudflare (v0.24.1). Never mix their credentials, configuration or health evidence. The Windows Cloudflare v0.24.2 implementation remains in development/acceptance until its exact-SHA release and public MCP gates pass; never treat its commands as available in the published v0.24.1 Windows installation.
+**Separate transport adapters:** OpenAI Secure MCP Tunnel (existing), Cloudflare Tunnel on Linux Compose (shipped in v0.24.0; live validated on isolated read-only staging), and native macOS Cloudflare (v0.24.1). Never mix their credentials, configuration or health evidence. Windows Cloudflare is an unreleased v0.24.2 candidate: two independent same-user Task Scheduler owners passed public tools and cross-ingress file operations; final exact-SHA CI and long-lived SSE/Connector-only restart evidence remain pending. Each owner runs one provider, but the separate OpenAI and Cloudflare owners can run in parallel. There is no universal automatic handover. Preserve the shared Agent Bridge while Cloudflare depends on it, including after retiring OpenAI.
 
 The OpenAI Tunnel is an optional authenticated ChatGPT ingress adapter. Treat it as a separate subsystem with its own control-plane credentials, lifecycle and health evidence.
 
@@ -16,7 +16,7 @@ Use this skill when the user explicitly wants to:
 - connect ServerFS to ChatGPT through the OpenAI Secure MCP Tunnel;
 - expose Linux Streamable HTTP through an independently authenticated Cloudflare Tunnel;
 - configure or diagnose the native macOS Cloudflare Connector and HTTP origin;
-- assess the opt-in Windows Cloudflare HTTP Origin/Connector on a dedicated v0.24.2 test installation (never alongside an active OpenAI managed provider);
+- assess the opt-in Windows Cloudflare HTTP Origin/Connector on its independent same-user v0.24.2 owner, without switching the OpenAI owner;
 - configure Tunnel control-plane credentials or Tunnel-specific proxy routing;
 - bootstrap/update the official Tunnel client on native Windows/macOS;
 - restart/re-establish the Tunnel after a ServerFS deployment change;

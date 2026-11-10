@@ -3,7 +3,7 @@ title: Windows 原生部署
 description: Windows 11 x64 + 本地 NTFS 原生部署——预构建 Rust 内核、当前 v0.24.0 Deterministic Repo Ops、Codex/Claude/Qoder 原生 runtime 与可配置 ACP 委派，以及当前用户 Task Scheduler 持久生命周期。
 ---
 
-> **Windows Cloudflare v0.24.2 候选版本：**原生 loopback HTTP Origin 与 Connector 已进入开发测试，但**尚未作为 Windows 稳定功能发布**。Windows 现有 OpenAI Tunnel 仍为默认方案，不允许为了测试而切换正在使用的 WorkPC 生产服务。具体的独立测试所有权、凭据文件受保护 DACL、单一 Task Scheduler 生命周期和剩余公网发布门禁见 [Windows Cloudflare 专用运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md)。
+> **Windows Cloudflare v0.24.2 release candidate：**已通过两个独立、同用户 Task Scheduler owner 完成公网 ChatGPT 验收：OpenAI 原生默认入口，以及通过 `service cloudflare-parallel` 管理的 `ServerFS Cloudflare WorkPC`。两者分别使用独立 venv/state/watchdog/runner，共享可写 workdirs 和一个 Agent Bridge/Repo Ops 服务。HTTPS 401/200、工具调用、跨入口 read/write/edit/delete、Codex 与 Claude 均通过。最终精确 SHA CI、>60 秒 SSE 与仅重启 Connector 后的会话行为仍待验证，因此该功能尚未发布。旧的单 owner provider 限制只约束该 owner 内部；不支持通用自动 handover。若 Cloudflare 仍依赖共享 Agent Bridge，退役 OpenAI 时必须保留 Bridge。详见 [Windows Cloudflare 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md)。
 
 自 v0.10.0 起，ServerFS 可以在 **Windows 11 x64 + 本地 NTFS** 上以 MCP **stdio** 服务原生运行。没有任何端口监听：官方 OpenAI `tunnel-client` 主动连出到控制面，并通过子进程的 stdin/stdout 传输 MCP 帧，因此默认原生 profile 不存在 localhost 监听器。Linux Docker 部署保持不变，仍是 Linux 的受支持形态。
 

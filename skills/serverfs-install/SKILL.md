@@ -35,7 +35,7 @@ Paths below are relative to the located **ServerFS checkout root**, never to thi
 5. Determine the minimum requested ingress:
    - Linux generic Streamable HTTP is the normal base deployment;
    - Windows/macOS native use stdio plus optional Tunnel for ChatGPT connectivity.
-- Native Windows Cloudflare is under v0.24.2 acceptance and is not included in published v0.24.1. After a base Windows install, use `serverfs-tunnel` and `docs/windows-cloudflare-tunnel.md` only on a separate test service owner, never on the active WorkPC OpenAI Tunnel.
+- Native Windows Cloudflare is an unreleased v0.24.2 candidate pending final exact-SHA CI and long-lived SSE/reconnect evidence. Its accepted topology uses a second same-user Task Scheduler owner (`ServerFS Cloudflare WorkPC` via `service cloudflare-parallel`) with separate venv/state/watchdog/runner, sharing intended writable workdirs and one Agent Bridge/Repo Ops service. Follow `serverfs-tunnel` and `docs/windows-cloudflare-tunnel.md`; do not mistake the single-owner provider guard for a universal prohibition on independent owners or infer an automatic handover.
 - Native macOS Cloudflare is an optional v0.24.1 capability. Finish and verify the base native install first, then follow `serverfs-tunnel` and `deployment/macos/README.md` if Cloudflare ingress is explicitly requested.
 6. Keep Tunnel, Auth, binary/file ingress, Repo Ops and Agent delegation disabled unless they are explicitly part of the requested installation. Repo Ops and Agent delegation are independent opt-ins even though Linux uses the same Host Bridge transport for both.
 

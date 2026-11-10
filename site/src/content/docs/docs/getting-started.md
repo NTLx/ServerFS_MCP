@@ -12,7 +12,7 @@ This page covers the Linux/Docker deployment. For native deployments, use [Windo
 
 An OpenAI Secure MCP Tunnel and Runtime API Key are optional and only needed for the ChatGPT Tunnel ingress path.
 
-Linux Docker Cloudflare Tunnel is stable in v0.24.0. Native macOS Cloudflare is an v0.24.1 release for Apple Silicon/macOS 27; Native Windows Cloudflare has been implemented in the v0.24.2 candidate but remains unreleased pending dedicated Windows Connector and public MCP acceptance. The existing OpenAI Tunnel and Agent Bridge remain available. For release scope and guarded staging/lifecycle steps, see [macOS Native](../macos-native/) and the [macOS deployment runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241).
+Linux Docker Cloudflare Tunnel is stable in v0.24.0. Native macOS Cloudflare is a v0.24.1 release for Apple Silicon/macOS 27. Native Windows Cloudflare is an unreleased v0.24.2 candidate: two independent same-user Task Scheduler owners passed public 401/200, ChatGPT tools and cross-ingress file operations. Final exact-SHA CI and >60-second SSE/Connector-only restart evidence remain pending. The owners share one Agent Bridge/Repo Ops service; preserve it if OpenAI is retired while Cloudflare still depends on it. See the [Windows Native guide](../windows-native/), [Windows runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md), and [macOS Native](../macos-native/).
 
 ## Standard MCP deployment
 

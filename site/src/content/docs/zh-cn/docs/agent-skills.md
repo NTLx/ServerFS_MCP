@@ -15,11 +15,11 @@ ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/sk
 | Workdir 与普通策略配置，包括 v0.23 Repo Ops 策略 | `serverfs-configure` |
 | 已有部署升级 | `serverfs-upgrade` |
 | 只读优先的诊断与健康核验 | `serverfs-diagnose` |
-| OpenAI Secure MCP Tunnel、Linux Cloudflare 稳定版或 macOS 原生 Cloudflare（v0.24.1） | `serverfs-tunnel` |
+| OpenAI Secure MCP Tunnel、Linux/macOS Cloudflare 或 Windows v0.24.2 Cloudflare 候选版本 | `serverfs-tunnel` |
 | 远程 HTTP API Key / OAuth | `serverfs-auth` |
 | Host Bridge 生命周期 / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
-v0.24.1 保持**恰好 7 个 Skills**。Linux 与 macOS 原生 Cloudflare 指引均纳入现有 `serverfs-tunnel` Skill 和 references，不新增第 8 个 Skill；客户端认证由独立的 `serverfs-auth` 指南处理。macOS 证据仅覆盖只读隔离 staging，不代表生产 Workdir/Agent 已验收。Windows 原生 Cloudflare 已进入 v0.24.2 候选版本，但独立 Windows Connector 与公网 MCP 验收门禁仍未通过，尚未正式发布。
+当前仍为**恰好 7 个 Skills**。Linux、macOS 与 Windows 原生 Cloudflare 指引均纳入现有 `serverfs-tunnel` Skill 和 references，不新增第 8 个 Skill；客户端认证由独立的 `serverfs-auth` 指南处理。Windows v0.24.2 尚未发布，仍待最终精确 SHA CI 与 >60 秒 SSE/仅重启 Connector 后的行为验收；两个独立、同用户 Task Scheduler owner 已通过公网 ChatGPT 工具与跨入口文件操作验收。
 
 仓库根 `AGENTS.md` 只保留很薄的索引。Agent 应根据具体任务加载最小匹配的 `SKILL.md`，而不是把全部运维流程长期塞进基础上下文。
 

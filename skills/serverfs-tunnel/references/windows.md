@@ -14,7 +14,7 @@ A non-default official release must follow the CLI's integrity-verification cont
 
 ## Optional Cloudflare branch (v0.24.2 candidate)
 
-The existing commands above are **OpenAI Tunnel** commands. Windows Cloudflare is a distinct opt-in **provider for the same current-user Task Scheduler owner**, not an additional always-on Windows service. For a version-matched v0.24.2 implementation, read [Windows Cloudflare](cloudflare-windows.md) and `docs/windows-cloudflare-tunnel.md` before using `service cloudflare`; the production WorkPC OpenAI service must not be switched or stopped for development testing. v0.24.1 remains the stable Windows release until v0.24.2 is published.
+The existing commands above are **OpenAI Tunnel** commands. The unreleased v0.24.2 candidate supports a separate same-user Task Scheduler owner named `ServerFS Cloudflare WorkPC`, managed with `service cloudflare-parallel`, alongside the OpenAI default owner. Each has its own venv/state/watchdog/runner and selects one provider; both may share intended writable workdirs and one Agent Bridge/Repo Ops service. The old `service cloudflare` provider guard remains scoped to one owner and does not provide an automatic handover. Final exact-SHA CI and long-lived SSE/Connector-only restart evidence remain pending. Read [Windows Cloudflare](cloudflare-windows.md) and `docs/windows-cloudflare-tunnel.md` before operating either owner. Preserve the shared Bridge while Cloudflare depends on it if OpenAI is retired.
 
 The v0.14+ current-user managed runner owns normal persistent Tunnel operation. Check:
 

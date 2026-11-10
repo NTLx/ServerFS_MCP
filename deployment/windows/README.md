@@ -81,13 +81,13 @@ the persistent task and removes its local lifecycle artifacts.
 
 Configuration changes in `serverfs.toml` or `.env` take effect after `service restart`.
 
-## Optional native Cloudflare Tunnel (v0.24.2 development)
+## Optional native Cloudflare Tunnel (v0.24.2 release candidate)
 
-**Not yet a published Windows feature.** This source-tree implementation is undergoing Windows-specific acceptance. The published stable baseline remains v0.24.1. Full preflight, private-ACL contract, commands, negative cases, rollback, and outstanding release gates: [Windows Cloudflare runbook](../../docs/windows-cloudflare-tunnel.md).
+**Not yet a published Windows feature.** The v0.24.2 candidate passed public ChatGPT 401/200, tools, cross-ingress read/write/edit/delete on the same writable workdirs, and Codex/Claude through independent same-user owners. Final exact-SHA CI and >60-second SSE/Connector-only restart evidence remain pending. See the [Windows Cloudflare runbook](../../docs/windows-cloudflare-tunnel.md) for the accepted owner topology, private-ACL contract, commands, rollback and remaining gates.
 
-It is an alternative **provider for the same Windows Task Scheduler 2.0 service**, not a parallel persistent service. Both the HTTP Origin and cloudflared Connector are contained in the existing managed runner's kill-on-close Job Object; no Windows SCM service, administrator, or new watchdog is introduced. The provider must not be switched while the existing OpenAI Tunnel task is enabled or has live watchdog/runner processes. **Never use these Cloudflare lifecycle commands on a WorkPC that is still serving production OpenAI Tunnel.** Use a dedicated acceptance installation with a separate service owner and private test hostname/token; local source smoke tests are intentionally short-lived and cannot prove public Cloudflare health.
+Each owner selects one provider. The accepted topology keeps the OpenAI native default and a separate `ServerFS Cloudflare WorkPC` owner (`service cloudflare-parallel`) under the same Windows user. Each owner has its own venv, state, watchdog and runner; both may use the same writable workdirs and share one Agent Bridge/Repo Ops service. The existing single-owner `service cloudflare` path still refuses to replace an active OpenAI provider in that owner. That guard does not prohibit the separate parallel owner, and there is no universal automated provider handover. Retiring OpenAI must not retire the shared Agent Bridge while Cloudflare depends on it. No Windows SCM service or administrator is introduced. Qoder's provider error predated the acceptance; Python urllib's default User-Agent received edge WAF 1010. These are scoped provider/edge caveats. Do not claim long-lived SSE or Connector-only restart behavior before the remaining evidence is recorded.
 
-On the separate test installation only:
+The command example below uses the single-owner `service cloudflare` path. It is not the accepted parallel-owner path and will refuse to replace an active OpenAI provider in that same owner. The accepted WorkPC setup keeps OpenAI active and uses a separate `ServerFS Cloudflare WorkPC` same-user owner through `service cloudflare-parallel`; consult the matching CLI help for its lifecycle syntax. Keep that owner's venv/state/watchdog/runner separate and preserve the shared Agent Bridge if Cloudflare depends on it after OpenAI retirement.
 
 ```powershell
 $serverfs = "$env:LOCALAPPDATA\ServerFS\connector-env\Scripts\serverfs.exe"

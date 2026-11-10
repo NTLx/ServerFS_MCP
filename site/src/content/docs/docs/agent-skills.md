@@ -15,11 +15,11 @@ ServerFS keeps operational Agent Skills in the repository [`skills/`](https://gi
 | Workdir and ordinary policy changes, including v0.23 Repo Ops policy | `serverfs-configure` |
 | Existing deployment upgrade | `serverfs-upgrade` |
 | Read-first diagnosis and health verification | `serverfs-diagnose` |
-| OpenAI Secure MCP Tunnel, Linux Cloudflare stable, or native macOS Cloudflare (v0.24.1 release) | `serverfs-tunnel` |
+| OpenAI Secure MCP Tunnel, Linux/macOS Cloudflare, or Windows v0.24.2 Cloudflare candidate | `serverfs-tunnel` |
 | Remote HTTP API Key / OAuth | `serverfs-auth` |
 | Host Bridge lifecycle / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
-The v0.24.1 release retains exactly **seven** Skills. Linux and native macOS Cloudflare guidance live in the existing `serverfs-tunnel` Skill and references, not an eighth Skill. macOS evidence covers isolated read-only staging only; it does not establish production workdir/Agent acceptance. Native Windows Cloudflare is implemented in the v0.24.2 candidate, but the separate Windows Connector/public MCP acceptance gate remains open; it is not yet published.
+The release retains exactly **seven** Skills. Linux, native macOS and Windows Cloudflare guidance live in the existing `serverfs-tunnel` Skill and references, not an eighth Skill. Windows v0.24.2 remains unreleased pending final exact-SHA CI and >60-second SSE/Connector-only restart evidence; public ChatGPT tools and cross-ingress file-operation acceptance passed through two independent same-user Task Scheduler owners.
 
 The repository-level `AGENTS.md` contains only a thin index. An Agent should load the smallest matching `SKILL.md` rather than placing all operational procedures in its base context.
 

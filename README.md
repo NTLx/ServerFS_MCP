@@ -14,7 +14,7 @@
 
 **当前稳定版本：v0.24.1**
 
-Linux Docker Cloudflare Tunnel 已随 v0.24.0 发布；v0.24.1 增加 Apple Silicon/macOS 27 原生 Cloudflare Tunnel。它通过独立 loopback HTTP origin 与 Connector 接入 Cloudflare，复用当前用户 `SMAppService` 生命周期，不替换现有 OpenAI Tunnel 或 Agent Bridge。隔离只读 staging 通过 401/200 认证、11 工具发现、65.1 秒 SSE，以及 Connector 重启后 8/8 次新会话恢复；旧会话返回 404，不保证 SSE 重放。Windows 原生 Cloudflare 已完成 v0.24.2 候选版本的源码与本地 Windows 验收，但尚未发布：仍需完成真实 Connector、公网 ChatGPT MCP 和精确 SHA 的 Release 门禁。Windows 使用**同一 Task Scheduler 所有者**选择 Tunnel Provider，绝不能把运行中的 OpenAI Tunnel 当作测试服务切换；见 [Windows Cloudflare 运维手册](docs/windows-cloudflare-tunnel.md)。服务命令、安全要求与回滚流程见[macOS 部署指南](deployment/macos/README.md#optional-cloudflare-tunnel-v0241)。
+Linux Docker Cloudflare Tunnel 已随 v0.24.0 发布；v0.24.1 增加 Apple Silicon/macOS 27 原生 Cloudflare Tunnel。它通过独立 loopback HTTP origin 与 Connector 接入 Cloudflare，复用当前用户 `SMAppService` 生命周期，不替换现有 OpenAI Tunnel 或 Agent Bridge。隔离只读 staging 通过 401/200 认证、11 工具发现、65.1 秒 SSE，以及 Connector 重启后 8/8 次新会话恢复；旧会话返回 404，不保证 SSE 重放。Windows 原生 Cloudflare 已完成 v0.24.2 候选实现和双入口公网 ChatGPT 验收，但**尚未发布**，状态为等待最终精确 SHA CI 与 >60 秒 SSE/Connector-only restart 验收。OpenAI 默认入口与独立的 `ServerFS Cloudflare WorkPC` 使用两个同用户 Task Scheduler owner，各有自己的 venv/state/watchdog/runner，共享获准的可写 workdirs、一个 Agent Bridge 与 Repo Ops。单个 owner 仍只选择一个 provider；旧 `service cloudflare` 对正在运行的 OpenAI owner 的拒绝只适用于该 owner，不代表禁止两个独立 owner 并行，也不提供通用自动 handover。退役 OpenAI owner 时，若 Cloudflare 仍依赖共享 Agent Bridge，必须保留 Bridge 生命周期。详见 [Windows Cloudflare 运维手册](docs/windows-cloudflare-tunnel.md) 与[发布门禁](docs/v0.24.2-release-checklist-2026-11-07.md)。
 
 [项目网站](https://ntlx.github.io/ServerFS_MCP/zh-cn/) ·
 [文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/) ·
@@ -58,7 +58,7 @@ macOS 仅支持 Apple M 系列、原生 arm64、macOS 27.x 与本地 APFS；不�
 
 ## Agent Skills
 
-仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Secure MCP Tunnel / 已发布 Linux、macOS Cloudflare 与 Windows v0.24.2 候选分支、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
+仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Secure MCP Tunnel / 已发布 Linux、macOS Cloudflare 与 Windows v0.24.2 release candidate、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
 
 仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。v0.24.1 Release 资产为 `serverfs-plugin-v0.24.1.zip`，其中有 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
 
@@ -106,7 +106,7 @@ docker compose -f compose.yml -f compose.http.yml ps
 
 通用 HTTP override 默认将 ServerFS 发布到 `http://127.0.0.1:8000/mcp`，且不会启动 OpenAI Tunnel。任何非 loopback 或公网部署前，都应将实际对外 Host 加入 `SERVERFS_HTTP_ALLOWED_HOSTS`，并配置 HTTPS 与认证（内置 API Key/OAuth 或上游网关）。
 
-**Cloudflare Tunnel ingress：** Linux Docker ingress shipped in v0.24.0. v0.24.1 adds optional native ingress for Apple Silicon/macOS 27 through a separate loopback HTTP origin and Connector, with exact Host matching and independent API Key/OAuth caller authentication. Isolated read-only macOS staging passed HTTPS 401/200, 11-tool discovery, 65.1-second SSE, and fresh-session recovery on 8/8 Connector restarts; the old session returned 404, and no SSE replay is claimed. Production workdir/Agent/Repo Ops and native Windows Cloudflare are not included in that acceptance; Windows native support remains planned for v0.24.2.
+**Cloudflare Tunnel ingress：** Linux Docker ingress shipped in v0.24.0. v0.24.1 adds optional native ingress for Apple Silicon/macOS 27 through a separate loopback HTTP origin and Connector, with exact Host matching and independent API Key/OAuth caller authentication. Isolated read-only macOS staging passed HTTPS 401/200, 11-tool discovery, 65.1-second SSE, and fresh-session recovery on 8/8 Connector restarts; the old session returned 404, and no SSE replay is claimed. Windows v0.24.2 is an unreleased candidate: two independent same-user Task Scheduler owners passed public 401/200, ChatGPT tools, cross-ingress file operations on shared writable workdirs, and Codex/Claude. Long-lived SSE/restart evidence and final exact-SHA CI remain pending. A Qoder provider error predated this acceptance; Python urllib's default User-Agent hit edge WAF 1010 and is an edge configuration caveat.
 
 如果要通过现有 OpenAI Secure MCP Tunnel 接入 ChatGPT，请配置 `CONTROL_PLANE_TUNNEL_ID` 和 `CONTROL_PLANE_API_KEY`，并使用基础 Compose 部署。Agent 委托、二进制传输、文件输入、代理路由或生产环境加固请继续阅读 [快速开始](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/getting-started/) 与 [配置](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/configuration/) 文档。
 

@@ -65,7 +65,7 @@ These landmarks are navigation aids, not substitutes for their plans:
 
 - **v0.24.0** — previous stable release, optional Linux Docker Cloudflare Tunnel ingress; real isolated ChatGPT/SSE/reconnect acceptance and exact-SHA CI. See [release notes](../releases/v0.24.0.md).
 - **v0.24.1** — current stable release, optional native Apple Silicon/macOS 27 Cloudflare Tunnel using existing `SMAppService`/LaunchAgent ownership; isolated public MCP/security/lifecycle acceptance. See [release notes](../releases/v0.24.1.md) and [development record](../../dev_plan_v0.24.1.md).
-- **v0.24.2 candidate** — native non-admin Windows 11 x64 Cloudflare Tunnel using existing Task Scheduler/Runner lifecycle; implementation and local/hosted verification progressed, but independent Windows Connector/public ChatGPT E2E and final release CI remain incomplete. See [development plan](../../dev_plan_v0.24.2.md) and [release gate](../v0.24.2-release-checklist-2026-11-07.md); **not released**.
+- **v0.24.2 candidate** — native non-admin Windows 11 x64 Cloudflare Tunnel. Two independent same-user Task Scheduler owners passed public ChatGPT tools and cross-ingress file operations; final exact-SHA CI and >60-second SSE/Connector-only restart evidence remain pending. It is **not released**. See [development plan](../../dev_plan_v0.24.2.md), [release notes](../releases/v0.24.2.md) and [release gate](../v0.24.2-release-checklist-2026-11-07.md).
 
 ## Keep this index small
 

@@ -1,14 +1,14 @@
 # Optional Windows Cloudflare ingress — v0.24.2
 
-**Release gate:** As long as v0.24.2 has not passed published exact-SHA CI and real public MCP E2E, use this reference for development/acceptance only. The published stable v0.24.1 does not support the Windows Cloudflare lifecycle.
+**Release gate:** v0.24.2 remains an unreleased candidate pending final exact-SHA CI and >60-second SSE/Connector-only restart evidence. Public HTTPS 401/200, ChatGPT tools, cross-ingress read/write/edit/delete on shared writable workdirs, and Codex/Claude passed through two independent same-user owners. The published stable v0.24.1 does not include Windows Cloudflare.
 
 Read the target version's `docs/windows-cloudflare-tunnel.md` and `deployment/windows/README.md` before acting.
 
 ## Owner selection
 
-The Windows lifecycle is **one** current-user Task Scheduler 2.0 owner. OpenAI Tunnel remains the default provider. Cloudflare uses the same Task Scheduler → watchdog → runner owner and one kill-on-close Windows Job Object for HTTP Origin and cloudflared; it is **not** a separate persistent service and cannot run alongside the existing managed OpenAI Tunnel for the same Windows login.
+Each owner is a current-user Task Scheduler 2.0 lifecycle. The accepted topology runs the OpenAI default owner and a separate `ServerFS Cloudflare WorkPC` owner managed through `service cloudflare-parallel`. Each has its own venv, state, watchdog and runner; they may share intended writable workdirs and one Agent Bridge/Repo Ops service. The older `service cloudflare` path still refuses to replace an active OpenAI provider within that same owner. This is not a universal ban on independent owners and does not create a general automatic handover. If OpenAI is retired, keep the shared Agent Bridge running while Cloudflare depends on it.
 
-Before any change check `& $serverfs service status` and inspect `enabled`, `watchdog_alive`, `runner_alive`, and `provider`. Never switch an active owner. This WorkPC's live OpenAI Tunnel must not be stopped or repurposed for Cloudflare testing. Use a dedicated user/device/installation for the real lifecycle gate; isolated source tests may use disposable loopback processes and fixtures without touching the scheduled task.
+Before any change inspect the status of the specific owner and its `enabled`, `watchdog_alive`, `runner_alive`, and `provider` state. Never switch an active owner. The accepted WorkPC setup leaves its OpenAI owner active and uses the distinct `ServerFS Cloudflare WorkPC` same-user owner for Cloudflare. Do not stop or repurpose the OpenAI owner. Keep the owners' venv/state/watchdog/runner separate; they may share approved workdirs and the Agent Bridge/Repo Ops service.
 
 ## Private credentials
 
@@ -33,6 +33,6 @@ No generic `serverfs service restart` during an unrelated task. Stop/uninstall m
 
 ## Acceptance evidence
 
-Verify actual current-user ACL and the signed binary (not only mocked tests), isolated HTTP 401/200, DNS rebinding Host/Origin denial, legitimate MCP tools and read-only/hidden/traversal/write rejection, two-child Job identity/cleanup and bounded recovery. For **public** Cloudflare readiness, confirm dedicated connector healthy, DNS/TLS, unauthenticated 401, authorized initialize/tools/read via ChatGPT, >60-second SSE and reconnect semantics after a connector-only restart. No claims of zero-loss SSE replay or Windows sign-out/reboot testing are required.
+Verify actual current-user ACL and the signed binary (not only mocked tests), isolated HTTP 401/200, DNS rebinding Host/Origin denial, legitimate MCP tools and policy denials, two-child Job identity/cleanup and bounded recovery. Public Cloudflare DNS/TLS, 401/200, ChatGPT tools, cross-ingress read/write/edit/delete and Codex/Claude are accepted. The final >60-second SSE and same-session behavior after a Connector-only restart remain pending; no zero-loss SSE replay or Windows sign-out/reboot testing is claimed. Qoder's provider error predated acceptance. Python urllib's default User-Agent received edge WAF 1010; treat that as an edge configuration caveat.
 
-If Cloudflare credentials, dedicated test ownership, exact SHA gates, or public E2E evidence are missing, report **not release-ready**; do not activate a production provider.
+If Cloudflare credentials, the independent owner, exact-SHA release gates, or required public/SSE evidence are missing, report **not release-ready**. The accepted public tests do not authorize a general automated provider handover or replacement of the OpenAI owner.
