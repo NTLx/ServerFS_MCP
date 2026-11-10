@@ -3,7 +3,7 @@ title: Agent Skills
 description: Use ServerFS repository skills to guide AI Agents through safe installation, configuration, upgrade, diagnosis and optional subsystem operations.
 ---
 
-> **Intended current stable release: v0.24.2.** All seven operational Agent Skills now include v0.24.2 release guidance. The v0.24.2 Plugin contains the seven runtime Skills and their references.
+> **Current stable release: v0.24.2.** All seven operational Agent Skills include v0.24.2 release guidance. The published v0.24.2 Plugin contains the seven runtime Skills and their references.
 
 ServerFS keeps operational Agent Skills in the repository [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) directory. They teach an Agent **how to use the existing ServerFS product interfaces safely**; they are not another configuration format or deployment implementation.
 
@@ -51,12 +51,12 @@ The skills preserve the same ServerFS invariants as manual operation:
 
 ## Portable Agent Plugin
 
-The repository root contains the portable Agent Plugins manifest `plugin.json`. The intended v0.24.2 GitHub Release will package the seven runtime skills and their references as this asset:
+The repository root contains the portable Agent Plugins manifest `plugin.json`. The v0.24.2 GitHub Release published the seven runtime skills and their references as this asset:
 
 ```text
 serverfs-plugin-v0.24.2.zip
 ```
 
-The ZIP is a **skills-only** Plugin. It does not bundle `mcp.json`, a ServerFS instance URL, credentials, or provider-private settings. The v0.24.2 Plugin is intended to follow the stable release packaging workflow; it contains the same seven Skill directories and references, including the Linux Cloudflare Tunnel reference. Plugin and skill content follow the ServerFS release version; there is no independent skill version lifecycle.
+The ZIP is a **skills-only** Plugin. It does not bundle `mcp.json`, a ServerFS instance URL, credentials, or provider-private settings. The published v0.24.2 Plugin contains the same seven Skill directories and references, including the Linux Cloudflare Tunnel reference. Plugin and skill content follow the ServerFS release version; there is no independent skill version lifecycle.
 
 The Git repository remains canonical. ServerFS does not automatically copy these skills into `~/.codex/skills`, Claude configuration, or other provider-private directories.

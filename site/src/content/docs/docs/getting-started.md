@@ -161,9 +161,9 @@ docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.
 
 The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](../binary-transfer/) and [Security Model](../security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
 
-## Intended current stable release: v0.24.2
+## Current stable release: v0.24.2
 
-The v0.24.2 release workflow will create an immutable tag and these GHCR stable tags after its exact-SHA gates pass:
+The v0.24.2 release was published on 2026-11-10 from immutable tag `v0.24.2` at SHA `0b31d47e2205bdd121ce407cc5339444a9ab8e95`. Its GHCR stable tags are:
 
 ```text
 ghcr.io/ntlx/serverfs_mcp:latest
@@ -171,6 +171,6 @@ ghcr.io/ntlx/serverfs_mcp:0.24
 ghcr.io/ntlx/serverfs_mcp:0.24.2
 ```
 
-For production deployments, pin the intended version `0.24.2` after publication rather than following `latest` or `edge`. The Release workflow is expected to attach the three Windows installation wheels (product + `serverfs-agent-bridge` + `serverfs-windows-native` abi3) and skills-only portable Agent Plugin `serverfs-plugin-v0.24.2.zip`; these outputs have not yet been verified. macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Agent Skills](../agent-skills/), [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
+For production deployments, pin version `0.24.2` rather than following `latest` or `edge`. The successful Release workflow attached four verified assets: the product wheel, `serverfs-agent-bridge` wheel, `serverfs-windows-native` abi3 wheel, and skills-only portable Agent Plugin `serverfs-plugin-v0.24.2.zip`. macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Agent Skills](../agent-skills/), [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
 
 For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).
