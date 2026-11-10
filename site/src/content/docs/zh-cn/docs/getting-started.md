@@ -12,7 +12,7 @@ description: 使用标准 Streamable HTTP 部署 ServerFS MCP；仅在需要时�
 
 OpenAI Secure MCP Tunnel 与 Runtime API Key 都是可选项，仅在需要 ChatGPT Tunnel 入口时使用。
 
-Linux Docker Cloudflare Tunnel 已随 v0.24.0 稳定发布。macOS 原生 Cloudflare 已随 v0.24.1 提供，适用于 Apple Silicon/macOS 27。Windows 原生 Cloudflare 是尚未发布的 v0.24.2 候选版本：两个独立、同用户 Task Scheduler owner 已通过公网 401/200、ChatGPT 工具与跨入口文件操作验收。最终精确 SHA CI 与 >60 秒 SSE/仅重启 Connector 后的行为仍待验证。两个 owner 共享一个 Agent Bridge/Repo Ops 服务；若退役 OpenAI 且 Cloudflare 仍依赖 Bridge，必须保留 Bridge。详见 [Windows 原生指南](../windows-native/)、[Windows 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md)与 [macOS 原生部署](../macos-native/)。
+Linux Docker Cloudflare Tunnel 已随 v0.24.0 稳定发布。macOS 原生 Cloudflare 已随 v0.24.1 提供，适用于 Apple Silicon/macOS 27。Windows 原生 Cloudflare 是尚未发布的 v0.24.2 候选版本：两个独立、同用户 Task Scheduler owner 已通过公网 401/200、ChatGPT 工具与跨入口文件操作验收。最终精确 SHA CI 和整代恢复证据仍待完成。真实公网 SSE 超过 60 秒的子门槛已通过：三次分别保持 75.0、70.0、65.0 秒，约每 15 秒收到 keepalive；同一 session 的 `tools/list` 返回 200（27 个工具），新 session 返回 200。Windows 整代恢复仍待验证：须确认 Connector 故障后共享 HTTP origin 与 cloudflared Job generation 有界 teardown/restart，并验证新 MCP session 恢复。这是符合架构的等价验收，不是“仅重启 Connector”通过；旧内存 session 不保证存活或重放。两个 owner 共享一个 Agent Bridge/Repo Ops 服务；若退役 OpenAI 且 Cloudflare 仍依赖 Bridge，必须保留 Bridge。详见 [Windows 原生指南](../windows-native/)、[Windows 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md)与 [macOS 原生部署](../macos-native/)。
 
 ## 标准 MCP 部署
 

@@ -19,7 +19,7 @@ ServerFS 在仓库 [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/sk
 | 远程 HTTP API Key / OAuth | `serverfs-auth` |
 | Host Bridge 生命周期 / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
-当前仍为**恰好 7 个 Skills**。Linux、macOS 与 Windows 原生 Cloudflare 指引均纳入现有 `serverfs-tunnel` Skill 和 references，不新增第 8 个 Skill；客户端认证由独立的 `serverfs-auth` 指南处理。Windows v0.24.2 尚未发布，仍待最终精确 SHA CI 与 >60 秒 SSE/仅重启 Connector 后的行为验收；两个独立、同用户 Task Scheduler owner 已通过公网 ChatGPT 工具与跨入口文件操作验收。
+当前仍为**恰好 7 个 Skills**。Linux、macOS 与 Windows 原生 Cloudflare 指引均纳入现有 `serverfs-tunnel` Skill 和 references，不新增第 8 个 Skill；客户端认证由独立的 `serverfs-auth` 指南处理。Windows v0.24.2 尚未发布，仍待最终精确 SHA CI 和整代恢复证据；真实公网 SSE 子门槛已通过（三次分别为 75.0、70.0、65.0 秒，约每 15 秒收到 keepalive；同一 session 的 `tools/list` 返回 200（27 个工具），新 session 返回 200）；两个独立、同用户 Task Scheduler owner 已通过公网 ChatGPT 工具与跨入口文件操作验收。Windows 恢复验收会验证 Connector 故障后有界地 restart 整个 HTTP origin + cloudflared Job generation，并验证新 session 恢复。这是符合架构的等价验收，不是“仅重启 Connector”通过；旧内存 session 不保证存活或重放。
 
 仓库根 `AGENTS.md` 只保留很薄的索引。Agent 应根据具体任务加载最小匹配的 `SKILL.md`，而不是把全部运维流程长期塞进基础上下文。
 

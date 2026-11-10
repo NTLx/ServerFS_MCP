@@ -19,7 +19,7 @@ ServerFS keeps operational Agent Skills in the repository [`skills/`](https://gi
 | Remote HTTP API Key / OAuth | `serverfs-auth` |
 | Host Bridge lifecycle / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
 
-The release retains exactly **seven** Skills. Linux, native macOS and Windows Cloudflare guidance live in the existing `serverfs-tunnel` Skill and references, not an eighth Skill. Windows v0.24.2 remains unreleased pending final exact-SHA CI and >60-second SSE/Connector-only restart evidence; public ChatGPT tools and cross-ingress file-operation acceptance passed through two independent same-user Task Scheduler owners.
+The release retains exactly **seven** Skills. Linux, native macOS and Windows Cloudflare guidance live in the existing `serverfs-tunnel` Skill and references, not an eighth Skill. Windows v0.24.2 remains unreleased pending final exact-SHA CI and full-generation recovery evidence; the real public SSE gate passed with 75.0/70.0/65.0-second holds, approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200; public ChatGPT tools and cross-ingress file-operation acceptance passed through two independent same-user Task Scheduler owners. Windows recovery acceptance remains pending: verify bounded restart of the full HTTP origin + cloudflared Job generation after Connector failure and fresh-session recovery. This is architecture-equivalent acceptance, not a Connector-only restart pass; older in-memory sessions are not guaranteed to survive or replay.
 
 The repository-level `AGENTS.md` contains only a thin index. An Agent should load the smallest matching `SKILL.md` rather than placing all operational procedures in its base context.
 
