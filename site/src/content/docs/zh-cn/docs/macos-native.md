@@ -7,6 +7,8 @@ description: ServerFS v0.24.0 macOS 原生部署 —— Apple M 系列、macOS 2
 
 该功能新增独立、可选的 loopback HTTP origin 与 Cloudflare Connector，并复用现有 app-associated `SMAppService` LaunchAgent 生命周期。它要求远程管理型 Tunnel、精确 hostname 准入、官方验证过的 `cloudflared`，以及存放于 checkout 和所有 workdir 之外、权限为 `0600` 的当前用户 Token/认证文件。命令、staging、生命周期、回滚与验收步骤请遵循[macOS 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241)。
 
+**尚未发布的 v0.24.3 开发版本：** macOS Cloudflare 安装器已在候选源码中允许显式可写的工作目录（`read_only = false`），不再沿用早期只读 staging 的安装限制。如需双连接层能力一致，应使用与 OpenAI Tunnel 相同的权威 `serverfs.toml`，并确认共用 Agent Bridge 的策略同步。默认只读、独立 HTTP API Key/OAuth、精确 Host 校验和私有 Token 隔离保持不变。**该候选功能尚未通过 macOS 公网读写与 Agent 完整验收，也不属于当前 v0.24.2 稳定版。**
+
 v0.13.2 保持 Darwin 文件系统和 Agent 协议实现为 Python，只将旧的手工 LaunchAgent 生命周期替换为 Apple 当前的 **ServiceManagement / `SMAppService`** 模式。一个极小的无界面 `ServerFSServiceManager.app` 负责两个每用户 LaunchAgent 的注册与状态：
 
 ```text

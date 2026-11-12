@@ -1096,6 +1096,9 @@ def install(
     bridge_enabled: bool,
     expected_unmanaged_roots: list[int] | None = None,
 ) -> dict[str, str]:
+    # The legacy installer replaces the manifest and app-owned service bundle.
+    # It must not overwrite separately owned v0.25.0 Core/Connector jobs.
+    _refuse_legacy_group_lifecycle(_load_manifest_document(optional=True))
     from .darwin_platform import ensure_supported_darwin
 
     ensure_supported_darwin()
@@ -1129,6 +1132,15 @@ def unregister_service(service: str) -> dict[str, str]:
 
 
 def _register_and_wait(service: str) -> dict[str, str]:
+    if service == TUNNEL_SERVICE:
+        manifest = _load_manifest_document()
+        spec = manifest["services"].get(TUNNEL_SERVICE)
+        if (
+            isinstance(spec, dict)
+            and spec.get("connector_owner") == "independent-openai-http"
+            and find_unmanaged_tunnel_pids()
+        ):
+            raise DarwinServiceError("unmanaged OpenAI Tunnel process is still running")
     states = _register(service)
     state = states.get(service)
     if state == "requires-approval":
@@ -1223,75 +1235,66 @@ def _loopback_port_available(port: int) -> bool:
     return True
 
 
-def _cloudflare_service_specs(
+def _http_origin_spec(
     config_path: Path,
-    cloudflared: Path,
-    token_file: Path,
     env_file: Path,
     port: int,
     hostname: str,
-) -> dict[str, dict[str, object]]:
+    *,
+    shared_core: bool = False,
+) -> tuple[dict[str, object], tuple[Path, ...]]:
+    """Validate one authenticated HTTP service, without connector credentials."""
     from .native_config import load_native_config
 
+    label = "Core" if shared_core else "Cloudflare"
     valid_hostname = len(hostname) <= 253 and all(
-        1 <= len(label) <= 63 and re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", label)
-        for label in hostname.split(".")
+        1 <= len(part) <= 63 and re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", part)
+        for part in hostname.split(".")
     )
     if not 1 <= port <= 65535 or not valid_hostname:
-        raise DarwinServiceError("invalid Cloudflare origin port or hostname")
+        raise DarwinServiceError(f"invalid {label} origin port or hostname")
     if not _loopback_port_available(port):
         raise DarwinServiceError("HTTP origin loopback port is unavailable")
+
     config_path = config_path.expanduser()
     if not config_path.is_absolute():
-        raise DarwinServiceError("Cloudflare serverfs.toml path must be absolute")
-    _reject_symlink_components(config_path, "Cloudflare serverfs.toml")
-    config_path = config_path.resolve(strict=True)
+        raise DarwinServiceError(f"{label} serverfs.toml path must be absolute")
+    _reject_symlink_components(config_path, f"{label} serverfs.toml")
+    try:
+        config_path = config_path.resolve(strict=True)
+    except OSError as exc:
+        raise DarwinServiceError(f"{label} native configuration is unavailable") from exc
     if not config_path.is_file() or config_path.suffix.lower() != ".toml":
-        raise DarwinServiceError("Cloudflare service requires a native serverfs.toml file")
+        raise DarwinServiceError(f"{label} service requires a native serverfs.toml file")
     try:
         workdirs, _settings = load_native_config(config_path)
     except Exception as exc:
-        raise DarwinServiceError("Cloudflare native configuration is invalid") from exc
-    if not workdirs or any(not item.read_only for item in workdirs):
-        raise DarwinServiceError("Cloudflare service requires read-only staging workdirs")
+        if "at least one [[workdirs]] entry is required" in str(exc):
+            raise DarwinServiceError(f"{label} service requires at least one workdir") from exc
+        raise DarwinServiceError(f"{label} native configuration is invalid") from exc
+    if not workdirs:
+        raise DarwinServiceError(f"{label} service requires at least one workdir")
     roots_list: list[Path] = []
     for item in workdirs:
         root = Path(item.root).expanduser()
-        _reject_symlink_components(root, "staging workdir")
+        _reject_symlink_components(root, f"{label} workdir")
         roots_list.append(root.resolve(strict=True))
     roots = tuple(roots_list)
-    checkout = Path(__file__).resolve().parents[2]
-    token_file = _secure_input_file(token_file, "Cloudflare connector token file")
+
     env_file = _secure_input_file(env_file, "HTTP origin env file")
-    _validate_private_location(token_file, (checkout, *roots), "Cloudflare token file")
-    _validate_private_location(env_file, (checkout, *roots), "HTTP origin env file")
-    cloudflared = cloudflared.expanduser()
-    if not cloudflared.is_absolute():
-        raise DarwinServiceError("cloudflared must be an existing fixed absolute executable")
-    _reject_symlink_components(cloudflared, "cloudflared")
-    try:
-        binary_stat = cloudflared.stat(follow_symlinks=False)
-    except OSError as exc:
-        raise DarwinServiceError("cloudflared is unavailable") from exc
-    if (
-        not cloudflared.is_file()
-        or binary_stat.st_uid != os.getuid()
-        or binary_stat.st_mode & 0o022
-    ):
-        raise DarwinServiceError("cloudflared must be an existing fixed absolute executable")
-    if not os.access(cloudflared, os.X_OK):
-        raise DarwinServiceError("cloudflared is not executable")
-    env = _read_env_file(env_file)
-    _validated_http_origin_environment(env, hostname)
+    _validate_private_location(
+        env_file, (Path(__file__).resolve().parents[2], *roots), "HTTP origin env file"
+    )
+    expected_hosts = f"{hostname},127.0.0.1:{port}" if shared_core else hostname
+    _validated_http_origin_environment(_read_env_file(env_file), expected_hosts)
     _validate_private_service_home()
     environment_file = service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT
     logs = service_log_dir()
     _reject_symlink_components(logs, "service log directory")
     _ensure_private_dir(logs)
-    return {
-        HTTP_ORIGIN_SERVICE: {
-            # Keep the venv interpreter path: resolving the symlink would bypass
-            # the virtual environment and make `-m serverfs_mcp.cli` unimportable.
+    return (
+        {
+            # Preserve the venv interpreter path, including its symlink.
             "executable": str(Path(sys.executable).absolute()),
             "arguments": [
                 "-m",
@@ -1309,14 +1312,69 @@ def _cloudflare_service_specs(
             "stdout_log": str(logs / "http-origin.stdout.log"),
             "stderr_log": str(logs / "http-origin.stderr.log"),
         },
-        CLOUDFLARE_SERVICE: {
-            "executable": str(cloudflared),
-            "arguments": ["tunnel", "--no-autoupdate", "run", "--token-file", str(token_file)],
-            "environment_file": None,
-            "working_directory": str(config_path.parent),
-            "stdout_log": str(logs / "cloudflare.stdout.log"),
-            "stderr_log": str(logs / "cloudflare.stderr.log"),
-        },
+        roots,
+    )
+
+
+def _core_service_spec(
+    config_path: Path, env_file: Path, port: int, hostname: str
+) -> dict[str, object]:
+    spec, _roots = _http_origin_spec(config_path, env_file, port, hostname, shared_core=True)
+    return spec
+
+
+def _cloudflare_service_specs(
+    config_path: Path,
+    cloudflared: Path,
+    token_file: Path,
+    env_file: Path,
+    port: int,
+    hostname: str,
+) -> dict[str, dict[str, object]]:
+    origin, roots = _http_origin_spec(config_path, env_file, port, hostname)
+    return {
+        HTTP_ORIGIN_SERVICE: origin,
+        CLOUDFLARE_SERVICE: _cloudflared_spec(
+            cloudflared, token_file, roots, Path(str(origin["working_directory"]))
+        ),
+    }
+
+
+def _cloudflared_spec(
+    cloudflared: Path, token_file: Path, workdir_roots: tuple[Path, ...], cwd: Path
+) -> dict[str, object]:
+    """Build only the connector definition; never write, register or launch it."""
+    token_file = _secure_input_file(token_file, "Cloudflare connector token file")
+    _validate_private_location(
+        token_file, (Path(__file__).resolve().parents[2], *workdir_roots),
+        "Cloudflare token file",
+    )
+    cloudflared = cloudflared.expanduser()
+    if not cloudflared.is_absolute():
+        raise DarwinServiceError("cloudflared must be an existing fixed absolute executable")
+    _reject_symlink_components(cloudflared, "cloudflared")
+    try:
+        binary_stat = cloudflared.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise DarwinServiceError("cloudflared is unavailable") from exc
+    if (
+        not cloudflared.is_file()
+        or binary_stat.st_uid != os.getuid()
+        or binary_stat.st_mode & 0o022
+    ):
+        raise DarwinServiceError("cloudflared must be an existing fixed absolute executable")
+    if not os.access(cloudflared, os.X_OK):
+        raise DarwinServiceError("cloudflared is not executable")
+    logs = service_log_dir()
+    _reject_symlink_components(logs, "service log directory")
+    _ensure_private_dir(logs)
+    return {
+        "executable": str(cloudflared),
+        "arguments": ["tunnel", "--no-autoupdate", "run", "--token-file", str(token_file)],
+        "environment_file": None,
+        "working_directory": str(cwd),
+        "stdout_log": str(logs / "cloudflare.stdout.log"),
+        "stderr_log": str(logs / "cloudflare.stderr.log"),
     }
 
 
@@ -1556,7 +1614,489 @@ def _require_cloudflare_manifest() -> dict:
     manifest = _load_manifest_document()
     if not all(service in manifest["services"] for service in _CLOUDFLARE_SERVICES):
         raise DarwinServiceError("Cloudflare service pair is not installed")
+    origin = manifest["services"][HTTP_ORIGIN_SERVICE]
+    if isinstance(origin, dict) and origin.get("origin_owner") == "independent-core":
+        raise DarwinServiceError(
+            "legacy Cloudflare pair lifecycle cannot manage independent Core; "
+            "use --component cloudflare"
+        )
     return manifest
+
+
+def _require_shared_core_config(services: dict, config_path: Path) -> None:
+    """A managed OpenAI Tunnel and Core must use the same canonical native TOML."""
+    tunnel = services.get(TUNNEL_SERVICE)
+    if tunnel is None:
+        return
+    arguments = tunnel.get("arguments") if isinstance(tunnel, dict) else None
+    if not isinstance(arguments, list) or arguments.count("--config") != 1:
+        raise DarwinServiceError("OpenAI Tunnel configuration cannot be verified for Core")
+    index = arguments.index("--config")
+    try:
+        raw_path = arguments[index + 1]
+        if not isinstance(raw_path, str):
+            raise ValueError("invalid path")
+        tunnel_path = Path(raw_path).expanduser()
+        if not tunnel_path.is_absolute():
+            raise ValueError("relative path")
+        _reject_symlink_components(tunnel_path, "OpenAI Tunnel configuration")
+        if tunnel_path.resolve(strict=True) != config_path.expanduser().resolve(strict=True):
+            raise ValueError("different configuration")
+    except (IndexError, OSError, ValueError) as exc:
+        raise DarwinServiceError(
+            "independent Core must use the same canonical serverfs.toml as OpenAI Tunnel"
+        ) from exc
+
+
+def stage_core_service(
+    config_path: Path, env_file: Path, port: int, hostname: str
+) -> dict[str, str]:
+    """Stage one private independent Core definition without registering a job.
+
+    Registration is a separate explicit `service start --component core` action.
+    Never replace a currently installed Core or the legacy Cloudflare HTTP origin.
+    """
+    _validate_private_service_home()
+    if not manager_executable().is_file():
+        raise DarwinServiceError("installed macOS Service Manager is unavailable")
+    _verify_app(installed_app_path())
+    _verify_opt_in_agents(installed_app_path())
+    if native_status(HTTP_ORIGIN_SERVICE).get(HTTP_ORIGIN_SERVICE) not in {
+        "not-registered", "not-found"
+    }:
+        raise DarwinServiceError("Core/HTTP origin is already registered; refusing replacement")
+    document = _load_manifest_document(optional=True)
+    services = document.get("services", {})
+    if HTTP_ORIGIN_SERVICE in services:
+        raise DarwinServiceError("Core/HTTP origin manifest already exists; refusing replacement")
+    if CLOUDFLARE_SERVICE in services:
+        raise DarwinServiceError("Cloudflare connector is installed; Core migration requires review")
+    _require_shared_core_config(services, config_path)
+    snapshot = service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT
+    if snapshot.exists() or snapshot.is_symlink():
+        raise DarwinServiceError("Core private environment snapshot already exists")
+
+    spec = _core_service_spec(config_path, env_file, port, hostname)
+    private_env = _secure_input_file(env_file, "HTTP origin env file")
+    # Re-read and revalidate before publication: no stale caller-auth snapshot.
+    expected_hosts = f"{hostname},127.0.0.1:{port}"
+    environment = _validated_http_origin_environment(_read_env_file(private_env), expected_hosts)
+    spec["origin_owner"] = "independent-core"
+    services = {**services, HTTP_ORIGIN_SERVICE: spec}
+    _atomic_private_write(
+        snapshot, json.dumps(environment, sort_keys=True, separators=(",", ":")).encode()
+    )
+    try:
+        _atomic_private_write(
+            manifest_path(),
+            json.dumps(
+                {"schema_version": MANIFEST_SCHEMA_VERSION, "services": services},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode(),
+        )
+    except Exception:
+        try:
+            snapshot.unlink()
+        except FileNotFoundError:
+            pass
+        # The manifest writer is atomic; on write failure the original remains.
+        raise
+    return {HTTP_ORIGIN_SERVICE: "staged-not-registered"}
+
+
+def core_status() -> dict[str, object]:
+    """Report registration and identity separately; never inspect credential values."""
+    status = native_status(HTTP_ORIGIN_SERVICE)
+    manifest = _load_manifest_document(optional=True)
+    spec = manifest.get("services", {}).get(HTTP_ORIGIN_SERVICE)
+    return {
+        "service": HTTP_ORIGIN_SERVICE,
+        "registration": status.get(HTTP_ORIGIN_SERVICE, "unknown"),
+        "manifest_installed": isinstance(spec, dict),
+        "independent_core": isinstance(spec, dict)
+        and spec.get("origin_owner") == "independent-core",
+        "pid": _managed_job_pid(HTTP_ORIGIN_SERVICE),
+    }
+
+
+def unstage_core_service() -> None:
+    """Remove only an unregistered v0.25.0 staged Core (not a legacy/live origin)."""
+    document = _load_manifest_document()
+    services = document["services"]
+    spec = services.get(HTTP_ORIGIN_SERVICE)
+    if not isinstance(spec, dict) or spec.get("origin_owner") != "independent-core":
+        raise DarwinServiceError("no independently staged Core exists")
+    if CLOUDFLARE_SERVICE in services:
+        raise DarwinServiceError("cannot unstage Core while Cloudflare connector is installed")
+    openai = services.get(TUNNEL_SERVICE)
+    if isinstance(openai, dict) and openai.get("connector_owner") == (
+        "independent-openai-http"
+    ):
+        raise DarwinServiceError("cannot unstage Core while OpenAI connector is installed")
+    if native_status(HTTP_ORIGIN_SERVICE).get(HTTP_ORIGIN_SERVICE) not in {
+        "not-registered", "not-found"
+    }:
+        raise DarwinServiceError("Core is still registered; stop it explicitly first")
+    snapshot = service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT
+    _secure_input_file(snapshot, "Core environment snapshot")
+    remaining = {key: value for key, value in services.items() if key != HTTP_ORIGIN_SERVICE}
+    _atomic_private_write(
+        manifest_path(),
+        json.dumps(
+            {"schema_version": MANIFEST_SCHEMA_VERSION, "services": remaining},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(),
+    )
+    # The snapshot is generated exclusively for this staged Core. Remove it
+    # only after the Core manifest entry is gone; never touch the source env file.
+    snapshot.unlink()
+
+
+def _core_manifest_port() -> int:
+    """Validate the existing managed HTTP origin before treating it as Core."""
+    manifest = _load_manifest_document()
+    spec = manifest["services"].get(HTTP_ORIGIN_SERVICE)
+    if not isinstance(spec, dict) or spec.get("origin_owner") != "independent-core":
+        raise DarwinServiceError("independent Core is not installed")
+    arguments = spec.get("arguments")
+    if (
+        not isinstance(arguments, list)
+        or arguments[:5]
+        != ["-m", "serverfs_mcp.cli", "serve", "--transport", "streamable-http"]
+        or arguments.count("--http-port") != 1
+    ):
+        raise DarwinServiceError("independent Core manifest is invalid")
+    index = arguments.index("--http-port")
+    try:
+        port = int(arguments[index + 1])
+    except (IndexError, TypeError, ValueError) as exc:
+        raise DarwinServiceError("independent Core port is invalid") from exc
+    if not 1 <= port <= 65535:
+        raise DarwinServiceError("independent Core port is invalid")
+    return port
+
+
+def _independent_core_context(
+    config_path: Path,
+) -> tuple[int, Path, tuple[Path, ...], dict[str, str]]:
+    """Read one canonical Core manifest/config/credential boundary for either connector."""
+    from .native_config import load_native_config
+
+    port = _core_manifest_port()
+    core = _load_manifest_document()["services"][HTTP_ORIGIN_SERVICE]
+    args = core["arguments"]
+    if not isinstance(args, list) or args.count("--config") != 1:
+        raise DarwinServiceError("independent Core configuration is invalid")
+    try:
+        raw_config = args[args.index("--config") + 1]
+        if not isinstance(raw_config, str) or not Path(raw_config).is_absolute():
+            raise ValueError("invalid Core config")
+        _reject_symlink_components(Path(raw_config), "Core configuration")
+        _reject_symlink_components(config_path, "Connector configuration")
+        config = config_path.resolve(strict=True)
+        if not config_path.is_absolute() or config != Path(raw_config).resolve(strict=True):
+            raise ValueError("different configuration")
+    except (IndexError, OSError, ValueError) as exc:
+        raise DarwinServiceError(
+            "connector must use the same canonical TOML as independent Core"
+        ) from exc
+
+    snapshot = _secure_input_file(
+        service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT, "Core environment snapshot"
+    )
+    try:
+        environment = json.loads(snapshot.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DarwinServiceError("independent Core environment snapshot is invalid") from exc
+    if not isinstance(environment, dict) or any(
+        not isinstance(key, str) or not isinstance(value, str)
+        for key, value in environment.items()
+    ):
+        raise DarwinServiceError("independent Core environment snapshot is invalid")
+    try:
+        workdirs, _settings = load_native_config(config)
+    except Exception as exc:
+        raise DarwinServiceError("independent Core TOML is invalid") from exc
+    if not workdirs:
+        raise DarwinServiceError("independent Core requires at least one workdir")
+    roots: list[Path] = []
+    for workdir in workdirs:
+        root = Path(workdir.root).expanduser()
+        _reject_symlink_components(root, "Core workdir")
+        roots.append(root.resolve(strict=True))
+    return port, config, tuple(roots), environment
+
+
+def stage_cloudflare_connector(
+    config_path: Path, cloudflared: Path, token_file: Path, hostname: str
+) -> dict[str, str]:
+    """Stage a Cloudflare Connector bound to one independent Core, without launching it."""
+    _validate_private_service_home()
+    if not manager_executable().is_file():
+        raise DarwinServiceError("installed macOS Service Manager is unavailable")
+    _verify_app(installed_app_path())
+    _verify_opt_in_agents(installed_app_path())
+    current = native_status(CLOUDFLARE_SERVICE).get(CLOUDFLARE_SERVICE)
+    if current not in {"not-registered", "not-found"}:
+        raise DarwinServiceError("Cloudflare connector is registered; refusing replacement")
+    if _managed_job_pid(CLOUDFLARE_SERVICE) is not None:
+        raise DarwinServiceError("Cloudflare connector process is still running")
+    document = _load_manifest_document()
+    services = document["services"]
+    if CLOUDFLARE_SERVICE in services:
+        raise DarwinServiceError("Cloudflare connector manifest already exists")
+    port, config, roots, environment = _independent_core_context(config_path)
+    _validated_http_origin_environment(environment, f"{hostname},127.0.0.1:{port}")
+    _refuse_unmanaged_cloudflared()
+    connector = _cloudflared_spec(cloudflared, token_file, roots, config.parent)
+    connector["connector_owner"] = "independent-connector"
+    connector["core_port"] = port
+    _atomic_private_write(
+        manifest_path(),
+        json.dumps(
+            {
+                "schema_version": MANIFEST_SCHEMA_VERSION,
+                "services": {**services, CLOUDFLARE_SERVICE: connector},
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(),
+    )
+    return {CLOUDFLARE_SERVICE: "staged-not-registered"}
+
+
+def unstage_cloudflare_connector() -> None:
+    """Remove only an unregistered independent Connector; leave Core running."""
+    document = _load_manifest_document()
+    services = document["services"]
+    connector = services.get(CLOUDFLARE_SERVICE)
+    if not isinstance(connector, dict) or connector.get("connector_owner") != (
+        "independent-connector"
+    ):
+        raise DarwinServiceError("no independently staged Cloudflare connector exists")
+    if native_status(CLOUDFLARE_SERVICE).get(CLOUDFLARE_SERVICE) not in {
+        "not-registered",
+        "not-found",
+    }:
+        raise DarwinServiceError("Cloudflare connector remains registered; stop it first")
+    if _managed_job_pid(CLOUDFLARE_SERVICE) is not None:
+        raise DarwinServiceError("Cloudflare connector process is still running")
+    _atomic_private_write(
+        manifest_path(),
+        json.dumps(
+            {
+                "schema_version": MANIFEST_SCHEMA_VERSION,
+                "services": {
+                    key: value for key, value in services.items() if key != CLOUDFLARE_SERVICE
+                },
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(),
+    )
+
+
+def stage_openai_http_connector(
+    config_path: Path,
+    tunnel_client: Path,
+    tunnel_id: str,
+    control_plane_key_file: Path,
+    core_bearer_file: Path,
+) -> dict[str, str]:
+    """Stage a direct HTTP OpenAI ingress; never launch Core, Bridge or tunnel-client.
+
+    The operator supplies two separate private credentials: control-plane key
+    and a file containing the exact Core Authorization header value.
+    """
+    from .native_tunnel import _TUNNEL_ID
+
+    _validate_private_service_home()
+    if not manager_executable().is_file():
+        raise DarwinServiceError("installed macOS Service Manager is unavailable")
+    _verify_app(installed_app_path())
+    if not _TUNNEL_ID.fullmatch(tunnel_id):
+        raise DarwinServiceError("invalid OpenAI Tunnel ID")
+    if native_status(TUNNEL_SERVICE).get(TUNNEL_SERVICE) not in {
+        "not-registered", "not-found"
+    } or _managed_job_pid(TUNNEL_SERVICE) is not None:
+        raise DarwinServiceError("OpenAI Tunnel is still registered or running")
+    if find_unmanaged_tunnel_pids():
+        raise DarwinServiceError("unmanaged OpenAI Tunnel process is still running")
+
+    document = _load_manifest_document()
+    services = document["services"]
+    if TUNNEL_SERVICE in services:
+        raise DarwinServiceError("OpenAI Tunnel manifest already exists; refusing replacement")
+    port, config, roots, environment = _independent_core_context(config_path)
+    hostname_setting = environment.get("SERVERFS_HTTP_ALLOWED_HOSTS", "")
+    loopback_suffix = f",127.0.0.1:{port}"
+    if not hostname_setting.endswith(loopback_suffix) or hostname_setting.count(",") != 1:
+        raise DarwinServiceError("independent Core Host admission is not exact")
+    _validated_http_origin_environment(environment, hostname_setting)
+    core_key = environment.get("SERVERFS_HTTP_API_KEY")
+    if not isinstance(core_key, str) or not core_key.strip():
+        raise DarwinServiceError("OpenAI direct HTTP staging requires Core API Key auth")
+
+    checkout = Path(__file__).resolve().parents[2]
+    control_plane_key_file = _secure_input_file(
+        control_plane_key_file, "OpenAI control-plane key file"
+    )
+    core_bearer_file = _secure_input_file(core_bearer_file, "Core bearer-header file")
+    for path, label in (
+        (control_plane_key_file, "OpenAI control-plane key file"),
+        (core_bearer_file, "Core bearer-header file"),
+    ):
+        _validate_private_location(path, (checkout, *roots), label)
+    if control_plane_key_file == core_bearer_file:
+        raise DarwinServiceError("control-plane and Core credentials must use separate files")
+    try:
+        control_key = control_plane_key_file.read_text(encoding="utf-8")
+        bearer = core_bearer_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise DarwinServiceError("private OpenAI credential file cannot be read") from exc
+    if (
+        not control_key.strip()
+        or control_key != control_key.strip()
+        or control_key == core_key
+        or bearer != f"Bearer {core_key}"
+    ):
+        raise DarwinServiceError("private OpenAI/Core credential file validation failed")
+
+    tunnel_client = tunnel_client.expanduser()
+    if not tunnel_client.is_absolute():
+        raise DarwinServiceError("OpenAI tunnel-client must have a fixed absolute path")
+    _reject_symlink_components(tunnel_client, "OpenAI tunnel-client")
+    try:
+        binary_stat = tunnel_client.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise DarwinServiceError("OpenAI tunnel-client executable is unavailable") from exc
+    if (
+        not tunnel_client.is_file()
+        or binary_stat.st_uid != os.getuid()
+        or binary_stat.st_mode & 0o022
+        or not os.access(tunnel_client, os.X_OK)
+    ):
+        raise DarwinServiceError("OpenAI tunnel-client executable is insecure")
+    logs = service_log_dir()
+    _reject_symlink_components(logs, "service log directory")
+    _ensure_private_dir(logs)
+    spec = {
+        "executable": str(tunnel_client),
+        "arguments": [
+            "run",
+            "--control-plane.tunnel-id",
+            tunnel_id,
+            "--control-plane.api-key",
+            f"file:{control_plane_key_file}",
+            "--mcp.server-url",
+            f"url=http://127.0.0.1:{port}/mcp",
+            "--mcp.extra-headers",
+            f"Authorization: file:{core_bearer_file}",
+            "--mcp.discovery-extra-headers",
+            f"Authorization: file:{core_bearer_file}",
+            "--health.listen-addr",
+            "127.0.0.1:0",
+        ],
+        "environment_file": None,
+        "working_directory": str(config.parent),
+        "stdout_log": str(logs / "openai-connector.stdout.log"),
+        "stderr_log": str(logs / "openai-connector.stderr.log"),
+        "connector_owner": "independent-openai-http",
+        "core_port": port,
+    }
+    _atomic_private_write(
+        manifest_path(),
+        json.dumps(
+            {
+                "schema_version": MANIFEST_SCHEMA_VERSION,
+                "services": {**services, TUNNEL_SERVICE: spec},
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(),
+    )
+    return {TUNNEL_SERVICE: "staged-not-registered"}
+
+
+def unstage_openai_http_connector() -> None:
+    """Remove only an unregistered direct-HTTP Connector; preserve both secret files."""
+    document = _load_manifest_document()
+    services = document["services"]
+    spec = services.get(TUNNEL_SERVICE)
+    if not isinstance(spec, dict) or spec.get("connector_owner") != (
+        "independent-openai-http"
+    ):
+        raise DarwinServiceError("no independently staged OpenAI HTTP connector exists")
+    if native_status(TUNNEL_SERVICE).get(TUNNEL_SERVICE) not in {
+        "not-registered", "not-found"
+    } or _managed_job_pid(TUNNEL_SERVICE) is not None:
+        raise DarwinServiceError("OpenAI Tunnel remains registered or running")
+    _atomic_private_write(
+        manifest_path(),
+        json.dumps(
+            {
+                "schema_version": MANIFEST_SCHEMA_VERSION,
+                "services": {
+                    key: value for key, value in services.items() if key != TUNNEL_SERVICE
+                },
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(),
+    )
+
+
+def core_start() -> dict[str, str]:
+    """Start only the persistent HTTP Core, preserving both ingresses and Bridge."""
+    port = _core_manifest_port()
+    states = _register_and_wait(HTTP_ORIGIN_SERVICE)
+    _wait_http_origin(port)
+    return states
+
+
+def core_stop() -> dict[str, str]:
+    """Stop only the persistent HTTP Core, never the Bridge or connectors."""
+    _core_manifest_port()
+    return _unregister_and_wait(HTTP_ORIGIN_SERVICE)
+
+
+def core_restart() -> dict[str, str]:
+    core_stop()
+    return core_start()
+
+
+def cloudflare_connector_start() -> dict[str, str]:
+    """Start only the connector; never register or restart its HTTP upstream."""
+    manifest = _load_manifest_document()
+    if CLOUDFLARE_SERVICE not in manifest["services"]:
+        raise DarwinServiceError("Cloudflare connector is not installed")
+    _refuse_unmanaged_cloudflared()
+    return _register_and_wait(CLOUDFLARE_SERVICE)
+
+
+def cloudflare_connector_stop() -> dict[str, str]:
+    """Stop only cloudflared, preserving the independent HTTP upstream and Bridge."""
+    manifest = _load_manifest_document()
+    if CLOUDFLARE_SERVICE not in manifest["services"]:
+        raise DarwinServiceError("Cloudflare connector is not installed")
+    return _unregister_and_wait(CLOUDFLARE_SERVICE)
+
+
+def cloudflare_connector_restart() -> dict[str, str]:
+    cloudflare_connector_stop()
+    deadline = time.monotonic() + _CLOUDFLARE_RESTART_WAIT_SECONDS
+    while True:
+        try:
+            return cloudflare_connector_start()
+        except DarwinServiceError as exc:
+            if str(exc) != "an unmanaged cloudflared tunnel process is already running":
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(_CLOUDFLARE_RESTART_POLL_SECONDS, remaining))
 
 
 def restart_service(service: str) -> dict[str, str]:
@@ -1566,8 +2106,29 @@ def restart_service(service: str) -> dict[str, str]:
     return _register_and_wait(service)
 
 
+def _refuse_legacy_group_lifecycle(manifest: dict) -> None:
+    """Prevent legacy all-component operations on independently owned services."""
+    services = manifest.get("services", {})
+    if any(
+        isinstance(spec, dict)
+        and (
+            spec.get("origin_owner") == "independent-core"
+            or spec.get("connector_owner") in {
+                "independent-connector",
+                "independent-openai-http",
+            }
+        )
+        for spec in services.values()
+    ):
+        raise DarwinServiceError(
+            "independent v0.25.0 services require explicit --component lifecycle; "
+            "legacy grouped service operations are refused"
+        )
+
+
 def start() -> dict[str, str]:
     manifest = _load_manifest_document()
+    _refuse_legacy_group_lifecycle(manifest)
     states: dict[str, str] = {}
     for service in ALL_SERVICES:
         if service not in manifest["services"]:
@@ -1578,6 +2139,7 @@ def start() -> dict[str, str]:
 
 def stop() -> dict[str, str]:
     manifest = _load_manifest_document(optional=True)
+    _refuse_legacy_group_lifecycle(manifest)
     services = (
         [service for service in ALL_SERVICES if service in manifest.get("services", ALL_SERVICES)]
         if manifest
@@ -1594,6 +2156,7 @@ def stop() -> dict[str, str]:
 
 def restart() -> dict[str, str]:
     manifest = _load_manifest_document()
+    _refuse_legacy_group_lifecycle(manifest)
     services = [service for service in ALL_SERVICES if service in manifest["services"]]
     states: dict[str, str] = {}
     for service in services:
@@ -1604,6 +2167,7 @@ def restart() -> dict[str, str]:
 
 
 def uninstall() -> None:
+    _refuse_legacy_group_lifecycle(_load_manifest_document(optional=True))
     try:
         stop()
     finally:

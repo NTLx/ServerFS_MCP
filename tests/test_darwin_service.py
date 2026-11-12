@@ -12,6 +12,22 @@ from serverfs_mcp import darwin_service
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="Darwin service manager contract")
 
 
+def _isolate_legacy_install_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise old installer cases against an in-memory legacy service topology.
+
+    Never inspect or act on the host's live v0.25 independently owned Core.
+    Owner-marker rejection is tested separately in test_darwin_v0250_legacy_group_guard.
+    """
+    monkeypatch.setattr(
+        darwin_service,
+        "_load_manifest_document",
+        lambda **_kwargs: {
+            "schema_version": darwin_service.MANIFEST_SCHEMA_VERSION,
+            "services": {"tunnel": {}, "agent-bridge": {}},
+        },
+    )
+
+
 def test_bundled_bridge_label_is_distinct_from_legacy_identity() -> None:
     assert darwin_service.BRIDGE_LABEL == "com.ntlx.serverfs.bridge"
     assert darwin_service.LEGACY_BRIDGE_LABEL == "com.ntlx.serverfs.agent-bridge"
@@ -207,6 +223,7 @@ def test_install_refuses_unmanaged_tunnel_before_writes(
     config.write_text("", encoding="utf-8")
     monkeypatch.setattr(darwin_service, "find_unmanaged_tunnel_roots", lambda: [42])
     monkeypatch.setattr("serverfs_mcp.darwin_platform.ensure_supported_darwin", lambda: None)
+    _isolate_legacy_install_manifest(monkeypatch)
 
     with pytest.raises(darwin_service.DarwinServiceError, match="unmanaged v0.13.1 tunnel"):
         darwin_service.install(config, env, bridge_enabled=False)
@@ -362,6 +379,7 @@ def test_bridge_only_handover_prepares_without_terminating_tunnel(
     calls: list[str] = []
     monkeypatch.setattr("serverfs_mcp.darwin_platform.ensure_supported_darwin", lambda: None)
     monkeypatch.setattr(darwin_service, "find_unmanaged_tunnel_roots", lambda: [])
+    _isolate_legacy_install_manifest(monkeypatch)
     monkeypatch.setattr(
         darwin_service,
         "_prepare_install",
@@ -399,6 +417,7 @@ def test_handover_prepares_before_stopping_old_tunnel(
     calls: list[str] = []
     monkeypatch.setattr("serverfs_mcp.darwin_platform.ensure_supported_darwin", lambda: None)
     monkeypatch.setattr(darwin_service, "find_unmanaged_tunnel_roots", lambda: [42])
+    _isolate_legacy_install_manifest(monkeypatch)
     monkeypatch.setattr(
         darwin_service,
         "_prepare_install",
@@ -684,6 +703,7 @@ def test_reinstall_with_agent_disabled_unregisters_previous_bridge(
     calls: list[str] = []
 
     monkeypatch.setattr("serverfs_mcp.darwin_platform.ensure_supported_darwin", lambda: None)
+    _isolate_legacy_install_manifest(monkeypatch)
     monkeypatch.setattr(
         darwin_service,
         "_read_env_file",

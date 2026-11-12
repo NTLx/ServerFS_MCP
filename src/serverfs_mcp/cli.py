@@ -224,17 +224,49 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("native", "common-json", "common-human"),
         default="native",
     )
-    service_sub.add_parser("start", help="Register configured persistent services")
-    service_restart = service_sub.add_parser(
-        "restart", help="Unregister then register configured services"
-    )
+    service_start = service_sub.add_parser("start", help="Register persistent services")
+    service_restart = service_sub.add_parser("restart", help="Restart persistent services")
     service_restart.add_argument("--_handover-child", action="store_true", help=argparse.SUPPRESS)
-    service_sub.add_parser("stop", help="Unregister configured persistent services")
+    service_stop = service_sub.add_parser("stop", help="Unregister persistent services")
+    for operation in (service_start, service_restart, service_stop):
+        operation.add_argument(
+            "--component",
+            choices=("tunnel", "cloudflare", "core"),
+            help="macOS component-only lifecycle; preserves other components",
+        )
     service_sub.add_parser(
         "uninstall",
         help="Unregister services and remove platform-owned persistent lifecycle artifacts",
     )
     service_sub.add_parser("open-settings", help="Open System Settings > Login Items (macOS)")
+    core = service_sub.add_parser(
+        "core", help="Stage and inspect the independently managed macOS HTTP Core"
+    )
+    core_sub = core.add_subparsers(dest="core_command", required=True)
+    core_stage = core_sub.add_parser(
+        "stage", help="Validate and stage Core config without registering or starting it"
+    )
+    core_stage.add_argument("--config", required=True, type=Path)
+    core_stage.add_argument("--env-file", required=True, type=Path)
+    core_stage.add_argument("--http-port", required=True, type=_http_port_arg)
+    core_stage.add_argument("--hostname", required=True)
+    core_sub.add_parser("status")
+    core_sub.add_parser("unstage", help="Remove only an unregistered staged Core definition")
+    openai = service_sub.add_parser(
+        "openai", help="Stage an independent macOS OpenAI Tunnel HTTP-to-Core connector"
+    )
+    openai_sub = openai.add_subparsers(dest="openai_command", required=True)
+    openai_stage = openai_sub.add_parser(
+        "stage", help="Stage direct HTTP-to-Core Tunnel without registering it"
+    )
+    openai_stage.add_argument("--config", required=True, type=Path)
+    openai_stage.add_argument("--tunnel-client", required=True, type=Path)
+    openai_stage.add_argument("--tunnel-id", required=True)
+    openai_stage.add_argument("--control-plane-key-file", required=True, type=Path)
+    openai_stage.add_argument("--core-bearer-file", required=True, type=Path)
+    openai_sub.add_parser(
+        "unstage", help="Remove an unregistered independent OpenAI HTTP connector"
+    )
     cloudflare = service_sub.add_parser(
         "cloudflare", help="Manage opt-in macOS or Windows Cloudflare HTTP ingress"
     )
@@ -246,6 +278,16 @@ def build_parser() -> argparse.ArgumentParser:
     cloudflare_install.add_argument("--env-file", required=True, type=Path)
     cloudflare_install.add_argument("--http-port", required=True, type=_http_port_arg)
     cloudflare_install.add_argument("--hostname", required=True)
+    cloudflare_stage = cloudflare_sub.add_parser(
+        "stage", help="Stage one macOS connector for an independently staged Core"
+    )
+    cloudflare_stage.add_argument("--config", required=True, type=Path)
+    cloudflare_stage.add_argument("--cloudflared", required=True, type=Path)
+    cloudflare_stage.add_argument("--token-file", required=True, type=Path)
+    cloudflare_stage.add_argument("--hostname", required=True)
+    cloudflare_sub.add_parser(
+        "unstage", help="Remove only an unregistered independently staged macOS connector"
+    )
     for lifecycle in ("status", "start", "stop", "restart", "uninstall"):
         cloudflare_sub.add_parser(lifecycle)
     parallel = service_sub.add_parser(
@@ -782,6 +824,48 @@ def cmd_agent_bridge(args: argparse.Namespace) -> int:
 
 def cmd_service(args: argparse.Namespace) -> int:
     command = args.service_command
+    if command == "openai":
+        if sys.platform != "darwin":
+            return _fail("independent OpenAI HTTP Connector staging currently requires macOS")
+        from . import darwin_service
+        from .darwin_service import DarwinServiceError
+
+        try:
+            if args.openai_command == "stage":
+                result = darwin_service.stage_openai_http_connector(
+                    args.config,
+                    args.tunnel_client,
+                    args.tunnel_id,
+                    args.control_plane_key_file,
+                    args.core_bearer_file,
+                )
+                sys.stderr.write(json.dumps(result, sort_keys=True) + "\n")
+            elif args.openai_command == "unstage":
+                darwin_service.unstage_openai_http_connector()
+                sys.stderr.write("independent OpenAI HTTP connector staging removed\n")
+            return 0
+        except DarwinServiceError as exc:
+            return _fail(str(exc))
+    if command == "core":
+        if sys.platform != "darwin":
+            return _fail("independent Core staging currently requires macOS")
+        from . import darwin_service
+        from .darwin_service import DarwinServiceError
+
+        try:
+            if args.core_command == "stage":
+                result = darwin_service.stage_core_service(
+                    args.config, args.env_file, args.http_port, args.hostname
+                )
+                sys.stderr.write(json.dumps(result, sort_keys=True) + "\n")
+            elif args.core_command == "status":
+                sys.stderr.write(json.dumps(darwin_service.core_status(), sort_keys=True) + "\n")
+            elif args.core_command == "unstage":
+                darwin_service.unstage_core_service()
+                sys.stderr.write("independent Core staging removed\n")
+            return 0
+        except DarwinServiceError as exc:
+            return _fail(str(exc))
     if command == "cloudflare-parallel":
         if sys.platform != "win32":
             return _fail("parallel Cloudflare service lifecycle requires Windows")
@@ -823,6 +907,8 @@ def cmd_service(args: argparse.Namespace) -> int:
         except WindowsCloudflareParallelError as exc:
             return _fail(str(exc))
     if command == "cloudflare":
+        if args.cloudflare_command in {"stage", "unstage"} and sys.platform != "darwin":
+            return _fail("independent Cloudflare Connector staging currently requires macOS")
         if sys.platform == "win32":
             from . import windows_service
             from .windows_service import WindowsServiceError
@@ -868,7 +954,15 @@ def cmd_service(args: argparse.Namespace) -> int:
 
         try:
             action = args.cloudflare_command
-            if action == "install":
+            if action == "stage":
+                states = darwin_service.stage_cloudflare_connector(
+                    args.config, args.cloudflared, args.token_file, args.hostname
+                )
+                sys.stderr.write(json.dumps(states, sort_keys=True) + "\n")
+            elif action == "unstage":
+                darwin_service.unstage_cloudflare_connector()
+                sys.stderr.write("independent Cloudflare connector staging removed\n")
+            elif action == "install":
                 states = darwin_service.install_cloudflare_service(
                     args.config,
                     args.cloudflared,
@@ -901,6 +995,8 @@ def cmd_service(args: argparse.Namespace) -> int:
         except DarwinServiceError as exc:
             return _fail(str(exc))
     if sys.platform == "win32":
+        if getattr(args, "component", None) is not None:
+            return _fail("--component connector-only lifecycle is not available on Windows")
         from . import windows_service
         from .windows_service import WindowsServiceError
 
@@ -1045,6 +1141,32 @@ def cmd_service(args: argparse.Namespace) -> int:
                     render_common_json if status_format == "common-json" else render_common_human
                 )
                 sys.stderr.write(renderer(observation, policy))
+            return 0
+        component = getattr(args, "component", None)
+        if component is not None:
+            if component == "tunnel":
+                operation = {
+                    "start": darwin_service.register_service,
+                    "stop": darwin_service.unregister_service,
+                    "restart": darwin_service.restart_service,
+                }[command]
+                states = operation(darwin_service.TUNNEL_SERVICE)
+            elif component == "cloudflare":
+                operation = {
+                    "start": darwin_service.cloudflare_connector_start,
+                    "stop": darwin_service.cloudflare_connector_stop,
+                    "restart": darwin_service.cloudflare_connector_restart,
+                }[command]
+                states = operation()
+            else:
+                operation = {
+                    "start": darwin_service.core_start,
+                    "stop": darwin_service.core_stop,
+                    "restart": darwin_service.core_restart,
+                }[command]
+                states = operation()
+            for service, state in sorted(states.items()):
+                sys.stderr.write(f"{service}: {state}\n")
             return 0
         if command == "start":
             states = darwin_service.start()

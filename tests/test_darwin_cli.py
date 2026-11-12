@@ -73,7 +73,14 @@ class TestServeGate:
         assert code == 2
         assert "Rosetta" in message
 
-    def test_agent_serve_refuses_stale_private_bridge_policy(self, monkeypatch, tmp_path) -> None:
+    @pytest.mark.parametrize(
+        "transport_args",
+        [[], ["--transport", "streamable-http", "--http-port", "18765"]],
+        ids=["stdio", "streamable-http"],
+    )
+    def test_agent_serve_refuses_stale_private_bridge_policy(
+        self, monkeypatch, tmp_path, transport_args
+    ) -> None:
         root = tmp_path / "repo"
         root.mkdir()
         config = tmp_path / "serverfs.toml"
@@ -87,7 +94,7 @@ class TestServeGate:
             "serverfs_mcp.darwin_bridge_policy.policy_is_synced", lambda *_args: False
         )
 
-        code, message = self._run_capture(["serve", "--config", str(config)])
+        code, message = self._run_capture(["serve", "--config", str(config), *transport_args])
 
         assert code == 2
         assert "Agent Bridge policy is stale relative to serverfs.toml" in message

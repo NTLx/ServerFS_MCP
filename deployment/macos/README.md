@@ -68,7 +68,7 @@ normal ServerFS data are preserved.
 
 ## Optional Cloudflare Tunnel (v0.24.1 release)
 
-v0.24.1 adds a separate native Cloudflare Connector and private loopback Streamable HTTP origin. It does not change the existing OpenAI Tunnel or Agent Bridge. Use it only with a v0.24.1 build on the supported native Apple Silicon/macOS 27 platform. It does not create or edit Cloudflare Tunnels, DNS routes, or public hostname configuration; configure the named remotely managed Tunnel and route through Cloudflare's operator controls first.
+v0.24.1 added a separate native Cloudflare Connector and private loopback Streamable HTTP origin. It does not change the existing OpenAI Tunnel or Agent Bridge. Use a version-matched native build on supported Apple Silicon/macOS 27. The **unreleased v0.24.3 candidate** extends installer admission to explicitly writable workdirs; v0.24.1/v0.24.2 remain limited to read-only Cloudflare workdirs. It does not create or edit Cloudflare Tunnels, DNS routes, or public hostname configuration; configure the named remotely managed Tunnel and route through Cloudflare's operator controls first.
 
 The bootstrap command installs the pinned official Cloudflare `cloudflared` macOS arm64 release, verifying its archive and binary digests, code signature and version. With no flag it downloads the pinned artifact; `--artifact` accepts a local archive for offline installation:
 
@@ -82,7 +82,7 @@ Prepare two current-user regular files with mode `0600`, stored outside the chec
 - a connector Token file, containing only the remotely managed Tunnel token;
 - an HTTP-origin environment file containing only supported settings. Use either a non-empty `SERVERFS_HTTP_API_KEY` with OAuth disabled, or OAuth enabled with its required public resource/issuer/introspection settings and secret. Do not combine API Key and OAuth. Set `SERVERFS_HTTP_ALLOWED_HOSTS` to exactly the public hostname passed to install. The Token authenticates only the Connector; it does not authenticate MCP callers.
 
-Use absolute paths for all install paths. `--http-port` has no default and must be available for the loopback origin. Configure `serverfs.toml` with at least one staging workdir and ensure every workdir is read-only before installing. Replace the path and hostname placeholders below with the operator's own values; never put secret values in command arguments:
+Use absolute paths for all install paths. `--http-port` has no default and must be available for the loopback origin. Configure `serverfs.toml` with at least one workdir. **Published v0.24.1/v0.24.2 installers require all Cloudflare workdirs to be read-only. The v0.24.3 candidate permits explicit `read_only = false` while retaining the native default of read-only and the existing per-workdir Agent/Repo Ops permissions.** Replace the path and hostname placeholders below with the operator's own values; never put secret values in command arguments:
 
 ```bash
 serverfs service cloudflare install \
@@ -95,7 +95,7 @@ serverfs service cloudflare install \
 serverfs service cloudflare status
 ```
 
-The installer registers an HTTP-origin/Connector pair through the same current-user, app-associated `SMAppService` LaunchAgent mechanism as the existing native services. The origin binds to `127.0.0.1`; public TLS terminates at Cloudflare. The hostname must match exactly in ServerFS Host admission. Verify both service statuses, then verify public HTTPS rejects missing/wrong caller credentials with 401 and accepts the intended API Key/OAuth identity with 200. Continue with MCP tools and a persistent SSE connection longer than 60 seconds. After a controlled Connector-only restart, establish a **fresh MCP session** and verify tools; the previously established session may return 404 (the observed staging result was 8/8 successful fresh-session checks). Do not claim old-session continuity or SSE event replay. Keep this acceptance on an isolated read-only staging workdir and a separate test hostname; do not claim production workdir/Agent acceptance from it.
+The installer registers an HTTP-origin/Connector pair through the same current-user, app-associated `SMAppService` LaunchAgent mechanism as the existing native services. The origin binds to `127.0.0.1`; public TLS terminates at Cloudflare. The hostname must match exactly in ServerFS Host admission. Verify both service statuses, then verify public HTTPS rejects missing/wrong caller credentials with 401 and accepts the intended API Key/OAuth identity with 200. Continue with MCP tools and a persistent SSE connection longer than 60 seconds. After a controlled Connector-only restart, establish a **fresh MCP session** and verify tools; the previously established session may return 404 (the observed staging result was 8/8 successful fresh-session checks). Do not claim old-session continuity or SSE event replay. This paragraph records the original v0.24.1 isolated read-only staging acceptance; it does **not** establish production writable-workdir or Agent acceptance. Follow the additional v0.24.3 candidate gate below before using writable production workdirs.
 
 If registration fails, the installer attempts to unregister the services it registered and restore its manifest state. If rollback is reported incomplete, stop and preserve the recovery state; do not layer another install over it. The explicit lifecycle commands are:
 
@@ -108,7 +108,124 @@ serverfs service cloudflare uninstall
 
 `uninstall` unregisters this Cloudflare service pair and removes its private origin-environment snapshot; it preserves the operator's source Token/env files, `serverfs.toml`, workdirs, existing OpenAI Tunnel and Agent Bridge. Cloudflare service registration can require user approval in System Settings > General > Login Items; respect that decision and do not bypass it.
 
+### v0.24.3 candidate: production workdir parity (not yet released)
+
+Only a **version-matched v0.24.3 candidate** can install a Cloudflare HTTP origin with an explicitly writable workdir. For intentional OpenAI/Cloudflare parity, point Cloudflare's `--config` to the **same canonical native `serverfs.toml` actually used by the OpenAI Tunnel**; do not maintain a second, drifting production workdir policy. This shares the configured filesystem permissions, optional binary transfer, Agent runtimes and independently gated Repo Ops. The separate HTTP caller API Key/OAuth still authorizes incoming clients; a Connector Token alone never grants MCP access. An authenticated Cloudflare client inherits all capabilities enabled by the shared policy, so protect the caller credential accordingly.
+
+The macOS HTTP origin and OpenAI Tunnel may address the **same** Agent Bridge and writer-lease identity. Before re-registering the Cloudflare pair, verify the live Bridge policy is in sync with the canonical TOML and preserve the existing OpenAI Tunnel/Bridge processes. The native Cloudflare service pair is singleton: do **not** register a second unmanaged pair or run a general `serverfs service restart`. Prepare a separately verified read-only Cloudflare config for rollback; keep existing private token and origin-auth env outside every workdir. Use `serverfs service cloudflare uninstall` followed by the supported `serverfs service cloudflare install --config <canonical-toml> --cloudflared <verified-binary> --token-file <private-token-file> --env-file <private-origin-env> --http-port <available-loopback-port> --hostname <exact-public-host>`; those angle-bracket values are placeholders, not literal argv. This re-registration affects only the Cloudflare Connector/HTTP Origin pair.
+
+**Release acceptance gate:** on a disposable test file only, verify public HTTPS authentication failures (401), authenticated MCP initialize and workdir/tool discovery (200), read/write/edit/delete with revision guards, read-only/deny-path rejection, optional binary transfer as configured, available Agent runtimes through the existing Bridge, cross-ingress writer-lease behavior, a >60-second SSE connection and fresh-session behavior. Recheck that the OpenAI Tunnel and Bridge remain running. On failure, re-register only the previous read-only Cloudflare pair using its preserved private inputs. Until these runtime checks pass, do not claim production write/Agent parity or instruct operators to retire OpenAI Tunnel.
+
 For v0.24.1 lifecycle acceptance, architectural equivalence to the previously verified app-associated `SMAppService`/LaunchAgent mechanism is accepted. An additional real logout/login or whole-Mac reboot is not required for this release and must not be claimed as performed. This exception applies only while the lifecycle architecture remains the same.
+
+### v0.25.0 development: independently staged HTTP Core and Cloudflare Connector
+
+This section documents **unreleased source-only interfaces**. It is not a production
+migration procedure and does not supersede the v0.24.1/v0.24.3 rollback path.
+On a host with an already registered Cloudflare HTTP-origin/Connector pair,
+**both stage operations refuse to replace it**. Do not stop or uninstall that pair
+just to test these commands; prepare a separately accepted isolated instance.
+
+The independent Core and Connector reuse the existing current-user
+`SMAppService` identities `http-origin` and `cloudflare`, with distinct service
+owners. Explicit `stage` only writes the private mode-0600 manifest; it does
+**not** register or launch any service. Core stage first checks that the TOML is
+the same canonical file as an existing OpenAI Tunnel manifest. Its HTTP
+environment must include exactly
+`SERVERFS_HTTP_ALLOWED_HOSTS=<public-host>,127.0.0.1:<core-port>` with valid
+API-Key-or-OAuth authentication. The Cloudflare Connector's private token stays
+outside the repository and all exposed workdirs; only its path is written to the
+manifest. The public hostname and Core port must match that exact Core snapshot.
+
+On an **isolated, independently accepted macOS test installation only**, after
+providing real existing private inputs at the placeholder paths:
+
+```bash
+serverfs service core stage \
+  --config /absolute/path/to/serverfs.toml \
+  --env-file /private/path/core-http.env \
+  --http-port 18766 \
+  --hostname mcp.example.invalid
+serverfs service cloudflare stage \
+  --config /absolute/path/to/serverfs.toml \
+  --cloudflared /absolute/path/to/cloudflared \
+  --token-file /private/path/cloudflare-token \
+  --hostname mcp.example.invalid
+serverfs service core status
+# Registration is a separate explicit operator-controlled test step:
+serverfs service start --component core
+serverfs service start --component cloudflare
+# A Connector-only restart must not stop the Core or Agent Bridge:
+serverfs service restart --component cloudflare
+```
+
+For a safe cleanup of **only those isolated staged services**, explicitly stop
+the connector, verify it is no longer registered or running, and use
+`serverfs service cloudflare unstage`. Stop the Core and verify its unregistered
+state before `serverfs service core unstage`. Never unstage the Core while the
+Connector manifest remains. The source credentials are not deleted by these
+commands.
+
+**Compatibility warning:** on unmarked legacy manifests, bare
+`serverfs service start/stop/restart/uninstall/install` retains historical
+group behavior. When **any independently owned** v0.25.0 Core/Connector
+manifest entry is present, the same legacy group operations now fail closed
+*before* registering, unregistering or replacing the bundle. Use only explicit
+component-scoped commands. Legacy `service cloudflare stop/restart/uninstall`
+still operates the original paired origin/connector and rejects an
+independently owned Core. Public OpenAI/Cloudflare, workdir/Bridge and rollback
+acceptance remain required.
+
+### v0.25.0 development: OpenAI Tunnel as a direct HTTP Connector
+
+**Source-only candidate; do not run on the production Mac.** The new
+`serverfs service openai stage` path uses the existing app-owned
+`tunnel` LaunchAgent identity but launches `tunnel-client run` directly.
+It passes `--mcp.server-url url=http://127.0.0.1:<core-port>/mcp`, not the old
+`--mcp.command` supervisor that owned Core/Bridge child processes. The Core
+must already have an `origin_owner=independent-core` entry and the identical
+canonical `serverfs.toml`. Existing OpenAI Tunnel manifests, registered
+Tunnel jobs and unmanaged instances are rejected; no in-place upgrade is
+performed during stage.
+
+The operator must provide two **different** current-user mode-0600 files,
+stored outside every exposed workdir and checkout: a control-plane runtime
+API key file and a separate Core HTTP header-value file. For this initial
+static-key candidate, the second file must contain the exact single-line
+`Bearer <core-http-api-key>` value (without a trailing newline), matching
+the Core's protected environment snapshot. OAuth-only Core configurations
+are not supported by this candidate and fail closed. The files' contents
+are never written into the service manifest, command line or logs; only
+`file:` paths are passed to the official tunnel-client's separate MCP
+runtime and discovery headers.
+
+On an **isolated test host/identity only**, after independent Core staging:
+
+```bash
+serverfs service openai stage \
+  --config /absolute/path/to/serverfs.toml \
+  --tunnel-client /absolute/path/to/verified-tunnel-client \
+  --tunnel-id tunnel_0123456789abcdef0123456789abcdef \
+  --control-plane-key-file /private/path/control-plane-runtime.key \
+  --core-bearer-file /private/path/core-auth-header
+# Only after deliberate isolated acceptance:
+serverfs service start --component tunnel
+# Scoped shutdown and safe removal of the unregistered staged connector:
+serverfs service stop --component tunnel
+serverfs service openai unstage
+```
+
+The actually installed Mac `tunnel-client 0.0.17` has been checked using
+`--version` and `run --help`: the direct HTTP, static runtime/discovery
+headers, health-listen and `file:` reference **options exist**. The
+`url=...` HTTP-target syntax is consistent with this binary's help.
+**Actual `file:` resolution, proxy authentication, startup readiness,
+hosted MCP POST/SSE, cross-ingress sessions and Agent/Repo calls are NOT
+verified.** An isolated `dev proxy` smoke attempt failed before protocol
+evidence; see
+`docs/diagnostics/v0250-macos-m1-native-capability-and-safety-2026-11-12.md`.
+The new stage does not upgrade the existing production OpenAI Tunnel,
+Bridge or Cloudflare setup.
 
 ## Agent policy updates
 

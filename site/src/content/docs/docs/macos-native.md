@@ -7,6 +7,8 @@ The current stable project release is **v0.24.2**. Native macOS Cloudflare is li
 
 The release adds a separate optional loopback HTTP origin and Cloudflare Connector using the existing app-associated `SMAppService` LaunchAgent mechanism. It requires a remotely managed Tunnel, exact hostname admission, an official verified `cloudflared` binary, and separate current-user token/auth files with mode `0600` outside the checkout and every workdir. Use the [macOS deployment runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241) for commands, staging, lifecycle, rollback and acceptance .
 
+**Unreleased v0.24.3 development:** the macOS Cloudflare installer now has a candidate change permitting explicitly writable workdirs (`read_only = false`) instead of enforcing the earlier read-only staging limit. For intended dual-ingress parity, use the same canonical native `serverfs.toml` as the OpenAI Tunnel and keep the shared Agent Bridge policy synchronized. Default read-only, independent HTTP API Key/OAuth, exact Host validation and private token isolation remain mandatory. **This candidate has not yet passed public macOS writable-workdir/Agent acceptance and is not part of the current stable v0.24.2 release.**
+
 v0.13.2 keeps the Darwin filesystem and Agent protocol implementation in Python, but replaces the old hand-installed LaunchAgent lifecycle with Apple's current **ServiceManagement / `SMAppService`** model. A small headless `ServerFSServiceManager.app` owns registration and status for two per-user LaunchAgents:
 
 ```text

@@ -109,6 +109,62 @@ def test_cloudflare_service_specs_use_token_file_path_and_secure_env(
     assert not snapshot.exists()
     assert "--http-port" in origin["arguments"]
     assert "127.0.0.1" not in origin["arguments"]
+    assert origin["arguments"][origin["arguments"].index("--config") + 1] == str(config.resolve())
+
+
+def test_cloudflare_service_specs_accept_explicit_writable_workdir_without_changing_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, workdir, token, env, executable = _fixture(tmp_path)
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("read_only = true", "read_only = false"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(darwin_service, "service_home", lambda: tmp_path / "state")
+
+    specs = darwin_service._cloudflare_service_specs(
+        config, executable, token, env, 8765, "stage.example.test"
+    )
+
+    from serverfs_mcp.native_config import load_native_config
+
+    workdirs, _settings = load_native_config(config)
+    assert [(item.alias, item.root, item.read_only) for item in workdirs] == [
+        ("stage", workdir, False)
+    ]
+    origin = specs[darwin_service.HTTP_ORIGIN_SERVICE]
+    assert origin["arguments"][origin["arguments"].index("--config") + 1] == str(config.resolve())
+
+
+def test_cloudflare_service_specs_preserve_read_only_workdir_permission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, workdir, token, env, executable = _fixture(tmp_path)
+    monkeypatch.setattr(darwin_service, "service_home", lambda: tmp_path / "state")
+
+    darwin_service._cloudflare_service_specs(
+        config, executable, token, env, 8765, "stage.example.test"
+    )
+
+    from serverfs_mcp.native_config import load_native_config
+
+    workdirs, _settings = load_native_config(config)
+    assert [(item.alias, item.root, item.read_only) for item in workdirs] == [
+        ("stage", workdir, True)
+    ]
+
+
+def test_cloudflare_service_rejects_no_workdirs_clearly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, _workdir, token, env, executable = _fixture(tmp_path)
+    config.write_text("", encoding="utf-8")
+    monkeypatch.setattr(darwin_service, "service_home", lambda: tmp_path / "state")
+
+    with pytest.raises(darwin_service.DarwinServiceError, match="at least one workdir"):
+        darwin_service._cloudflare_service_specs(
+            config, executable, token, env, 8765, "stage.example.test"
+        )
 
 
 def test_http_origin_spec_preserves_symlinked_virtualenv_interpreter(
@@ -159,6 +215,50 @@ def test_cloudflare_service_rejects_insecure_or_confined_secret_files(
         )
 
 
+@pytest.mark.parametrize("secret_name", ["connector token", "HTTP origin env"])
+def test_cloudflare_service_rejects_secrets_inside_second_workdir_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, secret_name: str
+) -> None:
+    config, first_root, token, env, executable = _fixture(tmp_path)
+    second_root = tmp_path / "second-workdir"
+    second_root.mkdir()
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + f'\n[[workdirs]]\nalias = "second"\npath = "{second_root}"\nread_only = false\n',
+        encoding="utf-8",
+    )
+    assert first_root != second_root
+    secret = second_root / ("connector.token" if secret_name == "connector token" else "origin.env")
+    secret.write_text("private", encoding="utf-8")
+    secret.chmod(0o600)
+    monkeypatch.setattr(darwin_service, "service_home", lambda: tmp_path / "state")
+
+    with pytest.raises(darwin_service.DarwinServiceError, match="outside"):
+        darwin_service._cloudflare_service_specs(
+            config,
+            executable,
+            secret if secret_name == "connector token" else token,
+            secret if secret_name == "HTTP origin env" else env,
+            8765,
+            "stage.example.test",
+        )
+
+
+@pytest.mark.parametrize("secret_name", ["connector token", "HTTP origin env"])
+def test_cloudflare_service_rejects_insecure_env_or_token_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, secret_name: str
+) -> None:
+    config, _workdir, token, env, executable = _fixture(tmp_path)
+    target = token if secret_name == "connector token" else env
+    target.chmod(0o644)
+    monkeypatch.setattr(darwin_service, "service_home", lambda: tmp_path / "state")
+
+    with pytest.raises(darwin_service.DarwinServiceError, match="mode 0600"):
+        darwin_service._cloudflare_service_specs(
+            config, executable, token, env, 8765, "stage.example.test"
+        )
+
+
 def test_http_origin_env_rejects_unrelated_secrets_without_echoing_them(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -175,6 +275,27 @@ def test_http_origin_env_rejects_unrelated_secrets_without_echoing_them(
         )
     assert "unrelated-secret" not in str(error.value)
     assert "unsupported settings" in str(error.value)
+
+
+def test_http_origin_env_rejects_combined_api_key_and_oauth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(darwin_service, "service_home", lambda: tmp_path / "state")
+    config, _workdir, token, env, executable = _fixture(tmp_path)
+    env.write_text(
+        "SERVERFS_HTTP_API_KEY=origin-secret\n"
+        "SERVERFS_HTTP_ALLOWED_HOSTS=stage.example.test\n"
+        "SERVERFS_OAUTH_ENABLED=true\n"
+        "SERVERFS_OAUTH_INTROSPECTION_URL=https://auth.example.test/introspect\n"
+        "SERVERFS_OAUTH_INTROSPECTION_SECRET=oauth-secret\n",
+        encoding="utf-8",
+    )
+    env.chmod(0o600)
+
+    with pytest.raises(darwin_service.DarwinServiceError, match="authentication configuration"):
+        darwin_service._cloudflare_service_specs(
+            config, executable, token, env, 8765, "stage.example.test"
+        )
 
 
 def test_cloudflare_manifest_merge_preserves_old_services_and_never_registers_legacy(
