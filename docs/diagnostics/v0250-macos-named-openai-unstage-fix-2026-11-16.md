@@ -1,6 +1,6 @@
 # v0.25.0 macOS — Named OpenAI Connector unstage identity repair
 
-Date: 2026-11-16  
+Date: 2026-11-16
 Scope: macOS `bridge_mode=disabled` instance cleanup and native launchd ownership verification.
 
 ## Result: PASS (source and regression)

@@ -1,7 +1,7 @@
 # macOS v0.25.0 — Shared Core 三进程、授权轮换及资源所有权验收
 
-日期：2026-11-15  
-作用域：macOS Apple Silicon、ServerFS 源码工作树与完全隔离的测试实例。  
+日期：2026-11-15
+作用域：macOS Apple Silicon、ServerFS 源码工作树与完全隔离的测试实例。
 结论：**Shared v2 源码/签名包预检、独立进程 HTTP+IPC、owner 重启/授权轮换/撤销通过；SMAppService 实际注册与公网端到端尚未通过验收。**
 
 ## 实际完成的开发

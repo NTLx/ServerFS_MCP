@@ -1,6 +1,6 @@
 # macOS v0.25.0 — Shared Core Bridge Owner Restart Acceptance
 
-Date: 2026-11-16  
+Date: 2026-11-16
 Result: **PASS** for the isolated native Shared Core owner crash/restart gap.
 
 The opt-in live test registered and ran two randomly named, signed Shared Core `SMAppService` items against one synthetic Bridge owner. After task isolation was established, the test stopped only the Bridge subprocess. Both Core HTTP `list_workdirs` endpoints remained available, both native Core registrations remained live, and signed Bridge RPC returned `CoreBridgeUnavailable`. Restarting the synthetic owner with the same configuration and state produced a new PID; both existing Cores then completed signed `task.submit` RPCs without Core restart. Each Core retrieved its own task and the other Core's task remained inaccessible.

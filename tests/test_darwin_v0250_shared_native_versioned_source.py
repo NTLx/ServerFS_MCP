@@ -87,7 +87,9 @@ def test_joint_native_candidate_rejects_mixed_source(
     if bridge_mode == "same":
         _require_single_versioned_source(project, selected, same_bridge)
     elif bridge_mode == "other":
-        other_bridge = selected.parent / ".serverfs-v0250-candidate-fedcba987654/bridge-venv/bin/python"
+        other_bridge = (
+            selected.parent / ".serverfs-v0250-candidate-fedcba987654/bridge-venv/bin/python"
+        )
         with pytest.raises(RuntimeError, match="must share one versioned source"):
             _require_single_versioned_source(project, selected, other_bridge)
     else:
@@ -96,7 +98,7 @@ def test_joint_native_candidate_rejects_mixed_source(
 
 
 def test_joint_native_source_only_mode_keeps_existing_behavior(
-    candidate: tuple[Path, Path]
+    candidate: tuple[Path, Path],
 ) -> None:
     project, selected = candidate
     _require_single_versioned_source(project, selected, None)

@@ -136,7 +136,6 @@ def test_owned_bridge_private_config_rejects_invalid_workdirs(tmp_path: Path) ->
     assert not home.exists()
 
 
-
 def test_owned_bridge_check_proves_policy_sync_and_no_mutation(tmp_path: Path) -> None:
     workdir = tmp_path / "repo"
     workdir.mkdir()
@@ -145,9 +144,7 @@ def test_owned_bridge_check_proves_policy_sync_and_no_mutation(tmp_path: Path) -
     stage_named_owned_config("named-stage", home, policy, allow_test_fake=True)
     path = home / "bridge.json"
     before = path.read_bytes()
-    result = check_named_owned_config(
-        "named-stage", home, policy, allow_test_fake=True
-    )
+    result = check_named_owned_config("named-stage", home, policy, allow_test_fake=True)
     assert result == {
         "instance_id": "named-stage",
         "state": "verified-not-registered",
@@ -168,9 +165,7 @@ def test_owned_bridge_check_rejects_policy_drift_without_rewriting(tmp_path: Pat
     changed = _request(workdir)
     changed["workdirs"][0]["read_only"] = True
     with pytest.raises(BridgeError, match="policy drift"):
-        check_named_owned_config(
-            "named-stage", home, changed, allow_test_fake=True
-        )
+        check_named_owned_config("named-stage", home, changed, allow_test_fake=True)
     assert path.read_bytes() == before
 
 
@@ -186,9 +181,7 @@ def test_owned_bridge_check_refuses_added_gid_shared_socket_mode(tmp_path: Path)
     path.write_text(json.dumps(document))
     path.chmod(0o600)
     with pytest.raises(BridgeError, match="identity drift"):
-        check_named_owned_config(
-            "named-stage", home, policy, allow_test_fake=True
-        )
+        check_named_owned_config("named-stage", home, policy, allow_test_fake=True)
 
 
 def test_owned_bridge_cannot_expose_private_state_as_workdir(tmp_path: Path) -> None:

@@ -109,11 +109,7 @@ def _config_document(
             raise BridgeError(
                 "BRIDGE_CONFIG_INVALID", "named Bridge workdir cannot be resolved"
             ) from exc
-        if (
-            root == private_root
-            or root in private_root.parents
-            or private_root in root.parents
-        ):
+        if root == private_root or root in private_root.parents or private_root in root.parents:
             raise BridgeError(
                 "BRIDGE_CONFIG_INVALID",
                 "named Bridge cannot expose its private service state",
@@ -217,9 +213,7 @@ def check_named_owned_config(
         not_regular="named Bridge config is not regular",
         not_private="named Bridge config is not private",
     )
-    derived = _config_document(
-        identifier, bridge_home, request, allow_test_fake=allow_test_fake
-    )
+    derived = _config_document(identifier, bridge_home, request, allow_test_fake=allow_test_fake)
     actual = BridgeConfig.load(path)
     if (
         actual.socket_path != Path(derived["socket_path"])
@@ -252,7 +246,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--instance", required=True)
     parser.add_argument("--bridge-home", type=Path, required=True)
     parser.add_argument(
-        "--check", action="store_true",
+        "--check",
+        action="store_true",
         help="verify an already staged config without modifying private state",
     )
     args = parser.parse_args(argv)

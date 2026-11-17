@@ -1,7 +1,7 @@
 # ServerFS MCP v0.25.0 — macOS owned 原生验收
 
-日期：2026-11-14  
-范围：macOS `bridge_mode=owned`，一个 Core 独占一个 Bridge。  
+日期：2026-11-14
+范围：macOS `bridge_mode=owned`，一个 Core 独占一个 Bridge。
 结论：已通过真实 macOS ServiceManagement 注册、启动、Core→Bridge RPC、注销及清理验收；**不代表 v0.25.0 跨平台版本可以发布**。
 
 ## 1. 架构与操作边界
