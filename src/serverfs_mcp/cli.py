@@ -56,6 +56,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     serve.add_argument("--port", "--http-port", dest="port", type=_http_port_arg, default=8765)
     serve.add_argument("--path", type=_http_path_arg, default="/mcp")
+    serve.add_argument(
+        "--macos-instance",
+        default=None,
+        help="macOS only: explicit named owned Core identity, verified against private manifest",
+    )
+    serve.add_argument(
+        "--macos-shared-bridge",
+        default=None,
+        help="macOS only: explicitly bind a named Core to an authenticated shared Bridge",
+    )
 
     doctor = sub.add_parser("doctor", help="Report configuration/platform diagnostics (read-only)")
     doctor.add_argument("--config", required=True, type=Path, help="Path to serverfs.toml")
@@ -371,7 +381,9 @@ def _load(path: Path):
         raise SystemExit(_fail(f"configuration error: {exc}")) from exc
 
 
-def _native_agent_settings(native_settings) -> tuple | None:
+def _native_agent_settings(
+    native_settings, *, owned_wiring: tuple[str, Path] | None = None
+) -> tuple | None:
     """Build native Bridge wiring, or ``None`` when Agent and Repo Ops are both off.
 
     ``serverfs.toml`` is the only operator-facing source of Bridge policy: this function is gated on
@@ -398,7 +410,12 @@ def _native_agent_settings(native_settings) -> tuple | None:
     from .native_endpoint import NativeEndpointError, resolve_native_agent_wiring
 
     try:
-        endpoint, lock_dir = resolve_native_agent_wiring()
+        if owned_wiring is not None:
+            if sys.platform != "darwin":
+                raise NativeEndpointError("named owned wiring requires macOS")
+            endpoint, lock_dir = owned_wiring
+        else:
+            endpoint, lock_dir = resolve_native_agent_wiring()
     except NativeEndpointError as exc:
         raise SystemExit(_fail(f"agent endpoint unavailable: {exc}")) from exc
 
@@ -500,28 +517,107 @@ def cmd_serve(args: argparse.Namespace) -> int:
     elif sys.platform != "win32":
         return _fail("native serve is supported only on Windows and macOS 27 (Apple Silicon)")
     workdirs, native_settings = _load(args.config)
-    if sys.platform == "darwin" and native_settings.bridge_required:
-        from .darwin_bridge_policy import DarwinBridgePolicyError, policy_is_synced
+    named_instance = getattr(args, "macos_instance", None)
+    shared_bridge = getattr(args, "macos_shared_bridge", None)
+    if shared_bridge is not None and not named_instance:
+        return _fail("--macos-shared-bridge requires explicit --macos-instance")
+    if shared_bridge == "":
+        return _fail("--macos-shared-bridge must be non-empty")
+    shared_wiring: tuple[object, Path] | None = None
+    owned_wiring: tuple[str, Path] | None = None
+    if named_instance and shared_bridge:
+        if sys.platform != "darwin" or args.transport != "streamable-http":
+            return _fail("named shared Bridge requires macOS Streamable HTTP")
+        if not native_settings.bridge_required:
+            return _fail("named shared Bridge requires an enabled Bridge policy")
+        from .darwin_instance_shared_manifest import (
+            DarwinSharedManifestError,
+            resolve_shared_core_manifest,
+        )
+        from .darwin_shared_core_bootstrap import SharedCoreBootstrapError
+        from .instance_identity import InstanceIdentity, InstanceIdentityError
 
         try:
-            synced = policy_is_synced(workdirs, native_settings)
-        except DarwinBridgePolicyError as exc:
-            return _fail(f"Agent Bridge policy check failed: {exc}")
-        if not synced:
-            return _fail(
-                "Agent Bridge policy is stale relative to serverfs.toml; run "
-                "'serverfs agent-bridge restart --config <serverfs.toml>' before starting serve"
+            identity = InstanceIdentity(
+                instance_id=named_instance,
+                bridge_mode="shared",
+                bridge_id=shared_bridge,
             )
+            workdir_alias, trusted_socket = resolve_shared_core_manifest(
+                identity, args.config, args.port
+            )
+            from .darwin_instances import instance_service_home
+            from .darwin_shared_agent_factory import prepare_shared_agent_adapter
+
+            client = asyncio.run(
+                prepare_shared_agent_adapter(identity, Path(args.config), trusted_socket)
+            )
+            if getattr(client, "_workdir_alias", None) != workdir_alias:
+                raise SharedCoreBootstrapError("shared Bridge grant mismatch")
+            lock_dir = instance_service_home(identity) / "data" / "agent-bridge" / "locks"
+            shared_wiring = (client, lock_dir)
+        except (
+            DarwinSharedManifestError,
+            SharedCoreBootstrapError,
+            InstanceIdentityError,
+            OSError,
+            ValueError,
+        ):
+            return _fail("named shared Bridge verification failed")
+    elif named_instance:
+        if sys.platform != "darwin" or args.transport != "streamable-http":
+            return _fail("named owned Core requires macOS Streamable HTTP")
+        if not native_settings.bridge_required:
+            return _fail("named owned Core requires an enabled Bridge policy")
+        from .darwin_instance_owned_binding import (
+            DarwinOwnedBindingError,
+            resolve_owned_core_binding,
+        )
+        from .instance_identity import InstanceIdentity, InstanceIdentityError
+
+        try:
+            identity = InstanceIdentity(
+                instance_id=named_instance,
+                bridge_mode="owned",
+                bridge_id=named_instance,
+            )
+            owned_wiring = resolve_owned_core_binding(identity, args.config, args.port)
+        except (DarwinOwnedBindingError, InstanceIdentityError) as exc:
+            return _fail(f"named Core Bridge binding refused: {exc}")
+    elif sys.platform == "darwin":
+        if os.environ.get("SERVERFS_MACOS_INSTANCE_ID"):
+            return _fail("named Core identity present without an explicit --macos-instance")
+        if native_settings.bridge_required:
+            from .darwin_bridge_policy import DarwinBridgePolicyError, policy_is_synced
+
+            try:
+                synced = policy_is_synced(workdirs, native_settings)
+            except DarwinBridgePolicyError as exc:
+                return _fail(f"Agent Bridge policy check failed: {exc}")
+            if not synced:
+                return _fail(
+                    "Agent Bridge policy is stale relative to serverfs.toml; run "
+                    "'serverfs agent-bridge restart --config <serverfs.toml>' before starting serve"
+                )
     from .config import Settings
     from .main import create_server
     from .workdirs import WorkdirRegistry
 
-    agent_wiring = _native_agent_settings(native_settings)
-    if agent_wiring is None:
-        settings = Settings(log_level=native_settings.log_level)
-        client = None
+    if shared_wiring is not None:
+        client, lock_dir = shared_wiring
+        settings = Settings(
+            log_level=native_settings.log_level,
+            agent_bridge_enabled=True,
+            agent_bridge_socket=str(trusted_socket),
+            agent_lock_dir=str(lock_dir),
+        )
     else:
-        settings, client = agent_wiring
+        agent_wiring = _native_agent_settings(native_settings, owned_wiring=owned_wiring)
+        if agent_wiring is None:
+            settings = Settings(log_level=native_settings.log_level)
+            client = None
+        else:
+            settings, client = agent_wiring
     if args.transport == "streamable-http":
         if sys.platform not in {"darwin", "win32"}:
             return _fail("native Streamable HTTP is supported only on macOS and Windows")
@@ -551,9 +647,10 @@ def cmd_serve(args: argparse.Namespace) -> int:
             )
         except ValueError as exc:
             return _fail(f"Streamable HTTP configuration error: {exc}")
-    settings = _overlay_ingress_env(settings)
+    if shared_wiring is None:
+        settings = _overlay_ingress_env(settings)
     file_ingress_client = None
-    if settings.file_ingress_enabled and sys.platform == "darwin":
+    if shared_wiring is None and settings.file_ingress_enabled and sys.platform == "darwin":
         helper = _darwin_ingress_helper(settings)
         if helper is not None:
             file_ingress_client = helper

@@ -24,7 +24,7 @@ def _manifest(arguments: list[str] | None = None) -> dict[str, object]:
                     "/private/serverfs.toml",
                     "--http-port",
                     "8765",
-                ]
+                ],
             },
             "cloudflare": {},
             "agent-bridge": {},

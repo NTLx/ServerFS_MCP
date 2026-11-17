@@ -6,6 +6,84 @@ via narrow ctypes bindings); v0.13.2 adds a small headless Swift ServiceManageme
 per-user service registration. There is still no `serverfs-macos-native` wheel, Docker/VM,
 LaunchDaemon, root helper or Rosetta requirement. Deterministic Repo Ops shipped on Linux Host Bridge in v0.23.0, validated native Apple Silicon macOS in v0.23.1, and validated native Windows 11 x64 in v0.23.2. The existing native persistent Tunnel remains the OpenAI adapter unless the operator separately opts into the Cloudflare pair below.
 
+## v0.25.0 named-instance candidate (unreleased)
+
+The v0.25.0 working tree adds independent, current-user macOS `SMAppService` Core instances with unique `instance_id`, signed app identity, launchd labels, 0600 private manifest/HTTP environment, data home and logs. The existing production `default` instance names and services are unchanged. **Both `bridge_mode=disabled` (file-only) and `bridge_mode=owned` (independent private Bridge) have passed real native lifecycle acceptance.** A named Core can stage one independent Cloudflare and one independent direct-HTTP OpenAI Connector; their four-component owned combination has passed native lifecycle/MCP acceptance with **no-network simulated Connectors only**. `bridge_mode=shared` now has real macOS `SMAppService` acceptance for two separately registered signed Shared Cores against one independent Bridge v2 owner, including owner restart, per-Core task isolation, owner grant revocation and restoration of the original grants without Core restart, and verified cleanup; these tests use isolated synthetic owner/provider resources, not a production Shared Bridge deployment. Multiple `connector_id` values per provider have passed real signed `SMAppService` lifecycle acceptance in isolated Owned and file-only instances with no-network simulated Connectors. The existing Cloudflare production hostname has passed ChatGPT-connected MCP filesystem CRUD and binary transfer after the independent Core/Connector cutover; the public hostname has now also passed authenticated MCP `initialize` and one continuous **75.640-second** SSE GET with **5 keepalives**, without proxy/WAF changes; controlled production Connector-only restart with a fresh authenticated public MCP session and >75-second SSE hold has since passed; unclean-exit and QUIC/public-network fault recovery remain unverified. The CLI is intentionally separate from legacy `serverfs service` to avoid Windows parallel-development conflicts.
+
+To prepare a **new, inactive** Core, first build an unregistered template bundle and choose absolute paths, a unique lowercase instance ID, an unused local port, a private 0600 Core env file outside all workdirs, and an exact `SERVERFS_HTTP_ALLOWED_HOSTS=hostname,127.0.0.1:port` setting:
+
+```bash
+bash native/macos/service_manager/build.sh /absolute/private/build
+python -m serverfs_mcp.darwin_instance_cli --instance dev-core stage \
+  --config /absolute/path/serverfs.toml \
+  --env-file /absolute/private/core.env \
+  --http-port 18781 --hostname mcp-dev.example.invalid \
+  --template-app /absolute/private/build/ServerFSServiceManager.app
+python -m serverfs_mcp.darwin_instance_cli --instance dev-core status
+python -m serverfs_mcp.darwin_instance_cli --instance dev-core start --component core
+python -m serverfs_mcp.darwin_instance_cli --instance dev-core stop --component core
+```
+
+The Core serves on `127.0.0.1` with API Key or configured OAuth admission, and has no Agent Bridge/Repo Ops. An optional independent Cloudflare Connector may be staged with `cloudflare-stage --cloudflared /absolute/binary --token-file /absolute/private/token` and explicitly started/stopped via `--component cloudflare`; public Tunnel/DNS resources and caller authentication remain operator-owned, never auto-provisioned. Do not reuse the default production Connector Token file. `unstage`/`cloudflare-unstage` refuse running jobs and retained or unexpected private data/logs rather than force-delete them.
+
+Actual native E2E evidence is in `docs/diagnostics/v0250-macos-named-instance-runtime-2026-11-13.md`, `docs/diagnostics/v0250-macos-owned-native-acceptance-2026-11-14.md`, `docs/diagnostics/v0250-macos-owned-dual-connector-acceptance-2026-11-14.md`, and `docs/diagnostics/v0250-macos-connector-native-acceptance-2026-11-14.md`. Independently named file-only Cores, owned Core/Bridge pairs, and multiple `connector_id`-qualified same-provider services have passed real signed `SMAppService` lifecycle and local MCP tests without changing four default production PIDs. Synthetic Connectors do **not** verify real Cloudflare/OpenAI public HTTPS, SSE or session behavior. Shared Bridge v2 has now passed real two-Core macOS `SMAppService` registration, owner crash/restart recovery, grant revocation, cross-Core task isolation, and cleanup with unchanged production service PIDs. The existing Cloudflare hostname has passed authenticated ChatGPT MCP file/binary E2E; a new isolated loopback stateful HTTP session test separately verified one GET SSE for >65 seconds, periodic keepalive, old-session rejection after Core restart and fresh-session establishment. Fresh dirty-source Core/Bridge `0.24.2`-metadata wheels were also installed into **two new independent Python 3.12.12 environments** from public PyPI hash-locked `uv.lock` exports, passed isolated `-I -B` installed-site-packages import checks, and completed a real **one Bridge + two Core** HTTP/IPC loopback acceptance (**1 passed, exit 0**). This is current working-tree packaging evidence, **not** a release-matched v0.25.0 artifact. The existing public Cloudflare hostname subsequently passed direct no-proxy authenticated `initialize` (HTTP 200) and one SSE GET kept open for >75 seconds with 5 keepalives. **Production Connector unclean-exit/QUIC recovery**, release-matched v0.25.0 artifacts and three-platform same-SHA acceptance remain incomplete (the bounded controlled Connector-only restart and fresh authenticated public MCP/SSE checks passed separately); see `docs/diagnostics/v0250-macos-public-cloudflare-sse-acceptance-2026-11-16.md`. See `docs/diagnostics/v0250-macos-current-wheel-fresh-venv-install-2026-11-16.md` and `docs/diagnostics/v0250-macos-fresh-wheel-three-process-e2e-2026-11-16.md`. See `docs/diagnostics/v0250-macos-release-readiness-2026-11-16.md` and `docs/diagnostics/v0250-macos-local-http-session-sse-acceptance-2026-11-16.md`.
+
+For a **new isolated owned instance**, use `owned-stage` (Core + private Bridge preparation), `owned-start` (register Bridge then Core), `owned-status`, `owned-stop` (Core then Bridge), and `owned-unstage` (only a completely pristine, inactive candidate). The isolated CLI requires `--instance <non-default-id>`; `owned-stage` additionally requires `--bridge-python` pointing to the independent Bridge virtualenv interpreter, alongside the Core config/env/port/hostname and signed template bundle. For Connector staging, start/stop or unstage on that owned Core, use `--owned-connectors` before the Connector subcommand. For example:
+
+```bash
+# Placeholder paths only; stage an owned instance with private, non-production inputs.
+python -m serverfs_mcp.darwin_instance_cli --instance dev-owned owned-stage \
+  --config /absolute/private/serverfs.toml --env-file /absolute/private/core.env \
+  --http-port 18782 --hostname mcp-dev.example.invalid \
+  --template-app /absolute/private/build/ServerFSServiceManager.app \
+  --bridge-python /absolute/agent_bridge/.venv/bin/python
+python -m serverfs_mcp.darwin_instance_cli --instance dev-owned owned-start \
+  --config /absolute/private/serverfs.toml --http-port 18782
+python -m serverfs_mcp.darwin_instance_cli --instance dev-owned owned-status
+# Stage the isolated Connector separately before attempting its start:
+python -m serverfs_mcp.darwin_instance_cli --instance dev-owned \
+  --owned-connectors cloudflare-stage --cloudflared /absolute/cloudflared \
+  --token-file /absolute/private/cloudflare-token
+python -m serverfs_mcp.darwin_instance_cli --instance dev-owned \
+  --owned-connectors start --component cloudflare
+# Stop Connectors first, then owned Core + Bridge; do not touch default services.
+```
+
+### v0.25.0 reviewed-source candidate gate (unreleased)
+
+The macOS development checkout may contain uncommitted source and generated test artifacts. Before considering an integration commit, use the explicit local source inventory rather than bulk staging or packaging the entire mutable working tree. The reviewed overlay allowlist is `deployment/macos/v0250_candidate_source_paths.txt` and the fail-closed checker is `deployment/macos/v0250_candidate_source_gate.py`. It requires an exact match to current modified/untracked source paths, rejects any staged changes and unsafe paths, and excludes only the known `deployment/macos/.serverfs-v0250-*` scratch prefix. Root and Bridge `pyproject.toml`/`uv.lock` plus root `plugin.json` are the only explicitly allowed version-metadata TOML/lock/JSON paths; arbitrary configuration and credential files remain forbidden. The root Ruff configuration separately excludes this same generated scratch prefix from lint/format traversal, without excluding actual application source.
+
+```bash
+# Check only: no Git writes, build, registration or network access.
+.venv/bin/python -B deployment/macos/v0250_candidate_source_gate.py
+
+# Optional development drill: provide a fresh, randomized 12-hex task-owned
+# scratch name under deployment/macos; the script creates it itself.
+.venv/bin/python -B deployment/macos/v0250_candidate_source_gate.py \
+  --snapshot "$(pwd)/deployment/macos/.serverfs-v0250-candidate-0123456789ab"
+```
+
+The second command illustrates syntax only: use a **new random suffix** and never reuse an existing directory. It materializes local Git HEAD plus exactly the reviewed overlay files, producing an independent candidate source tree without staging or committing. Build Root and Bridge Wheels offline from that tree, run the Wheel archive integrity gate, and clean only the verified task-owned scratch. A passing source drill is **not** an exact release SHA: Root, Bridge, Plugin and locks must first be coordinated to `0.25.0` in a reviewed clean integration commit; both Wheel metadata and all three platform acceptance gates must be tied to that single SHA. Keep production OpenAI/Cloudflare services untouched.
+
+See `docs/diagnostics/v0250-macos-reviewed-source-snapshot-dryrun-2026-11-16.md` for the measured 192-file source reconstruction and offline Root/Bridge build evidence. A subsequent **isolated, unreleased** `0.25.0` metadata drill also passed offline Root/Bridge lock consistency, unchanged third-party dependency graphs, both 0.25.0 Wheel archive checks and Plugin validation; see `docs/diagnostics/v0250-macos-version-metadata-isolated-dryrun-2026-11-16.md`. Neither drill alters live project versions or constitutes an exact-SHA release.
+
+For the opt-in installed-Wheel **one Bridge + two Core** local acceptance, keep the Wheel/venv storage directory separate from the **short** test runtime directory. Darwin's Unix-domain socket `sun_path` permits at most **103 pathname bytes** (excluding its NUL terminator); the test now checks the exact UTF-8 byte length of `<runtime-scratch>/case/owner.sock` before starting Bridge. A nested runtime directory beneath a long `.serverfs-v0250-candidate-*` Wheelhouse can exceed that limit even when all packages install correctly. Use a new private direct child of `deployment/macos`, for example `.serverfs-v0250-e2e-<8 random hex>`, and pass its absolute path in `SERVERFS_V0250_WHEEL_SCRATCH`; keep the separate `SERVERFS_V0250_WHEELHOUSE` pointed at the actual installed Core/Bridge `0.25.0` venvs. Do not set the public-hold option for a loopback-only test. A measured corrected `0.25.0` installed-Wheel test passed on macOS (1 Bridge, 2 Cores, 93-byte socket, authentication/isolation/Bridge restart, exit 0); see `docs/diagnostics/v0250-macos-versioned-wheel-live-e2e-2026-11-16.md`. This does not substitute for a clean-SHA or production service/public ingress acceptance.
+
+The separately opt-in **signed native** two-Shared-Core test can also validate the installed Core and Bridge candidates rather than the live source checkout. After independently creating a reviewed, owner-private `0.25.0` source snapshot with Root/Bridge locks checked offline, and a separate independently installed `0.25.0` Bridge virtual environment, use both test-only pins:
+
+```bash
+# All paths must already exist and meet the test's strict owner/version checks.
+# This registers two RANDOM test-only signed SMAppService Core Login Items;
+# do not run on a host with unknown ServerFS launchd jobs.
+SERVERFS_ENABLE_SHARED_SMAPP_LIVE_TEST=1 \
+SERVERFS_V0250_NATIVE_CORE_SOURCE="$ABS_PRIVATE_0250_SOURCE_SNAPSHOT" \
+SERVERFS_V0250_NATIVE_BRIDGE_PYTHON="$ABS_PRIVATE_0250_BRIDGE_VENV/bin/python" \
+  .venv/bin/python -B -m pytest -q -s -p no:cacheprovider \
+  tests/test_darwin_v0250_shared_smappservice_live_macos.py
+```
+
+The Core pin must be a canonical `.serverfs-v0250-candidate-<12 lowercase hex>` directory owned by the current user with mode `0700`, Root metadata `0.25.0` and a lockfile. The Bridge pin must be an installed candidate `bridge-venv/bin/python` whose own site-packages contains `serverfs-agent-bridge==0.25.0` and private-grants modules. **Both pins must point to the same candidate source directory:** the test now refuses any mixed Core/Bridge candidate or a versioned Bridge with a non-versioned Core before native registration. It builds the signed ServiceManager from that same candidate directory, uses no implicit `PYTHONPATH` for the installed owner, requires the protected production launchd labels/PIDs to remain unchanged, and refuses uncertain native cleanup. The previous mixed-source acceptance is retained only as development history. A corrected one-source candidate A native test passed with **numeric pytest exit 0** and independently verified JUnit XML (**1 test, 0 failures/errors/skips**), two signed native `0.25.0` Cores, and an installed `0.25.0` Bridge. The private task-owned JUnit evidence is retained for inspection; see `docs/diagnostics/v0250-macos-signed-0250-shared-cores-2026-11-16.md`. This development candidate is still **not an immutable same-SHA release**, nor production Cloudflare/public ingress acceptance.
+
 ## Supported platform
 
 ```text
@@ -264,3 +342,87 @@ workspace-write failed closed whenever provider state is unknown.
 
 
 ACP profile configuration and operation: [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/).
+
+## v0.25.0 pre-release — independent Shared Core Python runtime
+
+This section is **development-only** for the unreleased macOS `bridge_mode=shared`
+architecture. It does not authorize replacement of existing production services.
+
+Choose a new physical absolute parent directory owned by the current user
+with mode `0700`, outside all exposed workdirs and the repository. The runtime
+destination **must not exist**. With an already populated uv cache:
+
+```bash
+# RUNTIME_PARENT must already exist and be private (0700), user-owned.
+RUNTIME_PARENT="/absolute/private/user/path/serverfs-v25-runtimes"
+RUNTIME_TARGET="$RUNTIME_PARENT/shared-core-01"
+.venv/bin/python -m serverfs_mcp.darwin_shared_runtime \
+  --target "$RUNTIME_TARGET" \
+  --project-root "$(pwd -P)" \
+  --source-python "$(pwd -P)/.venv/bin/python" \
+  --uv "$(command -v uv)"
+```
+
+The installer uses `uv export --locked --offline` to reject a stale
+`pyproject.toml`/`uv.lock` combination, builds the ServerFS wheel offline and
+installs locked dependencies in a distinct venv. It pins a physical non-symlink
+`bin/serverfs-core-python` with matching `libpython`, probes real `-I -B`
+imports, records lock/project/requirements/wheel/Python/libpython SHA-256
+provenance, and publishes atomically with Darwin `RENAME_EXCL`.
+It never replaces an existing runtime and cannot register services or
+provision/revoke owner Bridge grants.
+
+You may independently revalidate the installed runtime without modifying it:
+
+```bash
+.venv/bin/python -m serverfs_mcp.darwin_shared_runtime \
+  --verify-only \
+  --target "$RUNTIME_TARGET" \
+  --project-root "$(pwd -P)"
+```
+
+This read-only verifier checks private root and manifest permissions, no-follow
+provenance JSON schema, pinned Python and libpython hashes, current lock and
+project metadata hashes, and isolated imports. It **does not** hash every file
+in `site-packages`, sign or activate services, or independently attest that the
+checkout corresponds to a Git release tag.
+
+Use the exact installed `bin/serverfs-core-python` for the named Shared Core
+`shared-stage --core-python` input. The separate Bridge owner must provision
+private v2 grants/binding. The official managed interpreter is integrity-checked
+at staging **and again** before registration; non-managed development
+interpreters do not receive this provenance assurance. The signed native App
+still pins the exact physical Core interpreter independently of the management
+CLI interpreter.
+
+With that Core already staged and the owner Bridge v2 active, explicitly check
+the entire registration gate **without registering** the native ServiceManagement
+Login Item:
+
+```bash
+.venv/bin/python -m serverfs_mcp.darwin_instance_cli \
+  --instance shared-core-01 shared-preflight \
+  --bridge-id owner-bridge-01 \
+  --config /absolute/path/to/core.toml \
+  --http-port 18868
+```
+
+Success reports `ready-to-register` and `bridge_authenticated=true` after
+signed App, provenance, manifest, live grant, status/PID and port checks.
+This is not a ServiceManagement registration or Login Items approval. The live
+Bridge may record anti-replay authentication nonces. Only explicit
+`shared-start` subsequently registers that Core, never its owner Bridge.
+
+**Validated:** locked-offline runtime install and read-only verification;
+signed native App preflight; two standalone Core HTTP MCP processes sharing
+one Bridge; three-process Bridge restart, grant rotation and revocation;
+and the additional two signed Core Apps + live independent Bridge owner
+`shared-preflight` with simulated owner outage/restart/revocation and damaged
+runtime provenance. All run with the actual installed runtime, without native
+ServiceManagement registration; temporary signed candidates were un-staged.
+**Not validated:** two live SMAppService registered shared Cores, production
+placement/exact-SHA build, public Cloudflare/ChatGPT E2E or release approval.
+Do not enable the native login-item opt-in test without approved execution access.
+
+Evidence: `docs/diagnostics/v0250-macos-shared-offline-runtime-native-preflight-2026-11-15.md`
+and `docs/diagnostics/v0250-macos-shared-preflight-provenance-2026-11-15.md`.

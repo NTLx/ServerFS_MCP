@@ -116,7 +116,9 @@ def test_cli_explicit_component_never_invokes_group_lifecycle(
         )
     else:
         method = (
-            f"cloudflare_connector_{operation}" if component == "cloudflare" else f"core_{operation}"
+            f"cloudflare_connector_{operation}"
+            if component == "cloudflare"
+            else f"core_{operation}"
         )
         service_id = "cloudflare" if component == "cloudflare" else "http-origin"
         monkeypatch.setattr(

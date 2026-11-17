@@ -17,6 +17,7 @@ from .bootstrap import (
     parse_bootstrap_frame,
 )
 from .config import BridgeConfig
+from .core_grants_private import load_private_core_grants
 from .leases import LeaseManager
 from .preflight import JevTaskPreflight
 from .protocol import BridgeProtocolServer
@@ -38,6 +39,15 @@ async def _serve(
     # config/bootstrap objects and mapped downward afterwards, never written back here.
     scrub_process_proxy_environment()
     store = TaskStore(config.state_dir)
+    core_grant_verifier = None
+    if config.protocol_mode == "v2":
+        if sys.platform != "darwin" or not config.bridge_id:
+            raise ValueError("v2 Bridge startup requires macOS and an explicit bridge_id")
+        core_grant_verifier = load_private_core_grants(
+            store=store,
+            bridge_id=config.bridge_id,
+            policies=config.policies,
+        )
     adapters = {}
     # The runtime-only egress material from the private bootstrap channel. It is handed to the
     # adapters here and applied downward to each runtime's network-owning child; it is never placed
@@ -134,8 +144,6 @@ async def _serve(
             bootstrap.prior_bridge_execution_stopped if bootstrap is not None else False
         ),
     )
-    await service.start()
-
     endpoint = (
         {"pipe_name": str(config.socket_path)}
         if sys.platform == "win32"
@@ -146,9 +154,17 @@ async def _serve(
         allowed_peer_uid=config.allowed_peer_uid,
         allowed_peer_gid=config.allowed_peer_gid,
         allowed_peer_sid=config.allowed_peer_sid,
+        v2_only=config.protocol_mode == "v2",
+        core_grant_verifier=core_grant_verifier,
         **endpoint,
     )
-    await server.start()
+    try:
+        await service.start()
+        await server.start()
+    except BaseException:
+        await server.close()
+        await service.close()
+        raise
 
     own_shutdown_event = shutdown_event is None
     stop = shutdown_event or asyncio.Event()

@@ -18,6 +18,8 @@ from .policy import PolicyRegistry, RepoActionPolicy, WorkdirAgentPolicy
 _CONFIG_KEYS = frozenset(
     {
         "socket_path",
+        "protocol_mode",
+        "bridge_id",
         "state_dir",
         "lock_dir",
         "lease_key",
@@ -335,6 +337,8 @@ class BridgeConfig:
     jev: JevSettings
     proxy: SharedProxySettings | None
     policies: PolicyRegistry
+    protocol_mode: str = "v1"
+    bridge_id: str | None = None
 
     @classmethod
     def load(cls, path: Path) -> BridgeConfig:
@@ -342,6 +346,19 @@ class BridgeConfig:
         if not isinstance(data, dict):
             raise ValueError("bridge config root must be an object")
         _reject_unknown_keys(data, _CONFIG_KEYS, "bridge config")
+
+        protocol_mode = _strict_string(data.get("protocol_mode", "v1"), "protocol_mode")
+        if protocol_mode not in {"v1", "v2"}:
+            raise ValueError("protocol_mode must be v1 or v2")
+        bridge_id = data.get("bridge_id")
+        if protocol_mode == "v2":
+            if sys.platform != "darwin":
+                raise ValueError("protocol_mode v2 is supported only on macOS")
+            bridge_id = _strict_string(bridge_id, "bridge_id")
+            if re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?", bridge_id) is None:
+                raise ValueError("bridge_id has an invalid format")
+        elif bridge_id is not None:
+            raise ValueError("bridge_id requires protocol_mode v2")
 
         lease_key = _strict_string(data.get("lease_key", _LEASE_KEY_SLOT), "lease_key")
         if lease_key not in _LEASE_KEYS:
@@ -493,6 +510,8 @@ class BridgeConfig:
             jev=jev,
             proxy=proxy,
             policies=PolicyRegistry(policies),
+            protocol_mode=protocol_mode,
+            bridge_id=bridge_id,
         )
 
 

@@ -48,6 +48,7 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+extend-exclude = ["deployment/macos/.serverfs-v0250-*"]
 
 [tool.ruff.lint]
 select = [

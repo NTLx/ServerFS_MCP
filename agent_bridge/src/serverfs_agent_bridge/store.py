@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -129,6 +130,26 @@ class TaskStore:
                 CREATE INDEX IF NOT EXISTS events_task_cursor
                 ON events(task_id, event_id);
 
+                -- Protocol v2 ownership is separate from historical v1 tasks.
+                -- No existing task is silently adopted by any Core.
+                CREATE TABLE IF NOT EXISTS core_task_owners (
+                    task_id TEXT PRIMARY KEY REFERENCES tasks(task_id) ON DELETE CASCADE,
+                    core_id TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS core_task_owners_by_core
+                ON core_task_owners(core_id, task_id);
+
+                -- Signed v2 mutating requests must not replay after Bridge restart.
+                CREATE TABLE IF NOT EXISTS core_nonce_claims (
+                    core_id TEXT NOT NULL,
+                    key_id TEXT NOT NULL,
+                    nonce TEXT NOT NULL,
+                    expires_at REAL NOT NULL,
+                    PRIMARY KEY (core_id, key_id, nonce)
+                );
+                CREATE INDEX IF NOT EXISTS core_nonce_expiration
+                ON core_nonce_claims(expires_at);
+
                 CREATE TABLE IF NOT EXISTS pending_requests (
                     request_id TEXT PRIMARY KEY,
                     task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
@@ -247,7 +268,12 @@ class TaskStore:
         manifest_json: str | None = None,
         manifest_sha256: str | None = None,
         max_active_tasks: int | None = None,
+        owner_core_id: str | None = None,
     ) -> TaskRecord:
+        if owner_core_id is not None:
+            from .core_grants import _id
+
+            _id(owner_core_id)
         now = utc_now()
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
@@ -290,6 +316,12 @@ class TaskStore:
                         manifest_sha256,
                     ),
                 )
+                if owner_core_id is not None:
+                    # The task and originating Core commit or fail together.
+                    con.execute(
+                        "INSERT INTO core_task_owners(task_id, core_id) VALUES (?, ?)",
+                        (task_id, owner_core_id),
+                    )
             except sqlite3.IntegrityError as exc:
                 if idempotency_key is not None:
                     existing = con.execute(
@@ -318,6 +350,72 @@ class TaskStore:
         if row is None:
             raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {task_id}")
         return _task_from_row(row)
+
+    def claim_core_nonce(
+        self,
+        core_id: str,
+        key_id: str,
+        nonce: str,
+        expires_at: float,
+        now: float,
+    ) -> bool:
+        """Durably claim a signed v2 nonce; only the first claimant wins.
+
+        The insert and expired-entry garbage collection use one SQLite
+        write transaction. A Bridge restart never clears still-valid claims.
+        Expired proofs cannot pass the verifier's timestamp check.
+        """
+        from .core_grants import _NONCE, _id
+
+        _id(core_id)
+        _id(key_id)
+        if not isinstance(nonce, str) or not _NONCE.fullmatch(nonce):
+            raise ValueError("invalid Core nonce")
+        if (
+            type(expires_at) not in (int, float)
+            or type(now) not in (int, float)
+            or not math.isfinite(expires_at)
+            or not math.isfinite(now)
+            or expires_at < now
+        ):
+            raise ValueError("invalid nonce validity window")
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            con.execute("DELETE FROM core_nonce_claims WHERE expires_at < ?", (now,))
+            count = con.execute("SELECT COUNT(*) AS n FROM core_nonce_claims").fetchone()
+            if int(count["n"]) >= 65_536:
+                return False
+            inserted = con.execute(
+                """
+                INSERT OR IGNORE INTO core_nonce_claims(core_id, key_id, nonce, expires_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (core_id, key_id, nonce, expires_at),
+            )
+            return inserted.rowcount == 1
+
+    def require_core_task_owner(self, task_id: str, *, core_id: str, workdir_alias: str) -> None:
+        """Atomically check a v2 task's immutable Core + workdir binding.
+
+        Historical v1 rows have no owner entry and are *never* accessible
+        through a v2 Core. Unknown task, another Core, and another workdir
+        produce the same redacted denial to avoid task-existence disclosure.
+        """
+        from .core_grants import _id
+
+        _id(core_id)
+        with self._connect() as con:
+            exists = con.execute(
+                """
+                SELECT 1 FROM core_task_owners AS owner
+                JOIN tasks ON tasks.task_id = owner.task_id
+                WHERE owner.task_id = ? AND owner.core_id = ?
+                  AND tasks.workdir_alias = ?
+                """,
+                (task_id, core_id, workdir_alias),
+            ).fetchone()
+        if exists is None:
+            raise BridgeError("CORE_TASK_NOT_FOUND", "Core task is not available")
 
     def transition_task(
         self,

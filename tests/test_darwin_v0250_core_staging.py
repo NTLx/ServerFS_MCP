@@ -50,9 +50,10 @@ def test_stage_core_keeps_legacy_manifest_and_never_registers(
     darwin_service._atomic_private_write(
         darwin_service.manifest_path(),
         json.dumps(
-            {"schema_version": 1, "services": {
-                "tunnel": {"legacy": True, "arguments": ["--config", str(config)]}
-            }}
+            {
+                "schema_version": 1,
+                "services": {"tunnel": {"legacy": True, "arguments": ["--config", str(config)]}},
+            }
         ).encode(),
     )
     monkeypatch.setattr(
@@ -154,9 +155,10 @@ def test_stage_core_manifest_publish_failure_keeps_original(
 ) -> None:
     config, env, state = _fixture(tmp_path, monkeypatch)
     original = json.dumps(
-        {"schema_version": 1, "services": {
-            "tunnel": {"legacy": True, "arguments": ["--config", str(config)]}
-        }}
+        {
+            "schema_version": 1,
+            "services": {"tunnel": {"legacy": True, "arguments": ["--config", str(config)]}},
+        }
     )
     darwin_service._atomic_private_write(darwin_service.manifest_path(), original.encode())
     writer = darwin_service._atomic_private_write
@@ -272,9 +274,7 @@ def test_stage_core_refuses_existing_connector_manifest_without_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config, env, state = _fixture(tmp_path, monkeypatch)
-    original = json.dumps(
-        {"schema_version": 1, "services": {"cloudflare": {"legacy": True}}}
-    )
+    original = json.dumps({"schema_version": 1, "services": {"cloudflare": {"legacy": True}}})
     darwin_service._atomic_private_write(darwin_service.manifest_path(), original.encode())
     with pytest.raises(darwin_service.DarwinServiceError, match="migration requires review"):
         darwin_service.stage_core_service(config, env, 18766, "example.test")
@@ -282,19 +282,25 @@ def test_stage_core_refuses_existing_connector_manifest_without_mutation(
     assert not (state / darwin_service._HTTP_ORIGIN_ENV_SNAPSHOT).exists()
 
 
-@pytest.mark.parametrize("tunnel_args", [
-    ["--config", "/private/other.toml"],
-    ["--tunnel-id", "example"],
-    ["--config", "relative.toml"],
-])
+@pytest.mark.parametrize(
+    "tunnel_args",
+    [
+        ["--config", "/private/other.toml"],
+        ["--tunnel-id", "example"],
+        ["--config", "relative.toml"],
+    ],
+)
 def test_stage_core_requires_same_canonical_toml_as_installed_openai(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tunnel_args: list[str]
 ) -> None:
     config, env, state = _fixture(tmp_path, monkeypatch)
     original = json.dumps(
-        {"schema_version": 1, "services": {
-            "tunnel": {"arguments": tunnel_args},
-        }}
+        {
+            "schema_version": 1,
+            "services": {
+                "tunnel": {"arguments": tunnel_args},
+            },
+        }
     )
     darwin_service._atomic_private_write(darwin_service.manifest_path(), original.encode())
     with pytest.raises(darwin_service.DarwinServiceError, match="Core"):

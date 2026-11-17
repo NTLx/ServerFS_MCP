@@ -691,6 +691,40 @@ def _launchd_job_pid(label: str) -> int | None:
     return None
 
 
+def _launchd_job_present(label: str) -> bool:
+    """Return whether launchd knows this job, failing closed on ambiguity."""
+    try:
+        completed = subprocess.run(
+            ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except Exception:
+        raise DarwinServiceError("launchd job presence unavailable") from None
+    if (
+        not isinstance(completed, subprocess.CompletedProcess)
+        or type(completed.returncode) is not int
+        or not isinstance(completed.stdout, str)
+        or not isinstance(completed.stderr, str)
+    ):
+        raise DarwinServiceError("launchd job presence unavailable")
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 113 and completed.stdout == "":
+        stderr_lines = [line.strip() for line in completed.stderr.splitlines() if line.strip()]
+        if len(stderr_lines) == 1 and stderr_lines[0].startswith("Could not find service "):
+            return False
+        if (
+            len(stderr_lines) == 2
+            and stderr_lines[0] == "Bad request."
+            and stderr_lines[1].startswith("Could not find service ")
+        ):
+            return False
+    raise DarwinServiceError("launchd job presence unavailable")
+
+
 def _managed_job_pid(service: str) -> int | None:
     return _launchd_job_pid(_SERVICE_LABELS[service])
 
@@ -1346,7 +1380,8 @@ def _cloudflared_spec(
     """Build only the connector definition; never write, register or launch it."""
     token_file = _secure_input_file(token_file, "Cloudflare connector token file")
     _validate_private_location(
-        token_file, (Path(__file__).resolve().parents[2], *workdir_roots),
+        token_file,
+        (Path(__file__).resolve().parents[2], *workdir_roots),
         "Cloudflare token file",
     )
     cloudflared = cloudflared.expanduser()
@@ -1662,7 +1697,8 @@ def stage_core_service(
     _verify_app(installed_app_path())
     _verify_opt_in_agents(installed_app_path())
     if native_status(HTTP_ORIGIN_SERVICE).get(HTTP_ORIGIN_SERVICE) not in {
-        "not-registered", "not-found"
+        "not-registered",
+        "not-found",
     }:
         raise DarwinServiceError("Core/HTTP origin is already registered; refusing replacement")
     document = _load_manifest_document(optional=True)
@@ -1670,7 +1706,9 @@ def stage_core_service(
     if HTTP_ORIGIN_SERVICE in services:
         raise DarwinServiceError("Core/HTTP origin manifest already exists; refusing replacement")
     if CLOUDFLARE_SERVICE in services:
-        raise DarwinServiceError("Cloudflare connector is installed; Core migration requires review")
+        raise DarwinServiceError(
+            "Cloudflare connector is installed; Core migration requires review"
+        )
     _require_shared_core_config(services, config_path)
     snapshot = service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT
     if snapshot.exists() or snapshot.is_symlink():
@@ -1730,12 +1768,11 @@ def unstage_core_service() -> None:
     if CLOUDFLARE_SERVICE in services:
         raise DarwinServiceError("cannot unstage Core while Cloudflare connector is installed")
     openai = services.get(TUNNEL_SERVICE)
-    if isinstance(openai, dict) and openai.get("connector_owner") == (
-        "independent-openai-http"
-    ):
+    if isinstance(openai, dict) and openai.get("connector_owner") == ("independent-openai-http"):
         raise DarwinServiceError("cannot unstage Core while OpenAI connector is installed")
     if native_status(HTTP_ORIGIN_SERVICE).get(HTTP_ORIGIN_SERVICE) not in {
-        "not-registered", "not-found"
+        "not-registered",
+        "not-found",
     }:
         raise DarwinServiceError("Core is still registered; stop it explicitly first")
     snapshot = service_home() / _HTTP_ORIGIN_ENV_SNAPSHOT
@@ -1763,8 +1800,7 @@ def _core_manifest_port() -> int:
     arguments = spec.get("arguments")
     if (
         not isinstance(arguments, list)
-        or arguments[:5]
-        != ["-m", "serverfs_mcp.cli", "serve", "--transport", "streamable-http"]
+        or arguments[:5] != ["-m", "serverfs_mcp.cli", "serve", "--transport", "streamable-http"]
         or arguments.count("--http-port") != 1
     ):
         raise DarwinServiceError("independent Core manifest is invalid")
@@ -1811,8 +1847,7 @@ def _independent_core_context(
     except (OSError, ValueError) as exc:
         raise DarwinServiceError("independent Core environment snapshot is invalid") from exc
     if not isinstance(environment, dict) or any(
-        not isinstance(key, str) or not isinstance(value, str)
-        for key, value in environment.items()
+        not isinstance(key, str) or not isinstance(value, str) for key, value in environment.items()
     ):
         raise DarwinServiceError("independent Core environment snapshot is invalid")
     try:
@@ -1918,9 +1953,10 @@ def stage_openai_http_connector(
     _verify_app(installed_app_path())
     if not _TUNNEL_ID.fullmatch(tunnel_id):
         raise DarwinServiceError("invalid OpenAI Tunnel ID")
-    if native_status(TUNNEL_SERVICE).get(TUNNEL_SERVICE) not in {
-        "not-registered", "not-found"
-    } or _managed_job_pid(TUNNEL_SERVICE) is not None:
+    if (
+        native_status(TUNNEL_SERVICE).get(TUNNEL_SERVICE) not in {"not-registered", "not-found"}
+        or _managed_job_pid(TUNNEL_SERVICE) is not None
+    ):
         raise DarwinServiceError("OpenAI Tunnel is still registered or running")
     if find_unmanaged_tunnel_pids():
         raise DarwinServiceError("unmanaged OpenAI Tunnel process is still running")
@@ -2025,13 +2061,12 @@ def unstage_openai_http_connector() -> None:
     document = _load_manifest_document()
     services = document["services"]
     spec = services.get(TUNNEL_SERVICE)
-    if not isinstance(spec, dict) or spec.get("connector_owner") != (
-        "independent-openai-http"
-    ):
+    if not isinstance(spec, dict) or spec.get("connector_owner") != ("independent-openai-http"):
         raise DarwinServiceError("no independently staged OpenAI HTTP connector exists")
-    if native_status(TUNNEL_SERVICE).get(TUNNEL_SERVICE) not in {
-        "not-registered", "not-found"
-    } or _managed_job_pid(TUNNEL_SERVICE) is not None:
+    if (
+        native_status(TUNNEL_SERVICE).get(TUNNEL_SERVICE) not in {"not-registered", "not-found"}
+        or _managed_job_pid(TUNNEL_SERVICE) is not None
+    ):
         raise DarwinServiceError("OpenAI Tunnel remains registered or running")
     _atomic_private_write(
         manifest_path(),
@@ -2046,6 +2081,28 @@ def unstage_openai_http_connector() -> None:
             separators=(",", ":"),
         ).encode(),
     )
+
+
+def bridge_start() -> dict[str, str]:
+    """Start only a locally owned Bridge, never a Core or Connector."""
+    spec = _load_manifest_document()["services"].get(BRIDGE_SERVICE)
+    if not isinstance(spec, dict):
+        raise DarwinServiceError("owned Agent Bridge is not installed")
+    return _register_and_wait(BRIDGE_SERVICE)
+
+
+def bridge_stop() -> dict[str, str]:
+    """Stop only the locally managed Bridge; never stop the calling Core."""
+    spec = _load_manifest_document()["services"].get(BRIDGE_SERVICE)
+    if not isinstance(spec, dict):
+        raise DarwinServiceError("owned Agent Bridge is not installed")
+    return _unregister_and_wait(BRIDGE_SERVICE)
+
+
+def bridge_restart() -> dict[str, str]:
+    """Restart only the locally owned Bridge."""
+    bridge_stop()
+    return bridge_start()
 
 
 def core_start() -> dict[str, str]:
@@ -2113,7 +2170,8 @@ def _refuse_legacy_group_lifecycle(manifest: dict) -> None:
         isinstance(spec, dict)
         and (
             spec.get("origin_owner") == "independent-core"
-            or spec.get("connector_owner") in {
+            or spec.get("connector_owner")
+            in {
                 "independent-connector",
                 "independent-openai-http",
             }

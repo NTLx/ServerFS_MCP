@@ -25,7 +25,10 @@ def test_stable_release_is_dispatch_first_not_tag_first() -> None:
 
 def test_release_calls_every_exact_sha_gate_before_tag_creation() -> None:
     release = text("wheel-release.yml")
-    assert "'registry': json.loads((root / 'server.json').read_text())['version']" in release
+    metadata_check = 'deployment/native/release_metadata.py --root . --tag "$RELEASE_TAG"'
+    assert metadata_check in release
+    prepare = release.split("  linux-gate:", 1)[0]
+    assert prepare.index(metadata_check) < prepare.index("git fetch --prune origin main --tags")
     for workflow in (
         "container.yml",
         "windows-native.yml",

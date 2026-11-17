@@ -53,27 +53,7 @@ jobs:
             echo "Missing release notes: docs/releases/$RELEASE_TAG.md" >&2
             exit 1
           }
-          uv run --no-project --python 3.12 python - "$RELEASE_TAG" <<'PY'
-          import json
-          import pathlib
-          import sys
-          import tomllib
-
-          tag = sys.argv[1]
-          expected = tag[1:]
-          root = pathlib.Path('.')
-          versions = {
-              'root': tomllib.loads((root / 'pyproject.toml').read_text())['project']['version'],
-              'bridge': tomllib.loads((root / 'agent_bridge/pyproject.toml').read_text())['project']['version'],
-              'windows-native': tomllib.loads((root / 'native/windows/Cargo.toml').read_text())['package']['version'],
-              'plugin': json.loads((root / 'plugin.json').read_text())['version'],
-              'registry': json.loads((root / 'server.json').read_text())['version'],
-          }
-          bad = {name: version for name, version in versions.items() if version != expected}
-          if bad:
-              raise SystemExit(f'release version mismatch: expected {expected}, got {bad}')
-          print('release version surfaces:', versions)
-          PY
+          uv run --no-project --python 3.12 python deployment/native/release_metadata.py --root . --tag "$RELEASE_TAG"
           git fetch --prune origin main --tags
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse origin/main)" = "$GITHUB_SHA" || {

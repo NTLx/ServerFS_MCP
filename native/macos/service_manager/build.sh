@@ -27,6 +27,7 @@ xcrun swiftc \
 xcrun swiftc \
   -O \
   -target arm64-apple-macosx13.0 \
+  "$ROOT/Sources/ServiceLauncher/SharedManifestGate.swift" \
   "$ROOT/Sources/ServiceLauncher/main.swift" \
   -o "$RESOURCES/serverfs-service-launcher"
 

@@ -17,6 +17,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from .core_grants import CoreGrantVerifier
 from .errors import BridgeError
 from .local_ipc import (
     PIPE_NAMESPACE,
@@ -35,6 +36,30 @@ PROTOCOL_VERSION = 1
 MAX_REQUEST_BYTES = 1_048_576
 MAX_RESPONSE_BYTES = 1_048_576
 _ALLOWED_TOP_LEVEL = frozenset({"protocol_version", "request_id", "method", "params"})
+_V2_TASK_METHODS = frozenset(
+    {
+        "task.get",
+        "task.events",
+        "task.result.read",
+        "task.cancel",
+        "task.message.send",
+        "task.approval.respond",
+        "task.question.answer",
+    }
+)
+_V2_DISPATCH_METHODS = frozenset(
+    {
+        "bridge.ping",
+        "repo.inspect",
+        "repo.action",
+        "repo.commit",
+        "repo.push",
+        "runtime.list",
+        "runtime.models",
+        "task.submit",
+        *_V2_TASK_METHODS,
+    }
+)
 
 #: Pipe sizing is a platform property, not operator configuration in v0.11: a byte pipe serves
 #: at most as many simultaneous clients as there are listening instances, so the Bridge keeps
@@ -54,6 +79,8 @@ class BridgeProtocolServer:
         allowed_peer_gid: int | None = None,
         allowed_peer_sid: str | None = None,
         pipe_name: str | None = None,
+        v2_only: bool = False,
+        core_grant_verifier: CoreGrantVerifier | None = None,
     ):
         self.service = service
         self.socket_path = socket_path
@@ -65,6 +92,14 @@ class BridgeProtocolServer:
         self.allowed_peer_gid = allowed_peer_gid
         self.allowed_peer_sid = allowed_peer_sid
         self._pipe_name = pipe_name
+        if type(v2_only) is not bool:
+            raise ValueError("v2_only must be a boolean")
+        if v2_only and core_grant_verifier is None:
+            raise ValueError("v2-only protocol requires a Core grant verifier")
+        if not v2_only and core_grant_verifier is not None:
+            raise ValueError("Core grant verifier requires v2-only protocol mode")
+        self.v2_only = v2_only
+        self.core_grant_verifier = core_grant_verifier
         if WINDOWS:
             # The endpoint behind this seam is a pipe name, not a path, so a Windows Bridge is
             # configured without one. The name must still be a pipe namespace path, and the
@@ -92,6 +127,10 @@ class BridgeProtocolServer:
             self.allowed_peer_gid = os.getgid()
 
     async def start(self) -> None:
+        if self.v2_only and not self.core_grant_verifier.durable_replay_protection:
+            raise BridgeError(
+                "CORE_NOT_AUTHORIZED", "v2 protocol requires durable replay protection"
+            )
         if WINDOWS:
             await self._start_pipe()
             return
@@ -366,6 +405,8 @@ class BridgeProtocolServer:
             else None
         )
         try:
+            if self.v2_only:
+                return await self._dispatch_v2(request, request_id)
             if not isinstance(request, dict) or set(request) != _ALLOWED_TOP_LEVEL:
                 raise BridgeError("INVALID_REQUEST", "request fields do not match protocol")
             if type(request["protocol_version"]) is not int:
@@ -387,7 +428,46 @@ class BridgeProtocolServer:
         except Exception:
             return _error_response(request_id, "BRIDGE_PROTOCOL_ERROR", "protocol failure")
 
-    async def _dispatch(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+    async def _dispatch_v2(self, request: object, request_id: str | None) -> dict[str, Any]:
+        if not isinstance(request, dict):
+            raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+        if request.get("protocol_version") != 2 or type(request.get("protocol_version")) is not int:
+            raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+        authorization = self.core_grant_verifier.authorize(request)
+        method = authorization.method
+        if method not in _V2_DISPATCH_METHODS:
+            raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+        params = dict(request["params"])
+        # The canonical Core envelope binds a workdir for every method. Legacy RPC
+        # methods keep their existing parameter shape after that scope is checked.
+        if method in _V2_TASK_METHODS:
+            if not isinstance(params.get("task_id"), str):
+                raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+            self.service.store.require_core_task_owner(
+                params["task_id"],
+                core_id=authorization.core_id,
+                workdir_alias=authorization.workdir,
+            )
+            params.pop("workdir")
+        elif method in {"bridge.ping", "runtime.list"}:
+            params.pop("workdir")
+        elif method == "task.submit":
+            if params.get("workdir") != authorization.workdir:
+                raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+        result = await self._dispatch(
+            method,
+            params,
+            owner_core_id=authorization.core_id if method == "task.submit" else None,
+        )
+        return {"request_id": request_id, "ok": True, "result": result}
+
+    async def _dispatch(
+        self,
+        method: str,
+        params: dict[str, Any],
+        *,
+        owner_core_id: str | None = None,
+    ) -> dict[str, Any]:
         if method == "diagnostics.snapshot":
             _require_keys(params, set())
             return self.service.diagnostics_snapshot()
@@ -484,6 +564,8 @@ class BridgeProtocolServer:
                     "idempotency_key": (str, type(None)),
                 },
             )
+            if owner_core_id is not None:
+                return await self.service.submit_task(**params, owner_core_id=owner_core_id)
             return await self.service.submit_task(**params)
         if method == "task.get":
             _require_keys(params, {"task_id"})

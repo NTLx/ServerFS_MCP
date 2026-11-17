@@ -508,6 +508,7 @@ class BridgeService:
         continue_from_task_id: str | None = None,
         correlation_id: str | None = None,
         idempotency_key: str | None = None,
+        owner_core_id: str | None = None,
     ) -> dict[str, Any]:
         if self._closed:
             raise BridgeError("BRIDGE_CLOSED", "bridge is closed")
@@ -524,6 +525,13 @@ class BridgeService:
         requested_model = _validate_requested_model(model)
         _validate_correlation_id(correlation_id)
         _validate_idempotency_key(idempotency_key)
+        if owner_core_id is not None and (
+            continue_from_task_id is not None or idempotency_key is not None
+        ):
+            raise BridgeError(
+                "CORE_NOT_AUTHORIZED",
+                "v2 task submission does not allow continuation or idempotency",
+            )
         self._gc_retained()
         if len(prompt.encode("utf-8")) > self.limits.max_prompt_bytes:
             raise BridgeError("AGENT_PROMPT_TOO_LARGE", "agent prompt exceeds configured limit")
@@ -699,6 +707,7 @@ class BridgeService:
                     manifest_json=manifest_json,
                     manifest_sha256=manifest_sha256,
                     max_active_tasks=self.limits.max_active_tasks,
+                    owner_core_id=owner_core_id,
                 )
                 self._diagnostic_queued_at[task_id] = time.perf_counter()
                 admitted = self._diagnostic_call(
