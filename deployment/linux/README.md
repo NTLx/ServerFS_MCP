@@ -1208,22 +1208,21 @@ files were removed after successful cleanup verification.
 
 ## Linux v0.25.0 release integration readiness
 
-Read-only Git inventory on 2026-11-21:
+Read-only Git inventory before publication on 2026-11-21:
 
-- Current branch: `linux/v0.25.0-docker`, HEAD
-  `01d3e81dc56637df461857cf8fa2da06ef66790f`.
-- Its configured upstream is incorrectly `origin/main`; that remote currently
-  points at the same HEAD. The remote exposes only `main` and
-  `macos/v0.25.0-checkpoint-20261117`, both at that same SHA; there is no remote
-  Linux v0.25 branch.
+- The local `linux/v0.25.0-docker` branch was based at
+  `01d3e81dc56637df461857cf8fa2da06ef66790f` and incorrectly tracked
+  `origin/main`, which was at the same SHA. The remote then exposed only
+  `main` and `macos/v0.25.0-checkpoint-20261117`, both at that SHA.
 - Local `main` is three commits behind `origin/main`. The Linux branch has no
   committed delta against current `origin/main` or the macOS checkpoint. The
   local-main-to-HEAD history touches 231 paths and intersects the dirty Linux
   work in five shared paths: Bridge `config.py`, `main.py`, `protocol.py`,
   `tests/test_core_grants_startup.py`, and Core `core_bridge_client_v2.py`.
-- No fetch, scratch checkout, merge, rebase, or ref update was performed. The
-  remote tips already resolve to the checked-out object; the dirty worktree,
-  index, branch and HEAD were left in place.
+- No fetch, scratch checkout, merge, or rebase was performed. After verification
+  and the explicit allowlist commit, the only publication ref update was
+  creation of `refs/heads/linux/v0.25.0-docker`; its upstream now tracks
+  `origin/linux/v0.25.0-docker`.
 
 Shared compatibility review:
 
@@ -1299,8 +1298,13 @@ path inventory):
 - Linux-only Core implementation/tests: `src/serverfs_mcp/linux_v0250_bridge_adapter.py`, `src/serverfs_mcp/linux_v0250_core_binding.py`, `tests/test_linux_v0250_bridge_adapter.py`, `tests/test_linux_v0250_bridge_bootstrap.py`, `tests/test_linux_v0250_bridge_gate.py`, `tests/test_linux_v0250_cloudflare_public.py`, `tests/test_linux_v0250_compose.py`, `tests/test_linux_v0250_docker_e2e.py`, `tests/test_linux_v0250_dual_connector_lifecycle.py`, `tests/test_linux_v0250_file_only_docker.py`, `tests/test_linux_v0250_http_e2e.py`, `tests/test_linux_v0250_real_agent_docker.py`, `tests/test_linux_v0250_tunnel_runtime.py`, `tests/test_linux_v0250_writer_lease.py`.
 - Linux deployment/design: `deployment/linux/README.md`, `deployment/linux/compose.bridge-disabled.yml`, `deployment/linux/compose.bridge-v2.yml`, `deployment/linux/compose.cloudflare-profile.yml`, `deployment/linux/compose.internal.yml`, `deployment/linux/compose.openai-http.yml`, `deployment/linux/compose.publish-http.yml`, `deployment/linux/serverfs-agent-bridge@.service`, `docs/architecture/v0.25.0-linux-ingress-host-bridge.md`.
 
-Before any later cross-platform merge, run the macOS-owned acceptance on
-macOS; the Linux-only CI result does not replace it. OpenAI public
+Publication result: commit `1e71927bb2d95dff43dba441c30eb0bbde2324fb`
+(`feat(linux): add v0.25.0 ingress and host bridge`) created the dedicated
+Linux branch from base `01d3e81dc56637df461857cf8fa2da06ef66790f`. The exact
+remote ref `refs/heads/linux/v0.25.0-docker` matched that commit after push;
+`origin/main` remained at the base SHA. The branch contains 40 allowlisted
+paths and no version bump or release tag. Before any later cross-platform
+integration, run the macOS-owned acceptance on macOS. OpenAI public
 registration/discovery remains optional future work, not a release blocker;
 Cloudflare public acceptance passed, and its dedicated test Tunnel remains
 allocated but inactive. No OpenAI resources or credentials are needed for this
