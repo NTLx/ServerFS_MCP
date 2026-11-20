@@ -19,7 +19,7 @@ from serverfs_agent_bridge.core_grants import (
 from serverfs_agent_bridge.leases import LeaseManager
 from serverfs_agent_bridge.models import AgentMode
 from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
-from serverfs_agent_bridge.protocol import BridgeProtocolServer
+from serverfs_agent_bridge.protocol import MacOSV2BridgeProtocolServer as BridgeProtocolServer
 from serverfs_agent_bridge.service import BridgeService
 from serverfs_agent_bridge.store import TaskStore
 

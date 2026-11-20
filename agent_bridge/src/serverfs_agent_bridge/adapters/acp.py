@@ -184,6 +184,7 @@ class AcpAdapter(AgentAdapter):
             raise BridgeError("AGENT_PROVIDER_ERROR", str(exc)) from exc
         client = _Client(context)
         active: _ActiveTask | None = None
+        child: AcpChild | None = None
         try:
             child = await spawn_acp_child(
                 self.profile.command,
@@ -310,6 +311,16 @@ class AcpAdapter(AgentAdapter):
                     if active.stderr_task is not None:
                         active.stderr_task.cancel()
                         await asyncio.gather(active.stderr_task, return_exceptions=True)
+            elif child is not None:
+                # The process is already owned even if connection setup failed.
+                stopped = await asyncio.shield(
+                    stop_acp_child(child, self.profile.shutdown_timeout_seconds)
+                )
+                if not stopped:
+                    raise BridgeError(
+                        "AGENT_PROVIDER_STOP_UNKNOWN", "ACP child process group did not stop"
+                    )
+                self._remember_stopped(context.task_id)
 
     def _remember_stopped(self, task_id: str) -> None:
         self._stopped[task_id] = None

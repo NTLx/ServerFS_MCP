@@ -49,6 +49,7 @@ class _ActiveClaudeTask:
     client: ClaudeSDKClient
     client_ready: asyncio.Event = field(default_factory=asyncio.Event)
     latest_text: str = ""
+    text_emission_recorded: bool = False
     session_id: str | None = None
     pending_interactions: int = 0
 
@@ -298,6 +299,8 @@ class ClaudeAdapter(AgentAdapter):
             resume=context.continue_native_session_id if resume else None,
             model=context.requested_model,
         )
+        if os.name == "nt":
+            options_kwargs["include_partial_messages"] = True
         if child_env_overlay is not None:
             options_kwargs["env"] = child_env_overlay
         options = ClaudeAgentOptions(**options_kwargs)
@@ -365,6 +368,11 @@ class ClaudeAdapter(AgentAdapter):
 
     async def _receive_result(self, active: _ActiveClaudeTask) -> ResultMessage:
         iterator = active.client.receive_response().__aiter__()
+        stream_event_type: type[Any] | None = None
+        if os.name == "nt":
+            from claude_agent_sdk import StreamEvent
+
+            stream_event_type = StreamEvent
         while True:
             try:
                 message = await self._next_message(active, iterator)
@@ -382,11 +390,47 @@ class ClaudeAdapter(AgentAdapter):
                 # the Qoder adapter; this raises identity durability, never a liveness claim.
                 await self._handle_system_message(active, message)
                 continue
+            if stream_event_type is not None and isinstance(message, stream_event_type):
+                await self._handle_stream_event(active, message)
+                continue
             if isinstance(message, AssistantMessage):
                 await self._handle_assistant_message(active, message)
                 continue
             if isinstance(message, ResultMessage):
                 return message
+
+    async def _handle_stream_event(
+        self,
+        active: _ActiveClaudeTask,
+        message: Any,
+    ) -> None:
+        """Record one content-free proof of first top-level text emission.
+
+        Text fragments may split a host path or other secret across SDK events.
+        Persisting raw fragments defeats whole-message redaction, so this
+        telemetry includes only a byte count and text block index. At most
+        one such event is emitted per task, regardless of generation length.
+        """
+        if message.parent_tool_use_id is not None:
+            return
+        event = message.event
+        if not isinstance(event, dict) or event.get("type") != "content_block_delta":
+            return
+        index = event.get("index")
+        if type(index) is not int or index < 0:
+            return
+        delta = event.get("delta")
+        if not isinstance(delta, dict) or delta.get("type") != "text_delta":
+            return
+        text = delta.get("text")
+        if not isinstance(text, str) or not text:
+            return
+        active.latest_text += text
+        if not active.text_emission_recorded:
+            await active.context.emit_event(
+                "agent.text_delta", {"size_bytes": len(text.encode("utf-8")), "index": index}
+            )
+            active.text_emission_recorded = True
 
     async def _handle_system_message(
         self,

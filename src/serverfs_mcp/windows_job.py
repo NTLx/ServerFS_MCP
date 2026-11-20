@@ -137,6 +137,19 @@ class WindowsJob:
         self._handle = None
         self._closed = True
 
+    def contains_pid(self, pid: int) -> bool:
+        """Prove one pipe server belongs to this exact held Job generation.
+
+        A Windows venv python.exe may launch the actual interpreter as a child,
+        so comparing the pipe server PID with Popen.pid is insufficient. Query
+        kernel Job membership instead; never infer it from SID or a PID tree.
+        """
+        if self._handle is None or self._closed:
+            raise JobObjectError("the owner Job is not open")
+        if type(pid) is not int or pid <= 0:
+            raise JobObjectError("the pipe server process id is invalid")
+        return _process_in_job(self._handle, pid)
+
     @property
     def is_open(self) -> bool:
         return self._handle is not None and not self._closed
@@ -251,6 +264,32 @@ def _create_kill_on_close_job(name: str | None = None) -> int:
         kernel32.CloseHandle(handle)
         raise JobObjectError("kill-on-close could not be configured on the job object")
     return int(handle)
+
+
+def _process_in_job(job_handle: int, pid: int) -> bool:
+    """Use Windows IsProcessInJob on a held process handle, never a PID guess."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = _kernel32()
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.IsProcessInJob.restype = wintypes.BOOL
+    kernel32.IsProcessInJob.argtypes = [
+        wintypes.HANDLE,
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.BOOL),
+    ]
+    process = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not process:
+        raise JobObjectError("the pipe server process cannot be inspected")
+    try:
+        member = wintypes.BOOL()
+        if not kernel32.IsProcessInJob(process, job_handle, ctypes.byref(member)):
+            raise JobObjectError("the pipe server Job membership is unverified")
+        return bool(member.value)
+    finally:
+        kernel32.CloseHandle(process)
 
 
 def _assign_process(handle: int, process: subprocess.Popen[Any]) -> None:

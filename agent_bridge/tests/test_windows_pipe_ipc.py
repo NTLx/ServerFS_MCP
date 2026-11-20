@@ -25,7 +25,10 @@ from pipe_support import (
     wait_until,
 )
 from platform_contract import require_windows_kernel
-from serverfs_agent_bridge.protocol import MAX_REQUEST_BYTES, PIPE_IDLE_TIMEOUT_SECONDS
+from serverfs_agent_bridge.protocol_windows_native import (
+    MAX_REQUEST_BYTES,
+    PIPE_IDLE_TIMEOUT_SECONDS,
+)
 from serverfs_agent_bridge.windows_pipe import (
     ERROR_BROKEN_PIPE,
     ERROR_IO_PENDING,
@@ -98,7 +101,7 @@ def test_concurrent_clients_are_served_by_distinct_instances(tmp_path: Path) -> 
 
 
 def test_pool_size_bounds_simultaneous_connections(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr("serverfs_agent_bridge.protocol.PIPE_POOL_SIZE", 2)
+    monkeypatch.setattr("serverfs_agent_bridge.protocol_windows_native.PIPE_POOL_SIZE", 2)
     with bridge(tmp_path) as server:
         held = [PipeClient(server.pipe_name) for _ in range(2)]
         for client in held:
@@ -211,7 +214,9 @@ def test_coalesced_frames_are_served_in_order(tmp_path: Path) -> None:
 
 
 def test_partial_frame_does_not_pin_an_instance(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr("serverfs_agent_bridge.protocol.PIPE_IDLE_TIMEOUT_SECONDS", 0.25)
+    monkeypatch.setattr(
+        "serverfs_agent_bridge.protocol_windows_native.PIPE_IDLE_TIMEOUT_SECONDS", 0.25
+    )
     with bridge(tmp_path) as server:
         pool = server.server._pipe
         client = PipeClient(server.pipe_name)

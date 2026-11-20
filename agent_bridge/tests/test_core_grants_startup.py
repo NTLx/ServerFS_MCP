@@ -81,6 +81,7 @@ def test_protocol_configuration_fails_closed(
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires native Darwin AF_UNIX startup")
 async def test_v2_missing_private_grants_fails_before_listener(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

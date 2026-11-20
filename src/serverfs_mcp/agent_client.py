@@ -14,6 +14,7 @@ import json
 import secrets
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -43,15 +44,24 @@ class AgentBridgeRemoteError(AgentBridgeClientError):
 
 
 class AgentBridgeClient:
-    def __init__(self, socket_path: Path, *, timeout_seconds: float = 15.0):
+    def __init__(
+        self,
+        socket_path: Path,
+        *,
+        timeout_seconds: float = 15.0,
+        server_pid_validator: Callable[[int], bool] | None = None,
+    ):
         if not socket_path.is_absolute():
             raise ValueError("agent bridge socket path must be absolute")
         if WINDOWS and not str(socket_path).startswith(PIPE_PREFIX):
             raise ValueError("agent bridge endpoint must be a named pipe on Windows")
         if timeout_seconds <= 0:
             raise ValueError("agent bridge timeout must be positive")
+        if server_pid_validator is not None and (not WINDOWS or not callable(server_pid_validator)):
+            raise ValueError("Bridge process validation is only available on Windows")
         self.socket_path = socket_path
         self.timeout_seconds = timeout_seconds
+        self._server_pid_validator = server_pid_validator
 
     async def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(method, str) or not method:
@@ -138,6 +148,20 @@ class AgentBridgeClient:
                 # Deliberately no SID, PID or path in the message: identity is measured evidence,
                 # not something to publish through the MCP surface (§11).
                 raise AgentBridgeUnavailable("the agent bridge pipe is owned by another identity")
+            if self._server_pid_validator is not None:
+                try:
+                    same_generation = await asyncio.to_thread(
+                        self._server_pid_validator, identity.process_id
+                    )
+                except Exception as exc:  # noqa: BLE001 - private OS details never escape
+                    raise AgentBridgeUnavailable(
+                        "the agent bridge owner generation could not be verified"
+                    ) from exc
+                if not same_generation:
+                    # A live same-SID legacy Bridge must NEVER pass new-owner readiness.
+                    raise AgentBridgeUnavailable(
+                        "the agent bridge pipe belongs to a different owner generation"
+                    )
             await asyncio.to_thread(connection.write_all, encoded, deadline=deadline)
             raw = await asyncio.to_thread(
                 connection.read_line, limit=MAX_RESPONSE_BYTES + 1, deadline=deadline

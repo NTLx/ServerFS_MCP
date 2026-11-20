@@ -7,6 +7,10 @@ import errno
 import os
 import signal
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .acp_process_windows import WindowsAcpProcess
 
 
 @dataclass
@@ -15,9 +19,15 @@ class AcpChild:
     pgid: int | None
     _stop_lock: asyncio.Lock
     stopped: bool = False
+    windows_job: WindowsAcpProcess | None = None
 
 
 async def spawn_acp_child(command: str, args: tuple[str, ...], *, cwd, env) -> AcpChild:
+    if os.name == "nt":
+        from .acp_process_windows import spawn_windows_acp_process
+
+        process, job = await spawn_windows_acp_process(command, args, cwd=cwd, env=env)
+        return AcpChild(process, None, asyncio.Lock(), windows_job=job)
     process = await asyncio.create_subprocess_exec(
         command,
         *args,
@@ -68,13 +78,9 @@ async def stop_acp_child(child: AcpChild, timeout: float) -> bool:
                     await asyncio.wait_for(process.wait(), timeout)
                 except TimeoutError:
                     pass
-            from .acp_process_windows import stop_windows_process_tree
-
-            tree_stopped = await asyncio.to_thread(
-                stop_windows_process_tree,
-                process.pid,
-                timeout,
-            )
+            if child.windows_job is None:
+                return False
+            tree_stopped = await child.windows_job.stop(timeout)
             if process.returncode is None:
                 try:
                     await asyncio.wait_for(process.wait(), timeout)

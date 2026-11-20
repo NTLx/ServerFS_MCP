@@ -122,3 +122,28 @@ async def test_v1_submit_behavior_unchanged_and_internal_identity_cannot_be_spoo
         store.require_core_task_owner(
             legacy["result"]["task_id"], core_id="alpha", workdir_alias="Repo"
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_owner", ["", "UPPERCASE", "../other", "a" * 33])
+async def test_invalid_core_owner_is_rejected_before_submission_side_effects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid_owner: str
+) -> None:
+    server, store = _server(tmp_path)
+
+    def unexpected_gc() -> None:
+        pytest.fail("invalid Core identity reached submission side effects")
+
+    monkeypatch.setattr(server.service, "_gc_retained", unexpected_gc)
+    with pytest.raises(BridgeError) as caught:
+        await server.service.submit_task(
+            runtime="fake",
+            workdir="Repo",
+            path=".",
+            profile="review",
+            prompt="synthetic",
+            owner_core_id=invalid_owner,
+        )
+    assert caught.value.code == "CORE_NOT_AUTHORIZED"
+    with store._connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 0

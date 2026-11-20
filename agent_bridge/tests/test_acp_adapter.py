@@ -105,6 +105,44 @@ async def test_probe_does_not_launch_and_run_normalizes_text_and_stops_child(
 
 
 @pytest.mark.asyncio
+async def test_connection_setup_failure_stops_owned_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import acp
+
+    from serverfs_agent_bridge.adapters import acp as adapter_module
+
+    original_spawn = adapter_module.spawn_acp_child
+    children = []
+
+    async def capture_spawn(*args, **kwargs):
+        child = await original_spawn(*args, **kwargs)
+        children.append(child)
+        return child
+
+    def fail_connect(*_args, **_kwargs):
+        raise RuntimeError("synthetic connection setup failure")
+
+    monkeypatch.setattr(adapter_module, "spawn_acp_child", capture_spawn)
+    monkeypatch.setattr(acp, "connect_to_agent", fail_connect)
+    adapter = AcpAdapter(AcpProfile("fixture", sys.executable, (str(FIXTURE), "normal")))
+    try:
+        with pytest.raises(BridgeError) as failure:
+            await adapter.run_task(_context(tmp_path, [], []))
+        assert failure.value.code == "AGENT_PROVIDER_ERROR"
+        assert len(children) == 1
+        child = children[0]
+        assert child.stopped and child.process.returncode is not None
+        if child.windows_job is not None:
+            assert child.windows_job._job.handle is None
+        assert adapter._active == {}
+        assert "task-1" in adapter._stopped
+    finally:
+        for child in children:
+            await adapter_module.stop_acp_child(child, timeout=2)
+
+
+@pytest.mark.asyncio
 async def test_typed_tool_updates_normalize_to_bounded_safe_start_events(tmp_path: Path) -> None:
     events: list[tuple[str, dict]] = []
     client = _Client(_context(tmp_path, events, []))

@@ -525,6 +525,15 @@ class BridgeService:
         requested_model = _validate_requested_model(model)
         _validate_correlation_id(correlation_id)
         _validate_idempotency_key(idempotency_key)
+        if owner_core_id is not None:
+            from .core_grants import _id
+
+            try:
+                _id(owner_core_id)
+            except ValueError as exc:
+                raise BridgeError(
+                    "CORE_NOT_AUTHORIZED", "Core capability is not authorized"
+                ) from exc
         if owner_core_id is not None and (
             continue_from_task_id is not None or idempotency_key is not None
         ):

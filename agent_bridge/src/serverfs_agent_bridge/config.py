@@ -20,6 +20,7 @@ _CONFIG_KEYS = frozenset(
         "socket_path",
         "protocol_mode",
         "bridge_id",
+        "core_grants_enabled",
         "state_dir",
         "lock_dir",
         "lease_key",
@@ -339,6 +340,7 @@ class BridgeConfig:
     policies: PolicyRegistry
     protocol_mode: str = "v1"
     bridge_id: str | None = None
+    core_grants_enabled: bool = False
 
     @classmethod
     def load(cls, path: Path) -> BridgeConfig:
@@ -347,6 +349,11 @@ class BridgeConfig:
             raise ValueError("bridge config root must be an object")
         _reject_unknown_keys(data, _CONFIG_KEYS, "bridge config")
 
+        if "core_grants_enabled" in data and sys.platform != "win32":
+            raise ValueError("core_grants_enabled is Windows-only")
+        core_grants_enabled = _strict_bool(
+            data.get("core_grants_enabled", False), "core_grants_enabled"
+        )
         protocol_mode = _strict_string(data.get("protocol_mode", "v1"), "protocol_mode")
         if protocol_mode not in {"v1", "v2"}:
             raise ValueError("protocol_mode must be v1 or v2")
@@ -357,8 +364,30 @@ class BridgeConfig:
             bridge_id = _strict_string(bridge_id, "bridge_id")
             if re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?", bridge_id) is None:
                 raise ValueError("bridge_id has an invalid format")
+        elif core_grants_enabled:
+            if bridge_id is None:
+                raise ValueError("Bridge v2 requires a separate nondefault bridge_id")
+            bridge_id = _strict_string(bridge_id, "bridge_id")
+            if (
+                bridge_id == "default"
+                or re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?", bridge_id) is None
+            ):
+                raise ValueError("Bridge v2 bridge_id is invalid")
+            if any(key not in data for key in ("socket_path", "state_dir", "lock_dir")):
+                raise ValueError("Bridge v2 requires explicit independent endpoint and state")
+            legacy_endpoint, legacy_state, legacy_locks = _default_paths()
+            for key, legacy in (
+                ("socket_path", legacy_endpoint),
+                ("state_dir", legacy_state),
+                ("lock_dir", legacy_locks),
+            ):
+                proposed = _strict_string(data[key], key)
+                normalized = os.path.normcase(os.path.normpath(os.path.expanduser(proposed)))
+                default = os.path.normcase(os.path.normpath(os.path.expanduser(str(legacy))))
+                if normalized == default:
+                    raise ValueError("Bridge v2 must not reuse a default v1 owner resource")
         elif bridge_id is not None:
-            raise ValueError("bridge_id requires protocol_mode v2")
+            raise ValueError("bridge_id requires protocol_mode v2 or Windows core grants")
 
         lease_key = _strict_string(data.get("lease_key", _LEASE_KEY_SLOT), "lease_key")
         if lease_key not in _LEASE_KEYS:
@@ -512,6 +541,7 @@ class BridgeConfig:
             policies=PolicyRegistry(policies),
             protocol_mode=protocol_mode,
             bridge_id=bridge_id,
+            core_grants_enabled=core_grants_enabled,
         )
 
 

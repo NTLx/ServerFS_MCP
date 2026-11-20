@@ -145,6 +145,111 @@ def process_identity(pid: int) -> ProcessIdentity | None:
         kernel32.CloseHandle(handle)
 
 
+def _venv_home_pythonw(prefix: Path) -> Path | None:
+    """Find the exact CPython base PythonW from one private venv's pyvenv.cfg.
+
+    Used when a separate Connector interpreter verifies the Core listener.
+    It must not use that Connector's own sys._base_executable as proof of
+    the Core interpreter. An absent, redirected or ambiguous config fails.
+    """
+    import stat
+
+    config = prefix / "pyvenv.cfg"
+    try:
+        info = config.lstat()
+        if (
+            not config.is_file()
+            or config.is_symlink()
+            or getattr(info, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+            or not 1 <= info.st_size <= 8192
+        ):
+            return None
+        homes = [
+            line.partition("=")[2].strip()
+            for line in config.read_text(encoding="utf-8").splitlines()
+            if line.partition("=")[0].strip().casefold() == "home"
+        ]
+        if len(homes) != 1 or not homes[0]:
+            return None
+        home = Path(homes[0])
+        if not home.is_absolute():
+            return None
+        base = (home / "pythonw.exe").resolve(strict=True)
+        if not base.is_file() or base == prefix / "Scripts" / "pythonw.exe":
+            return None
+        if prefix == base.parent or prefix in base.parents:
+            return None
+        return base
+    except (OSError, RuntimeError, ValueError, UnicodeError):
+        return None
+
+
+def registered_pythonw_image_matches(
+    *,
+    registered_launcher: Path,
+    kernel_image: Path,
+    venv_prefix: Path,
+    current_executable: Path,
+    base_executable: Path | None,
+    require_pythonw_entrypoint: bool,
+    permit_peer_controller: bool = False,
+) -> bool:
+    """Attest the *exact* native venv launcher and its CPython base PythonW.
+
+    Runtime owner: current sys.prefix and sys.executable must match the task's
+    dedicated PythonW launcher; the kernel image must match either it or
+    sys._base_executable's exact sibling pythonw.exe.
+
+    Cross-venv listener inspector: permit only another dedicated Python
+    console entrypoint and derive the Core's base from the Core's own private
+    pyvenv.cfg, NOT from the inspecting Connector's unrelated interpreter.
+    The listener separately verifies task SID, PID, creation time, TCP owner
+    and unmodified registered task/XML; this check cannot replace them.
+    """
+    try:
+        current_prefix = venv_prefix.resolve(strict=True)
+        owner_prefix = registered_launcher.parent.parent.resolve(strict=True)
+        launcher = registered_launcher.resolve(strict=True)
+        interpreter = current_executable.resolve(strict=True)
+        image = kernel_image.resolve(strict=True)
+        if (
+            not current_prefix.is_dir()
+            or not owner_prefix.is_dir()
+            or registered_launcher.name.casefold() != "pythonw.exe"
+            or launcher != (owner_prefix / "Scripts" / "pythonw.exe").resolve(strict=True)
+            or not launcher.is_file()
+        ):
+            return False
+        expected_name = "pythonw.exe" if require_pythonw_entrypoint else "python.exe"
+        expected_interpreter = (current_prefix / "Scripts" / expected_name).resolve(strict=True)
+        if interpreter != expected_interpreter or not interpreter.is_file():
+            return False
+        same_environment = current_prefix == owner_prefix
+        if not same_environment and (not permit_peer_controller or require_pythonw_entrypoint):
+            return False
+        if image == launcher:
+            return True
+        if same_environment:
+            if base_executable is None or not base_executable.is_absolute():
+                return False
+            base = base_executable.resolve(strict=True)
+            if not base.is_file() or base.name.casefold() not in ("python.exe", "pythonw.exe"):
+                return False
+            base_pythonw = base.with_name("pythonw.exe").resolve(strict=True)
+            if not base_pythonw.is_file() or base_pythonw == launcher:
+                return False
+            if base.parent == owner_prefix or owner_prefix in base.parents:
+                return False
+        else:
+            base_pythonw = _venv_home_pythonw(owner_prefix)
+            if base_pythonw is None:
+                return False
+        return image == base_pythonw
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
 def same_process(identity: ProcessIdentity) -> bool:
     current = process_identity(identity.pid)
     if current is None:
@@ -169,6 +274,7 @@ __all__ = [
     "WindowsProcessError",
     "process_entries",
     "process_identity",
+    "registered_pythonw_image_matches",
     "same_process",
     "wait_process_gone",
 ]
