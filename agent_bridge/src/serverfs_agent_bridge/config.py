@@ -339,6 +339,7 @@ class BridgeConfig:
     policies: PolicyRegistry
     protocol_mode: str = "v1"
     bridge_id: str | None = None
+    lease_key: str = _LEASE_KEY_SLOT
 
     @classmethod
     def load(cls, path: Path) -> BridgeConfig:
@@ -352,8 +353,8 @@ class BridgeConfig:
             raise ValueError("protocol_mode must be v1 or v2")
         bridge_id = data.get("bridge_id")
         if protocol_mode == "v2":
-            if sys.platform != "darwin":
-                raise ValueError("protocol_mode v2 is supported only on macOS")
+            if sys.platform not in {"darwin", "linux"}:
+                raise ValueError("protocol_mode v2 is supported only on POSIX platforms")
             bridge_id = _strict_string(bridge_id, "bridge_id")
             if re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?", bridge_id) is None:
                 raise ValueError("bridge_id has an invalid format")
@@ -363,6 +364,8 @@ class BridgeConfig:
         lease_key = _strict_string(data.get("lease_key", _LEASE_KEY_SLOT), "lease_key")
         if lease_key not in _LEASE_KEYS:
             raise ValueError("lease_key must be slot or alias")
+        if sys.platform == "linux" and protocol_mode == "v2" and lease_key != _LEASE_KEY_ALIAS:
+            raise ValueError("Linux protocol_mode v2 requires lease_key alias")
 
         policies: list[WorkdirAgentPolicy] = []
         workdirs = data.get("workdirs", [])
@@ -512,6 +515,7 @@ class BridgeConfig:
             policies=PolicyRegistry(policies),
             protocol_mode=protocol_mode,
             bridge_id=bridge_id,
+            lease_key=lease_key,
         )
 
 

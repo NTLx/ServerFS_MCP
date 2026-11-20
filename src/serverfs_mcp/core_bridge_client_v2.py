@@ -72,8 +72,8 @@ class CoreBridgeClientV2:
         policy_revision: str,
         timeout_seconds: float = 15.0,
     ) -> None:
-        if sys.platform != "darwin":
-            raise ValueError("Core Bridge v2 client is available only on macOS")
+        if sys.platform not in {"darwin", "linux"}:
+            raise ValueError("Core Bridge v2 client is available only on POSIX platforms")
         if not isinstance(socket_path, Path) or not socket_path.is_absolute():
             raise ValueError("Core Bridge socket path must be absolute")
         if any(

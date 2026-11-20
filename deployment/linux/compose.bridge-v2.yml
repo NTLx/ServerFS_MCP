@@ -1,0 +1,36 @@
+# Explicit opt-in signed-v2 attachment for one independently configured host Bridge.
+# The owner must provision all host paths and the private binding before rendering.
+services:
+  serverfs-mcp:
+    user: "${SERVERFS_UID:?Set the host Bridge owner UID}:${SERVERFS_GID:?Set the host Bridge owner GID}"
+    environment:
+      SERVERFS_AGENT_BRIDGE_ENABLED: "true"
+      SERVERFS_LINUX_V25_BRIDGE_BINDING_FILE: /run/serverfs-core-bridge-binding/core-bridge-binding.json
+      SERVERFS_LINUX_INSTANCE_ID: ${SERVERFS_LINUX_INSTANCE_ID:?Set a non-default SERVERFS_LINUX_INSTANCE_ID}
+      SERVERFS_LINUX_BRIDGE_ID: ${SERVERFS_LINUX_BRIDGE_ID:?Set SERVERFS_LINUX_BRIDGE_ID}
+      SERVERFS_AGENT_BRIDGE_SOCKET: /run/serverfs-agent-bridge/bridge.sock
+      SERVERFS_AGENT_LOCK_DIR: /run/serverfs-agent-locks
+      SERVERFS_AGENT_MODE: ${SERVERFS_AGENT_MODE:-disabled}
+      SERVERFS_AGENT_RUNTIMES: ${SERVERFS_AGENT_RUNTIMES:-}
+      WORKDIR_01_AGENT_MODE: ${WORKDIR_01_AGENT_MODE:-disabled}
+      WORKDIR_01_AGENT_RUNTIMES: ${WORKDIR_01_AGENT_RUNTIMES:-}
+      WORKDIR_01_REPO_OPS_ENABLED: ${WORKDIR_01_REPO_OPS_ENABLED:-false}
+    volumes:
+      - type: bind
+        source: ${SERVERFS_LINUX_BRIDGE_SOCKET_DIR:?Set the dedicated host Bridge socket directory}
+        target: /run/serverfs-agent-bridge
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SERVERFS_LINUX_BRIDGE_LOCK_DIR:?Set the dedicated host Bridge lock directory}
+        target: /run/serverfs-agent-locks
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SERVERFS_LINUX_CORE_BINDING_DIR:?Set the private owner-provisioned binding directory}
+        target: /run/serverfs-core-bridge-binding
+        read_only: true
+        bind:
+          create_host_path: false

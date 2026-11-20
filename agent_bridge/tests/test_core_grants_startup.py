@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 
 from serverfs_agent_bridge import config as config_module
-from serverfs_agent_bridge import main as main_module
 from serverfs_agent_bridge.config import BridgeConfig
 from serverfs_agent_bridge.core_grants import core_workdir_policy_digest
 from serverfs_agent_bridge.core_grants_private import provision_private_core_grants
@@ -39,14 +38,15 @@ def _write_config(tmp_path: Path, *, protocol_mode: str | None = None) -> Path:
     }
     if protocol_mode is not None:
         data["protocol_mode"] = protocol_mode
+    if protocol_mode == "v2" and sys.platform == "linux":
+        data["lease_key"] = "alias"
+        data["workdirs"][0].pop("slot")
     path = tmp_path / "config.json"
     path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
 
-def _v2_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch | None = None) -> BridgeConfig:
-    if monkeypatch is not None:
-        monkeypatch.setattr(config_module.sys, "platform", "darwin")
+def _v2_config(tmp_path: Path) -> BridgeConfig:
     path = _write_config(tmp_path, protocol_mode="v2")
     data = json.loads(path.read_text(encoding="utf-8"))
     data["bridge_id"] = "bridge-test"
@@ -81,11 +81,11 @@ def test_protocol_configuration_fails_closed(
 
 
 @pytest.mark.asyncio
-async def test_v2_missing_private_grants_fails_before_listener(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    config = _v2_config(tmp_path, monkeypatch)
-    monkeypatch.setattr(main_module.sys, "platform", "darwin")
+@pytest.mark.skipif(
+    sys.platform not in {"darwin", "linux"}, reason="requires native POSIX Bridge v2"
+)
+async def test_v2_missing_private_grants_fails_before_listener(tmp_path: Path) -> None:
+    config = _v2_config(tmp_path)
     with pytest.raises(ValueError, match="Core grants file"):
         await _serve(config, shutdown_event=asyncio.Event())
     assert not config.socket_path.exists()

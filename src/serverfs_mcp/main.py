@@ -260,14 +260,44 @@ def main() -> int:
             )
         if settings.agent_bridge_enabled and not Path(settings.agent_lock_dir).is_absolute():
             raise ValueError("SERVERFS_AGENT_LOCK_DIR must be absolute")
-        agent_client = (
-            AgentBridgeClient(
+        agent_client = None
+        if settings.linux_v0250_bridge_binding_file:
+            if sys.platform != "linux":
+                raise WorkdirError("Linux Core Bridge binding is supported only on Linux")
+            if not settings.agent_bridge_enabled:
+                raise WorkdirError("Linux Core Bridge binding requires the Agent Bridge capability")
+            from .linux_v0250_core_binding import (
+                LinuxCoreBindingError,
+                LinuxCoreBridgeUnavailable,
+                create_linux_v0250_agent_adapter,
+                load_linux_core_client,
+                verify_linux_core_client,
+            )
+
+            try:
+                client, alias = load_linux_core_client(
+                    settings.linux_v0250_bridge_binding_file,
+                    instance_id=os.environ.get("SERVERFS_LINUX_INSTANCE_ID", ""),
+                    bridge_id=os.environ.get("SERVERFS_LINUX_BRIDGE_ID", ""),
+                    socket_path=settings.agent_bridge_socket,
+                    workdirs=registry.all_workdirs(),
+                )
+                # A transport outage must not prevent Core from starting. Keep the
+                # signed client; every Agent/Repo call still requires Bridge authorization.
+                try:
+                    asyncio.run(
+                        verify_linux_core_client(client, Path(settings.agent_bridge_socket))
+                    )
+                except LinuxCoreBridgeUnavailable:
+                    jsonlog.warning("linux_bridge_unavailable_at_startup")
+                agent_client = create_linux_v0250_agent_adapter(client, alias)
+            except LinuxCoreBindingError as exc:
+                raise WorkdirError(str(exc)) from None
+        elif settings.agent_bridge_enabled:
+            agent_client = AgentBridgeClient(
                 Path(settings.agent_bridge_socket),
                 timeout_seconds=settings.agent_bridge_timeout_seconds,
             )
-            if settings.agent_bridge_enabled
-            else None
-        )
         file_ingress_client = (
             FileIngressClient(timeout_seconds=settings.file_ingress_timeout_seconds)
             if settings.file_ingress_enabled

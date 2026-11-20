@@ -18,7 +18,7 @@ unset CONTROL_PLANE_HTTP_PROXY
 proxy_required=false
 case "$proxy_switch" in
   true|TRUE|1|yes|YES|on|ON) proxy_required=true ;;
-  false|FALSE|0|no|NO|off|OFF) exec /usr/bin/tunnel-client run ;;
+  false|FALSE|0|no|NO|off|OFF) exec /usr/bin/tunnel-client run "$@" ;;
   __serverfs_unset__)
     # v0.11 compatibility only: an absent switch keeps the historical
     # SERVERFS_PROXY_HOST => proxy-enabled behavior and validation rules.
@@ -82,4 +82,4 @@ else
   fi
 fi
 
-exec /usr/bin/tunnel-client run
+exec /usr/bin/tunnel-client run "$@"

@@ -1,0 +1,16 @@
+[Unit]
+Description=ServerFS Agent Bridge instance %i (user service)
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/serverfs-agent-bridge/instances/%i/current
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.local/share/serverfs-agent-bridge/instances/%i/current/.venv/bin/serverfs-agent-bridge --config %h/.config/serverfs-agent-bridge/instances/%i/config.json
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=45s
+KillMode=control-group
+
+[Install]
+WantedBy=default.target
