@@ -16,12 +16,14 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _LAUNCHER = _REPO_ROOT / "deployment" / "tunnel" / "tunnel-launcher.sh"
 
 
-def _run_launcher(tmp_path: Path, **proxy_env: str) -> subprocess.CompletedProcess[str]:
+def _run_launcher(
+    tmp_path: Path, *, args: tuple[str, ...] = (), **proxy_env: str
+) -> subprocess.CompletedProcess[str]:
     mock_client = tmp_path / "tunnel-client"
     mock_client.write_text(
         "#!/bin/sh\n"
         'printf \'%s\\n\' "${CONTROL_PLANE_HTTP_PROXY-<unset>}" > "$PROXY_RESULT"\n'
-        'printf \'%s\\n\' "$*" > "$ARGS_RESULT"\n',
+        'printf \'%s\\n\' "$@" > "$ARGS_RESULT"\n',
         encoding="utf-8",
     )
     mock_client.chmod(0o755)
@@ -51,7 +53,7 @@ def _run_launcher(tmp_path: Path, **proxy_env: str) -> subprocess.CompletedProce
         }
     )
     return subprocess.run(
-        ["/bin/sh", str(launcher)],
+        ["/bin/sh", str(launcher), *args],
         env=env,
         capture_output=True,
         text=True,
@@ -79,6 +81,28 @@ def test_explicit_proxy_false_is_direct_even_when_proxy_fields_exist(tmp_path: P
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "proxy-result").read_text(encoding="utf-8").strip() == "<unset>"
+
+
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
+@pytest.mark.parametrize("proxy_enabled", ["true", "false"])
+def test_proxy_launcher_preserves_explicit_http_args(tmp_path: Path, proxy_enabled: str) -> None:
+    args = (
+        "--mcp.server-url",
+        "url=http://serverfs-mcp:8000/mcp",
+        "--mcp.extra-headers",
+        "Authorization: file:/run/secrets/serverfs-core-bearer",
+    )
+    result = _run_launcher(
+        tmp_path,
+        args=args,
+        SERVERFS_OPENAI_TUNNEL_USE_PROXY=proxy_enabled,
+        SERVERFS_PROXY_HOST="proxy.internal",
+        SERVERFS_PROXY_PORT="7890",
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "args-result").read_text().splitlines() == ["run", *args]
+    expected = "http://proxy.internal:7890" if proxy_enabled == "true" else "<unset>"
+    assert (tmp_path / "proxy-result").read_text().strip() == expected
 
 
 @linux_only("the tunnel launcher under test is a POSIX /bin/sh script")

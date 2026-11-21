@@ -38,11 +38,26 @@ async def _serve(
     # provider SDK/client is constructed. Explicit v0.12 proxy endpoints are held in
     # config/bootstrap objects and mapped downward afterwards, never written back here.
     scrub_process_proxy_environment()
+    if sys.platform == "linux" and config.protocol_mode == "v2":
+        if config.lease_key != "alias" or any(
+            policy.slot is not None for policy in config.policies._by_alias.values()
+        ):
+            raise ValueError("Linux protocol_mode v2 requires alias-based workdir leases")
     store = TaskStore(config.state_dir)
+    core_grants = None
     core_grant_verifier = None
-    if config.protocol_mode == "v2":
-        if sys.platform != "darwin" or not config.bridge_id:
-            raise ValueError("v2 Bridge startup requires macOS and an explicit bridge_id")
+    if config.core_grants_enabled:
+        if sys.platform != "win32" or not config.bridge_id:
+            raise ValueError("Windows Bridge v2 requires an independent bridge_id")
+        # Load protected grants before constructing any listener/provider.
+        core_grants = load_private_core_grants(
+            store=store,
+            bridge_id=config.bridge_id,
+            policies=config.policies,
+        )
+    elif config.protocol_mode == "v2":
+        if sys.platform not in {"darwin", "linux"} or not config.bridge_id:
+            raise ValueError("v2 Bridge startup requires POSIX and an explicit bridge_id")
         core_grant_verifier = load_private_core_grants(
             store=store,
             bridge_id=config.bridge_id,
@@ -149,13 +164,20 @@ async def _serve(
         if sys.platform == "win32"
         else {"socket_path": config.socket_path}
     )
+    protocol_options = (
+        {"core_grants": core_grants}
+        if sys.platform == "win32"
+        else {
+            "v2_only": config.protocol_mode == "v2",
+            "core_grant_verifier": core_grant_verifier,
+        }
+    )
     server = BridgeProtocolServer(
         service=service,
         allowed_peer_uid=config.allowed_peer_uid,
         allowed_peer_gid=config.allowed_peer_gid,
         allowed_peer_sid=config.allowed_peer_sid,
-        v2_only=config.protocol_mode == "v2",
-        core_grant_verifier=core_grant_verifier,
+        **protocol_options,
         **endpoint,
     )
     try:

@@ -1,5 +1,8 @@
 # Windows native deployment
 
+**v0.25.0 named-instance lifecycle:** see [independent component operations](v0250-native-operations.md).
+The watchdog-based workflow below documents the legacy compatibility path; do not use it to operate v0.25 named components.
+
 Long-term deployment layout for the native Windows stack. Since **v0.14.0**, the normal outer
 lifecycle is persistent, current-user and non-elevated: Windows Task Scheduler 2.0
 owns a windowless ServerFS watchdog, the watchdog owns a managed runner, and the runner

@@ -18,6 +18,9 @@ on:
       - "src/serverfs_mcp/linux_backend.py"
       - "src/serverfs_mcp/windows_backend.py"
       - "src/serverfs_mcp/windows_*.py"
+      - "src/serverfs_mcp/windows_v25/**"
+      - "src/serverfs_mcp/agent_core_grant_client.py"
+      - "deployment/windows/**"
       - "src/serverfs_mcp/agent_lifecycle.py"
       - "src/serverfs_mcp/paths.py"
       - "src/serverfs_mcp/tools.py"
@@ -65,6 +68,9 @@ on:
       - "src/serverfs_mcp/linux_backend.py"
       - "src/serverfs_mcp/windows_backend.py"
       - "src/serverfs_mcp/windows_*.py"
+      - "src/serverfs_mcp/windows_v25/**"
+      - "src/serverfs_mcp/agent_core_grant_client.py"
+      - "deployment/windows/**"
       - "src/serverfs_mcp/agent_lifecycle.py"
       - "src/serverfs_mcp/paths.py"
       - "src/serverfs_mcp/tools.py"
@@ -217,6 +223,16 @@ jobs:
           tests/test_paths.py
           tests/test_config.py
           tests/test_workdirs.py -q
+
+      - name: Windows v25 named-instance contracts
+        shell: pwsh
+        env:
+          PYTHONPATH: "${{ github.workspace }}\\native\\windows\\pyd-staging"
+        run: |
+          $tests = @(Get-ChildItem tests/test_windows_v25_*.py | Sort-Object Name | ForEach-Object FullName)
+          if ($tests.Count -eq 0) { throw "Windows v25 test inventory missing" }
+          uv run pytest -q @tests
+          if ($LASTEXITCODE -ne 0) { throw "Windows v25 contract tests failed" }
 
       # dev_plan §30: "Release CI must additionally test the wheel as an
       # artifact rather than only testing an in-tree debug build." The wheel

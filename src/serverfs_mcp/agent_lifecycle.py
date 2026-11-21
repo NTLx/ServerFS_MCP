@@ -34,7 +34,7 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -299,6 +299,7 @@ async def wait_for_bridge_readiness(
     process: subprocess.Popen[bytes],
     *,
     timeout: float = READINESS_TIMEOUT_SECONDS,
+    server_pid_validator: Callable[[int], bool] | None = None,
 ) -> None:
     """Block until the Bridge answers an authenticated ``runtime.list`` (§15 D5 step 10).
 
@@ -310,7 +311,11 @@ async def wait_for_bridge_readiness(
     A Bridge that has already exited fails immediately rather than waiting out the timeout, so a
     configuration refusal surfaces as itself instead of as a generic startup timeout.
     """
-    client = AgentBridgeClient(socket_path, timeout_seconds=timeout)
+    client = AgentBridgeClient(
+        socket_path,
+        timeout_seconds=timeout,
+        server_pid_validator=server_pid_validator,
+    )
     deadline = asyncio.get_running_loop().time() + timeout
     last_error: Exception | None = None
     while asyncio.get_running_loop().time() < deadline:

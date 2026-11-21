@@ -297,6 +297,79 @@ def test_planted_sidecar_is_refused_rather_than_repaired(tmp_path: Path) -> None
     expect_bridge_error("PRIVATE_STATE_UNSAFE", lambda: store._secure_database_files())
 
 
+@pytest.mark.parametrize("vanish", [True, False])
+def test_sqlite_sidecar_acl_race_never_waives_existing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, vanish: bool
+) -> None:
+    store = TaskStore(tmp_path / "state")
+    wal = store.state_dir / "state.sqlite3-wal"
+    wal.write_bytes(b"transient")
+    original = private_state.protect_existing_file
+    already_deleted = False
+
+    def simulate_acl_lookup(path: Path, *, mode: int, not_private: str) -> None:
+        nonlocal already_deleted
+        if path == wal:
+            if vanish and not already_deleted:
+                already_deleted = True
+                wal.unlink()
+                raise windows_security.ObjectDisappearedDuringSecurityRead(
+                    "PRIVATE_STATE_CHECK_FAILED", "simulated disappearing sidecar"
+                )
+            if not vanish:
+                raise BridgeError("PRIVATE_STATE_CHECK_FAILED", "simulated ACL failure")
+        original(path, mode=mode, not_private=not_private)
+
+    monkeypatch.setattr(private_state, "protect_existing_file", simulate_acl_lookup)
+    if vanish:
+        store._secure_database_files()
+        assert not wal.exists()
+    else:
+        expect_bridge_error("PRIVATE_STATE_CHECK_FAILED", store._secure_database_files)
+        assert wal.exists()
+
+
+def test_sqlite_sidecar_recreated_insecurely_during_acl_read_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = TaskStore(tmp_path / "state")
+    wal = store.state_dir / "state.sqlite3-wal"
+    wal.write_bytes(b"transient")
+    original = private_state.protect_existing_file
+    already_recreated = False
+
+    def simulate_acl_lookup(path: Path, *, mode: int, not_private: str) -> None:
+        nonlocal already_recreated
+        if path == wal and not already_recreated:
+            already_recreated = True
+            wal.unlink()
+            assert windows_security.create_private_file(wal, FOREIGN_GRANT_SDDL)
+            raise windows_security.ObjectDisappearedDuringSecurityRead(
+                "PRIVATE_STATE_CHECK_FAILED", "old sidecar disappeared"
+            )
+        original(path, mode=mode, not_private=not_private)
+
+    monkeypatch.setattr(private_state, "protect_existing_file", simulate_acl_lookup)
+    expect_bridge_error("PRIVATE_STATE_UNSAFE", store._secure_database_files)
+    assert already_recreated
+
+
+def test_sqlite_main_database_acl_error_is_never_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = TaskStore(tmp_path / "state")
+    original = private_state.protect_existing_file
+
+    def simulate_main_file_loss(path: Path, *, mode: int, not_private: str) -> None:
+        if path == store.db_path:
+            path.unlink()
+            raise BridgeError("PRIVATE_STATE_CHECK_FAILED", "simulated missing main database")
+        original(path, mode=mode, not_private=not_private)
+
+    monkeypatch.setattr(private_state, "protect_existing_file", simulate_main_file_loss)
+    expect_bridge_error("PRIVATE_STATE_CHECK_FAILED", store._secure_database_files)
+
+
 def test_store_refuses_a_state_dir_pre_planted_insecurely(tmp_path: Path) -> None:
     planted = tmp_path / "state"
     assert windows_security.create_private_directory(planted, BROAD_SDDL)

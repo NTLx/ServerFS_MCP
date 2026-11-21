@@ -1,0 +1,8 @@
+# Safe Host Bridge baseline. Core keeps Bridge disabled and has no socket mount.
+# Socket attachment is withheld until per-Core grant validation is implemented
+# and accepted; do not change this to enabled=true as a deployment workaround.
+services:
+  serverfs-mcp:
+    environment:
+      SERVERFS_AGENT_BRIDGE_ENABLED: "false"
+      SERVERFS_AGENT_MODE: disabled

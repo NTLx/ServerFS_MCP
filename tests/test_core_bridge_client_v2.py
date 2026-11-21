@@ -162,7 +162,18 @@ def test_timeout_remote_error_and_invalid_calls_fail_closed(
         )
 
 
-def test_non_darwin_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(client_module.sys, "platform", "linux")
-    with pytest.raises(ValueError, match="only on macOS"):
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+def test_v2_client_accepts_supported_posix_platforms(
+    platform: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(client_module.sys, "platform", platform)
+    assert isinstance(_client(tmp_path / "bridge.sock"), CoreBridgeClientV2)
+
+
+@pytest.mark.parametrize("platform", ["win32", "freebsd"])
+def test_v2_client_rejects_unsupported_platforms(
+    platform: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(client_module.sys, "platform", platform)
+    with pytest.raises(ValueError, match="only on POSIX platforms"):
         _client(tmp_path / "bridge.sock")

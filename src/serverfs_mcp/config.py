@@ -56,6 +56,7 @@ class Settings:
     max_edits_per_call: int = 50
     agent_bridge_enabled: bool = False
     agent_bridge_socket: str = "/run/serverfs-agent-bridge/bridge.sock"
+    linux_v0250_bridge_binding_file: str = ""
     agent_bridge_timeout_seconds: float = 30.0
     agent_lock_dir: str = "/run/serverfs-agent-locks"
 
@@ -379,6 +380,9 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
             "SERVERFS_AGENT_BRIDGE_SOCKET", "/run/serverfs-agent-bridge/bridge.sock"
         ).strip()
         or "/run/serverfs-agent-bridge/bridge.sock",
+        linux_v0250_bridge_binding_file=env.get(
+            "SERVERFS_LINUX_V25_BRIDGE_BINDING_FILE", ""
+        ).strip(),
         agent_bridge_timeout_seconds=_get_float(env, "SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS", 30.0),
         agent_lock_dir=env.get("SERVERFS_AGENT_LOCK_DIR", "/run/serverfs-agent-locks").strip()
         or "/run/serverfs-agent-locks",

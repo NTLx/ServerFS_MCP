@@ -378,9 +378,21 @@ class LifecycleLease:
     user's lifecycle permanently.
     """
 
-    def __init__(self, root: Path | str | None = None) -> None:
+    def __init__(self, root: Path | str | None = None, *, artifact_name: str | None = None) -> None:
         base = Path(root) if root is not None else lifecycle_dir()
-        self.path = base / lifecycle_artifact_name()
+        # Existing owners retain the exact historical per-SID filename.
+        # An independently owned v25 Bridge may provide its deterministic
+        # SID+bridge_id digest, under its own verified private state home.
+        if artifact_name is not None:
+            if (
+                not isinstance(artifact_name, str)
+                or len(artifact_name) != len("serverfs-agent-lifecycle-" + "a" * 32 + ".lifecycle")
+                or not artifact_name.startswith("serverfs-agent-lifecycle-")
+                or not artifact_name.endswith(".lifecycle")
+                or any(char not in "0123456789abcdef" for char in artifact_name[25:57])
+            ):
+                raise LifecycleOwnershipError("independent lifecycle artifact identity is invalid")
+        self.path = base / (artifact_name or lifecycle_artifact_name())
         self._handle: int | None = None
 
     def acquire(self) -> LifecycleLease:

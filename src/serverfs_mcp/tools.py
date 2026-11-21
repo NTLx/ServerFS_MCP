@@ -48,6 +48,7 @@ from .errors import (
     WorkdirRecoveryRequiredError,
 )
 from .file_ingress_client import FileIngressClient
+from .lease_identity import alias_lease_id
 from .models import (
     CreateDirectoryResult,
     CreateTextFileResult,
@@ -138,9 +139,10 @@ def _mutation_lease(settings: Settings, resolved: ResolvedPath):
         return contextlib.nullcontext()
     from .agent_leases import mutation_agent_lease
 
-    return mutation_agent_lease(
-        Path(settings.agent_lock_dir), resolved.workdir.lease_id, enabled=True
-    )
+    lease_id = resolved.workdir.lease_id
+    if sys.platform == "linux" and settings.linux_v0250_bridge_binding_file:
+        lease_id = alias_lease_id(resolved.workdir.alias)
+    return mutation_agent_lease(Path(settings.agent_lock_dir), lease_id, enabled=True)
 
 
 def _resolve(
