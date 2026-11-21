@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCKER = shutil.which("docker")
 DOCKER_HOST = "unix:///var/run/docker.sock"
 OPT_IN = os.environ.get("SERVERFS_LINUX_CLOUDFLARE_PUBLIC_ACCEPT") == "1"
+LOCAL_OPT_IN = os.environ.get("SERVERFS_LINUX_CLOUDFLARE_LOCAL_ACCEPT") == "1"
 HOSTNAME = "vps-serverfs-v25-test.ntlx.top"
 CANDIDATE_IMAGE = "serverfs-mcp:linux-v0250-candidate-20261120-53112a212491"
 CANDIDATE_IMAGE_ID = "sha256:6a3692cff58a1a93a4364b3aa00c9816e5bfaacabc9b5c4c8d0354fe7596123c"
@@ -497,9 +498,12 @@ def test_cloudflare_token_metadata_accepts_private_synthetic_file(tmp_path: Path
     assert _check_token_metadata(token, workdir, os.getuid(), os.getgid()) == token.resolve()
 
 
+@pytest.mark.skipif(
+    not LOCAL_OPT_IN,
+    reason="set SERVERFS_LINUX_CLOUDFLARE_LOCAL_ACCEPT=1 on the pinned candidate host",
+)
 def test_cloudflare_runner_preparation_runs_candidate_core_locally(tmp_path: Path) -> None:
-    if DOCKER is None:
-        pytest.skip("Docker CLI unavailable; local candidate Core acceptance not verified")
+    assert sys.platform == "linux" and DOCKER is not None, "Linux Docker is required"
     root = tmp_path.resolve()
     root.chmod(0o700)
     token = root / "synthetic-config-only-token"

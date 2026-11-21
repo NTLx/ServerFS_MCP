@@ -966,7 +966,10 @@ types, uid/gid 1000, file mode 0600, directory mode 0700, and the parent's exact
 contents. No OpenAI connector, production credential, or production service
 was used.
 
-The local-only harness checks are safe to run now. The offline test invokes
+The local-only harness checks are safe to run on the pinned candidate host.
+The exact historical image gate is opt-in via `SERVERFS_LINUX_CLOUDFLARE_LOCAL_ACCEPT=1`;
+ordinary source CI does not require or attest those host-local image IDs. An opted-in
+run must still find and verify both exact images. The offline test invokes
 the same preparation helper as the public runner, starts only the packaged
 Core candidate with `--pull never`, verifies unauthenticated and wrong-key
 HTTP 401 responses, and performs MCP initialize/list/read against a synthetic
@@ -976,6 +979,7 @@ requests and does not access the handoff path:
 
 ```sh
 env -u SERVERFS_LINUX_CLOUDFLARE_PUBLIC_ACCEPT \
+  SERVERFS_LINUX_CLOUDFLARE_LOCAL_ACCEPT=1 \
   uv run pytest -o addopts='' -q tests/test_linux_v0250_cloudflare_public.py
 ```
 

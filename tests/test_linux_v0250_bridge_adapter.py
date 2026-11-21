@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from typing import Any
 
 import pytest
@@ -12,6 +13,8 @@ from serverfs_mcp.core_bridge_client_v2 import CoreBridgeRemoteError
 from serverfs_mcp.linux_v0250_bridge_adapter import LinuxV0250BridgeAdapter
 from serverfs_mcp.main import create_server
 from serverfs_mcp.workdirs import AGENT_MODE_WORKSPACE_WRITE, EffectiveWorkdirPolicy, Workdir
+
+pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux-only Core Bridge adapter")
 
 
 class FakeV2Client:

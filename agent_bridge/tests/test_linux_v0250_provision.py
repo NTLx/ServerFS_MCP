@@ -17,6 +17,10 @@ from pathlib import Path
 
 import pytest
 
+from platform_contract import require_linux_kernel
+
+require_linux_kernel("Linux v0.25 host Bridge provisioning and flock")
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "agent_bridge/src"))
@@ -42,8 +46,6 @@ from serverfs_agent_bridge.linux_v0250_provision import _read_input, provision  
 from serverfs_agent_bridge.main import _serve  # noqa: E402
 from serverfs_agent_bridge.policy import PolicyRegistry  # noqa: E402
 from serverfs_agent_bridge.store import TaskStore  # noqa: E402
-
-pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux-only provisioning")
 
 
 def test_linux_v2_bridge_config_rejects_slot_lease_policy(tmp_path, monkeypatch):
