@@ -1,5 +1,7 @@
 # Phase 0F — Agent Runtime Egress Proxy (measured 2026-10-04)
 
+> Historical v0.11 proxy experiment. The old configuration examples and host-specific routing observations are not current named-instance policy. Later [Claude Phase G](phase-g-acceptance-2026-10.md) measured real proxy use; neither an observed bypass nor disabled explicit proxy implies universal direct routing. Current [maintainer invariants](maintainers/invariants.md) govern credentialless Agent proxy, independent Jev policy and private owner configuration.
+
 Status: **GATE PASS** with one hard security boundary and one product requirement that did not exist
 in the plan before this experiment (§4).
 
