@@ -76,6 +76,7 @@ class RunningBridge:
         *,
         pipe_name: str | None = None,
         allowed_peer_sid: str | None = None,
+        core_grants=None,
     ):
         self.pipe_name = pipe_name or new_pipe_name()
         self.service = service
@@ -84,6 +85,7 @@ class RunningBridge:
             socket_path=service.store.state_dir / "endpoint",
             allowed_peer_sid=allowed_peer_sid,
             pipe_name=self.pipe_name,
+            **({"core_grants": core_grants} if core_grants is not None else {}),
         )
         self._loop = asyncio.new_event_loop()
         self._ready = threading.Event()

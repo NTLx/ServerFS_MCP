@@ -503,7 +503,7 @@ def _overlay_ingress_env(settings):
     )
 
 
-def cmd_serve(args: argparse.Namespace) -> int:
+def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
     """Run the shared MCP tool registration over native stdio."""
     if sys.platform == "darwin":
         # v0.13 macOS gate: M-series / native arm64 / macOS 27 / not Rosetta
@@ -517,6 +517,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     elif sys.platform != "win32":
         return _fail("native serve is supported only on Windows and macOS 27 (Apple Silicon)")
     workdirs, native_settings = _load(args.config)
+    if agent_wiring_override is not None and sys.platform != "win32":
+        return _fail("native Bridge v2 Core owner wiring is invalid")
     named_instance = getattr(args, "macos_instance", None)
     shared_bridge = getattr(args, "macos_shared_bridge", None)
     if shared_bridge is not None and not named_instance:
@@ -612,7 +614,21 @@ def cmd_serve(args: argparse.Namespace) -> int:
             agent_lock_dir=str(lock_dir),
         )
     else:
-        agent_wiring = _native_agent_settings(native_settings, owned_wiring=owned_wiring)
+        if agent_wiring_override is not None:
+            from .agent_core_grant_client import CoreGrantBridgeClient
+
+            if (
+                not native_settings.bridge_required
+                or not isinstance(agent_wiring_override, tuple)
+                or len(agent_wiring_override) != 2
+                or not isinstance(agent_wiring_override[0], Settings)
+                or not isinstance(agent_wiring_override[1], CoreGrantBridgeClient)
+                or not agent_wiring_override[0].agent_bridge_enabled
+            ):
+                return _fail("native Bridge v2 Core owner wiring is invalid")
+            agent_wiring = agent_wiring_override
+        else:
+            agent_wiring = _native_agent_settings(native_settings, owned_wiring=owned_wiring)
         if agent_wiring is None:
             settings = Settings(log_level=native_settings.log_level)
             client = None
@@ -1322,11 +1338,11 @@ def cmd_service(args: argparse.Namespace) -> int:
     return _fail(f"unknown service command {command!r}")
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, agent_wiring_override=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "serve":
-        return cmd_serve(args)
+        return cmd_serve(args, agent_wiring_override=agent_wiring_override)
     if args.command == "doctor":
         return cmd_doctor(args)
     if args.command == "diagnostics":

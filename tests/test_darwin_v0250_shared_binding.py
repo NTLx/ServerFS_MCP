@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import socket
+import sys
 import uuid
 from pathlib import Path
 
@@ -24,6 +25,8 @@ SECRET = b"s" * 32
 
 @pytest.fixture
 def fixture_binding(tmp_path: Path):
+    if sys.platform != "darwin":
+        pytest.skip("requires native Darwin /private/tmp and filesystem semantics")
     workdir = tmp_path / "workspace"
     workdir.mkdir(mode=0o700)
     config = tmp_path / "serverfs.toml"

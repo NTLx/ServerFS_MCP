@@ -470,7 +470,7 @@ def _watch_bridge(
     return stop
 
 
-def _render_bridge_config(request: dict) -> _RenderedPaths:
+def _render_bridge_config(request: dict, *, bridge_python: Path | None = None) -> _RenderedPaths:
     """Render the private Bridge config by invoking the Bridge-owned entry point.
 
     §23/§70 freeze the packages as independent, so this is a subprocess call rather than an import.
@@ -483,16 +483,24 @@ def _render_bridge_config(request: dict) -> _RenderedPaths:
     from .agent_lifecycle import AgentLifecycleError
 
     argv = [
-        os.environ.get(BRIDGE_PYTHON_ENV, "").strip() or sys.executable,
+        str(bridge_python)
+        if bridge_python is not None
+        else (os.environ.get(BRIDGE_PYTHON_ENV, "").strip() or sys.executable),
+        *(["-I", "-B"] if bridge_python is not None else []),
         "-m",
         "serverfs_agent_bridge.render_config",
     ]
+    render_env = _bridge_render_env()
+    if bridge_python is not None:
+        # v0.25 independent Bridge is pinned by a protected service manifest.
+        # Do not leak a legacy interpreter override into that renderer.
+        render_env.pop(BRIDGE_PYTHON_ENV, None)
     try:
         completed = subprocess.run(
             argv,
             input=json.dumps(request).encode("utf-8"),
             capture_output=True,
-            env=_bridge_render_env(),
+            env=render_env,
             creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0),
         )
     except OSError as exc:

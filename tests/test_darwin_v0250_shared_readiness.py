@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import socket
+import sys
 import tempfile
 from pathlib import Path
 
@@ -19,6 +20,8 @@ from serverfs_mcp.darwin_shared_bridge_readiness import probe_shared_v2_bridge
 
 @pytest.fixture
 def short_socket_root():
+    if sys.platform != "darwin":
+        pytest.skip("requires native Darwin /private/tmp and filesystem semantics")
     with tempfile.TemporaryDirectory(prefix="sfs-", dir="/private/tmp") as root:
         yield Path(root)
 

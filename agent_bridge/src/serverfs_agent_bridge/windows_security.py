@@ -61,6 +61,8 @@ FILE_SHARE_ALL = 0x00000007
 ERROR_ALREADY_EXISTS = 183
 ERROR_FILE_EXISTS = 80
 ERROR_ACCESS_DENIED = 5
+ERROR_FILE_NOT_FOUND = 2
+ERROR_PATH_NOT_FOUND = 3
 FORMAT_MESSAGE_FROM_SYSTEM = 0x00001000
 FORMAT_MESSAGE_IGNORE_INSERTS = 0x00000200
 
@@ -403,6 +405,10 @@ class ObjectSecurity:
         return None
 
 
+class ObjectDisappearedDuringSecurityRead(BridgeError):
+    """Only Win32's explicit missing-object result from an ACL lookup."""
+
+
 def read_object_security(path: pathlib.Path) -> ObjectSecurity:
     """Read owner + DACL of an existing path. Failure raises; it never assumes safety (§27)."""
     owner = ctypes.c_void_p()
@@ -420,6 +426,10 @@ def read_object_security(path: pathlib.Path) -> ObjectSecurity:
         ctypes.byref(sacl),
         ctypes.byref(descriptor),
     )
+    if code in (ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND):
+        raise ObjectDisappearedDuringSecurityRead(
+            "PRIVATE_STATE_CHECK_FAILED", "the object security descriptor could not be read"
+        )
     if code != 0:
         raise BridgeError(
             "PRIVATE_STATE_CHECK_FAILED", "the object security descriptor could not be read"

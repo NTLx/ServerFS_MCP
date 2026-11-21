@@ -182,17 +182,19 @@ class WindowsCommandJob:
             raise RepoCleanupUnproven()
         return info.ActiveProcesses
 
-    def stop(self, process: subprocess.Popen[bytes]) -> None:
+    def stop(
+        self, process: subprocess.Popen[bytes], *, timeout: float = _STOP_TIMEOUT_SECONDS
+    ) -> None:
         """Synchronous stop proof cannot be interrupted by asyncio cancellation."""
         try:
             if not self.assigned:
                 # Assignment failed before resume: this suspended process has no children.
                 process.kill()
-                process.wait(timeout=_STOP_TIMEOUT_SECONDS)
+                process.wait(timeout=timeout)
                 return
             if not _kernel32.TerminateJobObject(self.handle, 1):
                 raise RepoCleanupUnproven()
-            deadline = time.monotonic() + _STOP_TIMEOUT_SECONDS
+            deadline = time.monotonic() + timeout
             # Membership cannot be broken and breakaway is disabled. After termination,
             # zero active members proves no command execution can continue. Process-handle
             # signalling/object teardown can lag behind this execution-stop barrier.
@@ -200,7 +202,7 @@ class WindowsCommandJob:
                 if time.monotonic() >= deadline:
                     raise RepoCleanupUnproven()
                 time.sleep(0.01)
-            process.wait(timeout=_STOP_TIMEOUT_SECONDS)
+            process.wait(timeout=timeout)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise RepoCleanupUnproven() from exc
 

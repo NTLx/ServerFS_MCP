@@ -74,12 +74,32 @@ class TaskStore:
             self.db_path.with_name("state.sqlite3-wal"),
             self.db_path.with_name("state.sqlite3-shm"),
         ):
-            private_state.require_regular_file(
-                path, not_regular="state database sidecar must be a regular file"
-            )
-            private_state.protect_existing_file(
-                path, mode=0o600, not_private="state database sidecar must be private"
-            )
+            try:
+                private_state.require_regular_file(
+                    path, not_regular="state database sidecar must be a regular file"
+                )
+                private_state.protect_existing_file(
+                    path, mode=0o600, not_private="state database sidecar must be private"
+                )
+            except BridgeError as exc:
+                # SQLite may delete and recreate WAL/SHM between a path check
+                # and the Win32 ACL lookup. Accept ONLY the OS's explicit
+                # missing-object result, never a generic security failure.
+                if not private_state.WINDOWS or path == self.db_path:
+                    raise
+                from .windows_security import ObjectDisappearedDuringSecurityRead
+
+                if not isinstance(exc, ObjectDisappearedDuringSecurityRead):
+                    raise
+                # If SQLite already recreated the companion, verify its new
+                # descriptor once; if it vanished again, no object remains
+                # to protect. Insecure/reparse replacements must still fail.
+                try:
+                    private_state.protect_existing_file(
+                        path, mode=0o600, not_private="state database sidecar must be private"
+                    )
+                except ObjectDisappearedDuringSecurityRead:
+                    continue
 
     def _initialize(self) -> None:
         with self._connect() as con:

@@ -676,3 +676,15 @@ def _require_types(
             raise BridgeError("INVALID_REQUEST", f"parameter {key} has invalid type")
         if not isinstance(value, expected):
             raise BridgeError("INVALID_REQUEST", f"parameter {key} has invalid type")
+
+
+# Preserve the macOS v2 dispatch type for its protocol-contract tests on any host.
+# The exported runtime class remains native-platform-selected below.
+MacOSV2BridgeProtocolServer = BridgeProtocolServer
+
+# Windows has a distinct signed Core-grant/HMAC private wire contract.
+# Do not impose the macOS v2-only dispatch semantics on Windows Named Pipes.
+if WINDOWS:
+    from . import protocol_windows_native as _windows_protocol
+
+    BridgeProtocolServer = _windows_protocol.BridgeProtocolServer

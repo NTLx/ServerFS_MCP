@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import uuid
 from pathlib import Path
 
@@ -20,6 +21,8 @@ _IDENTITY = InstanceIdentity("named-core", "shared", "shared-bridge")
 
 @pytest.fixture
 def private_binding(tmp_path: Path):
+    if sys.platform != "darwin":
+        pytest.skip("requires native Darwin /private/tmp and filesystem semantics")
     # Keep the synthetic socket path short enough for Darwin AF_UNIX limits.
     root = Path("/private/tmp") / f"sfb-{uuid.uuid4().hex[:12]}"
     root.mkdir(mode=0o700)

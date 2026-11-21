@@ -18,6 +18,11 @@ WINDOWS_ONLY_TEST_FILES = [
     "test_windows_pipe_ipc.py",
     "test_windows_peer_identity.py",
     "test_windows_pipe_e2e.py",
+    # v0.25 signed Core grants use the same native-only pipe harness.
+    "test_windows_pipe_core_v2.py",
+    "test_windows_pipe_core_v2_claude_adapter_ownership.py",
+    "test_windows_pipe_core_v2_ownership_rotation.py",
+    "test_windows_pipe_claude_pending_cancel.py",
     "test_windows_private_state.py",
     "test_windows_lease.py",
     # Phase D. The renderer tests drive the Windows private-state publication contract, and
