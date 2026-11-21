@@ -1,165 +1,53 @@
 # Static API Key authentication
 
-ServerFS v0.17.0 adds an optional static API Key for remote Streamable HTTP deployments that need a simpler built-in authentication boundary than OAuth 2.1.
+Use one shared secret per HTTP Core when the callers are a single operator or a small set of trusted clients. For individually identified users and revocable credentials, use [OAuth](oauth.md). Authentication admits a caller; the Core's workdir policy still controls every operation.
 
-The feature is intentionally instance-level and minimal: one ServerFS instance accepts one shared bearer secret. Existing workdir authorization remains unchanged.
+## 1. Configure the selected Core
 
-## When to use it
+| Deployment | Where to configure |
+| --- | --- |
+| Linux | Selected Compose project's private env: `SERVERFS_HTTP_API_KEY` |
+| macOS named HTTP | Private HTTP env supplied to the selected instance's staging command |
+| Windows named HTTP | Initial private configuration helper generates the key; the manual path accepts a protected auth file |
+| Local stdio | No HTTP key required |
 
-Static API Key authentication is a good fit for:
+Follow the [Linux](../deployment/linux/README.md), [macOS](../deployment/macos/README.md) or [Windows](../deployment/windows/v0250-native-operations.md) runbook. Generate a unique high-entropy ASCII secret locally (for example, a random hex string). Keep it outside Git and all exposed workdirs. Set OAuth disabled; a nonempty API key and enabled OAuth are rejected together. Native HTTP requires one authentication mode; Linux defaults to neither, so explicitly configure admission before exposure.
 
-- one operator connecting a small number of trusted MCP clients;
-- private/self-hosted deployments that still want an application-level secret;
-- MCP hosts that accept either a Bearer header or a complete one-line URL such as DingTalk-style `?key=` configuration.
+The Core's Host/Origin policy is independent of the key. For public use, configure HTTPS at the selected Connector or an operator-managed reverse proxy, and admit the exact Host authority. Tunnel credentials authenticate Connectors, not MCP callers.
 
-Prefer OAuth 2.1 when you need independently identified users, browser login, revocation per user/client, refresh tokens, or federated identity admission.
+The named OpenAI HTTP path additionally stores a private header file containing exactly `Bearer <Core API key>` without a trailing newline (Windows initial helper derives this from the Core configuration). Keep its content synchronized with that Core; it is not the control-plane API key. See the platform runbook for provisioning and limits.
 
-## Configuration
+## 2. Configure the client
 
-Set one high-entropy secret in `.env`:
-
-```dotenv
-SERVERFS_HTTP_API_KEY=<long-random-secret>
-```
-
-Empty or unset means disabled.
-
-API Key authentication and the built-in OAuth Resource Server are mutually exclusive. ServerFS fails at startup if both are enabled:
-
-```dotenv
-SERVERFS_HTTP_API_KEY=<secret>
-SERVERFS_OAUTH_ENABLED=true
-```
-
-Native Windows/macOS stdio does not use this HTTP credential.
-
-## Client authentication
-
-### Recommended: Authorization header
-
-Send:
+Preferred: supply the MCP URL and bearer header through private client configuration.
 
 ```http
 Authorization: Bearer <key>
 ```
 
-This is the preferred form because ordinary HTTP infrastructure is less likely to persist an Authorization header than a credential embedded in a URL.
-
-### Compatibility: query parameter
-
-ServerFS also accepts exactly one `key` query parameter:
+For a client that only accepts a one-line URL, use the compatibility query form:
 
 ```text
 https://mcp.example.com/mcp?key=<key>
 ```
 
-This is useful for MCP products that distribute or accept a complete connection URL.
+URL-encode the value if necessary. Use only one credential source per request. Missing, incorrect, empty, duplicate or mixed header/query credentials are rejected with HTTP 401 before MCP dispatch; this is not an OAuth challenge. Do not place actual keys in commands, screenshots, logs or chat. Query strings can leak through infrastructure logs and browser history. ServerFS disables its own default Uvicorn access log in API Key mode; configure upstream logging separately.
 
-The query form has an important operational risk: reverse proxies, WAFs, browser history, monitoring systems or other infrastructure may record the full URL. ServerFS disables its own default Uvicorn access log while API Key mode is active, but it cannot control logs produced before the request reaches ServerFS.
+## 3. Verify
 
-If you use `?key=`, configure upstream infrastructure so the query string is not persisted. Prefer the Authorization header whenever the client supports custom headers.
+Use a trusted MCP client, not only a TCP health probe.
 
-## Credential rules
+- Confirm the intended URL and Host; verify no-key and wrong-key requests fail.
+- With the correct bearer, initialize a new MCP session, list tools and read a safe workdir path. Verify denied writes or other relevant restrictions.
+- If using the URL form, test it separately; reject simultaneous header and query credentials.
+- For public ingress, test from the intended remote client. The named OpenAI Connector injects a Core bearer header, so test Core key denial at the Core separately from provider-side caller admission. Confirm unrelated Core/Connector/Bridge identities remain unchanged.
 
-ServerFS accepts one credential source per request:
+The middleware uses constant-time comparison and has no per-user identity or multi-key grace set. Workdir, revision, binary and Bridge authorization remain unchanged.
 
-- one `Authorization: Bearer ...` header; or
-- one `?key=...` query parameter.
+## 4. Rotate or recover
 
-It rejects:
+Plan a maintenance change for the exact Core and account for active sessions/tasks. Generate a replacement key privately; account for all clients and any OpenAI Connector's derived bearer file. For Linux, retain the full Compose selection and update the private env, then recreate only the selected Core with `up -d --no-deps --no-build --force-recreate serverfs-mcp`. Recreate any affected OpenAI Connector separately using its full selection after updating the private bearer file. Restart alone does not reload container environment; do not restart unrelated Bridge/Connector services. The old key ceases to authenticate against the new process. Verify both old-key denial and new-key access.
 
-- missing credentials;
-- incorrect credentials;
-- empty Bearer/query values;
-- duplicate Authorization headers;
-- duplicate `key` query parameters;
-- requests that provide both a Bearer header and `?key=`.
+Named native provisioning is create-only and may pin private auth snapshots and executable/configuration identities. No general online key-rotation command is provided. Use an explicit platform-appropriate migration/reprovision plan, preserving existing state and rollback capability; never edit protected manifests or grants to force a change. Stop if the safe path cannot be established.
 
-Credential failures are rejected at the HTTP boundary before MCP dispatch. API Key mode does not publish OAuth Protected Resource Metadata or turn failures into an OAuth login flow.
-
-## Security properties
-
-The API Key proves only that the caller possesses the shared instance secret. It does not create a ServerFS user identity and does not replace existing authorization controls.
-
-After authentication, all existing ServerFS policy remains in force, including:
-
-- configured workdir boundaries;
-- read-only defaults;
-- hidden/credential-path denial;
-- revision-guarded mutations;
-- binary-transfer gates and limits;
-- Agent Bridge enablement and runtime allowlists;
-- platform-specific filesystem containment.
-
-ServerFS compares the candidate secret with a constant-time comparison and does not intentionally emit configured or received API Key values in its startup/authentication responses.
-
-## HTTPS and reverse proxy boundary
-
-A static API Key is a bearer credential. Public deployments must protect it in transit with HTTPS.
-
-ServerFS does not manage domains, DNS or certificates. The normal public shape remains:
-
-```text
-MCP client
-    |
-    | HTTPS
-    v
-operator-managed reverse proxy / gateway
-    |
-    | loopback/private HTTP
-    v
-ServerFS
-```
-
-`compose.http.yml` publishes the ServerFS HTTP endpoint on loopback by default. Keep it there unless you deliberately bind a trusted private interface.
-
-## Rotation
-
-v0.17.0 intentionally has no credential database or multi-key grace set.
-
-To rotate the key:
-
-1. generate a new high-entropy secret;
-2. replace `SERVERFS_HTTP_API_KEY` in the operator-owned `.env`;
-3. recreate/restart the ServerFS process/container;
-4. update clients to the new credential.
-
-The old key stops working after the new process starts.
-
-## Relationship to OAuth and external gateways
-
-The three remote HTTP security shapes are:
-
-| Mode | ServerFS setting | Identity model |
-| --- | --- | --- |
-| no built-in auth | API Key empty, OAuth off | rely on private network, OpenAI Tunnel or external gateway |
-| static API Key | `SERVERFS_HTTP_API_KEY=<secret>` | one shared-secret holder |
-| OAuth 2.1 | `SERVERFS_OAUTH_ENABLED=true` | federated identities and ServerFS-issued resource tokens |
-
-If your deployment already uses Cloudflare Access, Tailscale policy, an enterprise API gateway or another trusted authentication layer, you may continue using that boundary instead of enabling ServerFS API Key or OAuth.
-
-## Example
-
-With the generic HTTP Compose shape:
-
-```bash
-docker compose \
-  -f compose.yml \
-  -f compose.http.yml \
-  up -d serverfs-mcp
-```
-
-recommended client configuration is conceptually:
-
-```text
-URL: https://mcp.example.com/mcp
-Authorization: Bearer <key>
-```
-
-or, for a client that only accepts a complete URL:
-
-```text
-https://mcp.example.com/mcp?key=<key>
-```
-
-Never commit the real key to Git, documentation, screenshots or client configuration templates.
+If an external gateway is the only admission boundary on Linux, explicitly assess its enforcement, bypass paths and Core reachability. Never rely on a Tunnel registration or an unguessable URL as caller authorization. Native HTTP still requires API Key or OAuth.

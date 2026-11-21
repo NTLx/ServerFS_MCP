@@ -1,5 +1,7 @@
 # v0.25.0 macOS — Shared Bridge v2 Owner Grant and Task Scope Foundations
 
+> Historical superseded source-only experiment. Its Core-scoped idempotency index, continuation assumptions, SQLite sidecar and proposed wire do not define current signed-v2 behavior: signed-grant submission rejects `idempotency_key` and `continue_from_task_id`. The [native-first ADR](../architecture/v0.25.0-native-platform-boundaries.md) supersedes mandatory cross-OS private-wire convergence; preserve the original security tests and owner-only authorization principles without treating experimental code as deployable. Current contract: [maintainer invariants](../maintainers/invariants.md).
+
 **Date:** 2026-11-14
 **Acceptance:** SUPERSEDED SOURCE-ONLY EXPERIMENT / not a live Shared Bridge acceptance. The experimental Mac owner/task-scope protocol is not wire-compatible with Windows v2; see docs/architecture/v0.25.0-bridge-v2-macos-windows-reconciliation.md.
 

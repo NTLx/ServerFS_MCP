@@ -2,282 +2,59 @@
 
 **简体中文** · [English](README_EN.md)
 
-[![Release](https://img.shields.io/github/v/release/NTLx/ServerFS_MCP)](https://github.com/NTLx/ServerFS_MCP/releases/latest)
-[![Linux CI](https://github.com/NTLx/ServerFS_MCP/actions/workflows/container.yml/badge.svg)](https://github.com/NTLx/ServerFS_MCP/actions/workflows/container.yml)
-[![Windows CI](https://github.com/NTLx/ServerFS_MCP/actions/workflows/windows-native.yml/badge.svg)](https://github.com/NTLx/ServerFS_MCP/actions/workflows/windows-native.yml)
-[![macOS CI](https://github.com/NTLx/ServerFS_MCP/actions/workflows/macos-native.yml/badge.svg)](https://github.com/NTLx/ServerFS_MCP/actions/workflows/macos-native.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/NTLx/ServerFS_MCP)](https://github.com/NTLx/ServerFS_MCP/releases/latest) · [官网](https://ntlx.github.io/ServerFS_MCP/zh-cn/) · [文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/) · [Releases](https://github.com/NTLx/ServerFS_MCP/releases)
 
-**一个安全、标准优先、按范围授权的 MCP 文件系统服务器，并可选支持 AI Agent 委托。**
+**本文档面向 v0.25.0，正式发布尚未完成。** [最新稳定版本](https://github.com/NTLx/ServerFS_MCP/releases/latest)。
 
-只暴露你明确选择的目录，并默认保持只读。仅在需要的位置按需开启受限文件修改、基于 revision 的并发保护、有限制的二进制传输，以及结构化的 Codex / Claude Code / Qoder 原生 runtime 或运维人员配置的 ACP Agent 委托能力。Deterministic Repo Ops 自 v0.23.0 起支持 Linux Host Bridge，v0.23.1 扩展到已验收的 Apple Silicon 原生 macOS，v0.23.2 进一步扩展到已验收的 Windows 11 x64 原生部署，用于无需 Agent 委托的确定性仓库收尾操作。
+ServerFS MCP 是一个跨平台、自托管的 MCP 文件系统服务。它将明确配置的本地目录（Workdir）开放给 AI 客户端，默认只读，写入具有 revision 保护；按需增加二进制传输、确定性仓库操作（Repo Ops）和宿主机 Agent 委托。不提供 Shell 或通用命令执行接口。
 
-**当前稳定版本：v0.24.2**
-
-Linux Docker Cloudflare Tunnel 已随 v0.24.0 发布；v0.24.1 增加 Apple Silicon/macOS 27 原生 Cloudflare Tunnel。它通过独立 loopback HTTP origin 与 Connector 接入 Cloudflare，复用当前用户 `SMAppService` 生命周期，不替换现有 OpenAI Tunnel 或 Agent Bridge。隔离只读 staging 通过 401/200 认证、11 工具发现、65.1 秒 SSE，以及 Connector 重启后 8/8 次新会话恢复；旧会话返回 404，不保证 SSE 重放。Windows 原生 Cloudflare 随 v0.24.2 纳入稳定版本。双入口公网 ChatGPT 与 75.0/70.0/65.0 秒 SSE 验收已通过；整代 restart/recovery 按 2026-11-10 operator waiver 未测试、未通过，Connector-only restart 与 SSE lossless replay 均不作通过声明。最终精确 SHA CI 与 Release workflow 仍待运行，。OpenAI 默认入口与独立的 `ServerFS Cloudflare WorkPC` 使用两个同用户 Task Scheduler owner，各有自己的 venv/state/watchdog/runner，共享获准的可写 workdirs、一个 Agent Bridge 与 Repo Ops。单个 owner 仍只选择一个 provider；旧 `service cloudflare` 对正在运行的 OpenAI owner 的拒绝只适用于该 owner，不代表禁止两个独立 owner 并行，也不提供通用自动 handover。退役 OpenAI owner 时，若 Cloudflare 仍依赖共享 Agent Bridge，必须保留 Bridge 生命周期。详见 [Windows Cloudflare 运维手册](docs/windows-cloudflare-tunnel.md) 与[发布门禁](docs/v0.24.2-release-checklist-2026-11-07.md)。
-
-[项目网站](https://ntlx.github.io/ServerFS_MCP/zh-cn/) ·
-[文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/) ·
-[快速开始](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/getting-started/) ·
-[安全模型](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/security/) ·
-[Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) ·
-[静态 API Key](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/api-key/) ·
-[OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/oauth/) ·
-[Releases](https://github.com/NTLx/ServerFS_MCP/releases)
-
----
-
-## 为什么选择 ServerFS
-
-给 AI Agent 开放整个文件系统或 Shell 很容易，真正困难的是让它**只获得完成当前任务所必需的能力**。
-
-ServerFS 围绕这一更窄、更明确的安全边界设计：
-
-- **显式 Workdir** —— 只有预先配置的目录可见，对外使用别名而不是主机真实路径。
-- **默认只读** —— 写权限按 Workdir 单独显式开启，而不是全局默认开放。
-- **受限文件操作** —— 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
-- **并发安全的修改** —— 破坏性操作使用不透明 revision；文本修改采用精确匹配并原子提交。
-- **纵深防御** —— 路径约束、符号链接拒绝、凭据路径拒绝规则、有界 I/O、审计事件，以及平台原生的文件系统安全机制。
-- **可选能力保持可选** —— 二进制传输、ChatGPT 文件输入、Linux / 原生 macOS / 原生 Windows Repo Ops、Agent 委托和 Jev 建议能力均可独立启用。
-- **Linux、Windows、macOS** —— 对外保持一致的能力模型，同时使用各平台原生的约束与部署边界。
-
-## 支持的部署方式
-
-| 平台 | 支持形态 | 文件系统边界 | Repo Ops | Agent 委托 |
-| --- | --- | --- | --- | --- |
-| **Linux** | Docker Compose，支持 `linux/amd64` 与 `linux/arm64` | Bind mount Workdir；容器默认只读 | v0.23.0+ | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
-| **Windows** | Windows 11 x64、本地 NTFS、原生 stdio | MCP stdio 上的原生 HANDLE-relative Rust 内核 | v0.23.2 已验收 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
-| **macOS** | Apple M 系列、原生 arm64、macOS 27 Golden Gate、本地 APFS | MCP stdio 上基于 descriptor-relative 的 Darwin 原生后端 | v0.23.1+ 已验收 | 原生 Codex、Claude Code、Qoder；可配置 ACP v1 profiles |
-
-macOS 仅支持 Apple M 系列、原生 arm64、macOS 27.x 与本地 APFS；不声明支持 Intel、Rosetta 或其他 macOS 大版本。持久 Tunnel 与 Agent Bridge 通过当前用户的 `SMAppService` LaunchAgent 管理。Windows 使用当前用户、非提权的 Task Scheduler 2.0 任务托管无窗口 watchdog，由 watchdog 恢复 runner、runner 恢复 Tunnel。两平台均使用 `serverfs service` 管理持久服务；具体安装、恢复边界与验收限制见平台指南。
-
-原生平台部署请参考：
-
-- [Windows Native](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/windows-native/)
-- [macOS Native](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/macos-native/)
-
-## Agent Skills
-
-仓库提供面向任务的 [ServerFS Agent Skills](skills/README.md)，覆盖安装、配置、升级、诊断、OpenAI Secure MCP Tunnel / 已发布 Linux、macOS Cloudflare 与 Windows v0.24.2、HTTP 认证以及 Agent Bridge/runtime 运维。这些 Skills 是建立在现有 CLI、配置模板、Compose/部署文件和产品文档之上的轻量工作流层，而不是另一套配置系统。
-
-仓库根目录同时提供仅包含 Skills 的可移植 [`plugin.json`](plugin.json)。v0.24.2 Plugin 资产名为 `serverfs-plugin-v0.24.2.zip`（须由发布 workflow 生成并验证），其中有 7 个运行时 Skill 及其打包引用。该 Plugin 不包含 ServerFS MCP URL、凭据或任何 Provider 私有配置。
-
-## 快速开始
-
-最短部署路径是 Linux Docker。
-
-### 前置要求
-
-- Docker + Docker Compose
-- 至少一个希望暴露给 MCP 的目录
-
-OpenAI Secure MCP Tunnel 是可选组件，仅在需要通过 ChatGPT Tunnel 接入时使用。
-
-### 1. 克隆并配置
-
-```bash
-git clone https://github.com/NTLx/ServerFS_MCP.git
-cd ServerFS_MCP
-cp .env.example .env
-chmod 600 .env
-```
-
-编辑 `.env`，固定镜像版本、允许本地客户端的 Host，并至少配置一个 Workdir：
-
-# 当前稳定版本示例（v0.24.2）：
-```env
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.24.2
-SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
-WORKDIR_01_ALIAS=projects
-WORKDIR_01_PATH=/srv/projects
-WORKDIR_01_DESCRIPTION="Projects"
-WORKDIR_01_READ_ONLY=true
-```
-
-Workdir 主机目录必须预先存在，且容器的 `SERVERFS_UID:SERVERFS_GID`（默认 `10001:10001`）必须具有读取和目录遍历权限；只读挂载不会绕过主机权限。原生 Windows/macOS 使用 [`serverfs.toml.example`](serverfs.toml.example)，请按平台指南配置。
-
-### 2. 启动标准 Streamable HTTP 端点
-
-```bash
-docker compose -f compose.yml -f compose.http.yml pull serverfs-mcp
-docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
-docker compose -f compose.yml -f compose.http.yml ps
-```
-
-通用 HTTP override 默认将 ServerFS 发布到 `http://127.0.0.1:8000/mcp`，且不会启动 OpenAI Tunnel。任何非 loopback 或公网部署前，都应将实际对外 Host 加入 `SERVERFS_HTTP_ALLOWED_HOSTS`，并配置 HTTPS 与认证（内置 API Key/OAuth 或上游网关）。
-
-**Cloudflare Tunnel ingress：** Linux Docker ingress shipped in v0.24.0. v0.24.1 adds optional native ingress for Apple Silicon/macOS 27 through a separate loopback HTTP origin and Connector, with exact Host matching and independent API Key/OAuth caller authentication. Isolated read-only macOS staging passed HTTPS 401/200, 11-tool discovery, 65.1-second SSE, and fresh-session recovery on 8/8 Connector restarts; the old session returned 404, and no SSE replay is claimed. v0.24.2 adds Windows Cloudflare. Two independent same-user Task Scheduler owners passed public 401/200, ChatGPT tools, cross-ingress file operations on shared writable workdirs, Codex/Claude, and public SSE holds of 75.0/70.0/65.0 seconds. Under the 2026-11-10 operator waiver, full-generation restart/recovery was not tested and did not pass; Connector-only restart and lossless SSE replay are not claimed.  A Qoder provider error predated this acceptance; Python urllib's default User-Agent hit edge WAF 1010 and is an edge configuration caveat.
-
-如果要通过现有 OpenAI Secure MCP Tunnel 接入 ChatGPT，请配置 `CONTROL_PLANE_TUNNEL_ID` 和 `CONTROL_PLANE_API_KEY`，并使用基础 Compose 部署。Agent 委托、二进制传输、文件输入、代理路由或生产环境加固请继续阅读 [快速开始](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/getting-started/) 与 [配置](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/configuration/) 文档。
-
-### 可选：为远程 HTTP 启用静态 API Key
-
-轻量的内置 API Key 认证适用于不需要 OAuth 身份流程的场景。在 `.env` 中设置一个高熵密钥：
-
-```env
-SERVERFS_HTTP_API_KEY=<long-random-secret>
-```
-
-客户端优先使用 `Authorization: Bearer <key>`。同时支持钉钉等场景常见的一行式 URL，例如 `https://mcp.example.com/mcp?key=<key>`，但 URL 中的凭据可能被反向代理或基础设施日志记录。公网端点仍必须使用 HTTPS；API Key 模式与 `SERVERFS_OAUTH_ENABLED=true` 互斥。详见 [Static API Key](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/api-key/)。
-
-### 可选：为远程 HTTP 启用 OAuth 2.1
-
-OAuth 2.1 用于 Linux Docker 的远程 Streamable HTTP，默认**关闭**，不影响 Windows/macOS 原生 stdio。启用时需设置 `SERVERFS_OAUTH_ENABLED=true`，配置公网 MCP/issuer URL、introspection secret、身份提供方与精确主体准入列表，并叠加 `compose.http.yml` 和 `compose.oauth.yml`。状态目录必须预先存在且可由 `SERVERFS_UID:SERVERFS_GID` 写入。
-
-推荐在 HTTPS 反向代理后分别发布 MCP 与授权服务器；仅 `serverfs-auth` 承担身份提供方/CIMD 出站访问。支持 GitHub、钉钉、飞书/Lark 和微信开放平台。完整命令、回调、状态目录权限及 OpenAI Tunnel 的 OAuth 兼容性边界见 [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/oauth/)。
-
-## 工作原理
+## 按需组合，而非整套安装
 
 ```text
-Claude Code / Codex / Qoder / MCP hosts
-             |               |
-           stdio      Streamable HTTP
-             |               |
-             +-------+-------+
-                     v
-              +-------------+
-              | ServerFS MCP |------> configured workdirs
-              | Core        |------> optional host Bridge (Agent / Repo Ops)
-              +-------------+                |
-                     ^                       +--> Repo Ops (Linux + native macOS + native Windows)
-                     |                       +--> Codex
-          OpenAI Secure MCP Tunnel           +--> Claude Code
-                     |                       +--> Qoder
-                     |                       +--> ACP profiles
-                     |
-                  ChatGPT
+MCP 客户端 ── 直接 HTTP / 可选 Tunnel Connector ── MCP Core ── Workdir
+                                                    │
+                                              可选 Agent Bridge
+                                                    │
+                                           宿主机 Agent / Repo Ops
 ```
 
-MCP Core 与宿主平台解耦。标准 MCP 客户端使用 stdio 或 Streamable HTTP；OpenAI Secure MCP Tunnel 保持为可选的、带认证的 ChatGPT ingress 适配器。Linux 上的通用 HTTP 需要显式开启，并默认仅向主机 loopback 发布；原有 Tunnel 部署方式继续受支持。Streamable HTTP 支持可选的单密钥 API Key 认证，或独立的 `serverfs-auth` OAuth 2.1 Broker，用于需要身份感知的部署。这两种认证方式都不会改变既有 Workdir 授权模型或原生 stdio。可选 file-ingress sidecar 仍维持独立的出站职责。
+- **MCP Core** 管理 MCP 会话、HTTP 调用方准入、Workdir 策略和文件操作。原生本地 stdio 不需要持久 HTTP 服务。
+- **Connector** 是可选的 OpenAI 或 Cloudflare Tunnel 入口，独立管理其入口凭据与生命周期；直接 HTTP 不是 Connector。
+- **Agent Bridge** 是可选的宿主机执行边界。Agent 委托和 Repo Ops 分别按 Workdir 授权，不会因为安装 Bridge 而自动开启。
 
-Windows 与 macOS 上，ServerFS 通过 stdio 原生运行，Agent Bridge 保持独立的主机进程边界；v0.23.0 Repo Ops 首版支持 Linux，v0.23.1 扩展到经现场验收的 Apple Silicon 原生 macOS，v0.23.2 进一步加入已验收的 Windows 11 x64 原生 Repo Ops。
+持久部署可以有多套命名 Core（`instance_id`）、各自的入口（平台支持时以 `connector_id` 区分）和独立 Bridge owner（`bridge_id`）。Core 的 Bridge 模式是：
 
-完整部署与信任边界模型见 [Architecture](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/architecture/)。
-
-## 能力边界
-
-稳定版 v0.24.2 在既有 11 / 13 / 21 / 23 文件、二进制与 Agent 能力组合之上，可在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 与 Windows 11 x64 原生部署上独立、默认关闭地增加 4 个 Deterministic Repo Ops 工具；它们不启用 Agent runtime，也不改变既有 Agent 工具语义。默认仍注册 5 个文件修改工具，但只读 Workdir 会拒绝修改。
-
-| 能力层 | 工具数 | 增加的能力 |
-| --- | ---: | --- |
-| 文件系统 | 11 | 6 个只读工具 + 5 个受控修改工具 |
-| 文件系统 + 二进制 | 13 | 有大小限制的整文件下载/上传 |
-| 文件系统 + Repo Ops | 15 | 4 个确定性 Git / named-action 工具；v0.23.3 Linux Host Bridge / 原生 macOS / 原生 Windows |
-| 文件系统 + 二进制 + Repo Ops | 17 | 二进制 + Repo Ops |
-| 文件系统 + Agent | 21 | 10 个结构化 Agent Bridge 工具 |
-| 文件系统 + 二进制 + Agent | 23 | 二进制 + Agent |
-| 文件系统 + Agent + Repo Ops | 25 | Agent 与 Repo Ops 独立同时启用 |
-| 完整能力 | 27 | v0.23.3 文件系统 + 二进制 + Agent + Repo Ops |
-
-### 文件系统工具
-
-**所有 Workdir 可用的读取工具：** `list_workdirs`、`list_directory`、`find_files`、`search_text`、`read_text_file`、`stat_file`
-
-**仅 Read-Write Workdir 可用：** `create_text_file`、`edit_text_file`、`delete_file`、`create_directory`、`delete_directory`
-
-**可选二进制传输：** `download_binary_file`、`upload_binary_file`
-
-**v0.23.3 Linux Host Bridge、原生 macOS 与原生 Windows 可选 Repo Ops：** `inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`。Repo Ops 只允许固定 Git 语义和管理员配置、完整性固定的 named actions；调用方不能传 executable、argv、environment、remote、ref、force 或 shell fragment，也不会创建 Agent task。v0.23.0 的 Linux 验收继续作为基线；v0.23.1 新增真实 Apple Silicon 原生 macOS Repo Ops E2E；v0.23.2 新增 Windows 11 x64 原生 Repo Ops 的进程树约束、reparse/junction fail-closed 与公共 MCP live acceptance。
-
-Agent 工具用于提交和观察结构化 Provider Task，**不是** Shell 或任意命令执行 API。Repo Ops 与 Agent delegation 分别授权：一个 Workdir 可以在 `agent_mode=disabled` 时单独启用 Repo Ops。详见 [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) 与 [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/agent-bridge/)。
-
-## 安全模型
-
-ServerFS 假设文件内容均为不可信数据，并通过多个独立防线实施安全约束，而不是依赖单一权限检查。
-
-关键特性包括：
-
-- Workdir confinement，且 MCP 返回结果不暴露主机真实路径；
-- 默认只读，并由部署层/文件系统层进一步强化；
-- 基于 descriptor 或 HANDLE 的相对路径遍历，并防御 symlink/reparse point；
-- 破坏性操作使用 revision guard，并原子发布修改结果；
-- 替换写入时保留文件元数据；
-- 保留内部名称与内置凭据路径拒绝规则；
-- 对读取、写入、搜索、二进制传输、任务结果及交互生命周期设置明确上限；
-- 不提供递归删除、通用 `write_file`、Shell 或任意命令执行器；Repo Ops 也不暴露调用方可控的 Git force / remote / ref / argv；
-- v0.23 Repo Ops named action 使用管理员固定 argv、SHA-256 integrity pins、窄环境与有界执行；Git 写操作与文件修改/Agent writer 共用 writer lease；
-- 使用隔离的 file ingress，而不是给 MCP 主服务开放通用下载出站能力；
-- Agent runtime allowlist、writer lease、恢复保护、显式 Provider approval，以及仅提供建议的 Jev 集成。
-
-实际信任边界和安全契约请以 [Security Model](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/security/) 与 [Architecture](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/architecture/) 为准。
-
-## 可选 Agent Bridge
-
-ServerFS 可通过独立的 Host-side Agent Bridge，将受限任务委托给原生 **Codex**、**Claude Code**、**Qoder** Runtime，以及公开 runtime ID 形如 `acp-<profile>` 的通用 ACP v1 profiles。ACP profile 由运维人员配置绝对可执行文件与固定 argv；这不是新的原生 Provider 集成。
-
-Agent Bridge 提供结构化任务提交、状态/事件、取消、审批/提问、Provider 支持时的模型发现、请求级模型选择、结果 spool、幂等重试以及恢复语义。Provider 能力按 Runtime 实际上报，不假设不同 Provider 具有完全一致的功能。ACP runtime 不支持模型发现或覆盖、elicitation、ACP client filesystem 或 terminal；其余 runtime capabilities 也仅按实测结果保守报告。
-
-所有启用的 Agent runtime 均要求可写 Workdir 与 `workspace-write` 策略。任务不能覆盖 ACP command、argv 或环境，身份认证由 Provider 管理；ServerFS 不会从 Registry 自动安装或信任 Agent。OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 已通过 Linux、macOS、Windows 端到端验收；这不代表所有 ACP 实现均已验证。
-
-v0.22.0 的 Correlated Agent Diagnostics 通过本地 `serverfs diagnostics snapshot` 和 `serverfs diagnostics task <task-id>` 查询有界、仅驻留 Bridge 进程内的诊断状态，支持 `--format human|json`。它们复用现有私有 RPC，不增加 MCP 工具、网络监听、持久 trace store、OpenTelemetry 依赖或遥测出站。Linux 使用自定义 socket 路径时需设置 `SERVERFS_AGENT_BRIDGE_SOCKET`。实现与三平台验收索引见 [v0.22 计划](dev_plan_v0.22.md)。
-
-Jev 集成为可选且仅提供建议：它可以提供任务 preflight、Runtime/模型建议和审批上下文，但不会扩展权限，也不会自动覆盖调用方选择的 Runtime、模型或审批决定。
-
-- [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/agent-bridge/)
-- [ACP Guide](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/acp/)
-- [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/jev-advisors/)
-
-## 二进制传输与 ChatGPT 文件输入
-
-二进制传输是独立的可选能力，并有明确字节上限。覆盖已有文件时仍需 revision guard，且目标必须位于 Read-Write Workdir。
-
-ChatGPT 文件参数通过可选的隔离 ingress helper 处理，而不是让 MCP 主服务获得不受限的互联网访问能力。
-
-支持来源、限制和网络边界见 [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/binary-transfer/)。
-
-## 文档
-
-文档站是面向用户和运维人员的权威参考；README 有意保持在项目入口层级。
-
-| 主题 | 文档 |
+| 模式 | 选择理由 |
 | --- | --- |
-| 项目概览 | [ServerFS MCP docs](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/) |
-| 首次部署 | [Getting Started](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/getting-started/) |
-| Workdir 与策略 | [Configuration](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/configuration/) |
-| 架构与信任边界 | [Architecture](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/architecture/) |
-| 安全契约 | [Security Model](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/security/) |
-| 远程 HTTP 静态 API Key | [Static API Key](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/api-key/) |
-| 远程 HTTP OAuth 2.1 | [OAuth 2.1](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/oauth/) |
-| 二进制传输 / 文件输入 | [Binary Transfer](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/binary-transfer/) |
-| 确定性仓库操作（v0.23.3 Linux / 原生 macOS / 原生 Windows） | [Deterministic Repo Ops](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/repo-ops/) |
-| Agent 委托 | [Agent Bridge](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/agent-bridge/) |
-| ACP profile 配置与运维 | [ACP Guide](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/acp/) |
-| 可选 Jev 建议 | [Jev Advisors](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/jev-advisors/) |
-| OpenAI Tunnel 故障诊断 | [Tunnel Diagnostics](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/tunnel-diagnostics/) |
-| Host 只读状态发布 | [Host Observability](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/host-observability/) |
-| 受限网络 Linux ARM64 | [Restricted-network ARM64](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/restricted-network-arm64/) |
-| Windows 原生部署 | [Windows Native](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/windows-native/) |
-| macOS 原生部署 | [macOS Native](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/macos-native/) |
+| disabled | 只需要文件能力，无需 Agent Bridge 或 Provider 凭据 |
+| owned | 需要专属 Bridge，隔离任务、状态和运行时 |
+| shared | 多个 Core 显式接入同一宿主机上已有的独立 Bridge owner |
 
-版本历史和升级专用说明应放在 [GitHub Releases](https://github.com/NTLx/ServerFS_MCP/releases)，而不是持续堆积在 README 中。
+Shared Core 不拥有 Bridge owner 的生命周期，也不能通过共享用户或 IPC 获得额外授权。独立 Bridge 不得占用重叠的可写根目录。组件独立不意味着没有依赖：启动与退役须符合各平台就绪、活动任务和停止门禁。
 
-## 发布版本
+## 选择平台
 
-- Linux 镜像：`ghcr.io/ntlx/serverfs_mcp`；当前稳定版：`v0.24.2`
-- 当前稳定版本标签：`v0.24.2`
-- 生产部署应固定到明确版本，不建议使用 `latest` 或 `edge`。
-- 可移植 Agent Plugin：拟发布的 skills-only `serverfs-plugin-v0.24.2.zip` 资产，须由 Release workflow 生成并验证。
-- Windows Release 资产包含产品本体、Agent Bridge 与原生 kernel wheel。
-- macOS 直接使用产品与 Agent Bridge 的 Python distribution；不提供单独的 macOS native wheel，并在本地构建用于当前用户持久化服务的轻量 ServiceManagement companion。
+| 平台 | 部署方式 | 指南 |
+| --- | --- | --- |
+| Linux | Docker Compose 管理命名 Core 和可选 Connector；可用直接 HTTP 或内部网络；可选 Bridge 为宿主机用户级 systemd 服务 | [Linux 部署](deployment/linux/README.md) |
+| macOS | Apple Silicon、原生 arm64、macOS 27、APFS；签名 SMAppService / LaunchAgents 与认证 Unix IPC | [macOS 部署](deployment/macos/README.md) |
+| Windows | Windows 11 x64、本地 NTFS、匹配 Native Wheel；当前用户 Task Scheduler、Job Object 和 Named Pipe，无需 WSL/VM | [Windows 部署](deployment/windows/v0250-native-operations.md) |
 
-具体资产、校验和与版本说明见 [最新 Release](https://github.com/NTLx/ServerFS_MCP/releases/latest)。
+统一的是公开 MCP 契约与安全结果，不强求三个平台共用内部实现。具体组件组合、命名 Connector 支持范围、安装与升级限制以平台指南为准。不引入中央服务管理器。
 
-## 开发
+## 能力与安全
 
-Python/Linux 主路径：
+基础文件系统提供 11 个工具。启用二进制传输增加 2 个；Agent 委托增加 10 个；Repo Ops 增加 4 个。这些能力独立启用，完整组合共 27 个工具。Repo Ops 不启动 Agent；Agent 使用宿主机的原生 Codex、Claude、Qoder 或显式配置的 ACP profile，Jev 仅提供建议。
 
-```bash
-uv sync --frozen
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest
-docker compose config --quiet
-docker compose -f compose.yml -f compose.http.yml config --quiet
-SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
-```
+Workdir 限制、deny/reserved 路径策略、revision 检查与写入授权不因入口变化而扩大。HTTP Core 配置精确 Host/Origin 准入；公网接入须有调用方认证。Tunnel 凭据与 HTTP 调用方凭据分离。Bridge 接入需要逐 Core 的显式授权，不将同 UID/SID 视为可信身份。
 
-Windows 与 macOS 原生开发还有额外的平台 Gate。维护者不变量、验证规则和 Release 纪律见 [AGENTS.md](AGENTS.md) 与 [docs/maintainers/](docs/maintainers/)。
+## 开始使用
 
-## License
+从最小纯文件实例开始，先验证 MCP 文件能力，再按需增加 Connector、Bridge 和其他能力。
 
-ServerFS MCP 基于 [MIT License](LICENSE) 发布。
+- [架构与部署选择](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/architecture/) · [快速开始](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/getting-started/)
+- [HTTP API Key](docs/api-key.md) · [OAuth](docs/oauth.md) · [Cloudflare Connector](docs/cloudflare-tunnel.md)
+- [Agent Bridge](agent_bridge/README.md) · [Agent Skills](skills/README.md)（七个 Skills 与仅包含 Skills 的 Plugin）
+- [维护者指南](docs/maintainers/README.md)
+
+使用与目标版本匹配的源码、文档及安装产物，避免隐式迁移现有实例。[发布说明](docs/releases/v0.25.0.md)与[发布清单](docs/v0.25.0-release-checklist-2026-11-21.md)记录实际验收及未完成门禁，历史证据保留于 `docs/releases/`、`docs/diagnostics/` 和架构决策记录。

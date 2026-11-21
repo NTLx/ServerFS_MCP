@@ -1,5 +1,7 @@
 # Qoder Native Runtime Validation — 2026-09-29
 
+> Historical v0.8.0 Qoder acceptance. The installed version/model and account availability, no public `model` parameter and v1 continuation contract below are version-specific. v0.9 added request-scoped model selection, and current signed-v2 submissions reject `continue_from_task_id` and `idempotency_key` even when the runtime advertises session persistence. See [current maintainer invariants](maintainers/invariants.md); the live-steer limitation and original measured evidence remain intact.
+
 Status: PASS for the v0.8.0 release
 
 This record freezes the validation evidence for adding Qoder as the third

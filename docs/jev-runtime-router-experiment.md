@@ -1,6 +1,8 @@
 # Jev Runtime Router experiment
 
-Status: opt-in experimental capability introduced before v0.8.0 and included in the current **v0.13.2 stable release** (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
+Status: historical opt-in experiment introduced before v0.8.0; v0.13.2 was the stable release recorded at a later documentation checkpoint (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge).
+
+> This historical five-choice router is not an exhaustive current tool/runtime catalog. Later Repo Ops and operator-configured ACP profiles are independently authorized; the fixed advisory choice list does not imply automatic route selection, runtime availability or permission to submit a task. Current [maintainer invariants](maintainers/invariants.md) govern advisory authority and external data transfer.
 
 This experiment adds the second Jev feature proposed for ServerFS: an advisory Runtime
 Router layered on the existing Agent Task Preflight.

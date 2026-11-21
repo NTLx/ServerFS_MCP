@@ -1,74 +1,55 @@
 ---
 title: 安全模型
-description: MCP、Docker、文件系统、传输与 Agent 边界上的纵深防御。
+description: 独立的调用授权、文件系统、入口网络与宿主机执行边界。
 ---
 
-ServerFS 围绕**窄能力与独立执行层**设计。
+ServerFS 提供受限能力，而非直接开放宿主机 Shell。各层独立执行策略，启用 Connector、Bridge 或某项能力不会自动授权其他操作。
 
-## 核心属性
+## 1. 信任边界
 
-- 默认只读。
-- 按 workdir 显式开放写入。
-- 无 Shell 或通用命令执行。
-- 无通用 `write_file`。
-- 无递归删除或 force 模式。
-- 破坏性操作受 revision 保护。
-- 基于文件描述符的路径遍历，并拒绝 symlink。
-- 内建凭据 deny 规则。
-- 读 / 写 / 搜索 / 二进制大小限制。
-- 结构化审计日志，不记录文件内容。
-- 容器根文件系统只读。
-- 非 root 容器用户、drop capabilities、no-new-privileges。
-- MCP 仅连接内部网络，无公开端口、无互联网出口。
-- 可选 ChatGPT 文件入口被隔离在独立 sidecar 中，不挂载 workdir，也不持有 OpenAI 凭据。
-- v0.23.3 Repo Ops 是非 Agent、按 Workdir opt-in 的能力，支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署，不暴露调用方可控的 shell/argv/environment/remote/ref/force；Windows 原生支持最早在 v0.23.2 完成验收。
+| 边界 | 执行机制 |
+| --- | --- |
+| 远程调用方 → Core | 公网入口 TLS、精确 Host/Origin 准入、API Key 或 OAuth |
+| Core → Workdir | 显式别名、默认只读、操作限制、凭据拒绝规则及系统权限 |
+| Core → Bridge | 实例身份、私有原生 IPC、受限策略与 grant |
+| Bridge → Git / Agent | 固定 Repo Ops action 或已授权 Provider runtime、writer lease、原生审批 |
+| 可选外部下载/建议 | 独立文件入口或 Jev 建议，不扩大 Workdir 权限 |
 
-## 文件入口边界
+Tunnel 密钥证明 Connector 身份，不代表调用方身份。不同实例应使用独立凭据和私有状态。同一 UID/SID 不构成授权；同用户组件隔离不是针对恶意同用户进程的安全沙箱。
 
-v0.5.0 继续禁止 ServerFS MCP 主容器访问互联网。显式启用后，`serverfs-file-ingress` 使用独立出站网络，并通过只与 MCP 服务共享的专用内部网络接收请求；Tunnel 不连接该 ingress 网络。
+## 2. 文件系统与变更
 
-MCP 到 sidecar 的端点固定为内部 Compose 服务，MCP 客户端本身不会跟随重定向。Sidecar 只接受 443 端口上的 HTTPS。主机授权可以是管理员配置的精确主机名，也可以显式开启根据真实 ChatGPT fileParams 实测得到的受限 OpenAI Azure Blob 家族：存储账户名以 `oaisdmntpr` 开头、仅含小写 ASCII 字母/数字、满足 Azure 账户长度上限，并使用精确的 `.blob.core.windows.net` 后缀；通用主机名通配符仍会被拒绝。主机授权之后仍会拒绝任何非公网 DNS 结果，将连接固定到已验证 IP，同时按原始主机名校验 TLS，对每次上游重定向重新校验，并独立限制字节数和超时。它不是通用 URL 代理。
+Core 使用 POSIX 基于文件描述符或 Windows 原生基于 HANDLE 的路径遍历，拒绝 symlink 和不安全的 Windows 重定向路径，仍受操作系统权限约束。仅暴露配置的 Workdir 别名和相对路径。
 
-## 传输层加固
+- 默认只读，变更需要显式可写策略。
+- 文本编辑、删除及二进制覆盖使用不透明 revision 防护。没有通用覆盖/force 开关或递归删除目录。
+- 隐藏文件与凭据拒绝规则相互独立。Linux 额外 deny 规则取并集，不建议关闭内建 deny；原生 TOML 保留内建拒绝规则。
+- 读、搜索、写入均有大小或数量限制。结构化操作日志不记录文件内容；不要将凭据写入提示词或日志。
 
-v0.4.0 引入了 MCP Streamable HTTP DNS-rebinding protection；v0.5.0 保持这一传输边界不变。
+Linux 额外使用非 root 容器、只读根文件系统、drop capabilities 与 no-new-privileges。原生部署依赖当前用户权限、私有目录/ACL 与系统原生生命周期，不是容器隔离。不要将实例状态或 Provider 凭据根目录暴露为 Workdir。
 
-传输层只接受固定内部 authority `serverfs-mcp:8000`；异常或缺失 Host 会被拒绝，非空且未允许的 Origin 也会在进入 MCP dispatch 前被拒绝。
+## 3. HTTP 准入
 
-## 静态 API Key 边界
+Streamable HTTP 保留 DNS rebinding 防护，以配置的 Host 白名单为准。Linux 留空时派生内部服务 authority，命名原生 Core 使用配置的 hostname 与 loopback authority。未获准的 Host/Origin 被拒绝。使用精确条目，而不是为排查代理故障放宽策略。
 
-v0.17 可以使用一个可选的共享 API Key 保护远程 Streamable HTTP。Key 会在进入 MCP dispatch 前校验，并采用 constant-time comparison；它不会创建用户身份，也不会改变 workdir 授权。优先使用 Header 认证（`Authorization: Bearer <key>`）。为了兼容一行 MCP URL，也支持 `?key=`，但 query credential 更容易出现在 URL 日志中，因此 API Key 模式会关闭 ServerFS 自身默认的 Uvicorn access log；上游代理日志仍由操作者负责。静态 API Key 与内置 OAuth 互斥。详见[静态 API Key](../api-key/)。
+[API Key](../api-key/) 在分发请求前以常量时间比较校验共享密钥。优先使用 bearer header，URL 参数有日志泄露风险。Key 不区分个人身份，也不改变 Workdir 策略。
 
-## OAuth 边界
+[OAuth](../oauth/) 使用独立授权服务签发的、绑定 resource 的不透明 Token，通过私有 introspection 校验。Provider 凭据留在授权服务；Provider 原生 token 不能直接用于 MCP。稳定 principal 默认拒绝、精确授权，code/state 单次使用，refresh token 轮换，原始 bearer 值不持久化。OAuth scope 不能替代 Workdir 策略。API Key 与 OAuth 互斥；命名 OpenAI HTTP 入口要求静态 bearer 准入。
 
-v0.16 可通过隔离的 `serverfs-auth` Authorization Server 保护远程 Streamable HTTP。OAuth 默认关闭。只有 auth 服务接收 provider 凭据与 provider/CIMD Internet egress；`serverfs-mcp` 不接收这些信息，只通过私有 introspection 校验 ServerFS 自己签发、绑定 resource 的不透明 Token。
+## 4. 文件入口与网络隔离
 
-准入策略默认拒绝，只接受精确的稳定 provider subject。Provider-native token 不能直接访问 MCP。Authorization code/provider state 都是一次性的，refresh token 使用后轮换，原始 bearer 值不会持久化，resource/audience 校验保持严格。身份准入后仍由既有 workdir 策略决定权限；ServerFS 不把 workdir 权限复制成 OAuth scope。
+Linux 仅内部网络模式不发布 Core 宿主机端口；直接 HTTP 发布增加的网络可能允许普通容器出站。两者的隔离级别不同。
 
-OpenAI Tunnel 的 OAuth 路径同样保持这些校验。已知上游 resource rewrite 问题会被明确记录，而不是通过 wildcard audience 绕过。部署、撤销、备份和 provider 细节见 [OAuth 2.1](../oauth/)。
+可选 Linux 文件入口使用独立出站 sidecar，不挂载 Workdir、不持有 OpenAI 凭据、不发布端口。Core 调用固定内部端点，不直接访问传入的临时 URL。获取文件要求 HTTPS:443，主机名必须精确授权或属于显式启用的受限 OpenAI Blob 家族。Sidecar 拒绝非公网 DNS 结果，固定到已验证 IP，按原主机名校验 TLS，并重新检查每次重定向。字节数和超时均受限制。见[二进制传输](../binary-transfer/)。
 
-## Deterministic Repo Ops 边界（v0.23+；当前 v0.24.0）
+## 5. 宿主机执行与组件身份
 
-Repo Ops 是独立门控的宿主机能力，支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署，不属于 Agent 执行模式。它复用已认证的 Host Bridge transport 和共享 writer lease，但 `repo.*` RPC 路径不会创建 Agent task，也不会调用 Provider adapter。
+Bridge 可选。Linux 签名接入与 Windows 命名接入使用受限 grant；macOS owned 使用专属原生 socket 和 manifest/策略校验，Shared Core 使用签名 v2 grant。共享 owner 自己管理授权和生命周期；未授权方法、撤销或过期 grant、跨 Core 任务访问必须安全拒绝。独立 Bridge owner 不得占用重叠可写根目录。
 
-Git 操作语义固定。调用方不能选择 executable、argv、environment、cwd、remote、ref、force、hooks、signing、askpass、repository SSH override 或自定义 remote helper。Commit 只接受显式、通过策略校验的路径，并拒绝预先存在的 staged state；push 会在内部解析当前 branch/upstream，并只提供一个精确 refspec。子进程环境使用 allowlist，因此不会整体继承 Bridge/Provider secrets。
+[Repo Ops](../repo-ops/) 执行确定性 Git 操作和管理员固定的 named action，不创建 Agent task。调用方不能提供任意 argv、environment、remote、ref、hooks 或 force。Commit 只接受显式路径且拒绝已存在的暂存修改；push 使用当前配置的 upstream。Named action 执行前校验 SHA-256 pin，即使标为不变更也必须获取独占 writer lease。释放 lease 前须证明子进程树已清理；Windows 使用 Job 约束并拒绝不安全 reparse 路径。
 
-Named action 是管理员拥有的固定 argv profile。每个 action 都必须对仓库控制的执行输入配置非空 SHA-256 integrity map，Bridge 会在进程创建前立即验证。即使 `mutates=false`，所有 named action 也会获取独占 writer lease，避免 integrity-check/execute 与其他 ServerFS 或 Agent writer 发生竞态。Timeout、output overflow 与 cancellation 都必须在释放 lease 前终止完整子进程树：POSIX 使用 subprocess group；Windows 使用 Bridge 自有 Job Object，如果 descendant cleanup 无法被证明则 fail closed，并保留 lease 直到外部重启 Bridge。原生 Windows Repo Ops 还会在仓库执行前拒绝 reparse point / junction。
+[Agent 委托](../agent-bridge/) 通过宿主机 IPC 使用已配置的 runtime 与 Workdir profile，而非通用 MCP 命令接口。Provider 的原生权限、沙箱和审批仍然约束 Agent。Linux Agent 代理只允许无凭据端点；代理模式 Codex 使用 Bridge 独立 app-server。不要为消除故障而直接放行审批或跨实例共享凭据。
 
-完整工具、策略与验收契约见 [Deterministic Repo Ops](../repo-ops/)。
+[Jev](../jev-advisors/) 仅提供建议，不能授权工具、决定权限或响应原生审批。私有密钥留在 Bridge；审批建议使用最小化、脱敏输入。建议失败不改变权限。
 
-## Agent 边界
-
-Agent 支持是 opt-in，并位于宿主机 Unix socket 之后。MCP 容器获得的是结构化 Agent 能力，而不是宿主机 Shell。
-
-v0.12 中，Linux Agent 出站路由与 Tunnel/Jev 保持显式独立。`SERVERFS_AGENT_USE_PROXY=true` 只允许使用无凭据的共享 HTTP 代理；一旦共享代理配置了认证字段，部署渲染/启动就 fail closed，避免把代理凭据放入 provider 的标准代理环境变量。代理模式下 Codex 使用 Bridge 自己管理的 standalone app-server，而不是修改用户共享的 managed daemon。Provider 原生 approval 仍由 provider 控制，并且必须通过现有公开 Agent 工具显式响应。
-
-## Jev Advisor 边界
-
-Jev 是可选能力，只从宿主机 Agent Bridge 发起调用。它不属于 MCP 授权路径、runtime allowlist、writer lease，也不拥有 provider 原生 approval 的决定权。Jev 调用缺失或失败时，只会缺少 advisory context，不会因此得到更宽能力。
-
-TypeSafe API Key 只会渲染到用户自有的 Bridge 配置，不会进入 MCP 容器。v0.12 中，`SERVERFS_JEV_USE_PROXY` 通过 Jev 的显式 HTTP client 使用共享代理，而不会修改进程级代理变量。Approval Advisor 只发送最小化、已 redaction 的 approval state，并在外发前再次清洗 secret/token/password 等敏感模式。同一 task 内完全相同的 approval advice 可以复用缓存，但缓存本身绝不会完成审批。
-
-完整 advisory 契约详见 [Jev Advisors](../jev-advisors/)。
-
-相邻的信任边界细节请继续查看 [架构](../architecture/)、[配置](../configuration/)、[Deterministic Repo Ops](../repo-ops/)、[静态 API Key](../api-key/) 与 [OAuth 2.1](../oauth/)。版本特定的实现与验收证据保留在仓库 phase acceptance 记录中，而不再堆叠到项目 README。
+平台限制见[架构](../architecture/)，策略见[配置](../configuration/)。实际授权及拒绝行为必须独立于进程健康状态验证。

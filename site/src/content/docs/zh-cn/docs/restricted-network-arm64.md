@@ -1,154 +1,95 @@
 ---
 title: 受限网络 ARM64 部署
-description: 在 GHCR 或 GitHub 需要代理、或只能离线传输镜像时部署 Linux ARM64 ServerFS。
+description: 为网络受限或离线的 Linux ARM64 主机准备版本匹配的镜像组合。
 ---
 
-ServerFS 发布 `linux/arm64` 镜像。在受限网络中，需要明确区分两条完全不同的网络路径：
+本指南适用于 Linux ARM64 Docker 部署。ServerFS 的发布工作流构建 amd64 和 arm64 镜像。选择实际目标版本：在正式发布完成前，不应假定 v0.25.0 稳定版镜像已经发布。候选版本测试使用经过验证的本地候选镜像。
 
-1. **Docker daemon 访问镜像仓库**——`docker pull` / Compose 从 GHCR 拉镜像时使用。
-2. **Tunnel control-plane 出站**——可选 `openai-tunnel` 容器启动后访问 control plane 时使用。
+## 1. 区分镜像获取与运行时网络
 
-`SERVERFS_OPENAI_TUNNEL_USE_PROXY` 只配置第二条路径。它**不会**配置 Docker daemon，也不能让原本被阻断的 `docker pull` 自动成功。
+| 网络路径 | 使用条件 |
+| --- | --- |
+| Docker daemon → Registry | 拉取任一选定镜像 |
+| 宿主机 → 源码/依赖缓存 | 获取 checkout 或安装宿主机 Bridge |
+| Connector → Provider | 使用对应 OpenAI 或 Cloudflare Connector |
+| 授权服务 → 身份 Provider | 启用 OAuth |
+| 文件入口 sidecar → 允许的 HTTPS 来源 | 启用文件入口 |
+| 宿主机 Agent → Provider | 运行已配置的原生 Agent |
 
-## 确认目标架构
+直接 HTTP 的纯文件 Core 不需要 Tunnel 或 Agent 凭据。Registry 不可达不等于运行时完全离线；一个组件的代理配置也不会配置其他组件。
 
-在目标主机执行：
+在目标主机运行 `uname -m`；原生 ARM64 部署应为 `aarch64` 或 `arm64`。负责下载镜像的机器可以是不同架构。
 
-```bash
-uname -m
-```
+## 2. 选择精确镜像
 
-受支持的 Linux ARM64 路径应看到 `aarch64` 或 `arm64`。不要根据负责下载镜像的那台机器来推断目标镜像架构。
-
-## 路径 A：Docker daemon 可以通过 HTTP/HTTPS proxy 访问 GHCR
-
-如果目标主机可以通过代理访问 GHCR，应按 Docker 官方方式配置 Docker daemon proxy。Docker Engine 支持在 `daemon.json` 中配置，也支持 systemd 服务环境变量方式。
-
-官方参考：[Docker daemon proxy configuration](https://docs.docker.com/engine/daemon/proxy/)。
-
-这是宿主机 Docker 层面的配置，不是 ServerFS 配置。ServerFS 不会自动修改 Docker daemon。
-
-Daemon proxy 正常后，生产部署应固定精确 ServerFS release，而不是使用 `latest`：
+从目标 release 或候选构建获取版本匹配的 checkout 及可信精确镜像引用。避免使用 `latest` 或语义不明确的开发标签。示例使用 shell 变量；将占位值替换为实际经过验证、带版本标签的镜像引用，两台机器使用相同引用。
 
 ```bash
-VERSION=0.17.0
-IMAGE="ghcr.io/ntlx/serverfs_mcp:${VERSION}"
-docker pull --platform linux/arm64 "$IMAGE"
-docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE"
+IMAGE='<exact-version-tagged-image-reference>'
+ARCH=linux/arm64
+docker pull --platform "$ARCH" "$IMAGE"
+docker image inspect --format '{{.Os}}/{{.Architecture}} {{.Id}}' "$IMAGE"
 ```
 
-最后一个命令必须返回：
+若使用已经构建且可信的本地 ARM64 候选镜像，跳过上述 pull，直接检查该精确本地镜像。确认 `linux/arm64`，记录预期镜像 ID。依据可信发布 manifest/digest 或经过验证的候选构建核对来源；架构正确并不能证明镜像真实性。
 
-```text
-linux/arm64
-```
+如果目标机可以通过代理访问 GHCR，按 [Docker 官方 daemon proxy 指南](https://docs.docker.com/engine/daemon/proxy/)配置 Docker daemon，并直接在目标机拉取。Docker daemon 的代理属于宿主机配置，不由 ServerFS 管理。否则在联网机器获取镜像，再按下一节转运。
 
-随后在 `.env` 中使用同一精确镜像：
+## 3. 目标机无法访问 Registry 时转运镜像
 
-```text
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.17.0
-```
-
-这里的版本号只是精确固定版本的示例；实际部署应使用当时已经发布的准确 release 版本。
-
-### Tunnel proxy 是另一回事
-
-如果镜像已经能够正常拉取，但可选 OpenAI Tunnel 访问 control plane 仍需要代理，再配置 ServerFS 的 Tunnel 专用开关与共享 proxy endpoint：
-
-```text
-SERVERFS_OPENAI_TUNNEL_USE_PROXY=true
-SERVERFS_PROXY_HOST=proxy.example.internal
-SERVERFS_PROXY_PORT=3128
-```
-
-该设置只影响 Tunnel 启动后的 control-plane egress，不会修改 `dockerd`、registry authentication 或镜像拉取。运行时诊断见 [Tunnel 诊断](../tunnel-diagnostics/)。
-
-## 路径 B：目标主机无法访问 GHCR
-
-使用一台可联网机器获取精确 ARM64 镜像，保存为归档，通过可信方式传输后再在目标主机加载。
-
-### 1. 在联网机器显式拉取 ARM64 variant
+在联网机器拉取并核对 ARM64 镜像后：
 
 ```bash
-VERSION=0.17.0
-IMAGE="ghcr.io/ntlx/serverfs_mcp:${VERSION}"
-docker pull --platform linux/arm64 "$IMAGE"
-docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE"
+ARCHIVE=serverfs-core-linux-arm64.tar
+docker image save --platform "$ARCH" -o "$ARCHIVE" "$IMAGE"
 ```
 
-创建归档前必须确认结果为 `linux/arm64`。
-
-### 2. 保存镜像
-
-如果当前 Docker Engine/API 支持按 platform 保存：
+仅在当前 Docker API 支持时使用按平台保存。否则先确保本地 tag 对应预期 ARM64 镜像，再执行 `docker save -o "$ARCHIVE" "$IMAGE"`。两种方式均应在最终归档生成后创建 checksum：
 
 ```bash
-docker image save --platform linux/arm64 \
-  -o "serverfs-mcp-${VERSION}-linux-arm64.tar" \
-  "$IMAGE"
-sha256sum "serverfs-mcp-${VERSION}-linux-arm64.tar" \
-  > "serverfs-mcp-${VERSION}-linux-arm64.tar.sha256"
+sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+docker image inspect --format '{{.Os}}/{{.Architecture}} {{.Id}}' "$IMAGE"
 ```
 
-如果当前 Docker API 不支持 `docker image save --platform`，先确保本地 tag 对应预期 ARM64 variant，再使用普通 `docker save`：
+使用 save/load，不使用 export/import，以保留 Compose 使用的镜像、tag 和 layer 模型。通过可信渠道传输 tar、checksum、精确镜像引用和预期镜像 ID。归档 checksum 检查传输完整性，不能单独证明发布者身份。
+
+在目标机重新设置相同的实际镜像引用与文件名：
 
 ```bash
-docker save -o "serverfs-mcp-${VERSION}-linux-arm64.tar" "$IMAGE"
+IMAGE='<same-exact-version-tagged-image-reference>'
+ARCHIVE=serverfs-core-linux-arm64.tar
+sha256sum -c "$ARCHIVE.sha256" &&
+  docker image load -i "$ARCHIVE" &&
+  docker image inspect --format '{{.Os}}/{{.Architecture}} {{.Id}}' "$IMAGE"
 ```
 
-这里应使用 `docker save` / `docker load`，**不要**使用 `docker export` / `docker import`。Save/load 会保留 Compose 所需的镜像、tag 与 layer 模型。
+checksum 失败、架构不是 `linux/arm64` 或镜像 ID 不符合可信记录时停止。不要将意外模拟执行等同于经过验证的原生 ARM64 部署。
 
-### 3. 传输并验证
+## 4. 仅启动所选 Core，不拉取、不构建
 
-使用可信传输方式复制 tar 与 checksum。目标主机上执行：
+按照[快速开始](../getting-started/)准备新的私有 env、实际 Workdir、非 root UID/GID、空闲端口、Host 白名单和调用方认证。将 `SERVERFS_IMAGE` 设为本地已加载的精确 tag。未需要 Tunnel 或 Bridge 时不要增加对应设置。在版本匹配的 checkout 根目录，以直接 HTTP 纯文件部署为例：
 
 ```bash
-sha256sum -c "serverfs-mcp-${VERSION}-linux-arm64.tar.sha256"
-docker load -i "serverfs-mcp-${VERSION}-linux-arm64.tar"
-docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE"
+ENV_FILE=/absolute/private/blue.env
+core=(docker compose -p serverfs-blue --env-file "$ENV_FILE"
+  -f compose.yml -f compose.http.yml
+  -f deployment/linux/compose.publish-http.yml
+  -f deployment/linux/compose.bridge-disabled.yml)
+
+"${core[@]}" config --quiet
+"${core[@]}" up -d --no-deps --no-build --pull never serverfs-mcp
+"${core[@]}" ps serverfs-mcp
 ```
 
-如果没有得到：
+缺少镜像或配置不合法时停止。关闭全部可选能力时，按快速开始验证认证后的 MCP initialize、tools/list（11 个工具）、list_workdirs、安全读取和只读写入拒绝。后续操作保留同一 project、env 和 overlay 组合。
 
-```text
-linux/arm64
-```
+## 5. 受限网络中的可选组件
 
-就不要继续启动服务。
+只准备所选拓扑需要的组件：
 
-### 4. 让 Compose 固定使用已加载镜像
+- Cloudflare：单独获取选定 `CLOUDFLARED_IMAGE`，核对 ARM64 variant 后转运。运行时还需要独立公网 Tunnel 路由和 Provider 网络。
+- OpenAI：单独获取经过验证且支持命名 HTTP upstream 与文件凭据选项的 `OPENAI_TUNNEL_IMAGE`，核对 ARM64 兼容性后转运。若运行时需要代理，使用 `SERVERFS_OPENAI_TUNNEL_USE_PROXY` 及文档指定的 `SERVERFS_PROXY_*` 配置；不会配置 Docker daemon 拉取或其他组件代理。见 [Tunnel 诊断](../tunnel-diagnostics/)。
+- OAuth 和文件入口：其 Linux 服务使用同一个 `SERVERFS_IMAGE`；分别准备配置、授权状态及实际所需 Provider/HTTPS fetch 出站路径。本地镜像不证明运行时外联可用。
+- 宿主机 Agent Bridge：在宿主机准备版本匹配的 Bridge 源码、uv 缓存和依赖。仅在所需缓存齐全时使用手册中的离线安装选项；Provider executable、凭据及出站路由留在宿主机。Repo Ops-only 不需要 Provider 执行前置验证。
 
-在 `.env` 中：
-
-```text
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.17.0
-```
-
-启动前先渲染：
-
-```bash
-docker compose config --quiet
-docker compose up -d
-```
-
-由于精确 tag 已经存在于本地，Compose 可以直接使用已加载镜像。离线/受限网络部署不要长期使用 `latest`，否则无法明确知道实际转运的是哪个版本。
-
-## 如果同时使用 OpenAI Tunnel
-
-基础 Compose 部署还依赖单独固定版本的 `OPENAI_TUNNEL_IMAGE`。如果目标主机完全无法访问 registry，也必须提前准备这个镜像。可以复用同一流程：在联网机器显式拉取所需 `linux/arm64` Tunnel 镜像、核实架构、`docker save`、传输、`docker load`，并保持 `OPENAI_TUNNEL_IMAGE` 固定为 `.env.example` 中经过项目验证的版本。
-
-如果只使用通用 Streamable HTTP（`compose.yml` + `compose.http.yml`），则不需要 OpenAI Tunnel 镜像。
-
-## 启动前检查
-
-受限网络 ARM64 部署启动前至少执行：
-
-```bash
-uname -m
-docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE"
-docker compose config --quiet
-```
-
-预期架构为 `linux/arm64`。
-
-这可以提前发现误下载或误转运 amd64 镜像的常见问题。QEMU/模拟有时会让不匹配镜像看似能够运行，但 ServerFS 文档不会把意外模拟执行视为等价于已验证的原生 ARM64 部署。
+精确 overlay/profile、签名接入及组件级启停见 [Linux 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)。保持完整 Compose 参数，离线启动使用 `--no-build --pull never`，按对应手册显式启动并验证所需依赖。公网 Connector、OAuth 和原生 Agent 行为需各自实测，不能仅凭镜像转运成功推断。

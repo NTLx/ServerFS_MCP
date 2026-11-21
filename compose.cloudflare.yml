@@ -7,7 +7,7 @@
 # http://serverfs-mcp:8000 (use the configured SERVERFS_HTTP_PORT if changed).
 # Put the original Tunnel token in an operator-owned file OUTSIDE the checkout
 # and all configured workdirs, mode 0600, owned/readable by CLOUDFLARED_UID.
-# Set CLOUDFLARE_TUNNEL_TOKEN_FILE to that absolute path in the untracked .env.
+# Set CLOUDFLARE_TUNNEL_TOKEN_FILE to that absolute path in the selected private env file.
 # ServerFS HTTP authentication is configured separately (API Key or OAuth).
 services:
   # The base Compose keeps its historical OpenAI Tunnel default. Do not start

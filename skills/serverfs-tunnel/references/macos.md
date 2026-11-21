@@ -1,21 +1,9 @@
-# macOS native
+# macOS Connectors
 
-Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
+Use `deployment/macos/README.md` and primary Skill gates. Named file-only/owned instances only; shared Core has no Connector staging.
 
-Use the current ServerFS bootstrap and ServiceManagement lifecycle:
+Base Connector per provider needs no additional ID. Additional same-provider IDs must be predeclared at Core staging with corresponding `--cloudflare-connector-id` / `--openai-connector-id`; signed jobs cannot be added in place. Use exact `--connector-id` thereafter and `--owned-connectors` before subcommand for owned pair.
 
-```bash
-serverfs bootstrap tunnel-client
-serverfs service status
-serverfs service restart
-```
+Target actual Core loopback port/Host. Use verified executable and independent private credential file. Cloudflare uses `cloudflare-stage --cloudflared ... --token-file ...`; OpenAI uses `openai-stage --tunnel-client ... --tunnel-id ... --control-plane-key-file ... --core-bearer-file ...` with exact single-line `Bearer <Core API key>`, no trailing newline, static API-key Core. Follow actual CLI flags and Login Items approval.
 
-The persistent Tunnel is an app-associated per-user LaunchAgent owned through `SMAppService`. Do not replace it with a root LaunchDaemon or unmanaged hand-installed plist.
-
-If status requires Login Items approval, surface the user action and use `serverfs service open-settings` when requested; do not bypass it.
-
-## Native Cloudflare (v0.24.1)
-
-The existing OpenAI Tunnel remains the normal persistent native Tunnel path. Cloudflare is a distinct opt-in HTTP-origin/Connector pair, available in v0.24.1 on supported native Apple Silicon/macOS 27. Read `deployment/macos/README.md` for its complete setup and acceptance procedure. v0.24.2 adds Windows Cloudflare; see the Windows branch and its runbook.
-
-The verified CLI syntax is `serverfs bootstrap cloudflare-client [--artifact PATH]`; install requires `--config`, `--cloudflared`, `--token-file`, `--env-file`, `--http-port`, and `--hostname` under `serverfs service cloudflare install`. `status`, `start`, `stop`, `restart`, and `uninstall` take no additional arguments. Never place secret values in argv. The connector Token and origin env file must each be current-user regular files mode `0600`, outside the checkout and all workdirs. Released v0.24.1/v0.24.2 installers require read-only Cloudflare workdirs. The **unreleased v0.24.3 candidate** accepts explicit writable workdirs using the same native `serverfs.toml` permissions as the OpenAI Tunnel; `read_only` still defaults to true, and Agent/Repo Ops remain separate opt-ins. The installer continues to require at least one workdir, exact equality between the hostname and `SERVERFS_HTTP_ALLOWED_HOSTS`, and exactly one independent caller-auth mode (ServerFS API Key or OAuth); the Connector Token is not caller authentication. For deliberate parity, verify both native frontends use the same canonical config and synchronized shared Agent Bridge/lease; preserve the original OpenAI Tunnel and Bridge until public writable/Agent E2E passes. Never treat a code-only test as production acceptance. After a Connector-only restart, establish a fresh MCP session and verify tools; an old session may return 404, and SSE replay is not guaranteed. Keep Cloudflare service health and credentials distinct from OpenAI Tunnel health and credentials.
+Activate/stop only selected component with named CLI, not legacy service commands. Verify provider registration, public route/admission and fresh MCP. Local job status is not public evidence; OpenAI upstream bearer denial is checked locally. Never force undeclared jobs or unstage retained state.

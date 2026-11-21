@@ -1,5 +1,7 @@
 # ServerFS v0.24.1 — Native macOS Cloudflare Tunnel
 
+> Historical v0.24.1 development and read-only staging record; its unreleased-candidate language is preserved as of the dated checkpoints. See [v0.24.1 release notes](docs/releases/v0.24.1.md) for the subsequent release. The earlier single-owner topology, generic lifecycle commands and architecture-parity exception do not define current named-instance operations or satisfy later release gates; use the [current macOS runbook](deployment/macos/README.md).
+
 Status: **unreleased v0.24.1 candidate — implementation, staging acceptance, Skills, documentation, site build and version/packaging metadata checks recorded; exact-SHA cross-platform CI and stable release remain pending**. v0.24.0 remains the published stable release. Preserve the existing production OpenAI Tunnel owner.
 
 ## Objective and platform boundary

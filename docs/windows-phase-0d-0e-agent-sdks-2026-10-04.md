@@ -1,5 +1,7 @@
 # Phase 0D and 0E — Qoder and Claude Agent SDKs on Windows (measured 2026-10-04)
 
+> Historical pin-specific SDK feasibility. Package availability, catalog entries and installation/transport observations are dated and do not establish present account or distribution state. Later [Windows release acceptance](phase-h-acceptance-2026-10.md) records actual separate-environment packaging and provider turns; this probe itself executed no inference.
+
 Status: **BOTH GATES PASS.** Both official Python Agent SDKs install, import, expose the exact
 surface the frozen adapters use, and start their real CLI transport on Windows against the
 already-installed native CLIs. Claude therefore stays in v0.11 scope; the discovery report's

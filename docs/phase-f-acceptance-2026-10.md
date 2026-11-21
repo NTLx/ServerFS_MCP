@@ -1,5 +1,7 @@
 # Phase F — Windows Acceptance Evidence (2026-10)
 
+> Historical published v0.10.0 native Windows acceptance. The two-wheel install, legacy stdio Tunnel-owned topology, proxy/health pins, maintenance-window runbook and tag-triggered publication apply only to that version. Do not replay the recorded service-stop or credential-reuse steps as current authorization. See the [Windows runbook](../deployment/windows/README.md) and [maintainer workflow](maintainers/workflow.md) for current named lifecycle and publication. Preserve the actual NTFS, proxy and exact-byte evidence without extending its scope.
+
 Execution host: WorkPC (Windows 11 x64 build 26200, local NTFS volumes,
 Chinese-locale GBK console). All filesystem rows below were executed against
 the real Rust kernel with the `cp312-abi3` wheel as the sole provider of

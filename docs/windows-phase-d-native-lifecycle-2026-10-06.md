@@ -1,5 +1,7 @@
 # Windows native Agent lifecycle — Phase D evidence
 
+> Historical v0.11 synthetic lifecycle acceptance, not current named lifecycle. Later independent Core, Bridge and Connector ownership supersedes the original supervisor/stdio bootstrap topology. Preserve the harness-versus-product correction and credential-scrub evidence; disabled explicit proxy is not proof of all ambient routing, and the historical Jev SDK observation predates later explicit-client support. See the [Windows runbook](../deployment/windows/README.md) and [maintainer invariants](maintainers/invariants.md).
+
 Date: 2026-10-06
 Branch: `v0.11-phase-d-native-config-lifecycle`
 Base: `6038d4b` (post-Phase-C merge of `main`)

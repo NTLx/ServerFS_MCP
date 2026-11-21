@@ -1,168 +1,84 @@
 ---
 title: Architecture
-description: The ServerFS data path and trust boundaries.
+description: Independent components, instance topologies, native platform boundaries and lifecycles.
 ---
 
-## MCP core and ingress paths
+## Component model
+
+ServerFS grants an MCP client controlled access to selected local directories, called **workdirs**. A persistent HTTP deployment is assembled from an MCP Core, zero or more ingress Connectors, and an optional host Agent Bridge. Local stdio is a separate transport choice; it does not register a persistent HTTP instance.
 
 ```text
-MCP host
-   │
-   ├── stdio (native Windows/macOS)
-   ├── Streamable HTTP (Linux; loopback/private by default)
-   ├── OpenAI Secure MCP Tunnel (optional ChatGPT ingress)
-   ├── Cloudflare Tunnel (Linux v0.24.0 stable ingress)
-   └── Cloudflare Tunnel (native macOS v0.24.1)
-               │
-               ▼
-          ServerFS MCP Core
-               │  scoped policy
-               ▼
-       explicitly configured workdirs
+MCP client ── direct HTTP ───────────────┐
+           ├─ OpenAI Connector ─────────┤
+           └─ Cloudflare Connector ─────┤
+                                        ▼
+                                   HTTP MCP Core ── scoped workdirs
+                                        │
+                           authenticated local IPC
+                                        │
+                                  optional Bridge ── host Agents / Repo Ops
 ```
 
-The MCP core and tool contract are host-neutral. Generic Linux HTTP publication is opt-in and binds loopback by default; public exposure requires explicit Host policy plus a TLS/authentication ingress boundary. The OpenAI Tunnel remains an optional authenticated outbound-only adapter. The v0.24.0 Linux Cloudflare Tunnel overlay adds a separate cloudflared connector on the private ServerFS network and dedicated tunnel egress network, without host port publication; it requires independent API Key/OAuth admission and is published. Native macOS Cloudflare is a separate v0.24.1 feature: a loopback HTTP origin and Connector use the existing app-associated SMAppService LaunchAgent mechanism, with private credentials and exact Host admission. Isolated staging passed HTTPS 401/200, 11-tool discovery, read-only negative cases, 65.1-second SSE and fresh-session recovery on 8/8 Connector restarts; the old session returned 404. No SSE replay is claimed. Login Items architecture parity was reviewed, but logout/login and reboot were not performed. Native Windows Cloudflare shipped in v0.24.2: two independent same-user Task Scheduler owners passed public ChatGPT tools and cross-ingress file operations. The real public SSE gate passed with 75.0/70.0/65.0-second holds, approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200. The operator waived full-generation restart/recovery on 2026-11-10; it was not tested and did not pass. Windows HTTP origin and cloudflared share one kill-on-close Job generation. This is architecture-equivalent Windows acceptance, not a Connector-only restart pass; an older in-memory session is not guaranteed to survive or replay. The owners share one Agent Bridge/Repo Ops service; preserve it while Cloudflare depends on it. See [Cloudflare Tunnel](../cloudflare-tunnel/), [Windows Native](../windows-native/) and [macOS Native](../macos-native/). In the Compose topology, `serverfs-mcp` also joins `serverfs_file_ingress`, a second Docker `internal:true` network; cloudflared never joins it. The main MCP container still has no general Internet egress.
+These are logical paths, not a requirement to deploy all components or a guarantee that every combination has the same platform-specific command surface.
 
-## Optional ChatGPT file-ingress path
+| Component | Responsibility | Ownership |
+| --- | --- | --- |
+| MCP Core | MCP sessions, HTTP caller admission, workdir policy, file access and optional tool exposure | Its own configuration and runtime |
+| Connector | Forward MCP traffic to a selected HTTP Core through an external Tunnel | Its own provider credentials, identity and process |
+| Agent Bridge | Execute authorized Agent tasks and deterministic Repo Ops on the host; coordinate writer leases | Its own private runtime, policy, IPC and task state |
 
-```text
-ChatGPT file parameter
-   │
-   │ temporary HTTPS URL
-   ▼
-ServerFS MCP
-   │ dedicated internal network only
-   ▼
-serverfs-file-ingress
-   │ policy-checked HTTPS/443 egress only
-   ▼
-Temporary file host
-```
+Direct HTTP is a Core exposure option, not a Connector. A Tunnel is never mandatory for a local or privately reachable Core. Public ingress requires an independent caller-admission boundary; a Tunnel credential is not an MCP caller credential. The named OpenAI HTTP Connector uses a static Core bearer header, not an OAuth-only Core.
 
-The sidecar is opt-in. It has no workdir mounts, OpenAI/tunnel credentials, or published port. The main MCP container never receives Internet egress; it sends only the temporary URL and byte ceiling to the sidecar. Host authorization is either an exact administrator-configured hostname or the separately enabled constrained OpenAI Azure Blob account family measured from real ChatGPT file parameters. Generic wildcards are rejected. The sidecar then validates globally routable DNS answers, pins the connection to a validated IP while verifying TLS for the original hostname, revalidates every redirect, and enforces timeout and byte ceilings before returning raw bytes.
+## Identities and Bridge modes
 
-## Optional static API Key path
+A persistent Core is identified by `instance_id`. An ingress is selected by its provider, target Core and, where supported, `connector_id`. The Bridge owner has a distinct state and `bridge_id`. IDs are stable identifiers; an ID is neither a credential nor proof of authorization. The native identifier grammar is 1–32 ASCII lowercase letters, digits and internal hyphens, with an alphanumeric first and last character. The legacy `default` identity retains its existing resources; new named deployments do not implicitly migrate it.
 
-```text
-MCP client
-   │ Authorization: Bearer <key>
-   │ or /mcp?key=<key>
-   ▼
-ServerFS static API Key ASGI boundary
-   ▼
-Streamable HTTP MCP app
-   ▼
-existing ServerFS workdir policy
-```
+| Bridge mode | Meaning |
+| --- | --- |
+| `disabled` | No Bridge reference. File-only operation, with Agent and Repo Ops disabled. Binary transfer may still be enabled independently. |
+| `owned` | A dedicated Bridge for the deployment. macOS/Windows use the Core ID as the owner ID; Linux uses a distinct Bridge ID. |
+| `shared` | A Core references a separately managed Bridge on the same host; only its owner controls grants and lifecycle. |
 
-The v0.17 API Key path is a small HTTP ingress wrapper around the SDK Streamable HTTP app. It creates no authorization service, database, user identity, scope model or provider egress. API Key and built-in OAuth are mutually exclusive. Query-key compatibility is supported, but the ServerFS runner disables its own default Uvicorn access log in this mode so a secret-bearing URL is not printed by ServerFS itself. See [Static API Key](../api-key/).
+Every signed attachment needs an explicit grant for the Core identity and permitted workdir/method scope. A common UID, SID, socket or directory is not authorization. Revoked or stale grants, replay and unauthorized task/result access must fail closed. Independent Bridge owners must not claim overlapping writable roots; same-user component isolation is not a sandbox between mutually untrusted users.
 
-## Optional OAuth path
+## Deployment topologies
 
-```text
-MCP client
-   │ OAuth bearer
-   ▼
-ServerFS MCP Resource Server
-   │ private introspection only
-   ▼
-serverfs-auth
-   │
-   ├── GitHub
-   ├── DingTalk
-   ├── Feishu / Lark
-   └── WeChat Open Platform
-```
+| Topology | Why choose it |
+| --- | --- |
+| A — several Connectors → one Core → one Bridge | Multiple ingress paths to the same Core policy and session owner. |
+| B — multiple Cores → one shared Bridge | Distinct Core policies and caller admission with a common, explicitly authorized host execution boundary. |
+| C — independent Core/Bridge pairs | Separate task state, runtime and lifecycle; use disjoint writable roots. |
+| D — one or more file-only Cores | No Agent Bridge, Agent runtime or provider credentials required. |
 
-`serverfs-auth` is a separately deployed, non-root service with its own writable SQLite state and OAuth-only egress network. Provider credentials never enter `serverfs-mcp`; the MCP container does not join the OAuth egress network. The Resource Server accepts only ServerFS-issued opaque tokens bound to the configured MCP resource. Admission is exact and default-deny, then the existing workdir policy applies unchanged.
+A topology describes the product model. Follow the platform runbook for its supported provisioning path, limits and acceptance evidence; do not infer support for the Cartesian product of every feature.
 
-OAuth is Linux remote-HTTP deployment state, not part of native Windows/macOS stdio. See [OAuth 2.1](../oauth/) for the public TLS/reverse-proxy shape, provider callbacks, client registration and Tunnel compatibility boundary.
+## Platform implementations
 
-## Optional Deterministic Repo Ops path (v0.23+; current v0.24.0)
+| Platform | Core / Connector lifecycle | Bridge lifecycle and IPC |
+| --- | --- | --- |
+| Linux | Named Compose project; direct HTTP publication, internal-only or optional OpenAI/Cloudflare services | Optional host user systemd unit, Unix socket, peer credentials and signed grants |
+| macOS | Signed app-associated SMAppService / LaunchAgents; same-provider Connector IDs predeclared when staging file-only/owned instances | Private Unix socket and policy checks for owned; signed v2 grants for shared |
+| Windows | Current-user Task Scheduler, component identities and Job containment | Separate owner/worker environments, Named Pipe, SID, protected ACLs and signed grants |
 
-```text
-ServerFS MCP container
-   │  structured repo.* RPC
-   ▼
-authenticated host Bridge transport
-   │
-   ├── fixed Git inspection / commit / push semantics
-   └── operator-defined integrity-pinned named actions
-```
+Current implementation limits:
 
-Repo Ops reuses the host Bridge transport, host workdir path, current-user Git credential context, and shared writer lease, but it does **not** enter the Agent execution path. No model/runtime is selected, no Agent task/session is created, and no provider adapter is invoked. Repo Ops and Agent delegation are authorized independently per workdir. Linux Host Bridge support shipped in v0.23.0, validated native Apple Silicon macOS support followed in v0.23.1, and v0.23.2 adds validated native Windows 11 x64 support. See [Deterministic Repo Ops](../repo-ops/).
+- **Linux:** one service per Tunnel provider per Compose project. The signed Bridge overlay binds one Agent/Repo Ops-enabled workdir in slot 01; additional disjoint file-only slots are possible.
+- **macOS:** a Shared Core binds one Agent workdir, with Repo Ops disabled and no Connector staging interface. File-only and owned instances support predeclared additional Connector IDs.
+- **Windows:** named Connector IDs and signed owned/shared attachments. The initial shared helper accepts up to 16 Cores; fresh runtime/configuration helpers are create-only, not live upgrades or credential rotation.
 
-## Optional Agent path
+See [Getting Started](../getting-started/), [macOS](../macos-native/) and [Windows](../windows-native/) for precise procedures.
 
-```text
-ServerFS MCP container
-   │
-   │ read-only Unix socket mount
-   ▼
-Host Agent Bridge
-   │
-   ├── Codex
-   ├── Claude Code
-   ├── Qoder
-   └── ACP v1 profiles (operator-configured)
-```
+The public MCP contract and security outcomes are common. Private IPC encoding, state layout and service implementations need not be identical across OSes. No central service manager is required.
 
-The Bridge runs as a user-scoped host service and owns its runtime socket, locks, installed releases, configuration, and state outside the repository checkout.
+## Lifecycle and failure boundaries
 
-### Optional Jev advisory path
+Independence means operating a Connector does not implicitly restart Core, Bridge or another Connector. Stage required dependencies, verify readiness, then explicitly start the desired components. A Core/Bridge stop can be refused while dependent components remain active; use the supported retirement order and check active tasks/writer leases first. A shared Core must never start, stop, upgrade, uninstall or reconfigure its Bridge owner. A Bridge outage must not grant authority; file-only capabilities can remain available, while Bridge-dependent requests fail safely. An ingress restart does not promise replay of an old SSE session.
 
-```text
-Agent task / model-advice request / provider approval
-   │
-   ▼
-Host Agent Bridge
-   │  minimized structured state
-   ▼
-TypeSafe Jev API
-   │  probabilities / confidence / Noul
-   ▼
-Advisory result only
-```
+## Optional capabilities
 
-Jev runs from the host Bridge, not the MCP container. Task Preflight and Runtime Router share one task-submission request; Model Advisor can run before submission only after native model discovery; Approval Advisor runs only after a provider creates an approval request. These outputs never become authorization, runtime-selection, or model-selection authority.
+- **Binary transfer:** opt-in bounded whole-file transfer; optional file ingress uses a separately isolated HTTPS fetch path. See [Binary Transfer](../binary-transfer/).
+- **Repo Ops:** four bounded repository tools, fixed Git semantics and integrity-pinned named actions. Requires an authorized Bridge but never starts an Agent task. See [Repo Ops](../repo-ops/).
+- **Agent delegation:** native Codex, Claude, Qoder or explicitly configured ACP profiles; provider-native authentication and permissions remain in effect. See [Agent Bridge](../agent-bridge/) and [ACP](../acp/).
+- **Jev:** optional advisory-only decisions, never execution or approval authority. See [Jev Advisors](../jev-advisors/).
 
-## Native persistent lifecycle
-
-Native deployments keep persistence outside the MCP protocol surface and within the current user's OS lifecycle:
-
-```text
-Windows v0.14.0+
-Task Scheduler 2.0 (InteractiveToken · LeastPrivilege)
-   │  logon trigger + 1-minute time-trigger heartbeat
-   ▼
-windowless watchdog
-   │  Job Object containment + bounded restart
-   ▼
-managed runner
-   │  bounded Tunnel-generation restart
-   ▼
-tunnel-client -> supervisor -> ServerFS / Agent Bridge
-
-macOS v0.13.2
-SMAppService + per-user LaunchAgents
-   ▼
-persistent Tunnel / Agent Bridge
-```
-
-The Windows v0.14 lifecycle is deliberately **not** an SCM/LocalSystem service: install, runtime, maintenance and removal stay current-user and non-elevated. A fresh task is registered disabled; `service start` enables it, while `service stop` disables it before ending the current action so the heartbeat cannot undo an intentional stop. `IgnoreNew` plus the native ownership mutex preserve exactly one managed Windows Tunnel lifecycle.
-
-## Capability boundaries
-
-ServerFS exposes narrow operations rather than a generic execution primitive:
-
-- filesystem read tools
-- guarded file mutations
-- bounded whole-file binary transfer
-- optional isolated ChatGPT file ingress
-- optional one-secret static API Key boundary for Linux remote HTTP
-- optional OAuth 2.1 Resource Server + isolated identity broker for Linux remote HTTP
-- structured Agent task RPC, model discovery and request-scoped model override
-- Deterministic Repo Ops: Linux Host Bridge since v0.23.0, validated native Apple Silicon macOS since v0.23.1, and validated native Windows 11 x64 since v0.23.2; bounded Git inspection, fixed named actions, explicit-file commit, exact current-upstream push, and fixed npm release actions for the validated `package.json` release shape
-- optional host-side Jev advisory decisions
-
-The stable **v0.24.0** release retains the existing 11 / 13 / 21 / 23 tool combinations and can independently add four Repo Ops tools on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64: 15 tools for Repo Ops-only, 17 with binary transfer, 25 with Agent delegation, and 27 when binary, Agent and Repo Ops are all enabled. Repo Ops and Agent delegation are gated separately; Repo Ops never creates an Agent task and accepts no generic shell, argv, environment, remote, ref or force input. Linux bootstrap/internal and public ChatGPT MCP E2E remain the v0.23.0 baseline; v0.23.1 adds native macOS live acceptance; v0.23.2 adds Windows process-tree containment, reparse-point fail-closed behavior, Git-for-Windows portability, and live public MCP acceptance. See [Deterministic Repo Ops](../repo-ops/) for the full contract and evidence. Jev remains an internal Agent Bridge advisor rather than an MCP capability surface.
+See [Configuration](../configuration/), [Security](../security/) and [HTTP authentication](../api-key/) for policy details. Release-level source/build gates and real native/public acceptance are recorded separately in the [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.25.0-release-checklist-2026-11-21.md).

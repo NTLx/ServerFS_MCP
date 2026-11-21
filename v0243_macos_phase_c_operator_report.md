@@ -1,5 +1,7 @@
 # v0.24.3 macOS Phase C Operator Report
 
+> **历史验收报告（2026-11-10）**：本次单次本机验收结论仍为 PARTIAL；客户端认证拒绝状态码和工具清单未留存，不因后续 v0.25 的独立验收而追溯改为 PASS。所列生产 PID、只读 Origin 配置及后续切换建议只描述当时状态，不构成当前状态判断或操作授权。后续以 [v0.25.0 发布清单](docs/v0.25.0-release-checklist-2026-11-21.md) 和 [macOS 部署手册](deployment/macos/README.md) 为准。
+
 - 执行时间与 macOS/架构：2026-11-10 16:03–16:25（GMT+8）；macOS 27.2.1（Build 26B131），Apple Silicon arm64
 - 仓库 HEAD / 工作树摘要：`5e952cb9f5b787670a0d11fecea2b69720f16083`，分支 `main`；任务开始时工作树 9 项未提交条目（7 项修改：`deployment/macos/README.md`、`site/src/content/docs/docs/macos-native.md`、`site/src/content/docs/zh-cn/docs/macos-native.md`、`skills/serverfs-tunnel/references/macos.md`、`src/serverfs_mcp/darwin_service.py`、`tests/test_darwin_cli.py`、`tests/test_darwin_cloudflare_service.py`；2 项未跟踪：`dev_plan_v0.24.3.md`、本任务书）。任务结束时上述条目原封未动，HEAD 未变，未执行任何 Git 写操作。本报告为任务书授权的唯一新增持久产出。
 - 实际 ServerFS 包版本与模块路径：发行元数据 `serverfs-mcp 0.24.2`（importlib.metadata）；模块路径 `/Users/lx/Projects/ServerFS_MCP/src/serverfs_mcp/__init__.py`（工作树可编辑安装，运行的是当前 checkout 的源码，其中包含未提交的 v0.24.3 变更）。未执行 `uv sync` / `pip install`。

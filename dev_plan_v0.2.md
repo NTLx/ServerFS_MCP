@@ -1,6 +1,6 @@
 # ServerFS MCP v0.2 — design baseline
 
-This is the **current** design and implementation contract. `dev_plan.md` describes the
+This is the **historical v0.2** design and implementation contract, not the current product contract. Later releases added binary transfer, Agent Bridge, native platforms, Repo Ops and named-instance boundaries. The original Linux-only tool counts, configuration, revision and process-local concurrency details below are preserved at their version. For current behavior consult [maintainer invariants](docs/maintainers/invariants.md) and the actual implementation/platform runbooks. `dev_plan.md` describes the
 original v0.1 read-only release and is historical context: v0.1's "read-only is a product
 property, not an option" was deliberately superseded here by a per-workdir opt-in.
 `README.md` describes the user-facing behaviour; the tests and the implementation remain

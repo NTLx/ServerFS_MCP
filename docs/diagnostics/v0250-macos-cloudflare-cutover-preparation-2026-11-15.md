@@ -1,5 +1,7 @@
 # ServerFS MCP macOS v0.25.0 Cloudflare cutover preparation — 2026-11-15
 
+> Historical preparation-only snapshot. The stopped-pair state and proposed commands below were superseded by the [executed cutover](v0250-macos-cloudflare-cutover-2026-11-15.md), including migration of the repository-local rollback directory to private storage, and the [later Connector-only restart](v0250-macos-cloudflare-connector-restart-acceptance-2026-11-16.md). Do not reuse the old rollback path or replay these commands as current authorization. Current release/operational scope is governed by the [release checklist](../v0.25.0-release-checklist-2026-11-21.md) and [macOS runbook](../../deployment/macos/README.md).
+
 ## Readiness
 
 **NOT READY for cutover acceptance.** The dirty current-source Core passed an

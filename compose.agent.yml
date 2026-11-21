@@ -1,15 +1,14 @@
-# Optional Phase E overlay for host Bridge deployments.
+# Legacy singleton host Bridge compatibility overlay; not the named v0.25.0 attachment.
+# For fresh named deployments use deployment/linux/README.md and select the signed
+# compose.bridge-v2.yml overlay after explicit owner/grant provisioning.
+# Apply this legacy overlay only after the corresponding singleton Bridge is installed,
+# configured and running; preserve the complete project/env/overlay selection.
+# Select the same private deployment env with --env-file for each Compose command.
+# Do not use an unscoped whole-project up to update an existing deployment.
 #
-# Use only after the host-side Bridge is installed, configured and running.
-# The Bridge may provide Agent delegation, deterministic Repo Ops, or both:
-#
-#   docker compose --env-file .env \
-#     -f compose.yml -f compose.agent.yml up -d
-#
-# The base compose.yml intentionally remains host-Bridge-unaware so existing
-# filesystem-only deployments retain the 11-tool surface and have no host
-# runtime-dir prerequisites. Agent delegation and Repo Ops remain independent
-# per-workdir capabilities on top of this transport overlay.
+# Base compose.yml remains Bridge-unaware and exposes 11 filesystem tools by default
+# (two additional binary tools when enabled). Agent and Repo Ops capabilities are
+# independent, per-workdir policies; the overlay alone does not authorize either.
 
 services:
   serverfs-mcp:

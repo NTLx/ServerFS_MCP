@@ -1,6 +1,8 @@
 # ServerFS v0.9.0 Release Record — Runtime Model Discovery, Advisory & Per-Task Selection
 
-Status: released / frozen historical record; v0.9.0 release complete; repository current stable: v0.18.0
+> Historical model-discovery, optional advisory and binary-limit design. The actual model identifiers, account availability, v1 retry/continuation behavior and legacy environment/sidecar configuration are version-scoped. For current model capabilities and limits, use [Agent Bridge documentation](agent_bridge/README.md), [maintainer invariants](docs/maintainers/invariants.md) and [current Linux runbook](deployment/linux/README.md). Signed-v2 submissions reject idempotency/continuation fields; advisory sanitization is not a guarantee that sensitive prompt content is removed, and external Jev data transfer requires operator authorization.
+
+Status: released / frozen historical record; v0.9.0 release complete; v0.18.0 was recorded as stable at a later documentation checkpoint, not as the present release pointer.
 Baseline: v0.8.0 / main
 Scope: add provider-neutral model discovery, optional Jev-backed pre-submit model advice, and an optional per-task model override without adding model defaults to ServerFS configuration or modifying users' native Agent configuration; also make `SERVERFS_MAX_BINARY_TRANSFER_BYTES` the single public global size limit for both native binary transfer and file-ingress fetches.
 

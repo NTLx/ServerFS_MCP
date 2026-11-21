@@ -1,80 +1,28 @@
 # ServerFS Agent Skills
 
-This directory is the canonical repository source for ServerFS operational Agent Skills.
+Select **one Skill for the current objective**. Load another only when the task crosses its boundary.
 
-The skills teach an AI Agent how to choose and execute the **existing** ServerFS installation, configuration, upgrade and diagnostic workflows safely. They are not a second configuration schema, a replacement deployment framework, or a copy of the product documentation.
-
-## Choose the smallest matching skill
-
-| User objective | Skill |
+| Objective | Skill |
 | --- | --- |
-| Install ServerFS for the first time | [`serverfs-install`](serverfs-install/SKILL.md) |
-| Change workdirs or ordinary ServerFS policy, including v0.23 Linux Repo Ops policy | [`serverfs-configure`](serverfs-configure/SKILL.md) |
-| Upgrade an existing deployment | [`serverfs-upgrade`](serverfs-upgrade/SKILL.md) |
-| Investigate a failure or verify current health | [`serverfs-diagnose`](serverfs-diagnose/SKILL.md) |
-| Configure OpenAI Tunnel or Linux/macOS/Windows Cloudflare | [`serverfs-tunnel`](serverfs-tunnel/SKILL.md) |
-| Configure remote HTTP API Key or OAuth authentication | [`serverfs-auth`](serverfs-auth/SKILL.md) |
-| Configure or troubleshoot the Host Bridge lifecycle, Agent runtimes or Jev | [`serverfs-agent-bridge`](serverfs-agent-bridge/SKILL.md) |
+| Install a new instance | [serverfs-install](serverfs-install/SKILL.md) |
+| Change Core/workdir policy | [serverfs-configure](serverfs-configure/SKILL.md) |
+| Upgrade a component | [serverfs-upgrade](serverfs-upgrade/SKILL.md) |
+| Diagnose a failure | [serverfs-diagnose](serverfs-diagnose/SKILL.md) |
+| Manage a Connector | [serverfs-tunnel](serverfs-tunnel/SKILL.md) |
+| Configure HTTP admission | [serverfs-auth](serverfs-auth/SKILL.md) |
+| Manage Bridge, grants or runtimes | [serverfs-agent-bridge](serverfs-agent-bridge/SKILL.md) |
 
-Do not load every skill by default. Start from the user's objective and read the smallest relevant skill. A skill may route to another skill when the task crosses an optional subsystem boundary.
+## Agent loading contract
 
-Repo Ops intentionally does **not** have an eighth standalone skill. Its per-workdir/action policy belongs to `serverfs-configure`; the Linux Host Bridge transport/lifecycle it reuses belongs to `serverfs-agent-bridge`; actual repository inspection/action/commit/push uses the deterministic MCP tools directly rather than Agent delegation.
+1. Read the selected SKILL.md. Resolve platform, installed version, exact component and instance identity.
+2. Load only the matching platform reference and relevant authoritative config/schema or runbook section. Repository paths refer to the version-matched checkout, not the Plugin ZIP.
+3. Prefer bounded inspection: status and effective policy first, exact tool schemas and relevant file ranges next. Follow pagination when necessary for correctness; never substitute a search hit for a required full review.
+4. Retain a compact working state: target IDs, scope, desired change, observations, failed checks and next action. Do not repeatedly load historical reports, dump credentials, large logs, raw binary/base64 or unrelated platform procedures.
 
-## Source-of-truth rule
+Stop on unclear ownership or authorization. File-only needs no Bridge; Agent and Repo Ops are separate. A Shared Core cannot manage its owner. Preserve unrelated components, verify actual outcomes and report unverified gates.
 
-The current ServerFS checkout or installed release is authoritative. After locating a ServerFS checkout, resolve these paths from its root and inspect the relevant current sources before changing anything:
+## Maintainer contract
 
-- `.env.example` for Linux/Docker environment configuration;
-- `serverfs.toml.example` for native Windows/macOS non-secret policy;
-- `compose.yml` and optional Compose overlays;
-- `deployment/` platform/deployment implementation and guides;
-- `site/src/content/docs/docs/` current product documentation;
-- the `serverfs` CLI and `serverfs doctor` on the target installation.
+Keep Skill descriptions specific to invocation intent. Put decision rules and stop conditions in SKILL.md; put platform-specific details in linked local references. Use precise paths instead of broad reading lists. Prefer concise imperative steps and one canonical source per fact. Preserve all required packaging headings and standalone safety rules; do not depend on this index being loaded at runtime.
 
-Skills intentionally avoid duplicating complete default tables, version pins and configuration schemas that can be read from those sources.
-
-## Execution model
-
-ServerFS skills support two contexts:
-
-### Repository-aware
-
-The Agent is operating inside a ServerFS checkout. Read the checkout before acting and prefer the product's own CLI, parser, Compose and deployment helpers.
-
-### Imported / standalone
-
-The skill has been imported into an Agent without the ServerFS repository. First locate the target ServerFS checkout or deployed installation and establish its version/configuration source. If no authoritative target state is accessible, provide bounded guidance or diagnosis only; do not invent current paths, settings, supported platform claims or commands.
-
-## Shared safety contract
-
-All ServerFS operational skills follow these rules:
-
-1. Detect the target platform and deployment family before selecting commands.
-2. Read existing configuration before editing it.
-3. Use merge/surgical changes; never replace a populated `.env` or `serverfs.toml` with an example file.
-4. Change only settings required by the explicit objective.
-5. Keep credentials, provider secrets and private state out of tracked files, exposed workdirs and normal logs.
-6. Preserve current-user/non-elevated ownership. Do not introduce root, Windows Administrator/LocalSystem, or root LaunchDaemon shortcuts.
-7. Prefer official `serverfs` CLI, Compose and `deployment/*` helpers over ad-hoc shell implementations.
-8. Verify every mutation through a supported parser, `doctor`, Compose render or platform service/status surface.
-9. Stop on failed validation or ambiguous ownership/state rather than layering speculative changes.
-10. Never silently enable optional Tunnel, HTTP Auth, Repo Ops, or Agent delegation during an unrelated install/upgrade.
-11. On v0.23+, treat Repo Ops as deterministic non-Agent authority: use its fixed public surface when authorized and available; never substitute Agent delegation merely to perform mechanical Git/action/commit/push work.
-
-## Cloudflare Tunnel platform branches
-
-Linux Docker Compose Cloudflare Tunnel ingress shipped in v0.24.0; its operator branch is [`serverfs-tunnel/references/cloudflare-linux.md`](serverfs-tunnel/references/cloudflare-linux.md). Native Apple Silicon/macOS 27 Cloudflare Tunnel shipped in v0.24.1 and is documented in `deployment/macos/README.md` and the macOS branch of `serverfs-tunnel`. v0.24.2 adds native Windows Cloudflare. Two independent same-user Task Scheduler owners passed public ChatGPT tools, cross-ingress file-operation acceptance and 75.0/70.0/65.0-second SSE holds. The operator waived full-generation restart/recovery testing on 2026-11-10; it was not tested and did not pass. Connector-only restart and lossless SSE replay are not claimed. Its operator reference is [`serverfs-tunnel/references/cloudflare-windows.md`](serverfs-tunnel/references/cloudflare-windows.md). Each Windows owner runs one provider; the old single-owner OpenAI/Cloudflare exclusion does not prohibit the separate `ServerFS Cloudflare WorkPC` owner. There is no universal automated handover. Both owners share one Agent Bridge/Repo Ops service, which must remain running if Cloudflare depends on it after OpenAI is retired.
-
-`serverfs-auth` covers the independent ServerFS HTTP API Key/OAuth caller admission boundary. The Linux connector token stays outside every ServerFS workdir and is readable by `CLOUDFLARED_UID`, not by inference from `SERVERFS_UID`. Linux staging acceptance does not imply production workdir/Agent acceptance or native platform acceptance. See `docs/cloudflare-tunnel.md` for Linux runbook and release-scoped evidence.
-
-## Plugin distribution
-
-The repository root contains the portable Agent Plugin manifest, `plugin.json`. Stable ServerFS releases package the seven runtime skill directories and their per-skill `references/` files into one release asset named:
-
-```text
-serverfs-plugin-vX.Y.Z.zip
-```
-
-The ZIP is a distribution wrapper only. The repository `skills/` tree remains the source of truth, and skill/plugin content follows the ServerFS release version rather than maintaining independent versions.
-
-The Plugin intentionally does not bundle an MCP endpoint, instance credentials or provider-private configuration. Operators connect or expose their actual ServerFS deployment separately.
+The portable Plugin includes the manifest and seven Skills with their references, not this index, checkout, endpoints or credentials. Validate with the repository packaging tool and use version-matched artifacts.

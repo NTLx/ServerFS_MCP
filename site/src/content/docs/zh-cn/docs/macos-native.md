@@ -1,117 +1,34 @@
 ---
 title: macOS 原生部署
-description: ServerFS v0.24.0 macOS 原生部署 —— Apple M 系列、macOS 27、Darwin FD 安全边界，以及基于 Apple SMAppService 的 Tunnel / Agent Bridge 持久化。
+description: 在 Apple Silicon 上选择原生 stdio 或命名 HTTP 实例。
 ---
 
-当前稳定版本为 **v0.24.2**。macOS 原生 Cloudflare 功能范围限于 Apple Silicon/macOS 27。除此之外，**v0.13.2** 引入的 macOS 原生支持形态保持不变：仅限原生 **arm64**，不支持 Rosetta/x86_64，仅支持 macOS 27.x 与**本地 APFS** workdir。Intel Mac、Hackintosh、macOS 26 及更早版本、macOS 28 及更新版本都会以 `NATIVE_PLATFORM_UNSUPPORTED` 失败关闭。v0.23.1 新增已验收的 Apple Silicon 原生 macOS Repo Ops；v0.23.2 保持该能力，并在 Linux Host Bridge 支持之外新增已验收的 Windows 11 x64 原生 Repo Ops。现有 OpenAI Tunnel 与 Agent Bridge 保持可用。
+ServerFS 支持 Apple Silicon、原生 arm64、macOS 27.x 与本地 APFS，遵循当前用户的文件权限和 macOS 隐私保护。持久 HTTP 服务通过签名的 SMAppService / LaunchAgents 管理，无需 Docker、Rosetta 或 root LaunchDaemon。
 
-该功能新增独立、可选的 loopback HTTP origin 与 Cloudflare Connector，并复用现有 app-associated `SMAppService` LaunchAgent 生命周期。它要求远程管理型 Tunnel、精确 hostname 准入、官方验证过的 `cloudflared`，以及存放于 checkout 和所有 workdir 之外、权限为 `0600` 的当前用户 Token/认证文件。命令、staging、生命周期、回滚与验收步骤请遵循[macOS 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241)。
+## 选择合适的模式
 
-**尚未发布的 v0.24.3 开发版本：** macOS Cloudflare 安装器已在候选源码中允许显式可写的工作目录（`read_only = false`），不再沿用早期只读 staging 的安装限制。如需双连接层能力一致，应使用与 OpenAI Tunnel 相同的权威 `serverfs.toml`，并确认共用 Agent Bridge 的策略同步。默认只读、独立 HTTP API Key/OAuth、精确 Host 校验和私有 Token 隔离保持不变。**该候选功能尚未通过 macOS 公网读写与 Agent 完整验收，也不属于当前 v0.24.2 稳定版。**
+| 模式 | 适用场景 |
+| --- | --- |
+| 本地 stdio | MCP 客户端在本机，无需持久服务 |
+| 纯文件 Core | 需要认证后的 HTTP 文件访问，不需要 Bridge |
+| Owned Bridge | Core 需要专属 Agent 或 Repo Ops 执行边界 |
+| Shared Bridge | 多个 Core 接入已有的 v2 Bridge owner；每个 Core 仅支持一个绑定的 Agent Workdir，不支持 Repo Ops |
 
-v0.13.2 保持 Darwin 文件系统和 Agent 协议实现为 Python，只将旧的手工 LaunchAgent 生命周期替换为 Apple 当前的 **ServiceManagement / `SMAppService`** 模式。一个极小的无界面 `ServerFSServiceManager.app` 负责两个每用户 LaunchAgent 的注册与状态：
+纯文件与 owned Core 可按需接入 OpenAI 和 Cloudflare Connector。Shared Core 目前没有 Connector staging 接口。Owned pair 使用专属本机 socket 和策略校验；共享接入使用独立签名 grant。
 
-```text
-SMAppService / launchd
-  +-- com.ntlx.serverfs.tunnel
-  |    -> serverfs tunnel
-  |         -> 默认使用实测版本的 tunnel-client（darwin-arm64）
-  |              -> sanitizer supervisor
-  |                   -> serverfs serve
-  |                        -> Darwin FD 后端
-  |                        -> 可选 file-ingress helper
-  |
-  +-- com.ntlx.serverfs.bridge
-       -> Agent Bridge
-            -> 私有 AF_UNIX + getpeereid
-            -> codex / claude / qoder
-```
+## 部署步骤
 
-两个服务都不再依赖终端、Codex/Claude/ChatGPT 会话的生命周期。用户登录后的持久化由 `SMAppService` 管理；重启/重新登录后的 live 恢复验证明确留待 v0.13.2 之后。ServerFS **不**安装 LaunchDaemon，也不要求登录前运行。
+完整命令和可参考的配置示例见 [macOS 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md)。
 
-没有 Docker、虚拟机、Rosetta 依赖或编译版 macOS 文件系统内核包。Darwin 后端仍是纯 Python 的描述符相对 POSIX 原语，加上极窄的 libc 绑定（`fcopyfile`、`getpeereid`、`confstr`）；不存在 `serverfs-macos-native` wheel。
+1. 准备版本匹配的 Core 环境（如需 Bridge 则另外准备其环境），构建签名模板 App。
+2. 创建定义目标 Workdir 的最小原生 TOML。若使用持久 HTTP，准备独立端口和私有 API Key 或 OAuth 配置。Host 白名单必须精确匹配所配置的 hostname 及其后的 loopback authority。
+3. 使用命名 CLI（`python -m serverfs_mcp.darwin_instance_cli --instance <id>`）准备所选模式，再显式启动。Shared Core 还需经过验证的独立 runtime 及 owner 签发的 binding，并在启用前执行 preflight。
+4. 如系统要求，在系统设置中批准登录项。先验证 Core，再启动可选 Connector。
 
-## 文件系统语义
+同一 Provider 的额外 Connector ID 需在纯文件/owned Core staging 时预声明。OpenAI HTTP 使用独立控制面密钥文件与静态 Core bearer 文件；Tunnel 凭据不能替代调用方认证。
 
-- 使用 `O_NOFOLLOW` 的描述符相对遍历，symlink 失败关闭。
-- 原子发布（同目录临时文件 → fsync → `renameat`），保留 revision/CAS 与硬链接保护。
-- 替换写入通过 `fcopyfile(COPYFILE_METADATA)` 保留 mode、用户 xattr 与扩展 ACL，否则在发布前失败。
-- `search_text` 使用 FD 安全遍历、有界读取与字面 UTF-8 扫描，不依赖 `/proc` 或环境中的 shell 工具。
+## 验证与运维
 
-## 安装持久服务
+检查匿名请求拒绝、认证后 MCP initialize、安全的 Workdir 访问及显式开启的 Agent/Repo Ops 能力。Job 注册成功不能证明公网可达。按精确身份操作 Connector，确认无关组件未停止，并在重启后建立新会话。
 
-先安装标准 Python 环境和官方 tunnel-client：
-
-```bash
-uv sync --frozen
-uv sync --project agent_bridge --frozen
-serverfs bootstrap tunnel-client   # 默认使用 ServerFS 实测的 v0.0.17
-serverfs doctor --config serverfs.toml
-
-# 如需使用其他官方版本，需同时提供版本号和该版本官方 SHA256SUMS.txt 的 SHA-256：
-# serverfs bootstrap tunnel-client --version vX.Y.Z --manifest-sha256 <sha256>
-```
-
-默认使用实测版本作为基线，这不是兼容性锁定。
-
-然后安装持久化的用户服务：
-
-```bash
-serverfs service install --config serverfs.toml --env-file .env
-serverfs service status
-```
-
-安装过程会使用 Apple 命令行工具在本机构建极小的 Swift companion，验证其代码签名与内嵌 LaunchAgent plist，将其安装到 ServerFS 私有 Application Support 目录，生成 0600 的生命周期私有状态，并通过 `SMAppService` 注册服务。
-
-正常生命周期命令为：
-
-```bash
-serverfs service status
-serverfs service start
-serverfs service restart
-serverfs service stop
-serverfs service uninstall
-```
-
-当已安装 manifest 包含 Agent Bridge 时，`service restart` 会使用有界、一次性的 launchd hand-over，使 Bridge 注销不会终止负责完成重启的进程。初始命令只表示 hand-over 已调度；重新连接后应运行 `serverfs service status`，并要求原生 `handover` 证据达到 `complete=true`、`ok=true`、`job_loaded=false`、`plist_exists=false`。仅 Tunnel 的重启仍保持同步执行。`serverfs agent-bridge restart` 在完成所请求的 policy/private-state 同步后使用同一有界 hand-over，并且只重启 Bridge。
-
-### 通用状态格式
-
-默认原生 `service status` JSON 会包含有界的 hand-over 证据。运营者可显式运行 `serverfs service status --format common-json` 或 `serverfs service status --format common-human` 请求脱敏的通用投影。输出不包含路径、PID、任务名、私有 ID 或原生 hand-over 细节；无法确认时使用 `unknown`/`not-checked`，不会臆测健康状态。更深入的平台与配置诊断请使用 `serverfs doctor`。详见 [Phase F 验收与限制](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-macos-acceptance-2026-10-22.md)。
-
-如果 macOS 返回 `requires-approval`，ServerFS 会尊重用户授权状态，不绕过系统设置。可直接打开对应设置页：
-
-```bash
-serverfs service open-settings
-```
-
-随后在 **系统设置 > 通用 > 登录项** 中批准 ServerFS 后台项目。
-
-## Agent Bridge policy
-
-v0.19.0 ACP profile 使用原生 POSIX process group 子进程约束机制。OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 已通过 macOS 端到端验收，覆盖 prompt、持久 session continuation 和 active-tool cancellation/cleanup。
-
-`serverfs.toml` 仍是 Agent workdir/runtime policy 的唯一用户配置来源。所有暴露 workdir 之外的私有 `bridge.json` 仍是派生状态，只保存 Bridge 所需的限定 Jev/proxy 私有材料。
-
-```bash
-serverfs agent-bridge configure --config serverfs.toml --env-file .env
-serverfs agent-bridge restart --config serverfs.toml
-# 若 Jev/proxy 私有值也变化：
-serverfs agent-bridge restart --config serverfs.toml --env-file .env
-```
-
-v0.13.2 已淘汰 `serverfs agent-bridge install`。从 v0.13.0/v0.13.1 升级时，会检测旧的 `~/Library/LaunchAgents/com.ntlx.serverfs.agent-bridge.plist`，只在交接点停止旧 job，注册 app-associated 替代服务，健康检查通过后才删除旧 plist；注册失败时保留回滚路径。安装前也会检测旧版手工 tunnel，绝不会静默启动第二个 control-plane client。
-
-受管 Tunnel 还会持有每用户实例锁，并将 launchd 的终止信号转发给 tunnel-client，避免遗留孤儿 supervisor/serve/file-ingress 进程树。
-
-## 数据与安全边界
-
-默认数据目录为 `~/Library/Application Support/ServerFS`；socket 位于 OS 提供的每用户 runtime 目录（`_CS_DARWIN_USER_TEMP_DIR`）。服务 manifest、私有环境映射与日志均位于暴露 workdir 之外并使用私有权限。LaunchAgent plist 不携带 provider 或 tunnel 凭据。
-
-ServerFS 绝不绕过 macOS TCC 隐私控制。受保护路径会干净失败；`serverfs doctor` 会报告平台、policy、Service Manager 有效性、注册/授权状态、进程健康、legacy 残留与 unmanaged tunnel 检测结果。
-
-## 验收证据
-
-参见 `docs/phase-0-macos27-arm64-capability-probe-2026-10.md`、`docs/phase-v0.13.2-servicemanagement-probe-2026-10.md`、v0.13 系列 macOS 验收记录，以及 v0.13.2 开发/验收记录。
-
-ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](../acp/)。
+先停 Connector，再停相应 Core 或 owned pair。Shared Core 不管理 Bridge owner。命名 staging 命令用于新建实例，已有部署应制定明确的迁移或回滚方案。发布验收及未完成限制见[发布清单](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.25.0-release-checklist-2026-11-21.md)。

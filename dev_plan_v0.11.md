@@ -1,5 +1,7 @@
 # ServerFS v0.11.0 Development Plan — Windows Native Agent Bridge
 
+> Historical release-development record (v0.11.0), not current product instructions. The dated Phase 0–H experiments, accepted findings and release evidence below apply to that release. In particular, the Windows metadata-derived revision and restricted-share transaction do not guarantee content identity or arbitrary-process CAS; the measured same-tick same-size external-rewrite blind window was explicitly accepted, not fixed. The singleton Tunnel-supervised Bridge, peer-identity trust assumptions, v1 continuation/idempotency and proxy/bootstrap examples are historical: current named shared Bridge access requires explicit Core grants, and signed-v2 submission rejects `continue_from_task_id` and `idempotency_key`. Use [maintainer invariants](docs/maintainers/invariants.md), [Agent Bridge documentation](agent_bridge/README.md) and the [Windows runbook](deployment/windows/README.md) for current constraints and deployment; use [maintainer workflow](docs/maintainers/workflow.md) for current release gates. The original phase results, exclusions and operator prerequisites are preserved as historical evidence, not renewed acceptance.
+
 Status: Phase 0/A/B CLOSED · Phase C: C0, C0.7 and C1–C5 CLOSED (contract decision B implemented)
 
 ```text
@@ -47,7 +49,7 @@ source-checkout tolerance, `78f4547` release-workflow runner fix) landed on `mai
 per-wheel digests) were published 2026-10-09. Layered evidence and the release-contract
 table are in `docs/phase-h-acceptance-2026-10.md`. The production WorkPC deployment runs
 the released code with a preserved rollback baseline. **v0.11.0 was the stable release
-produced by this plan; repository current stable is v0.18.0.**
+produced by this plan; v0.18.0 was recorded as stable at a later documentation checkpoint, not as the present release pointer.**
 
 Phase E's §40–§49 gates were all measured on the real provider through the public MCP surface: §40,
 §41, §42, §44, §45, §46, §47, §48 pass; §43 is NOT APPLICABLE because Codex 0.159.2 does not expose

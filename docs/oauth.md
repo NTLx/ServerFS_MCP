@@ -1,376 +1,158 @@
 # OAuth 2.1 for remote MCP
 
-ServerFS v0.16 adds optional OAuth 2.1 authentication for **remote Streamable HTTP** deployments. OAuth is disabled by default and is not used by native Windows/macOS stdio. In v0.17+, built-in OAuth is mutually exclusive with `SERVERFS_HTTP_API_KEY`; choose one ServerFS-owned HTTP authentication mode per instance.
+Choose OAuth when a Core needs admission by individual federated identity rather than a shared API Key. OAuth is optional, defaults off and is mutually exclusive with static API Key. It does not replace workdir permissions or Bridge grants.
 
-This is the canonical operator guide for the v0.16 OAuth deployment model. The website pages summarize this contract; when they disagree, this file and the versioned `.env.example` are authoritative.
-
-## Scope
-
-OAuth protects the MCP resource boundary. It does not replace ServerFS workdir policy.
+## 1. Choose the deployment
 
 ```text
-upstream identity provider
-        |
-        v
-serverfs-auth                 Internet egress only here
-  identity federation
-  exact principal allowlist
-  OAuth 2.1 authorization server
-  opaque ServerFS tokens
-        |
-        | private introspection
-        v
-serverfs-mcp                  no provider credentials / no OAuth egress
-        |
-        v
-existing workdir policy
+MCP client ── HTTPS ── Core (resource server) ── workdir policy
+    │                          │
+    │ browser login            │ private token introspection
+    ▼                          ▼
+serverfs-auth ◄────────────────┘
+    │
+    └── upstream identity provider
 ```
 
-The supported upstream identity providers are:
+The packaged authorization service (`serverfs-auth`) is deployed with Linux Docker Compose. It owns provider credentials, identity admission and OAuth state; Core receives only its resource-server settings and introspection secret. Native macOS/Windows HTTP Cores can be configured as resource servers using an independently managed auth service; the native installers do not provision that service. Local stdio has no HTTP admission.
 
-- GitHub OAuth App
-- DingTalk Open Platform login
-- Feishu/Lark user identity OAuth
-- WeChat Open Platform Website Application login
+Use direct HTTP behind an HTTPS reverse proxy, or an independently configured Cloudflare Connector for the MCP route and a reachable HTTPS auth origin. The named OpenAI HTTP Connector uses static Core bearer admission and is **not the OAuth deployment path**.
 
-Provider tokens are used only inside `serverfs-auth` to prove identity. They are not stored as ServerFS bearer credentials and are never accepted directly at `/mcp`.
+## 2. Prepare a fresh Linux Core and auth service
 
-## Deployment boundaries
+Follow the [Linux deployment runbook](../deployment/linux/README.md) for a version-matched image, unique project, nonroot UID/GID, private env and minimal read-only workdir. This example uses a new project with two loopback publications and separately managed TLS routes:
 
-OAuth is currently a **Linux Docker Compose** capability:
+| Public URL | Private origin |
+| --- | --- |
+| `https://mcp.example.com/mcp` | `http://127.0.0.1:18080/mcp` |
+| `https://auth.example.com` | `http://127.0.0.1:18082` |
 
-- base deployment: `compose.yml`
-- generic Streamable HTTP: `compose.http.yml`
-- OAuth: `compose.oauth.yml`
-- optional Agent Bridge: `compose.agent.yml`
+Preserve the actual external Host and scheme semantics used by metadata and callbacks. Public resource/issuer URLs require HTTPS (plain HTTP only for explicit loopback tests). Configure the auth reverse proxy to expose public OAuth routes, **not** `/internal/introspect`; keep introspection on the private network. DNS, TLS and reverse proxy configuration are external responsibilities.
 
-Windows and macOS native stdio remain OAuth-free. Do not add provider credentials to native stdio merely for configuration symmetry.
+Add these settings to the selected private env, replacing example domains, paths, IDs and secrets. The Core listener is 8000 and auth listener is 8082; publications use separate unused host ports.
 
-Public OAuth deployments require HTTPS at the public boundary. Plain HTTP is accepted only for explicit loopback/local test fixtures.
+```dotenv
+SERVERFS_HTTP_API_KEY=
+SERVERFS_HTTP_HOST=0.0.0.0
+SERVERFS_HTTP_PORT=8000
+SERVERFS_HTTP_PATH=/mcp
+SERVERFS_HTTP_PUBLISH_HOST=127.0.0.1
+SERVERFS_HTTP_PUBLISH_PORT=18080
+SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:18080,mcp.example.com
+SERVERFS_HTTP_ALLOWED_ORIGINS=
 
-## Minimal production shape
-
-A typical deployment uses two public HTTPS origins:
-
-```text
-https://mcp.example.com/mcp   -> 127.0.0.1:8000/mcp
-https://auth.example.com      -> 127.0.0.1:8082
-```
-
-The reverse proxy must preserve the external host/scheme semantics used in OAuth metadata and callbacks. Keep the Docker publications loopback-only and publish TLS through the reverse proxy rather than binding the containers directly to a public interface.
-
-Set at least:
-
-```env
 SERVERFS_OAUTH_ENABLED=true
-
 SERVERFS_OAUTH_RESOURCE_URL=https://mcp.example.com/mcp
-SERVERFS_AUTH_PUBLIC_URL=https://auth.example.com
 SERVERFS_OAUTH_ISSUER_URL=https://auth.example.com
+SERVERFS_AUTH_PUBLIC_URL=https://auth.example.com
 SERVERFS_OAUTH_REQUIRED_SCOPES=serverfs:access
+SERVERFS_OAUTH_INTROSPECTION_SECRET=<unique-high-entropy-secret>
 
-SERVERFS_OAUTH_INTROSPECTION_SECRET=<long-random-shared-secret>
-SERVERFS_AUTH_ALLOWED_PRINCIPALS=<provider:stable-subject,...>
+SERVERFS_AUTH_PORT=8082
+SERVERFS_AUTH_PUBLISH_HOST=127.0.0.1
+SERVERFS_AUTH_PUBLISH_PORT=18082
+SERVERFS_AUTH_STATE_HOST_DIR=/absolute/private/blue-auth-state
+SERVERFS_AUTH_ALLOWED_PRINCIPALS=<provider:stable-subject>
 ```
 
-`SERVERFS_OAUTH_ISSUER_URL` must exactly equal `SERVERFS_AUTH_PUBLIC_URL`.
-
-For the MCP Host/Origin boundary, preserve the internal/loopback authorities and add only the public authorities you actually use, for example:
-
-```env
-SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000,mcp.example.com
-```
-
-Do not disable DNS-rebinding protection to make a proxy work.
-
-### Prepare persistent auth state
-
-`serverfs-auth` is non-root and has one writable persistent mount.
-
-Before starting Compose, prepare the auth state directory for the configured `SERVERFS_UID:SERVERFS_GID`. With the default `10001:10001` and `SERVERFS_AUTH_STATE_HOST_DIR=./.serverfs-auth-state`, run from the checkout root:
+Issuer must equal auth public URL. Resource must be the exact externally meaningful MCP URL. The Compose overlay sets the internal introspection URL from `SERVERFS_AUTH_PORT`; do not confuse it with the published port. Keep each deployment's state directory distinct and outside Git and exposed workdirs. For a new owner directory, if Core uses your login UID/GID, create it as that user:
 
 ```bash
-sudo install -d -m 700 -o 10001 -g 10001 -- .serverfs-auth-state
+install -d -m 700 -- /absolute/private/blue-auth-state
 ```
 
-Assigning ownership to `10001:10001` normally requires `sudo` (or an administrator); the container still runs as that non-root identity. If you customize `SERVERFS_UID`, `SERVERFS_GID` or `SERVERFS_AUTH_STATE_HOST_DIR` in `.env`, replace the numeric IDs and path above with those actual values. Compose reads `.env`; these values are not automatically exported into your shell.
+Only create a fresh directory; do not change ownership of existing foreign state. If the configured container UID/GID differs, have an administrator create the new directory with the exact ownership and mode 0700. Verify actual ownership and write permission; mode alone is insufficient.
 
-For a current-user deployment, you may instead set `SERVERFS_UID` and `SERVERFS_GID` in `.env` to the outputs of `id -u` and `id -g`, provided that identity also suits the MCP workdir permissions. For a new directory owned by that user, no privilege is needed:
+## 3. Select an identity provider and admission policy
 
-```bash
-install -d -m 700 -- .serverfs-auth-state
-```
+Create the corresponding application externally. Register the exact callback at the auth origin. Enable only the providers needed and supply both client ID and secret privately.
 
-Use the configured state path if customized. Mode `700` alone does not grant a different container UID write access; verify the directory owner matches the configured UID before starting. Keep the directory private; do not widen its permissions.
+| Provider | Callback path | Stable principal | Requested identity scope |
+| --- | --- | --- | --- |
+| GitHub OAuth App | `/oauth/provider/github/callback` | `github:<numeric-id>` | Public identity; no repository scope |
+| DingTalk Open Platform | `/oauth/provider/dingtalk/callback` | `dingtalk:<unionId>` | `openid` |
+| Feishu/Lark | `/oauth/provider/feishu/callback` | `feishu:<open_id>` | `contact:user.base:readonly` |
+| WeChat Open Platform Website Application QR login | `/oauth/provider/wechat/callback` | `wechat:<unionid>` | `snsapi_login` |
 
-Start the OAuth shape with:
+For example, register `https://auth.example.com/oauth/provider/github/callback` and configure:
 
-```bash
-docker compose --env-file .env \
-  -f compose.yml \
-  -f compose.http.yml \
-  -f compose.oauth.yml \
-  up -d
-```
-
-Add `-f compose.agent.yml` only when an authenticated host Bridge capability is required: Agent delegation, the v0.23 Linux Repo Ops development transport, or both. Their per-workdir authorization remains independent of OAuth and of each other.
-
-Verify the rendered deployment before starting it:
-
-```bash
-docker compose --env-file .env \
-  -f compose.yml \
-  -f compose.http.yml \
-  -f compose.oauth.yml \
-  config --quiet
-```
-
-## Admission policy
-
-ServerFS admission is default-deny. `SERVERFS_AUTH_ALLOWED_PRINCIPALS` is a comma-separated list of exact `provider:stable-subject` values. Wildcards are intentionally unsupported.
-
-Stable subjects are:
-
-| Provider | ServerFS principal | Source identity |
-| --- | --- | --- |
-| GitHub | `github:<numeric-id>` | immutable numeric GitHub user `id` |
-| DingTalk | `dingtalk:<unionId>` | Open Platform account `unionId` |
-| Feishu | `feishu:<open_id>` | app-scoped `open_id` |
-| WeChat | `wechat:<unionid>` | Open Platform `unionid` |
-
-Names, email addresses, mobile numbers, nicknames and tenant-local mutable identifiers are not authorization keys.
-
-Removing a principal prevents future admission. It is not a substitute for revoking already issued credentials; see **Revocation and emergency invalidation** below.
-
-## Provider setup
-
-Enable providers independently. An enabled provider requires both a client ID and client secret.
-
-> **External live-acceptance prerequisite:** the repository cannot manufacture real GitHub, Feishu/Lark, DingTalk or WeChat Open Platform applications or operator credentials. The v0.16.0 release validates all four adapters with deterministic protocol/security tests, but a production operator must still create the corresponding provider application, register the exact callback below, supply real credentials outside Git, and complete at least one real browser login for each provider they enable. Absence of those external applications/credentials is an explicit deployment prerequisite, not a reason to weaken ServerFS validation or embed test credentials in the project.
-
-### GitHub
-
-Create a GitHub OAuth App and register this exact callback URL:
-
-```text
-https://auth.example.com/oauth/provider/github/callback
-```
-
-Configure:
-
-```env
+```dotenv
 SERVERFS_OAUTH_GITHUB_ENABLED=true
 SERVERFS_OAUTH_GITHUB_CLIENT_ID=<client-id>
 SERVERFS_OAUTH_GITHUB_CLIENT_SECRET=<client-secret>
 ```
 
-ServerFS deliberately does not request repository scopes. The adapter needs only the authenticated public user identity and authorizes by immutable numeric user ID.
+For the other providers replace the prefix `SERVERFS_OAUTH_GITHUB_` with `SERVERFS_OAUTH_DINGTALK_`, `SERVERFS_OAUTH_FEISHU_` or `SERVERFS_OAUTH_WECHAT_` respectively; each has the same three suffixes. Feishu does not request offline_access; DingTalk consumes the authCode callback field; WeChat verifies user-info openid matches the token subject. WeChat here is not WeCom or Official Account webpage authorization. Upstream tokens remain ephemeral identity material and are not accepted at MCP.
 
-### Feishu / Lark
+Admission is an exact comma-separated list in `SERVERFS_AUTH_ALLOWED_PRINCIPALS`. Empty means no admitted principal, not allow all. Wildcards, duplicates and mutable identifiers such as display names, emails and phone numbers are not valid admission strategies. Determine stable subject from the actual provider. Real provider applications, private credentials and browser login are operator prerequisites; do not substitute mock results.
 
-Create the corresponding application and register:
+## 4. Select client registration
 
-```text
-https://auth.example.com/oauth/provider/feishu/callback
+Clients use Authorization Code with PKCE S256 and ServerFS's default scope `serverfs:access`.
+
+- CIMD (Client ID Metadata Documents): preferred for compatible clients; fetches are HTTPS, public-address checked, TLS verified and bounded/cached.
+- Pre-registration: `SERVERFS_AUTH_CLIENTS_FILE` points to a read-only JSON array of public client metadata **inside** the auth service. Each client has a unique client_id, redirect_uris, token_endpoint_auth_method=none, authorization_code grant and code response type, no client secret. The base OAuth overlay does not mount an external client JSON file automatically; explicitly add a read-only bind mount to the auth service in an operator-managed Compose override, and include that override in every operation.
+- DCR: compatibility-only, off by default. Set `SERVERFS_AUTH_DCR_ENABLED=true` only for a client that needs it.
+
+## 5. Start and verify
+
+In Bash from the matching checkout root, select the complete deployment. This example is a fresh direct-HTTP, file-only Core. Preserve any deliberately selected Bridge, file-ingress and other provider overlays in a real deployment; do not substitute this selection for a different existing instance.
+
+```bash
+oauth=(docker compose -p serverfs-blue --env-file /absolute/private/blue.env
+  -f compose.yml -f compose.http.yml -f compose.oauth.yml
+  -f deployment/linux/compose.publish-http.yml
+  -f deployment/linux/compose.bridge-disabled.yml)
+
+"${oauth[@]}" config --quiet
+# Ensure the selected verified image is already available.
+"${oauth[@]}" up -d --no-deps --no-build --wait serverfs-auth
+"${oauth[@]}" up -d --no-deps --no-build serverfs-mcp
+"${oauth[@]}" ps serverfs-auth serverfs-mcp
 ```
 
-Configure:
+Stop on any failed command. Auth readiness precedes Core activation; the two targeted starts do not start OpenAI, Cloudflare or Bridge. Do not print expanded Compose configuration. To use Cloudflare, follow the [Cloudflare guide](cloudflare-tunnel.md) with the actual complete selection and separate auth origin.
 
-```env
-SERVERFS_OAUTH_FEISHU_ENABLED=true
-SERVERFS_OAUTH_FEISHU_CLIENT_ID=<app-id>
-SERVERFS_OAUTH_FEISHU_CLIENT_SECRET=<app-secret>
-```
+Before public use:
 
-The flow requests only `contact:user.base:readonly`; it does not request `offline_access`. ServerFS authorizes by `open_id` and does not persist a Feishu refresh token.
+1. Check local auth health (`/healthz`), Core listener, both public TLS origins and authorization server metadata (`/.well-known/oauth-authorization-server`).
+2. Request MCP without a credential: expect an OAuth challenge and correct protected-resource metadata. Ensure the private introspection endpoint is not publicly routed.
+3. Complete a real browser login for each enabled provider; check exact allowlisted identity and rejection of another identity.
+4. Initialize MCP with the issued token; verify tools, safe workdir access and denied operations. Test wrong resource, expired/revoked token and failed introspection denial.
+5. Confirm provider secrets are only in the auth service and unrelated components are unchanged. Record actual client/provider acceptance, not just container health.
 
-### DingTalk
+## 6. Native HTTP resource server
 
-Create the Open Platform application/login capability and register:
+Use the selected platform's authenticated HTTP provisioning path, not the Linux Compose command on a native host. In its supported protected auth input, leave `SERVERFS_HTTP_API_KEY` empty, set `SERVERFS_OAUTH_ENABLED=true`, and supply `SERVERFS_OAUTH_RESOURCE_URL`, `SERVERFS_OAUTH_ISSUER_URL`, `SERVERFS_OAUTH_REQUIRED_SCOPES`, `SERVERFS_OAUTH_INTROSPECTION_URL` and `SERVERFS_OAUTH_INTROSPECTION_SECRET` matching the independently managed auth service. Configure the exact native Host authority and a trusted private path to introspection (HTTPS where it crosses an untrusted network). Do not expose provider credentials to Core. The Windows initial helper is bearer-only; use its documented manual path for OAuth. For named macOS, use the supported private env keys. Neither native installer supplies an auth-service lifecycle manager, and the named OpenAI HTTP Connector requires static bearer admission. Verify the actual native/public combination before use.
 
-```text
-https://auth.example.com/oauth/provider/dingtalk/callback
-```
+## 7. Token lifecycle and operations
 
-Configure:
+ServerFS issues opaque access and refresh tokens; SQLite stores digests, not raw token values. Private introspection validates active status, issuer, resource, client, subject, scope and expiry. Codes/provider state are single-use; refresh rotation deletes the old pair before issuing a new pair. The default access and refresh TTLs are 3600 and 2592000 seconds (30 days), configurable by the auth service.
 
-```env
-SERVERFS_OAUTH_DINGTALK_ENABLED=true
-SERVERFS_OAUTH_DINGTALK_CLIENT_ID=<client-id>
-SERVERFS_OAUTH_DINGTALK_CLIENT_SECRET=<client-secret>
-```
+| Operation | Scope |
+| --- | --- |
+| Remove allowlisted principal | Recreate auth with updated allowlist; prevents new identity admission, **does not invalidate issued token pairs** |
+| Revoke current pair | Authenticated client calls `/revoke` with its access or refresh token; the matching pair is removed |
+| Rotate provider secret | Recreate auth only; existing ServerFS tokens are not thereby revoked |
+| Rotate introspection secret | Coordinated recreation of auth and all Cores using that secret; mismatch denies access |
+| Backup / restore | Stop auth in maintenance, copy/restore whole private state directory with permissions; restart and verify |
+| Emergency global invalidation | With explicit authorization, stop auth, retain incident backup, replace state with new empty private directory; restart and verify |
 
-The flow requests only `openid`. The callback uses DingTalk's `authCode` field, and admission is keyed by `unionId`. Provider access/refresh tokens remain ephemeral.
+Refresh and introspection do not re-evaluate the current principal allowlist. A removed principal may still use an existing access token or renew a valid refresh pair. Revoke the current pair or deliberately invalidate state; waiting for expiry only helps if the credentials are not renewed before expiry. Do not mistake UI logout or an upstream provider secret change for ServerFS revocation.
 
-### WeChat Open Platform
+Use the exact Compose selection; for env changes use scoped `up -d --no-deps --no-build --force-recreate <service>`, not restart alone. Coordinate shared/external resource servers before disruptive auth changes. Do not delete state casually: replacement revokes every token and loses stored dynamic registration/state. Restoring an old backup can restore previously valid token state; make that security consequence explicit.
 
-This integration is **WeChat Open Platform Website Application QR login**. It is not WeCom/企业微信 and not Official Account webpage authorization.
+Optional provider/CIMD proxy: `SERVERFS_AUTH_USE_PROXY=true` with `SERVERFS_PROXY_HOST/PORT` and optional credential fields, private env only. This switch does not enable Tunnel, Agent or Jev proxying. Core introspection bypasses process proxy settings.
 
-Register:
+## 8. Diagnose by boundary
 
-```text
-https://auth.example.com/oauth/provider/wechat/callback
-```
+| Symptom | Check |
+| --- | --- |
+| 401 before login | Expected OAuth challenge; check exact resource and discovery metadata |
+| Auth startup failure | Enabled provider with ID/secret, issuer/public URL, introspection secret, state owner and path |
+| Login denied | Exact stable subject and allowlist; don't authorize by display name |
+| Resource mismatch | Canonical client URL and proxy semantics; never broaden audience |
+| Provider or CIMD timeout | Auth service egress/proxy, not wider Core access |
+| Introspection failure | Private route, endpoint, secret, issuer, resource, expiry; fail closed |
 
-Configure:
-
-```env
-SERVERFS_OAUTH_WECHAT_ENABLED=true
-SERVERFS_OAUTH_WECHAT_CLIENT_ID=<app-id>
-SERVERFS_OAUTH_WECHAT_CLIENT_SECRET=<app-secret>
-```
-
-The flow uses `snsapi_login`; ServerFS verifies that user-info `openid` matches the token subject and authorizes by Open Platform `unionid`.
-
-## Client registration: pre-registration, CIMD and DCR
-
-ServerFS supports three client-identification paths:
-
-1. **Operator pre-registration** — optional read-only client metadata supplied through `SERVERFS_AUTH_CLIENTS_FILE`.
-2. **Client ID Metadata Documents (CIMD)** — preferred for standards-current clients. ServerFS performs strict HTTPS URL validation, DNS/public-address checks, TLS hostname verification and bounded in-memory caching.
-3. **Dynamic Client Registration (DCR)** — compatibility-only and disabled by default. Enable only when a client genuinely requires it:
-
-```env
-SERVERFS_AUTH_DCR_ENABLED=true
-```
-
-Public clients use Authorization Code + PKCE S256. Do not enable DCR merely because it exists; prefer CIMD or explicit pre-registration where the client supports them.
-
-## Token and resource model
-
-ServerFS issues its **own opaque tokens**. Access and refresh token values are not stored raw in SQLite; the state store persists digests and associated claims.
-
-Important properties:
-
-- access tokens are bound to the configured `SERVERFS_OAUTH_RESOURCE_URL`;
-- the Resource Server validates issuer, resource, client, subject, scope and expiry through private introspection;
-- provider-native tokens cannot authenticate directly to MCP;
-- authorization codes and provider login state are single-use;
-- refresh tokens rotate on use and replay fails closed;
-- the default required scope is `serverfs:access`; workdir read/write/Agent policy remains separate and is not encoded as OAuth scopes.
-
-## OpenAI Secure MCP Tunnel
-
-OAuth-disabled Tunnel operation remains supported and regression-tested with the repository-tested `tunnel-client v0.0.17` baseline. This is the tested default, not a compatibility lock.
-
-When OAuth uses a different authorization-server origin from the MCP resource origin, configure the Tunnel's official trusted-origin setting in `.env`:
-
-```env
-MCP_OAUTH_TRUSTED_ORIGINS=https://auth.example.com
-```
-
-`compose.oauth.yml` passes this value only to `openai-tunnel`.
-
-### Known upstream limitation
-
-As verified on 2026-10-19, OpenAI tunnel-client issue #78 remains open: ChatGPT may replace the canonical RFC 9728 resource value with the hosted Tunnel resource during the authorization flow. ServerFS does **not** work around this by accepting wildcard audiences, disabling resource validation, or hard-coding undocumented OpenAI gateway hosts.
-
-Therefore:
-
-- direct/generic OAuth is a supported ServerFS path;
-- OAuth-disabled OpenAI Tunnel is supported;
-- OAuth-through-Tunnel requires live acceptance for the specific OpenAI behavior in use and may remain blocked by the upstream resource rewrite.
-
-## Proxy routing
-
-Provider/CIMD egress belongs only to `serverfs-auth`.
-
-Enable it explicitly:
-
-```env
-SERVERFS_AUTH_USE_PROXY=true
-SERVERFS_PROXY_HOST=proxy.example.internal
-SERVERFS_PROXY_PORT=7890
-SERVERFS_PROXY_USERNAME=
-SERVERFS_PROXY_PASSWORD=
-```
-
-This switch is independent from `SERVERFS_OPENAI_TUNNEL_USE_PROXY`, `SERVERFS_AGENT_USE_PROXY` and `SERVERFS_JEV_USE_PROXY`. Enabling one does not implicitly enable another.
-
-## Backup and restore
-
-The OAuth state directory contains SQLite authorization state, including client state and digests for ServerFS-issued credentials. Protect backups as security-sensitive data even though raw access/refresh tokens are not stored.
-
-For a consistent filesystem-level backup:
-
-1. stop only `serverfs-auth` during a maintenance window;
-2. copy the entire configured `SERVERFS_AUTH_STATE_HOST_DIR` with permissions preserved;
-3. start `serverfs-auth` again;
-4. verify `/healthz` through the private/local path.
-
-Restore the complete state directory while `serverfs-auth` is stopped. Do not merge individual SQLite files from different snapshots.
-
-## Revocation and emergency invalidation
-
-OAuth clients can use the authorization server's `/revoke` endpoint to revoke ServerFS-issued credentials. Refresh rotation also invalidates stale/replayed credentials automatically.
-
-Operational rules:
-
-- remove a principal from `SERVERFS_AUTH_ALLOWED_PRINCIPALS` to prevent future admission;
-- use `/revoke` when the affected ServerFS credential is available;
-- changing provider credentials does not invalidate already issued ServerFS access tokens by itself;
-- for emergency instance-wide invalidation, stop `serverfs-auth`, preserve an incident backup if required, replace its OAuth state with a new empty state directory, and restart. This intentionally invalidates all issued ServerFS credentials and loses dynamic client/state registrations, so use it only as a deliberate recovery action.
-
-## Secret rotation
-
-### Provider client secret
-
-Update the provider's `*_CLIENT_SECRET`, then recreate/restart `serverfs-auth`. The MCP Resource Server does not receive provider secrets.
-
-### Introspection secret
-
-`SERVERFS_OAUTH_INTROSPECTION_SECRET` is shared only between `serverfs-mcp` and `serverfs-auth`. Rotate it atomically: update the value and recreate both services in the same maintenance change. A mismatch fails closed.
-
-Never commit real provider or introspection secrets. `.env` remains private/ignored; `.env.example` contains names and safe placeholders only.
-
-## Troubleshooting
-
-### MCP returns 401 before login
-
-This is expected when OAuth is enabled and no valid ServerFS bearer is present. Check the `WWW-Authenticate` / protected-resource metadata path and verify `SERVERFS_OAUTH_RESOURCE_URL` exactly matches the externally meaningful MCP URL.
-
-### Authorization server cannot start
-
-Check:
-
-- `SERVERFS_OAUTH_ENABLED=true`;
-- at least one provider is enabled;
-- every enabled provider has client ID + client secret;
-- `SERVERFS_AUTH_PUBLIC_URL` and `SERVERFS_OAUTH_ISSUER_URL` are identical;
-- public URLs use HTTPS outside loopback;
-- the introspection secret is non-empty;
-- the auth state directory exists and is writable by `SERVERFS_UID:GID`.
-
-### Login succeeds but access is denied
-
-The authenticated upstream identity is not in the exact stable-subject allowlist. Determine the provider's stable subject and add the exact `provider:subject` value; do not authorize by display name/email as a shortcut.
-
-### Resource mismatch
-
-Do not broaden the audience. Confirm the MCP client requested the configured canonical resource and that the reverse proxy did not alter the external URL semantics. For OpenAI Tunnel, also check the known upstream resource-rewrite limitation above.
-
-### Provider calls time out
-
-If the host requires an HTTP proxy, enable `SERVERFS_AUTH_USE_PROXY` and the shared proxy endpoint. Do not give `serverfs-mcp` general Internet egress.
-
-### Tunnel discovery cannot reach a separate auth origin
-
-Set `MCP_OAUTH_TRUSTED_ORIGINS` to the exact public authorization-server origin. Do not use a wildcard.
-
-## Verification checklist
-
-Before public use, verify:
-
-- `SERVERFS_OAUTH_ENABLED=false` still preserves the historical deployment when OAuth is not wanted;
-- base/HTTP/OAuth Compose rendering succeeds;
-- both public origins terminate valid TLS;
-- unauthenticated MCP access returns an OAuth challenge when enabled;
-- authorization-server metadata is reachable at `/.well-known/oauth-authorization-server`;
-- `/healthz` is healthy;
-- the intended provider callback URL exactly matches its application registration;
-- admission is default-deny and uses stable provider subjects;
-- an issued ServerFS token works only for the configured MCP resource;
-- revocation/expiry behaves as expected;
-- provider credentials appear only in `serverfs-auth`, not `serverfs-mcp`.
-
-For implementation evidence and the v0.16 threat model, see `dev_plan_v0.16.md`.
+Existing stdio-based OpenAI Tunnel compatibility deployments may use `MCP_OAUTH_TRUSTED_ORIGINS` for an exact separate authorization origin. Historical testing recorded a possible OpenAI resource-rewrite issue (tunnel-client #78, 2026-10-19); current behavior requires separate live verification. Do not generalize that historical path to the named static-bearer HTTP Connector or disable audience checks. See the [release checklist](v0.25.0-release-checklist-2026-11-21.md) for measured acceptance.

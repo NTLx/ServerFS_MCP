@@ -1,117 +1,58 @@
 ---
 name: serverfs-tunnel
-description: Operate optional OpenAI Secure MCP Tunnel and Linux/macOS/Windows Cloudflare ingresses while preserving independent service owners.
+description: Add, diagnose or operate one OpenAI or Cloudflare Connector for an identified HTTP Core without changing unrelated components.
 ---
 
-# Operate optional ServerFS tunnel ingresses
-
-**Separate transport adapters:** OpenAI Secure MCP Tunnel (existing), Cloudflare Tunnel on Linux Compose (shipped in v0.24.0; live validated on isolated read-only staging), and native macOS Cloudflare (v0.24.1). Never mix their credentials, configuration or health evidence. v0.24.2 adds Windows Cloudflare. Two independent same-user Task Scheduler owners passed public tools and cross-ingress file operations; the public SSE gate passed with 75.0/70.0/65.0-second holds and approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200. The operator waived full-generation restart/recovery testing on 2026-11-10; it was not tested and did not pass.  Connector-only restart and lossless SSE replay are not claimed. Each owner runs one provider, but the separate OpenAI and Cloudflare owners can run in parallel. There is no universal automatic handover. Preserve the shared Agent Bridge while Cloudflare depends on it, including after retiring OpenAI.
-
-The OpenAI Tunnel is an optional authenticated ChatGPT ingress adapter. Treat it as a separate subsystem with its own control-plane credentials, lifecycle and health evidence.
+# Operate a ServerFS Connector
 
 ## When to use
 
-Use this skill when the user explicitly wants to:
-
-- connect ServerFS to ChatGPT through the OpenAI Secure MCP Tunnel;
-- expose Linux Streamable HTTP through an independently authenticated Cloudflare Tunnel;
-- configure or diagnose the native macOS Cloudflare Connector and HTTP origin;
-- assess the opt-in Windows Cloudflare HTTP Origin/Connector on its independent same-user v0.24.2 owner, without switching the OpenAI owner;
-- configure Tunnel control-plane credentials or Tunnel-specific proxy routing;
-- bootstrap/update the official Tunnel client on native Windows/macOS;
-- restart/re-establish the Tunnel after a ServerFS deployment change;
-- diagnose Tunnel readiness, control-plane polling or response delivery.
+A selected OpenAI or Cloudflare ingress Connector needs staging, verification, repair or retirement.
 
 ## When NOT to use
 
-Do not use Tunnel as the default path for generic MCP clients; Linux supports direct Streamable HTTP.
-
-Do not use this skill for:
-
-- static ServerFS HTTP API Key or OAuth: `serverfs-auth`;
-- generic workdir configuration: `serverfs-configure`;
-- Agent provider/Jev proxy routing: `serverfs-agent-bridge`;
-- a broad unknown outage before confirming Tunnel is the failing boundary: `serverfs-diagnose`.
-
-Tunnel control-plane credentials are not ServerFS HTTP credentials and must never be reused as API Keys/OAuth secrets. A Cloudflare Tunnel token is a **connector credential**, not caller authentication; Cloudflare-routed MCP endpoints require separately verified API Key/OAuth or an equivalent admission boundary.
+Direct HTTP or stdio needs no Connector. Core auth/config changes, Bridge operation and provider migration require their own scope and authorization.
 
 ## Preflight
 
-First locate the target ServerFS checkout or deployed installation and establish its version, active configuration and lifecycle owner. In imported/standalone mode, if no authoritative checkout/deployment source is accessible, stop at bounded guidance; do not mutate or infer target commands/settings.
-
-Paths below are relative to the located **ServerFS checkout root**, never to this skill or the Plugin ZIP. Resolve repository paths only after locating that checkout. For an installed deployment without a checkout, use its version-matched deployment documentation, installed CLI help and active configuration; obtain matching sources before a step that needs missing repository material.
-
-1. Identify Linux Compose vs Windows/macOS native Tunnel deployment.
-2. Identify whether the user wants OpenAI Tunnel or Cloudflare Tunnel. Never activate one merely because ChatGPT is mentioned.
-3. Locate current Tunnel configuration without printing key contents.
-4. Determine whether Tunnel is currently managed by the supported platform lifecycle or is a bounded manual diagnostic invocation.
-5. Check for duplicate ownership. Multiple active Tunnel clients for the same Tunnel ID are unsupported; do not start a second one until ownership is understood.
-6. Read the target release's tested/default Tunnel client information from current docs/CLI rather than hard-coding a version from this skill.
-
-## Authoritative sources
-
-- `site/src/content/docs/docs/getting-started.md`
-- `site/src/content/docs/docs/tunnel-diagnostics.md`
-- `site/src/content/docs/docs/windows-native.md`
-- `site/src/content/docs/docs/macos-native.md`
-- `deployment/windows/README.md`
-- `deployment/macos/README.md`
-- `.env.example`
-- current `serverfs tunnel` / `serverfs bootstrap tunnel-client` CLI help and the running Tunnel health API.
-
-## Procedure
-
-1. **Identify ownership and mode.** Determine exactly which managed service/container owns the Tunnel and whether it is expected to be active. Proceed only when the intended owner is proven and no competing client for the same Tunnel ID is active.
-2. **Configure only Tunnel settings.** Keep control-plane Tunnel ID/key and Tunnel proxy switch separate from ServerFS HTTP Auth, Repo Ops, Agent and Jev settings. Review the non-secret key names/diff and confirm credential-file location is outside workdirs.
-3. **Use supported bootstrap/lifecycle paths.** On native platforms, prefer ServerFS bootstrap/service integration; on Linux use the intended Compose Tunnel service. Confirm bootstrap integrity checks and managed status pass for the selected branch.
-4. **Restart/re-establish only when needed.** If ServerFS recreation requires reconnecting the Tunnel, use the platform's managed lifecycle rather than starting an extra client manually. Confirm exactly one intended owner after the lifecycle operation.
-5. **Validate through layered Tunnel evidence.** Process/container existence is only the first layer; prove readiness/control-plane/MCP/response delivery as needed. Record the highest proven health layer and any unverified layer required by the symptom.
-6. **Bound diagnostics.** Use recent redacted logs and health components rather than dumping environment variables or unrestricted logs. Finish with redacted evidence tied to the failed health layer.
+Identify exact Core ID, provider, Connector ID (if applicable), actual version, route, ownership, active sessions and current component state. Verify matching runbook and local authenticated MCP first. Obtain separate authorization for public ingress, provider-side route changes and interruption. Do not reuse another instance's Tunnel resource.
 
 ## Platform branches
 
-Load only the matching branch after identifying the deployment and requested mode:
+Load only one applicable packaged reference:
 
-- Linux / Docker Compose: read [linux branch](references/linux.md) and, for Cloudflare, [Cloudflare Linux branch](references/cloudflare-linux.md) before platform/mode-specific changes.
-- Windows native: read [windows branch](references/windows.md) before platform/mode-specific changes. For Windows Cloudflare, also read [Cloudflare Windows branch](references/cloudflare-windows.md) and the version-matched runbook; **do not repurpose the active OpenAI Tunnel service for testing**.
-- macOS native: read [macos branch](references/macos.md) before platform/mode-specific changes.
+| Platform | OpenAI | Cloudflare |
+| --- | --- | --- |
+| Linux | [Linux](references/linux.md) | [Cloudflare Linux](references/cloudflare-linux.md) |
+| macOS | [macOS](references/macos.md) | [macOS](references/macos.md) |
+| Windows | [Windows](references/windows.md) | [Cloudflare Windows](references/cloudflare-windows.md) |
 
-For native macOS Cloudflare, also read `deployment/macos/README.md`. Use its v0.24.1 commands with the v0.24.1 build; preserve the existing OpenAI Tunnel path independently.
+Linux supplied overlays provide one service per provider per project. macOS named shared Core has no Connector staging path. Windows named configuration is create-only.
+
+## Authoritative sources
+
+Reference paths are relative to the matching checkout unless explicitly linked as packaged references. Read the relevant runbook section, actual client help and `site/src/content/docs/docs/tunnel-diagnostics.md` for failures; do not assume historical client flags still apply.
+
+## Procedure
+
+1. Confirm local Core endpoint, exact Host policy and caller admission. If a Core change is necessary, treat it as a separately authorized operation.
+2. Prepare verified provider client/artifact and independent private credentials outside workdirs. OpenAI named HTTP requires static Core bearer admission; it injects the upstream header independently of its control-plane key. Cloudflare Tunnel token authenticates the Connector, not callers.
+3. Stage and start only the selected Connector using the reference. Preserve all other deployment selections; never create/stop a Core or Bridge as a side effect.
+4. Verify provider registration, route and fresh authenticated MCP independently. For OpenAI, distinguish external control-plane admission from local Core bearer denial. For Cloudflare test caller denial through the public route. Test response delivery and long-lived SSE separately when required.
+5. Stop/restart or retire only the selected Connector if authorized. No old-session replay guarantee. Provider-side resource deletion is separate from local retirement.
 
 ## Safety / stop conditions
 
-Stop when:
-
-- Tunnel ID/key source is unknown or would need to be exposed in output;
-- another active client appears to own the same Tunnel ID and its identity cannot be proven;
-- enabling Tunnel was not explicitly requested;
-- a proposed fix requires reusing the Tunnel key as ServerFS API Key/OAuth material;
-- the fix would put key files inside a configured workdir;
-- the supported current-user service owner would be replaced by root/Admin machinery;
-- a non-default Tunnel binary cannot satisfy the current integrity/bootstrap checks;
-- generic MCP/ServerFS health is failing independently of Tunnel and must be repaired first.
+Stop on uncertain ownership, conflicting route, unsupported mode, active unsafe work, missing authorization or failed validation. Never log credential files or expanded env, expose health/admin endpoints, disable caller auth, modify unrelated DNS, or force removal of private state.
 
 ## Verification
 
-Use an evidence ladder appropriate to the observed failure:
-
-1. managed container/service/process exists;
-2. Tunnel liveness/readiness is healthy;
-3. at least one successful control-plane poll is observed when required;
-4. MCP target observation is healthy/expected;
-5. response delivery succeeds when ChatGPT commands are being processed;
-6. local queue/dispatcher evidence shows no unexplained backlog when relevant.
-
-For Linux, choose the correct ingress-specific gate: OpenAI Tunnel requires applicable control-plane/response evidence, while Cloudflare Tunnel requires actual Cloudflare connected status, HTTPS authentication, direct MCP tooling and SSE/session recovery when applicable. Never apply OpenAI's poll requirements to cloudflared. `/healthz` or container `Up` alone is insufficient. A component endpoint returning HTTP 200 may still report a degraded JSON state; inspect the payload.
-
-For native managed deployments, also prove exactly one intended Tunnel owner and healthy ServerFS service state.
+Record exact component ID/version, upstream authority, local MCP acceptance, provider status, external authorized result and relevant denial checks. Confirm unrelated Core/Bridge/Connector identities; registration or a successful poll alone is not delivery proof.
 
 ## Success criteria
 
-The Tunnel task is complete when the intended current-user/Compose owner is active, the correct control-plane configuration is in use without credential exposure, health evidence reaches the layer required by the user's symptom, and no second Tunnel client or unrelated Auth/Repo Ops/Agent policy was introduced.
+Intended route works under its actual admission contract, or retirement removes only the intended ingress; untested gates are explicit.
 
 ## Failure handling
 
-If control-plane polling fails, inspect Tunnel-specific proxy/auth/connectivity evidence; do not change ServerFS filesystem policy. If polling succeeds but ChatGPT receives no result, inspect response-delivery and local dispatcher/queue evidence before restarting anything.
-
-If the Tunnel is healthy but ServerFS MCP is not observed, diagnose the ServerFS target separately. If OAuth-through-Tunnel is involved, consult the current OAuth documentation for known upstream resource behavior rather than weakening OAuth audience/resource validation.
+Identify first failing boundary using bounded evidence. Stop rather than repeatedly restarting or widening admission. Retain private inputs and report changed/unchanged state, missing proof and next bounded action.

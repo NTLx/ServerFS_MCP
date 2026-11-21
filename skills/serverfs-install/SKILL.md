@@ -1,167 +1,54 @@
 ---
 name: serverfs-install
-description: Install ServerFS on a new host; select the supported deployment and verify the base product before requested optional capabilities.
+description: Install a fresh ServerFS Core or explicitly new named instance; select the native or Docker path and verify the minimum requested capability.
 ---
 
 # Install ServerFS
 
-Install the smallest supported ServerFS deployment for the target platform, verify the base product first, then add optional subsystems only when the user explicitly asks for them.
-
 ## When to use
 
-Use this skill when ServerFS is not yet installed/configured on the target host, or when the user explicitly wants a clean first deployment on a new host.
+New local stdio or persistent HTTP Core; optional separately authorized attachments.
 
 ## When NOT to use
 
-Do not use this workflow to overwrite or rebuild an existing installation. If ServerFS, `.env`, `serverfs.toml`, managed service state or a deployment checkout already exists, determine whether the task is an upgrade (`serverfs-upgrade`), configuration change (`serverfs-configure`) or diagnosis (`serverfs-diagnose`).
-
-Use dedicated skills for optional subsystems after the base install is healthy:
-
-- `serverfs-tunnel`;
-- `serverfs-auth`;
-- `serverfs-configure` for per-workdir Repo Ops policy;
-- `serverfs-agent-bridge` for the Linux Host Bridge transport/lifecycle used by Agent delegation and/or Repo Ops.
+Existing owner, migration, upgrade or uncertain installation. Use diagnose or upgrade first.
 
 ## Preflight
 
-First locate the target ServerFS checkout or deployed installation and establish its version, active configuration and lifecycle owner. In imported/standalone mode, if no authoritative checkout/deployment source is accessible, stop at bounded guidance; do not mutate or infer target commands/settings.
-
-Paths below are relative to the located **ServerFS checkout root**, never to this skill or the Plugin ZIP. Resolve repository paths only after locating that checkout. For an installed deployment without a checkout, use its version-matched deployment documentation, installed CLI help and active configuration; obtain matching sources before a step that needs missing repository material.
-
-1. Identify the operating system, architecture and filesystem/storage boundary.
-2. Read the current supported platform shape from the target ServerFS release.
-3. Confirm the current user can satisfy external prerequisites without changing ServerFS into a privileged deployment.
-4. Check for pre-existing ServerFS configuration/state before creating anything.
-5. Determine the minimum requested ingress:
-   - Linux generic Streamable HTTP is the normal base deployment;
-   - Windows/macOS native use stdio plus optional Tunnel for ChatGPT connectivity.
-- v0.24.2 adds native Windows Cloudflare. Its accepted topology uses a second same-user Task Scheduler owner (`ServerFS Cloudflare WorkPC` via `service cloudflare-parallel`) with separate venv/state/watchdog/runner, sharing intended writable workdirs and one Agent Bridge/Repo Ops service. Public SSE passed at 75.0/70.0/65.0 seconds. Full-generation restart/recovery was waived on 2026-11-10, not tested and did not pass; final  Follow `serverfs-tunnel` and `docs/windows-cloudflare-tunnel.md`; do not mistake the single-owner provider guard for a universal prohibition on independent owners or infer an automatic handover.
-- Native macOS Cloudflare is an optional v0.24.1 capability. Finish and verify the base native install first, then follow `serverfs-tunnel` and `deployment/macos/README.md` if Cloudflare ingress is explicitly requested.
-6. Keep Tunnel, Auth, binary/file ingress, Repo Ops and Agent delegation disabled unless they are explicitly part of the requested installation. Repo Ops and Agent delegation are independent opt-ins even though Linux uses the same Host Bridge transport for both.
-
-If an existing operator config is found, stop the new-install path. Never treat it as disposable merely because it differs from the example.
-
-## Authoritative sources
-
-- `site/src/content/docs/docs/getting-started.md`
-- `site/src/content/docs/docs/windows-native.md`
-- `site/src/content/docs/docs/macos-native.md`
-- `site/src/content/docs/docs/repo-ops.md` when the requested Linux installation includes Repo Ops;
-- `deployment/windows/README.md`
-- `deployment/macos/README.md`
-- `.env.example`
-- `serverfs.toml.example`
-- the release assets and current `serverfs` CLI for the target release.
-
-Do not use an old development plan as the install guide when current deployment documentation exists.
+Identify platform, architecture, storage, actual version, target topology and authorization. Inventory existing IDs, workdir roots, occupied ports, private state and active work. Choose disjoint writable roots and private state. For persistent HTTP choose exact instance ID, Host admission and caller authentication; Connector credentials are not caller auth.
 
 ## Procedure
 
-1. **Select the supported platform family.** Do not invent a native Linux shape or Dockerize the supported native Windows/macOS shape to avoid following platform contracts. Proceed only after OS, architecture and storage match the target release support evidence.
-2. **Acquire the intended release/source.** Prefer the user's requested release; otherwise use the current stable release documented by the checkout/release source. Do not silently track `edge`/unreleased code for a production install. Confirm acquired artifact version/integrity against the intended release metadata.
-3. **Create initial configuration only when none exists.** Examples may seed a new config, but immediately reduce it to the operator's actual workdirs/settings and keep secrets untracked/private. Confirm the new config is private and parses before starting services.
-4. **Configure one minimal workdir.** Read-only is the default; enable writes only when the user's use case requires them. Check the configured root exists and its effective read-only/write policy matches the request.
-5. **Start/validate the base product before optional features.** This separates filesystem/configuration failures from Tunnel/Auth/Repo Ops/Agent failures. Proceed only after base parser/doctor and transport checks pass.
-6. **Use the platform's supported current-user lifecycle.** Do not replace it with root/system services. Confirm status identifies the intended current-user owner.
-7. **Add optional capabilities one at a time when requested**, using the dedicated skill and re-verifying after each capability. For Linux Repo Ops, configure the per-workdir policy through `serverfs-configure` and the required Host Bridge transport/lifecycle through `serverfs-agent-bridge`; do not enable an Agent runtime merely because Repo Ops needs the Bridge transport. Complete each requested subsystem’s verification before adding another.
+1. Resolve the applicable version-matched source and trusted artifacts. Verify integrity against trusted release evidence; do not install an unpublished candidate as stable.
+2. Select local stdio (native, no persistent registration) or persistent HTTP (named Core). Linux uses Docker Compose for Core, native host Bridge if requested.
+3. Prepare new private config with explicitly allowed workdirs, read-only by default. Start with file-only *policy* when that is the requested mode; if owned/shared is requested, choose its mode-specific initial procedure before creating any immutable config.
+4. Follow only the selected platform runbook. Verify Core independently, then the authorized Bridge attachment and/or Connector where applicable. Native registration and external ingress require explicit approval.
+5. Never expand the installation just to demonstrate optional capabilities. For Repo Ops-only, do not start an Agent provider.
 
 ## Platform branches
 
-### Linux / Docker Compose
+| Platform | Read this runbook only | Gate |
+| --- | --- | --- |
+| Linux | `deployment/linux/README.md` | Docker, Compose v2.24+, explicit project/env/overlays; file-only uses bridge-disabled; host Bridge is a user systemd service. |
+| macOS | `deployment/macos/README.md` | Native arm64 Apple Silicon, macOS 27.x, APFS; signed SMAppService for persistent jobs. Shared: existing owner, one Agent slot, no Repo Ops or named Connector staging. |
+| Windows | `deployment/windows/v0250-native-operations.md` | Windows 11 x64, NTFS; verified installed wheels, offline dependency cache, current-user Scheduler. Create-only helpers; no WSL, VM or administrator ownership. |
 
-The normal base is the generic Streamable HTTP deployment described by the current Getting Started guide:
+## Authoritative sources
 
-```bash
-git clone https://github.com/NTLx/ServerFS_MCP.git
-cd ServerFS_MCP
-cp .env.example .env
-chmod 600 .env
-```
-
-Only perform the copy when `.env` does not already exist. Configure at least one workdir. Before starting the default loopback endpoint, set this explicit Host allowlist in `.env`:
-
-```text
-SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
-```
-
-An empty allowlist permits only the internal authority. Preserve `serverfs-mcp:8000` for the Tunnel/internal path and add the actual loopback Host authorities for local clients. With customized ports, use the published port for loopback and the container HTTP port for `serverfs-mcp`. For external clients or a reverse proxy, add each exact Host authority received by ServerFS to the allowlist rather than disabling Host validation. Then use the generic HTTP shape:
-
-```bash
-docker compose pull
-docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
-docker compose -f compose.yml -f compose.http.yml ps
-```
-
-Before public/non-loopback exposure, route to `serverfs-auth` if ServerFS-owned authentication is requested and ensure the separate TLS/Host/Origin boundary from current documentation is satisfied.
-
-Do not add `compose.agent.yml`, `compose.oauth.yml`, the v0.24 Linux `compose.cloudflare.yml` overlay, file-ingress profile or the historical OpenAI Tunnel shape unless requested. For a specifically requested Linux Cloudflare ingress, use `serverfs-tunnel` plus `serverfs-auth`: never publish the default unauthenticated ServerFS instance or reuse an existing production Compose project without checking the active project name and full overlay set. On v0.23 Linux, `compose.agent.yml` is the Host Bridge transport overlay for Agent delegation and/or Repo Ops; adding it does not itself authorize either capability.
-
-### Windows native
-
-Supported installation uses the release wheels in **two isolated per-user Python environments**: product/native kernel in the connector environment and Agent Bridge in its separate environment when Agent support and/or Repo Ops transport is needed. Do not install the product and Bridge into one dependency graph. v0.23.2 supports validated native Windows 11 x64 Deterministic Repo Ops; preserve explicit per-workdir Repo Ops policy independently from Agent delegation.
-
-For the base filesystem/native product, follow the current Windows guide and install product + native wheel into the stable current-user connector environment. Create `serverfs.toml` from the example only if no config exists, then run:
-
-```powershell
-& $serverfs doctor --config serverfs.toml
-```
-
-After doctor passes, the supported persistent lifecycle is:
-
-```powershell
-& $serverfs service install --config serverfs.toml --env-file .env
-& $serverfs service start
-& $serverfs service status
-```
-
-A fresh install being disabled until explicit `service start` is intentional. Do not replace the current-user Task Scheduler lifecycle with SCM/LocalSystem or Administrator-owned services.
-
-### macOS native
-
-Only proceed within the current documented macOS support boundary. Use the normal Python environments and current native deployment guide. v0.23.1+ supports validated native Apple Silicon macOS Deterministic Repo Ops; preserve explicit per-workdir Repo Ops policy independently from Agent delegation. Create `serverfs.toml` only when no existing configuration exists, then run:
-
-```bash
-serverfs doctor --config serverfs.toml
-serverfs service install --config serverfs.toml --env-file .env
-serverfs service status
-```
-
-Use `serverfs service start` when needed by the current lifecycle state. If macOS requires Login Items approval, surface that user-controlled requirement; do not bypass it with root LaunchDaemons or raw replacement plists.
+Paths refer to the matching checkout, not files packaged in this Skill. Use the selected runbook section and `.env.example` (Linux) or `serverfs.toml.example` (native). Consult installed CLI help when uncertain. Without matching source or verified ownership, give non-mutating guidance only.
 
 ## Safety / stop conditions
 
-Stop when:
-
-- a pre-existing installation/configuration is discovered and ownership/history is unclear;
-- the host is outside the currently supported platform/storage boundary;
-- installation would require changing ServerFS to root/Administrator ownership;
-- a requested workdir or key path would place secrets inside an exposed workdir;
-- the base config/doctor/Compose gate fails;
-- optional features are being implicitly added without user intent;
-- release assets/versions cannot be verified from the intended release source.
-
-Do not delete an existing environment/state to manufacture a "clean install" unless the user explicitly requested destructive replacement and the consequences are understood.
+Stop on conflicting identities, unsupported version/platform, unsafe active work, absent authorization or failed validation. Never overwrite a default owner, expose credentials/private state, bypass grants/ACLs or clear locks. A Shared Core cannot provision or manage its owner; same UID/SID is not authorization.
 
 ## Verification
 
-Minimum base verification:
-
-- installed `serverfs --version` corresponds to the intended release;
-- configuration parses/renders;
-- target workdir is visible through the supported ServerFS surface with expected read-only/write policy;
-- intended current-user service/container is running/healthy;
-- no unrequested Tunnel/Auth/Repo Ops/Agent capability is active.
-
-Windows/macOS: `serverfs doctor --config serverfs.toml` must pass before claiming the native installation healthy.
-
-Linux: verify the exact Compose shape used and the MCP service state; if the user requested remote HTTP access, test the configured endpoint through the intended ingress boundary rather than only checking the container process.
+Check exact version, readiness and effective workdir policy. Verify MCP initialize/tools/list and safe read; for HTTP test caller denial, and for read-only test denied mutation in a disposable approved target. Verify optional attachment/remote MCP independently only if requested; registration is not live readiness. Check unrelated components remain unchanged.
 
 ## Success criteria
 
-A first installation is complete when the smallest requested ServerFS deployment is healthy, current-user/non-elevated, configured only for the intended workdirs/capabilities, and proven through supported status/doctor/transport checks.
+Requested mode and capabilities verified, no unintended exposure or new component, existing owners unaffected.
 
 ## Failure handling
 
-Do not respond to an install failure by adding privilege or optional overlays. Route unclear failures to `serverfs-diagnose`; route a confirmed subsystem failure to its dedicated skill.
-
-Report which installation stage failed, the exact non-secret validation evidence, and what was left unchanged. Never claim a platform is installed successfully solely because files were copied or a service definition was created.
+Stop at first failing gate. Preserve partial state and inputs; native create-only attempt markers may prohibit retry. Use only documented authorized recovery, not forced deletion/re-ACL. Report failed check, changes, uncertainty and next bounded action.

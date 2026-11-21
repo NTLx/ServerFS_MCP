@@ -1,6 +1,8 @@
 # Jev Approval Advisor experiment
 
-Status: opt-in experimental capability introduced before v0.8.0 and included in the current **v0.13.2 stable release** (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
+Status: historical opt-in experiment introduced before v0.8.0; v0.13.2 was the stable release recorded at a later documentation checkpoint (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge).
+
+> This historical approval experiment preserves advisory-only authority and measured cache behavior. Current [maintainer invariants](maintainers/invariants.md) govern supported native runtime/policy, best-effort sanitization and explicit external data transfer authorization. Neither a recommendation nor redaction constitutes approval or a guarantee of secret removal; ACP does not acquire provider approval capability from this experiment.
 
 This experiment adds the third Jev-backed advisory capability to the ServerFS Agent Bridge:
 an Approval Advisor for provider-originated approval requests.

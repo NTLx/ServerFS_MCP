@@ -1,5 +1,7 @@
 # macOS v0.25.0 release-readiness documentation reconciliation — 2026-11-15
 
+> Historical checklist for the 2026-11-15 checkpoint, superseded as a readiness summary by [the 2026-11-16 acceptance record](v0250-macos-release-readiness-2026-11-16.md) and the [current integrated release checklist](../v0.25.0-release-checklist-2026-11-21.md). The dated status, version, blocked operations and unchecked boxes remain evidence, not present instructions. The later [cooperative start/unstage lock](v0250-macos-shared-lock-and-wheel-gates-2026-11-15.md) closes the earlier missing shared lock, but not noncooperative lifecycle races. Do not infer cleanup, exact-SHA artifacts or release authorization from later unrelated passes.
+
 This checklist reconciles current-state documentation against the available
 macOS v0.25.0 evidence. It does not authorize registration, deployment,
 credentials, production ingress, or release publication. The current stable

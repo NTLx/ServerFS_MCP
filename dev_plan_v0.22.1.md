@@ -1,5 +1,7 @@
 # ServerFS MCP v0.22.1 Maintenance Release Plan
 
+> Historical v0.22.1 maintenance plan and acceptance record. The staged-interpreter fix, bounded one-shot cleanup principle and readiness evidence remain useful; dated generic Tunnel/Bridge restart commands and process observations are not current named-instance procedures. Use the [maintainer workflow](docs/maintainers/workflow.md) and version-matched platform runbooks; no old restart/handover is authorized by this plan.
+
 Status: **released as stable v0.22.1**; see the [release checklist](docs/v0.22.1-release-checklist-2026-10-23.md) for tag, GitHub Release, Windows wheel workflow, and asset digest evidence.
 Baseline: current clean `main` after v0.22.0
 Scope: Linux Agent Bridge installer compatibility, macOS native restart reliability, and maintainer safety guidance

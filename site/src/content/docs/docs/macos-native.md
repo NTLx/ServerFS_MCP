@@ -1,118 +1,34 @@
 ---
 title: macOS Native
-description: ServerFS v0.24.0 native macOS deployment — Apple M-series, macOS 27, Darwin FD safety and Apple SMAppService persistence for Tunnel and Agent Bridge.
+description: Choose a native stdio or named HTTP deployment on Apple Silicon.
 ---
 
-The current stable project release is **v0.24.2**. Native macOS Cloudflare is limited to Apple Silicon/macOS 27. The macOS native support shape introduced in **v0.13.2** otherwise remains unchanged: native **arm64** only, no Rosetta/x86_64, macOS 27.x only, and **local APFS** workdirs. Intel Macs, Hackintosh, macOS 26 or older and macOS 28 or newer fail closed with `NATIVE_PLATFORM_UNSUPPORTED`. v0.23.1 added validated native Apple Silicon macOS Repo Ops; v0.23.2 keeps that support and adds validated native Windows 11 x64 Repo Ops alongside Linux Host Bridge support. The existing OpenAI Tunnel and Agent Bridge remain available.
+ServerFS runs on Apple Silicon, native arm64, macOS 27.x and local APFS, with the current user's filesystem permissions and macOS privacy controls. Persistent HTTP services use signed SMAppService / LaunchAgents. No Docker, Rosetta or root LaunchDaemon is required.
 
-The release adds a separate optional loopback HTTP origin and Cloudflare Connector using the existing app-associated `SMAppService` LaunchAgent mechanism. It requires a remotely managed Tunnel, exact hostname admission, an official verified `cloudflared` binary, and separate current-user token/auth files with mode `0600` outside the checkout and every workdir. Use the [macOS deployment runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241) for commands, staging, lifecycle, rollback and acceptance .
+## Choose the right mode
 
-**Unreleased v0.24.3 development:** the macOS Cloudflare installer now has a candidate change permitting explicitly writable workdirs (`read_only = false`) instead of enforcing the earlier read-only staging limit. For intended dual-ingress parity, use the same canonical native `serverfs.toml` as the OpenAI Tunnel and keep the shared Agent Bridge policy synchronized. Default read-only, independent HTTP API Key/OAuth, exact Host validation and private token isolation remain mandatory. **This candidate has not yet passed public macOS writable-workdir/Agent acceptance and is not part of the current stable v0.24.2 release.**
+| Mode | Use when |
+| --- | --- |
+| Local stdio | The MCP client is local and needs no persistent service |
+| File-only Core | You need authenticated HTTP file access, without a Bridge |
+| Owned Bridge | A Core needs its own Agent or Repo Ops execution boundary |
+| Shared Bridge | Multiple Cores need an existing owner-managed v2 Bridge; each Core supports one bound Agent workdir, with Repo Ops disabled |
 
-v0.13.2 keeps the Darwin filesystem and Agent protocol implementation in Python, but replaces the old hand-installed LaunchAgent lifecycle with Apple's current **ServiceManagement / `SMAppService`** model. A small headless `ServerFSServiceManager.app` owns registration and status for two per-user LaunchAgents:
+File-only and owned Cores support optional OpenAI and Cloudflare Connectors. Shared Cores currently have no Connector staging interface. An owned pair uses a private native socket and policy checks; shared attachment uses individual signed grants.
 
-```text
-SMAppService / launchd
-  +-- com.ntlx.serverfs.tunnel
-  |    -> serverfs tunnel
-  |         -> official tunnel-client (tested release by default, darwin-arm64)
-  |              -> sanitizer supervisor
-  |                   -> serverfs serve
-  |                        -> Darwin FD backend
-  |                        -> optional file-ingress helper
-  |
-  +-- com.ntlx.serverfs.bridge
-       -> Agent Bridge
-            -> private AF_UNIX + getpeereid
-            -> codex / claude / qoder
-```
+## Deploy
 
-Both services survive terminal/Agent-session exit. `SMAppService` owns user-login persistence; live reboot/re-login recovery validation is deferred beyond v0.13.2. ServerFS does **not** install a LaunchDaemon or run before login.
+Follow the [complete macOS runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md) for the exact commands and copyable configuration examples.
 
-There is no Docker, VM, Rosetta requirement or compiled macOS filesystem kernel package. The Darwin backend remains pure Python over descriptor-relative POSIX primitives plus narrow libc bindings (`fcopyfile`, `getpeereid`, `confstr`). There is no `serverfs-macos-native` wheel.
+1. Prepare version-matched Core (and, if needed, Bridge) environments and build a signed template App.
+2. Create a minimal native TOML defining the intended workdirs. For persistent HTTP, prepare a distinct port and a private API Key or OAuth configuration. The Host allowlist must exactly match the configured hostname followed by the loopback authority.
+3. Use the named CLI (`python -m serverfs_mcp.darwin_instance_cli --instance <id>`) to stage the selected mode, then start it explicitly. A Shared Core also requires a verified independent runtime and an owner-issued binding; run its preflight before activation.
+4. Approve the Login Item in System Settings if required. Verify the Core before starting optional Connectors.
 
-## Filesystem semantics
+For same-provider additional Connector IDs, predeclare them at file-only/owned staging. OpenAI HTTP uses separate control-plane and static Core bearer files; Tunnel credentials never replace caller authentication.
 
-- Descriptor-relative traversal with `O_NOFOLLOW`; symlinks fail closed.
-- Atomic publication (same-directory temp → fsync → `renameat`) with revision/CAS and hard-link protection.
-- Replacement writes preserve mode, user xattrs and extended ACLs with `fcopyfile(COPYFILE_METADATA)` or fail before publication.
-- `search_text` uses an FD-secure walk, bounded reads and literal UTF-8 scanning rather than `/proc` or an ambient shell tool.
+## Verify and operate
 
-## Install persistent services
+Check anonymous denial, authenticated MCP initialization, safe workdir access and any explicitly enabled Agent/Repo Ops tools. A registered job does not prove public reachability. Operate each Connector by its exact identity; check that unrelated components remain running and reinitialize the session after restart.
 
-Install the normal Python environments and official tunnel client first:
-
-```bash
-uv sync --frozen
-uv sync --project agent_bridge --frozen
-serverfs bootstrap tunnel-client   # defaults to the ServerFS-tested v0.0.17 release
-serverfs doctor --config serverfs.toml
-
-# To use another official release, provide both its tag and the SHA-256 of
-# that release's official SHA256SUMS.txt:
-# serverfs bootstrap tunnel-client --version vX.Y.Z --manifest-sha256 <sha256>
-```
-
-The tested release is the default baseline, not a compatibility lock.
-
-Then install the persistent user services:
-
-```bash
-serverfs service install --config serverfs.toml --env-file .env
-serverfs service status
-```
-
-The installer builds the small Swift companion locally with the Apple command-line toolchain, validates its code signature and embedded LaunchAgent plists, installs it under ServerFS's private Application Support tree, materializes 0600 lifecycle state, and registers the services through `SMAppService`.
-
-The normal lifecycle surface is:
-
-```bash
-serverfs service status
-serverfs service start
-serverfs service restart
-serverfs service stop
-serverfs service uninstall
-```
-
-When Agent Bridge is part of the installed manifest, `service restart` uses a bounded one-shot launchd hand-over so the Bridge can be unregistered without terminating the process responsible for completing the restart. The initial command reports that the hand-over was scheduled. After reconnecting, run `serverfs service status` and require the native `handover` evidence to show `complete=true`, `ok=true`, `job_loaded=false` and `plist_exists=false`. Tunnel-only restart remains synchronous. `serverfs agent-bridge restart` uses the same bounded hand-over after requested policy/private-state synchronization and restarts only the Bridge.
-
-### Common status formats
-
-The default native `service status` JSON includes bounded hand-over evidence. Operators may explicitly run `serverfs service status --format common-json` or `serverfs service status --format common-human` for a sanitized projection. It omits paths, PIDs, task names, private IDs and native hand-over detail, and uses `unknown`/`not-checked` rather than inventing health. Use `serverfs doctor` for deeper platform/configuration diagnostics. See [Phase F acceptance and limits](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-f-macos-acceptance-2026-10-22.md).
-
-If macOS reports `requires-approval`, ServerFS respects that user decision. Open the exact settings pane with:
-
-```bash
-serverfs service open-settings
-```
-
-Approve the ServerFS background item under **System Settings > General > Login Items**. ServerFS does not bypass or simulate approval.
-
-## Agent Bridge policy
-
-The v0.19.0 ACP profile uses the native POSIX process-group containment seam. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed macOS end-to-end acceptance, including prompt, persisted-session continuation, and active-tool cancellation/cleanup.
-
-`serverfs.toml` remains the operator source of Agent workdir/runtime policy. The private `bridge.json` outside every exposed workdir remains derived state and may contain the narrow Jev/proxy material needed by the Bridge.
-
-```bash
-serverfs agent-bridge configure --config serverfs.toml --env-file .env
-serverfs agent-bridge restart --config serverfs.toml
-# refresh private Jev/proxy values as well:
-serverfs agent-bridge restart --config serverfs.toml --env-file .env
-```
-
-`serverfs agent-bridge install` is retired in v0.13.2. Upgrades from v0.13.0/v0.13.1 detect the legacy `~/Library/LaunchAgents/com.ntlx.serverfs.agent-bridge.plist`, stop the old job only at hand-over, register the app-associated replacement, health-check it, and remove the old plist only after success. Registration failures retain a rollback path. An unmanaged legacy tunnel is detected before installation so ServerFS never silently starts a second control-plane client.
-
-The managed tunnel also holds a per-user instance lock and forwards launchd termination to tunnel-client, preventing orphaned supervisor/serve/file-ingress descendants.
-
-## Data and security boundaries
-
-Data lives in `~/Library/Application Support/ServerFS` by default; sockets live in the OS-provided per-user runtime directory (`_CS_DARWIN_USER_TEMP_DIR`). Service manifests, private environment maps and logs are outside exposed workdirs with private permissions. LaunchAgent plists contain no provider or tunnel credentials.
-
-ServerFS never bypasses macOS TCC privacy controls. Protected paths fail cleanly, and `serverfs doctor` reports platform, policy, Service Manager validity, registration/approval state, process health, legacy artifacts and unmanaged tunnel detection.
-
-## Acceptance evidence
-
-See `docs/phase-0-macos27-arm64-capability-probe-2026-10.md`, `docs/phase-v0.13.2-servicemanagement-probe-2026-10.md`, the v0.13 macOS acceptance records, and the v0.13.2 development/acceptance record.
-
-For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).
+Stop Connectors before stopping their Core or owned pair. Shared Core operations never manage the owner Bridge. The named staging commands create new instances; use an explicit migration or rollback plan for existing deployments. Release-level acceptance and current limitations are tracked in the [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.25.0-release-checklist-2026-11-21.md).

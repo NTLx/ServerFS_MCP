@@ -1,266 +1,36 @@
 ---
 title: OAuth 2.1
-description: 使用可选 OAuth 2.1 与身份联合保护远程 Streamable HTTP。
+description: 通过独立授权服务准入具有明确身份的 MCP 调用方。
 ---
 
-ServerFS v0.16.0 为**远程 Streamable HTTP** 新增可选 OAuth 2.1 认证。OAuth 默认关闭，也不适用于 Windows/macOS 原生 stdio。v0.17+ 中，内置 OAuth 与 `SERVERFS_HTTP_API_KEY` 互斥；每个实例应只选择一种 ServerFS 自己负责的 HTTP 认证模式。
+OAuth 是[静态 API Key](../api-key/)的替代方式，解决谁可以进入 HTTP Core；操作权限仍由 Workdir 和 Bridge 策略决定。本地 stdio 两者均不需要。
 
-OAuth 解决的是**谁可以进入这个 ServerFS 实例**；现有 workdir 策略仍决定**已准入调用方具体能做什么**。
+## 选择部署方式
 
-```text
-GitHub / 钉钉 / 飞书 / 微信
-          │
-          ▼
-     serverfs-auth
-   身份联合 + 精确准入
-   ServerFS 自有不透明 Token
-          │ 私有 introspection
-          ▼
-      serverfs-mcp
-          │
-          ▼
-     现有 workdir 策略
-```
+配套授权服务 `serverfs-auth` 使用 Linux Docker Compose 部署，负责身份 Provider 凭据、OAuth 状态及显式准入。Core 通过私有 introspection 校验 ServerFS 签发的 resource-bound Token。
 
-`serverfs-auth` 独占上游身份提供商凭据与联网出口；`serverfs-mcp` 不接收 provider 凭据，也不获得通用 Internet egress。
+原生 HTTP Core 可使用独立配置的授权服务，原生安装器不部署该服务。Windows 初始配置仅支持 bearer，因此 OAuth 使用手动路径。命名 OpenAI HTTP Connector 要求静态 Core bearer，不属于 OAuth 部署路径。
 
-## 部署边界
+## 配置准入
 
-OAuth 当前是 **Linux Docker Compose** 能力。
+精确 env、状态目录准备、Compose 组件级命令及原生配置见 [OAuth 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/oauth.md)。
 
-只有需要已认证的 Host Bridge capability 时才额外加入 `compose.agent.yml`：Agent 委托、v0.23.0 Linux Repo Ops transport，或两者同时启用。它们各自的 Workdir 授权与 OAuth、彼此之间都保持独立。
+1. 选择精确 Core 与 canonical 公网 HTTPS MCP resource URL。
+2. 准备独立 HTTPS 授权 origin 与私有 auth state 目录。Issuer 必须等于 auth public URL；introspection 仅通过可信私有路径访问。
+3. 选择 Provider，登记回调地址，配置真实凭据和稳定身份白名单。
+4. 先启用授权服务并确认就绪，再启动 Core。保留已授权的组件选择；OAuth 不要求 Tunnel 或 Bridge。
 
-典型公网部署使用两个独立 HTTPS origin：
+| Provider | 白名单 Principal |
+| --- | --- |
+| GitHub | `github:<numeric-id>` |
+| 钉钉 | `dingtalk:<unionId>` |
+| 飞书/Lark | `feishu:<open_id>` |
+| 微信开放平台网站应用 | `wechat:<unionid>` |
 
-```text
-https://mcp.example.com/mcp -> 127.0.0.1:8000/mcp
-https://auth.example.com    -> 127.0.0.1:8082
-```
+准入默认拒绝，使用精确稳定 subject，而非显示名称或邮箱。公网使用前完成真实 Provider 登录。优先使用 CIMD 或显式公共客户端预注册，DCR 仅用于兼容。Authorization Code 使用 PKCE S256。
 
-Docker 端口继续只绑定 loopback，由反向代理终止公网 TLS。反向代理必须保留 OAuth metadata 与 callback 所依赖的外部 host/scheme 语义。
+## 验证与维护
 
-最小 `.env` 配置：
+检查公网 TLS、OAuth discovery、未认证 challenge、允许和拒绝身份登录、认证后 MCP 及错误 resource/已撤销 Token 的拒绝。健康检查不等于验收，不得为适配客户端而放宽 resource 或绕过 introspection。
 
-```text
-SERVERFS_OAUTH_ENABLED=true
-SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000,mcp.example.com
-SERVERFS_OAUTH_RESOURCE_URL=https://mcp.example.com/mcp
-SERVERFS_AUTH_PUBLIC_URL=https://auth.example.com
-SERVERFS_OAUTH_ISSUER_URL=https://auth.example.com
-SERVERFS_OAUTH_REQUIRED_SCOPES=serverfs:access
-SERVERFS_OAUTH_INTROSPECTION_SECRET=<long-random-secret>
-SERVERFS_AUTH_ALLOWED_PRINCIPALS=<provider:stable-subject,...>
-```
-
-`SERVERFS_OAUTH_ISSUER_URL` 必须与 `SERVERFS_AUTH_PUBLIC_URL` 完全一致。除明确的 loopback 测试外，公网 URL 必须使用 HTTPS。
-
-上述 Host allowlist 保留内部与 loopback 路径，并加入本例的公网 MCP authority。请将 `mcp.example.com` 替换为代理实际保留的 Host authority；如自定义端口，也需相应调整。保持 Host 校验启用。
-
-启动 Compose 前，先为配置的 `SERVERFS_UID:SERVERFS_GID` 准备 auth state 目录。默认身份为 `10001:10001`、`SERVERFS_AUTH_STATE_HOST_DIR=./.serverfs-auth-state` 时，在仓库根目录运行：
-
-```bash
-sudo install -d -m 700 -o 10001 -g 10001 -- .serverfs-auth-state
-```
-
-将所有者设为 `10001:10001` 通常需要 `sudo`（或管理员操作）；容器仍以该非 root 身份运行。如果在 `.env` 中自定义了 `SERVERFS_UID`、`SERVERFS_GID` 或 `SERVERFS_AUTH_STATE_HOST_DIR`，请将上述数字 ID 与路径替换为实际值。Compose 会读取 `.env`，但这些值不会自动导出到当前 shell。
-
-若采用当前用户身份部署，也可以将 `.env` 中的 `SERVERFS_UID` 与 `SERVERFS_GID` 分别设为 `id -u` 与 `id -g` 的输出，前提是该身份也符合 MCP workdir 的权限要求。对于由该用户拥有的新目录，无需特权：
-
-```bash
-install -d -m 700 -- .serverfs-auth-state
-```
-
-如果自定义了 state 路径，请使用实际路径。仅设置 `700` 不会让不同的容器 UID 获得写权限；启动前应确认目录所有者与配置的 UID 一致。保持目录私有，不要放宽权限。
-
-完成下文的 provider 凭据与准入策略配置后，启动 OAuth：
-
-```bash
-docker compose --env-file .env \
-  -f compose.yml \
-  -f compose.http.yml \
-  -f compose.oauth.yml \
-  up -d
-```
-
-## 默认拒绝的准入策略
-
-`SERVERFS_AUTH_ALLOWED_PRINCIPALS` 只接受逗号分隔的精确 `provider:stable-subject`。不支持通配符。
-
-| Provider | ServerFS Principal | 稳定身份来源 |
-| --- | --- | --- |
-| GitHub | `github:<numeric-id>` | 不可变的数字 user `id` |
-| 钉钉 | `dingtalk:<unionId>` | Open Platform `unionId` |
-| 飞书 | `feishu:<open_id>` | app-scoped `open_id` |
-| 微信 | `wechat:<unionid>` | Open Platform `unionid` |
-
-显示名称、邮箱、手机号、昵称等可变字段都不是授权键。
-
-## Provider 回调配置
-
-每个 provider 独立启用；启用后必须同时提供 client ID 与 client secret。
-
-> **外部 live acceptance 前置条件：** ServerFS 不会随仓库提供真实的 GitHub、飞书/Lark、钉钉或微信开放平台应用与运维凭据。v0.16.0 已通过确定性的协议/安全测试验证四个 adapter；正式启用某个 provider 前，运维者仍需创建对应平台应用、登记下方精确回调地址、将真实凭据保留在 Git 之外，并完成一次真实浏览器登录验收。
-
-### GitHub OAuth App
-
-回调地址：
-
-```text
-https://auth.example.com/oauth/provider/github/callback
-```
-
-```text
-SERVERFS_OAUTH_GITHUB_ENABLED=true
-SERVERFS_OAUTH_GITHUB_CLIENT_ID=<client-id>
-SERVERFS_OAUTH_GITHUB_CLIENT_SECRET=<client-secret>
-```
-
-ServerFS 不申请 repository scope，只使用公开的已认证用户身份，并以不可变数字 GitHub user ID 做准入。
-
-### 飞书 / Lark
-
-回调地址：
-
-```text
-https://auth.example.com/oauth/provider/feishu/callback
-```
-
-```text
-SERVERFS_OAUTH_FEISHU_ENABLED=true
-SERVERFS_OAUTH_FEISHU_CLIENT_ID=<app-id>
-SERVERFS_OAUTH_FEISHU_CLIENT_SECRET=<app-secret>
-```
-
-流程只请求 `contact:user.base:readonly`，不请求 `offline_access`，并以 `open_id` 做准入键。
-
-### 钉钉
-
-回调地址：
-
-```text
-https://auth.example.com/oauth/provider/dingtalk/callback
-```
-
-```text
-SERVERFS_OAUTH_DINGTALK_ENABLED=true
-SERVERFS_OAUTH_DINGTALK_CLIENT_ID=<client-id>
-SERVERFS_OAUTH_DINGTALK_CLIENT_SECRET=<client-secret>
-```
-
-流程只请求 `openid`，回调读取钉钉的 `authCode` 字段，并以 `unionId` 做准入键。
-
-### 微信开放平台
-
-这里指**微信开放平台网站应用扫码登录**，不是企业微信，也不是公众号网页授权。
-
-回调地址：
-
-```text
-https://auth.example.com/oauth/provider/wechat/callback
-```
-
-```text
-SERVERFS_OAUTH_WECHAT_ENABLED=true
-SERVERFS_OAUTH_WECHAT_CLIENT_ID=<app-id>
-SERVERFS_OAUTH_WECHAT_CLIENT_SECRET=<app-secret>
-```
-
-流程使用 `snsapi_login`，会校验 user-info 的 `openid` 与 Token subject 一致，并以开放平台 `unionid` 做准入。
-
-Provider access/refresh token 只作为短生命周期的上游身份材料存在；准入成功后由 ServerFS 签发自己的 resource-bound 不透明凭据。
-
-## Client 注册：Pre-registration、CIMD 与 DCR
-
-ServerFS 支持三种客户端识别方式：
-
-1. **预注册**：通过可选只读 `SERVERFS_AUTH_CLIENTS_FILE` 提供客户端 metadata。
-2. **CIMD（Client ID Metadata Documents）**：面向现代标准客户端的首选方式；ServerFS 对 HTTPS、DNS 公网地址、TLS 等做严格验证。
-3. **DCR（Dynamic Client Registration）**：仅用于兼容，默认关闭。只有客户端确实要求时才开启：
-
-```text
-SERVERFS_AUTH_DCR_ENABLED=true
-```
-
-公共客户端使用 Authorization Code + PKCE S256。能使用 CIMD 或显式预注册时，不要仅因为 DCR 可用就开启它。
-
-## Token 与 Resource 模型
-
-ServerFS 签发自己的不透明 access/refresh token；SQLite 中只存摘要，不保存原始凭据值。
-
-- Token 绑定到 `SERVERFS_OAUTH_RESOURCE_URL`；
-- Resource Server 通过私有 introspection 校验 issuer、resource、client、subject、scope 与过期时间；
-- provider-native token 不能直接访问 MCP；
-- authorization code 与 provider state 都是一次性的；
-- refresh token 使用后轮换，重放失败关闭；
-- 默认 OAuth scope 是 `serverfs:access`，workdir 读写/Agent 权限仍由既有 ServerFS 策略独立控制。
-
-## OpenAI Secure MCP Tunnel
-
-关闭 OAuth 时，现有 Tunnel 路径仍受支持，并已用仓库测试基线 `tunnel-client v0.0.17` 做回归。它是测试默认值，不是兼容性锁定。
-
-如果 `serverfs-auth` 与 MCP resource 不是同一个 origin，需要显式信任精确的 auth origin：
-
-```text
-MCP_OAUTH_TRUSTED_ORIGINS=https://auth.example.com
-```
-
-### 已知上游限制
-
-截至 2026-10-19，OpenAI tunnel-client issue #78 仍处于 open 状态：ChatGPT 在授权过程中可能把 RFC 9728 的 canonical `resource` 替换成 hosted Tunnel resource。
-
-ServerFS **不会**为了绕过这一问题而放宽 audience/resource 校验、接受通配 resource，或写死未公开的 OpenAI gateway host。
-
-因此：直接/通用 OAuth 与关闭 OAuth 的 Tunnel 是 ServerFS 已验证路径；OAuth-through-Tunnel 仍需要针对实际 OpenAI 行为做 live acceptance，并可能被上述上游 resource rewrite 阻塞。
-
-## Proxy 路由
-
-只有 `serverfs-auth` 需要 provider/CIMD egress：
-
-```text
-SERVERFS_AUTH_USE_PROXY=true
-SERVERFS_PROXY_HOST=proxy.example.internal
-SERVERFS_PROXY_PORT=7890
-```
-
-该开关与 Tunnel、Agent、Jev 的 proxy 开关相互独立。
-
-## 备份与恢复
-
-`SERVERFS_AUTH_STATE_HOST_DIR` 保存 SQLite 授权状态。虽然不会持久化原始 access/refresh token，备份仍应按安全敏感数据处理。
-
-一致性备份流程：
-
-1. 在维护窗口只停止 `serverfs-auth`；
-2. 保留权限完整复制整个 auth-state 目录；
-3. 启动 `serverfs-auth`；
-4. 验证 `/healthz`。
-
-恢复时也应先停止 `serverfs-auth`，整体恢复 state 目录，不要拼接不同快照中的 SQLite 文件。
-
-## 撤销与密钥轮换
-
-- 客户端可通过 `/revoke` 撤销 ServerFS 签发的凭据；
-- 从 allowlist 移除 principal 会阻止后续准入，但不会自动撤销已经签发的 access token；
-- provider client secret 轮换只需更新并 recreate/restart `serverfs-auth`；
-- `SERVERFS_OAUTH_INTROSPECTION_SECRET` 只在 `serverfs-mcp` 与 `serverfs-auth` 之间共享，应在同一次维护变更中原子更新并 recreate 两个服务；不一致时会 fail closed；
-- 紧急实例级失效可在停止 `serverfs-auth` 后更换整个 OAuth state 目录。这会让所有 ServerFS 凭据失效，同时丢失动态注册/state，只应用于明确的恢复操作。
-
-## 故障排查
-
-**登录前返回 401**：OAuth 开启后没有有效 ServerFS bearer 时属于正常行为。检查 Protected Resource Metadata 与 canonical `SERVERFS_OAUTH_RESOURCE_URL`。
-
-**Auth 服务无法启动**：确认至少启用一个有完整凭据的 provider、public/issuer URL 完全一致、公网使用 HTTPS、introspection secret 已配置、state 目录可写。
-
-**登录成功但 access denied**：稳定 provider subject 不在精确 allowlist 中。不要用邮箱/昵称替代。
-
-**Resource mismatch**：修正 canonical 外部 URL 或客户端请求，不要放宽 audience。Tunnel 场景还应检查前述 resource rewrite 限制。
-
-**Provider 请求超时**：需要时启用 `SERVERFS_AUTH_USE_PROXY`；不要给 `serverfs-mcp` 通用 Internet egress。
-
-**Tunnel 无法发现独立 auth origin**：将 `MCP_OAUTH_TRUSTED_ORIGINS` 设置为精确授权服务器 origin，不要使用通配符。
-
-## 原生平台
-
-Windows 与 macOS 原生 stdio 继续**不需要任何 OAuth 配置**。v0.16 的共享 OAuth 模块已验证可在两平台安全导入，但 OAuth 部署本身仍属于 Linux remote-HTTP shape。
-
-仓库中的权威运维契约是 [`docs/oauth.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/oauth.md)，完整环境变量以版本化的 [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example) 为准。
+移除 principal 阻止新准入，但不会撤销已有 access/refresh Token pair。已认证客户端可通过 `/revoke` 撤销其凭据对；Provider 密钥变更不会撤销 ServerFS Token。Introspection 密钥轮换需两端协调；备份恢复保持整个私有 state 目录。恢复历史状态可能使原有 Token 重新有效。恢复、代理配置和旧 OpenAI 兼容路径限制详见运维手册。

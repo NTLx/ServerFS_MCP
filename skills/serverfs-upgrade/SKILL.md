@@ -1,120 +1,50 @@
 ---
 name: serverfs-upgrade
-description: Upgrade an existing ServerFS release or deployment; preserve operator state and verify enabled subsystem continuity.
+description: Plan and verify a scoped version change or explicit migration of a ServerFS component; distinguish Linux release selection from native create-only installation.
 ---
 
 # Upgrade ServerFS
 
-Treat upgrade as a state-preserving change. First prove what currently owns the deployment and what optional capabilities are enabled; then update only the product artifacts and lifecycle pieces required by the target release.
-
 ## When to use
 
-Use this skill when the user wants an existing ServerFS installation, checkout, container deployment, native installation, Tunnel client integration, or Agent Bridge deployment updated to a newer ServerFS release.
+Authorized version change with known owner, dependency compatibility and recovery plan.
 
 ## When NOT to use
 
-Do not use this skill for:
-
-- first install on a host with no ServerFS state: `serverfs-install`;
-- unrelated configuration changes: `serverfs-configure`;
-- unexplained breakage without a known upgrade objective: `serverfs-diagnose`;
-- provider CLI upgrades that are not part of the ServerFS release itself unless they are explicitly required and documented by the Agent Bridge workflow.
-
-An upgrade does not silently opt the operator into newly introduced optional features.
+Unclear owner, automatic migration of legacy installation, credential rotation or owner upgrade through Shared Core.
 
 ## Preflight
 
-For Windows, v0.24.2 adds Cloudflare. The accepted topology uses a separate same-user Task Scheduler owner (`ServerFS Cloudflare WorkPC`) with its own venv/state/watchdog/runner, alongside the OpenAI default owner; the old single-owner provider guard remains scoped to that owner. Public SSE passed at 75.0/70.0/65.0 seconds. Full-generation restart/recovery was waived on 2026-11-10, not tested and did not pass. Upgrade must not activate either owner implicitly or assume a universal automatic handover. Read `docs/windows-cloudflare-tunnel.md` before an authorized Windows Cloudflare change. Preserve the shared Agent Bridge while the Cloudflare owner depends on it, including when retiring OpenAI.
-
-For macOS, v0.24.1 adds optional native Cloudflare Tunnel support. Preserve its separately managed service pair and private files during unrelated upgrades; follow `deployment/macos/README.md` when Cloudflare lifecycle changes are in scope.
-
-First locate the target ServerFS checkout or deployed installation and establish its version, active configuration and lifecycle owner. In imported/standalone mode, if no authoritative checkout/deployment source is accessible, stop at bounded guidance; do not mutate or infer target commands/settings.
-
-Paths below are relative to the located **ServerFS checkout root**, never to this skill or the Plugin ZIP. Resolve repository paths only after locating that checkout. For an installed deployment without a checkout, use its version-matched deployment documentation, installed CLI help and active configuration; obtain matching sources before a step that needs missing repository material.
-
-1. Identify platform and deployment family.
-2. Establish the current ServerFS version and requested target version from authoritative release/package evidence.
-3. Locate every operator-owned state/config source used by the deployment:
-   - `.env`;
-   - `serverfs.toml`;
-   - auth state;
-   - provider/private Agent Bridge state;
-   - Tunnel credential/key files;
-   - platform service registration.
-4. Determine which optional capabilities are currently enabled: generic HTTP, Tunnel, API Key, OAuth, file ingress, Repo Ops, Agent delegation, and Jev. On Linux, record whether `compose.agent.yml` is present because it may be required by Repo Ops even when Agent mode is disabled.
-5. If operating on a source checkout, inspect Git status before synchronization. Unknown local changes are a stop condition; do not discard them to make the repository match remote.
-6. Read the target release notes/current deployment guides for migration-specific requirements before changing runtime state.
-7. Confirm there is no active operation/writer lease that the documented upgrade path requires to be quiescent.
-
-Never expose secret values while inventorying state.
-
-## Authoritative sources
-
-- `README.md`
-- `site/src/content/docs/docs/getting-started.md`
-- `site/src/content/docs/docs/windows-native.md`
-- `site/src/content/docs/docs/macos-native.md`
-- `deployment/windows/README.md`
-- `deployment/macos/README.md`
-- `deployment/agent-bridge/README.md`
-- target GitHub release/tag/package metadata when an external release is being installed;
-- current CLI/doctor/service behavior on the target host.
-
-Historical plans may explain a migration but do not override current release/deployment instructions.
-
-## Procedure
-
-1. **Freeze the before-state.** Record current version, service owner, exact Compose overlays/profiles or native config/env paths, and enabled optional subsystems without copying secrets. Proceed only with a non-secret before-state inventory covering every enabled subsystem.
-2. **Protect operator state.** Do not overwrite `.env`, `serverfs.toml`, credential files, auth DB/state, provider configs, private Bridge state or platform approval state with repository examples. Confirm the documented recovery path and privately preserved state are available before replacing artifacts.
-3. **Synchronize/acquire the target artifacts through the supported channel.** For a development/source checkout, use normal Git synchronization only after proving local changes are safe. For release installations, use the intended release assets/images/wheels. Verify acquired artifact version/integrity against the requested release before activation.
-4. **Review configuration drift explicitly.** Compare new examples/schema with the existing operator config and add only newly required keys or migrations. Do not replace the whole config. Review a local diff and pass config validation before runtime replacement.
-5. **Update the runtime using the platform-supported owner.** Keep the same current-user/non-elevated lifecycle. Confirm status shows the intended owner running the target artifact.
-6. **Preserve optional deployment shape.** If the Host Bridge overlay (`compose.agent.yml`), OAuth overlay or file-ingress profile was already enabled, include it in the recreation. Do not infer Agent delegation from the Host Bridge overlay: v0.23 Linux Repo Ops may require the same transport while Agent mode remains disabled. If an optional capability was disabled, leave it disabled. Compare the recreated overlay/profile and capability inventory with the before-state.
-7. **Run post-upgrade product validation.** Version, parser/doctor, service/container and transport checks must all refer to the new artifact. Proceed only after all applicable checks pass; report any missing evidence as Not verified.
-8. **Check continuity of previously enabled optional subsystems.** Tunnel and Host Bridge require their own stronger verification rather than generic process state. If Repo Ops was enabled, verify the effective workdir still reports Repo Ops enabled and exercise its public deterministic inspection/action surface without Agent fallback. Complete only after each previously enabled subsystem meets its dedicated verification criteria.
+Record exact platform, IDs, current/target versions, installed artifact identities, active policy, grants, dependent components, tasks/leases and state schema. Verify trusted version-matched artifacts and whether the target is published. Identify supported upgrade mechanism and actual rollback limits before stopping anything.
 
 ## Platform branches
 
-Load only the matching branch after identifying the deployment and requested mode:
+Read only the matching packaged reference: [Linux](references/linux.md), [macOS](references/macos.md), [Windows](references/windows.md). Linux Bridge has explicit release selection; named macOS staging and Windows install/config helpers are create-only, not in-place upgrade/rollback tools.
 
-- Linux / Docker Compose: read [linux branch](references/linux.md) before platform/mode-specific changes.
-- Windows native: read [windows branch](references/windows.md) before platform/mode-specific changes.
-- macOS native: read [macos branch](references/macos.md) before platform/mode-specific changes.
+## Authoritative sources
+
+Reference paths are checkout-relative except links to packaged references. Use the exact current and target release metadata, selected platform runbook and installed CLI help. Stop at a migration plan if compatibility, ownership or supported lifecycle is not established.
+
+## Procedure
+
+1. Preserve existing artifact/config/state and authorized recovery plan privately; do not copy active database state as if it were consistent.
+2. Stage and verify target artifacts without replacing current releases. Determine documented compatibility; mixed Core/Bridge versions are not assumed.
+3. If a supported scoped version switch exists, quiesce dependent operations, honor stop guards, and switch only the requested component. Otherwise plan explicit migration with fresh identity/state and verified cutover; do not force create-only helpers.
+4. Establish fresh authenticated MCP and signed IPC/provider readiness as applicable. Verify denied cases and unaffected component identity/state.
+5. Use documented rollback only if state/config remain compatible. Preserve failed attempt evidence.
 
 ## Safety / stop conditions
 
-Stop before mutation when:
-
-- target/current version cannot be established;
-- a source checkout has uncommitted/untracked state whose ownership or importance is unclear;
-- the proposed action would overwrite operator config/state rather than merge it;
-- the required lifecycle owner differs from the established supported current-user owner;
-- there are active tasks/leases that the target update cannot safely interrupt;
-- release artifact integrity/version cannot be verified;
-- the target release introduces a migration that has not been read/understood;
-- post-change config/doctor validation fails.
-
-Do not delete auth/Agent/Tunnel state to force an upgrade through unless an explicit documented migration requires it and the user authorizes the destructive consequence.
+No implicit upgrade of shared owner, unrelated services or default installation. Stop on active unsafe tasks, unproven compatibility, failed stop guard or validation. No secret logs, ACL widening, grant bypass, forced state deletion or unreviewed database downgrade.
 
 ## Verification
 
-At minimum prove:
-
-- `serverfs --version`/package/image evidence matches the target release;
-- config parses/renders with the same operator values and optional feature intent;
-- intended current-user service/container owns the runtime;
-- base MCP/filesystem behavior is healthy;
-- every previously enabled optional subsystem is still healthy through its dedicated evidence surface, including Repo Ops public inspection/action evidence when it was enabled;
-- no previously disabled subsystem became enabled accidentally.
-
-For Linux upgrades that use the Host Bridge for Agent delegation and/or Repo Ops, preserve `compose.agent.yml` and verify the Bridge transport. Use `--require-runtimes` only when Agent runtimes are actually enabled and the deployment guide requires runtime readiness; Repo Ops-only deployments do not need an Agent runtime readiness check.
+Record actual source/version, component readiness, effective policy, authenticated operation and relevant negative case. Check external ingress/SSE separately if affected; old session replay is not guaranteed.
 
 ## Success criteria
 
-Upgrade is complete only when the target release is the running artifact, operator configuration/state is preserved, the supported lifecycle owner remains intact, and all previously enabled required capabilities pass their post-upgrade checks.
+Requested version/capability proven and recovery path retained; unrelated components unaffected. A proposed migration is not a completed upgrade.
 
 ## Failure handling
 
-If the new artifact fails validation, do not stack unrelated changes. Capture the failing boundary, consult the target release migration/current docs and use the documented rollback mechanism where one exists.
-
-For Agent Bridge on Linux, use the project's explicit rollback helper rather than manually swapping/removing installed state. For source/release artifact failures, report the last known-good version and exactly which verification failed.
+Stop, preserve original and failed artifacts/state, perform only authorized compatible rollback. Report exact gate, current service state, remaining uncertainty and next bounded action.

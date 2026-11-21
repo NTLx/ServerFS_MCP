@@ -1,5 +1,7 @@
 # ServerFS MCP v0.7.2 Development Plan
 
+> Historical v0.7.2 reliability and dated deployment acceptance. The bounded-FD traversal and fail-closed recovery design remain useful; original tool counts, singleton deployment/runtime verification and generic Compose upgrade instructions are version-scoped. Use [current Linux runbook](deployment/linux/README.md) and [maintainer invariants](docs/maintainers/invariants.md) for named-instance operations.
+
 Status: frozen historical release plan; v0.7.2 was the stable release before v0.7.3
 Theme: **Runtime State Reconciliation & Filesystem Reliability**
 Previous stable baseline: v0.7.1 tag `7c73d27a6a4aa31073a4e4fd82767b545dd9664f`

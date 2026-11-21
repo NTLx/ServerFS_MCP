@@ -177,7 +177,7 @@ def test_registry_runtime_configuration_rejects_host_path_input_default(manifest
 
 def test_registry_runtime_configuration_allows_token_in_description_and_name(manifest):
     changed = copy.deepcopy(manifest)
-    changed["description"] += " Token-aware workspace access."
+    changed["description"] = "Token-aware workspace access."
     changed["packages"][0]["runtimeArguments"][-1]["variables"]["workspace_path"]["description"] = (
         "Workspace path token used by the mount."
     )

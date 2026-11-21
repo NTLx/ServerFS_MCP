@@ -1,5 +1,7 @@
 # ServerFS MCP v0.25.0 — macOS current acceptance gates (2026-11-16)
 
+> Historical consolidated macOS candidate acceptance as of 2026-11-16. The chronological PASS, FAIL, NOT VERIFIED results, dirty-source/versioned snapshot provenance and production observations below are retained at their original checkpoint; they are not today's checkout or live service state. The subsequent integration and coordinated metadata changes are governed by the [2026-11-21 release checklist](../v0.25.0-release-checklist-2026-11-21.md). In particular, the retained production resource reuse constraint and older operational examples do not authorize a new deployment, restart or credential use. Native provider workdir access is distinct from nested external MCP consent, and no isolated native or production-hostname test substitutes for exact-release-SHA acceptance.
+
 This is the *current-day* addition to `v0250-macos-release-readiness-2026-11-15.md`. Historical 2026-11-15 unchecked boxes are not automatically current.
 
 ## New PASS gates

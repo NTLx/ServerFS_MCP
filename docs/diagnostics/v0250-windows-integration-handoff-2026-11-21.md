@@ -1,5 +1,7 @@
 # Windows v0.25.0 — integration handoff and commit preparation (2026-11-21)
 
+> Historical pre-integration Windows handoff. The proposed 397-path checkpoint, detached base, uncreated branch, source-selection instructions and artifact pins describe the audit at that time, not the active checkout or permission to repeat staging. The [integrated release checklist](../v0.25.0-release-checklist-2026-11-21.md) records the subsequent three-platform PR #43 merge and coordinated metadata; release remains HOLD pending final exact-SHA and explicitly authorized acceptance. Preserve the original I11-B and OpenAI limitations and the bounded secret-scan result; neither a new release nor a complete secret audit is implied.
+
 **Verdict: PASS for the 396-file candidate source preflight; release and production rollout remain unauthorized.** This document records the final read-only audit, not a new build/test run or a merge approval.
 
 ## Source and Git identity

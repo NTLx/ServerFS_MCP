@@ -1,5 +1,7 @@
 # ServerFS v0.24.3 — Native macOS Cloudflare Production Workdir Parity
 
+> Historical unreleased v0.24.3 development checkpoint (2026-11-10), not an active taskbook or independently published release. Preserve Phase A/B evidence and the blocked Phase C/D status as recorded; later v0.25.0 architecture replaces the proposed singleton service-pair rollout. See the [instance model](docs/architecture/v0.25.0-instance-model.md), [macOS runbook](deployment/macos/README.md) and [v0.25.0 checklist](docs/v0.25.0-release-checklist-2026-11-21.md) for current operations and acceptance. Do not execute the old production cutover steps.
+
 Status: **implementation in progress** (2026-11-10). Phase A baseline review and Phase B's narrow installer change and deterministic regression passed; full macOS public writable-workdir/Agent acceptance and production parity are **not yet verified**. No release authorization or publication is implied.
 
 ## Baseline and prerequisite

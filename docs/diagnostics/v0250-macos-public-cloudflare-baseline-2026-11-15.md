@@ -1,5 +1,7 @@
 # ServerFS MCP v0.25.0 — macOS Cloudflare public ingress baseline (2026-11-15)
 
+> Historical baseline and temporary-route experiment, not current Cloudflare state or authorization to recreate a route. The isolated test hostname timed out and its ingress/DNS changes were removed; subsequent [in-place cutover](v0250-macos-cloudflare-cutover-2026-11-15.md) and [public SSE](v0250-macos-public-cloudflare-sse-acceptance-2026-11-16.md) are separate bounded production-hostname evidence, not a retroactive pass of this isolated public attempt. Use the [current release checklist](../v0.25.0-release-checklist-2026-11-21.md) for remaining gates.
+
 ## Outcome and boundary
 
 **Existing public Cloudflare MCP ingress: PASS through the already registered ChatGPT Cloudflare connector. New isolated v0.25.0 HTTP origin routed publicly: NOT ACCEPTED.** These are different gates. No production cutover or native v0.25.0 SMAppService registration was performed. No Git commit, push or release was performed.

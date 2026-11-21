@@ -1,5 +1,7 @@
 # ServerFS MCP v0.17.1 Maintenance Release Plan
 
+> Historical released v0.17.1 maintenance scope and Pi1 ARM64 acceptance. Preserve issue closures, tested image/proxy/readiness and read-only observability evidence as recorded; old Compose commands and image/health assumptions are version-specific, not current deployment instructions. Use [current Linux runbook](deployment/linux/README.md) and [current maintainer workflow](docs/maintainers/workflow.md).
+
 Status: released — v0.17.1 maintenance release complete; issues #15/#16/#17 closed as completed
 Baseline: v0.17.0 (`e63f4c676a88d594d20adafba97b6ef27ca4a012`)
 Scope: Linux/Docker operational reliability and documentation only

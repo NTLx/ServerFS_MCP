@@ -1,20 +1,9 @@
-# macOS native
+# macOS upgrade
 
-Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
+Use the matching `deployment/macos/README.md` and primary Skill gates.
 
-Update the ServerFS/Bridge Python environments through the current project/release path, then validate. v0.23.1+ supports validated native Apple Silicon macOS Deterministic Repo Ops. Preserve existing per-workdir Repo Ops enablement and action policy exactly; do not infer Repo Ops from Agent mode or vice versa.
+Named staging is create-only. Do not overwrite an installed runtime, pinned snapshot, private manifest or App to simulate an upgrade. Stage trusted matching native arm64 artifacts privately; verify signatures and Login Items requirements. Plan explicit migration/cutover if no supported version-switch path is documented. Preserve current runtime, state and recovery evidence.
 
-v0.24.1 supports optional native Cloudflare Tunnel. If a Cloudflare service pair already exists, preserve its operator-owned Token/env files and separate `http-origin`/`cloudflare` state during an unrelated upgrade. Follow `deployment/macos/README.md` when Cloudflare lifecycle changes are explicitly in scope.
+Use mode-specific lifecycle: file-only, owned pair or shared Core. Stop ingress before stopping Core/owned pair; native stop guard refuses active Connectors. Shared Core never stops its owner and has no named Connector staging. Unstage only eligible inactive state after separate authorization; evidence can cause refusal. Do not force unstage.
 
-Then validate:
-
-```bash
-serverfs doctor --config serverfs.toml
-serverfs service status
-```
-
-Use the v0.13.2+ ServiceManagement lifecycle for install/restart/hand-over. Do not recreate legacy hand-installed LaunchAgents as an upgrade shortcut. Preserve Login Items approval state and report `requires-approval` if macOS requires human action.
-
-When Agent Bridge is installed, current `serverfs service restart` uses a product-owned one-shot hand-over because the invoking Agent session may be terminated while the Bridge is replaced. A scheduling message is not final success. Reconnect and require native `serverfs service status` to report `handover.complete=true`, `handover.ok=true`, `handover.job_loaded=false`, and `handover.plist_exists=false`; also verify the expected managed processes and absence of unmanaged Tunnel ownership. Tunnel-only restart remains synchronous.
-
-For Agent Bridge policy/private config refresh use the current `serverfs agent-bridge configure/restart` surfaces when required by the release/config change. `agent-bridge restart` uses the same bounded hand-over after synchronization and restarts only the Bridge.
+Legacy default-owner operations require their own version-matched compatibility procedure. Verify a fresh session and unchanged unrelated components; do not claim automatic rollback.

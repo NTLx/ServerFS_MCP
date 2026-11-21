@@ -1,5 +1,7 @@
 # Phase J — Native macOS Agent Acceptance (real bridge / AF_UNIX / launchd)
 
+> Historical v0.13 native Bridge probe and manual LaunchAgent acceptance. Later SMAppService and named-instance deployments supersede this lifecycle; peer identity alone does not authorize a shared Core. Preserve the distinction between fake-task, real discovery and unexecuted live provider/egress gates. Use [current macOS runbook](../deployment/macos/README.md) and [maintainer invariants](maintainers/invariants.md).
+
 **Date:** 2026-10-10
 **Machine:** MacBook Air (Mac16,12), Apple M4
 **OS:** macOS 27.0.1 (26A434), native arm64, not Rosetta
