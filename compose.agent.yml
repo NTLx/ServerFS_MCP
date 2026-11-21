@@ -3,6 +3,7 @@
 # compose.bridge-v2.yml overlay after explicit owner/grant provisioning.
 # Apply this legacy overlay only after the corresponding singleton Bridge is installed,
 # configured and running; preserve the complete project/env/overlay selection.
+# Select the same private deployment env with --env-file for each Compose command.
 # Do not use an unscoped whole-project up to update an existing deployment.
 #
 # Base compose.yml remains Bridge-unaware and exposes 11 filesystem tools by default
