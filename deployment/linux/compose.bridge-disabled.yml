@@ -1,6 +1,6 @@
-# Safe Host Bridge baseline. Core keeps Bridge disabled and has no socket mount.
-# Socket attachment is withheld until per-Core grant validation is implemented
-# and accepted; do not change this to enabled=true as a deployment workaround.
+# File-only named Core: Bridge is disabled and no socket is mounted.
+# Choose this OR compose.bridge-v2.yml with a provisioned, validated signed grant.
+# Never enable Bridge by editing this overlay or combine both Bridge overlays.
 services:
   serverfs-mcp:
     environment:
