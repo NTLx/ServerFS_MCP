@@ -305,35 +305,30 @@ def test_skills_remain_model_invoked(plugin_source: Path) -> None:
         PACKAGE_API["validate"](plugin_source)
 
 
-def test_v023_repo_ops_skill_contract_is_explicit_and_non_agent() -> None:
+def test_named_component_skills_preserve_repo_ops_and_owner_boundaries() -> None:
     def text(relative: str) -> str:
         return (REPO_ROOT / relative).read_text(encoding="utf-8")
 
     configure = text("skills/serverfs-configure/SKILL.md")
     bridge = text("skills/serverfs-agent-bridge/SKILL.md")
     install = text("skills/serverfs-install/SKILL.md")
-    upgrade = text("skills/serverfs-upgrade/SKILL.md")
     diagnose = text("skills/serverfs-diagnose/SKILL.md")
-    tunnel_linux = text("skills/serverfs-tunnel/references/linux.md")
-    auth_oauth = text("skills/serverfs-auth/references/oauth.md")
-    bridge_windows = text("skills/serverfs-agent-bridge/references/windows.md")
-    bridge_macos = text("skills/serverfs-agent-bridge/references/macos.md")
-
-    assert "Repo Ops policy itself remains a normal per-workdir configuration concern" in configure
-    assert "never substitute Agent submission" in configure
-    assert "Repo Ops is explicitly **not Agent delegation**" in bridge
-    assert "Repo Ops-only Host Bridge deployments" in bridge
-    assert "do not enable an Agent runtime merely because Repo Ops" in install
-    assert "Repo Ops-only deployments do not need an Agent runtime readiness check" in upgrade
-    assert "do not submit an Agent task as a diagnostic fallback" in diagnose
-    assert "Repo Ops may still depend on that Host Bridge transport" in tunnel_linux
-    assert "Agent delegation and/or v0.23 Repo Ops" in auth_oauth
-    assert (
-        "v0.23.2 supports validated native Windows 11 x64 Deterministic Repo Ops" in bridge_windows
-    )
-    assert "independently gated from Agent delegation" in bridge_windows
-    assert (
-        "v0.23.1+ supports validated native Apple Silicon macOS Deterministic Repo Ops"
-        in bridge_macos
-    )
-    assert "independently gated from Agent delegation" in bridge_macos
+    upgrade = text("skills/serverfs-upgrade/SKILL.md")
+    linux = text("skills/serverfs-agent-bridge/references/linux.md")
+    windows = text("skills/serverfs-agent-bridge/references/windows.md")
+    macos = text("skills/serverfs-agent-bridge/references/macos.md")
+    assert "Repo Ops needs authorized Bridge IPC, not Agent execution" in configure
+    assert "Repo Ops-only does not require an Agent provider" in bridge
+    assert "A Shared Core cannot operate its owner" in bridge
+    assert "For Repo Ops-only, do not start an Agent provider" in install
+    assert "Do not submit an Agent task as a fallback" in diagnose
+    assert "owner upgrade through Shared Core" in upgrade
+    assert "No implicit upgrade of shared owner" in upgrade
+    assert "compose.bridge-v2.yml" in linux and "slot 01" in linux
+    assert "explicit per-Core grants" in windows
+    assert "Repo Ops-only does not start a provider" in windows
+    assert "Same SID is not grant authorization" in windows
+    assert "no Repo Ops or named Connector staging" in macos
+    for operation in ("shared-stage", "shared-preflight", "shared-start"):
+        assert f"`{operation}`" in macos
+    assert "Shared Core never operates owner" in macos

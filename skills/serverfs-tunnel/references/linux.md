@@ -1,29 +1,11 @@
-# Linux / Docker Compose
+# Linux OpenAI Connector
 
-This page covers the existing **OpenAI Secure MCP Tunnel** path. For the independent Linux Cloudflare Tunnel ingress, use [Cloudflare Linux](cloudflare-linux.md); do not apply OpenAI control-plane environment or health diagnostics to cloudflared.
+Use the matching `deployment/linux/README.md` and primary Skill gates. For Cloudflare use [Cloudflare Linux](cloudflare-linux.md).
 
-Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
+Retain the exact project, private env and complete exposure/auth/file-ingress/Bridge selection. Append `deployment/linux/compose.openai-http.yml` and profile `openai-http`; if both providers are enabled, OpenAI overlay is last. One service per provider per project.
 
-The supported Tunnel deployment uses the base Compose path with Tunnel settings already present in the existing `.env`:
+Use verified `OPENAI_TUNNEL_IMAGE` supporting HTTP upstream, file keys and extra/discovery headers. Set `CONTROL_PLANE_TUNNEL_ID`, distinct private `OPENAI_CONTROL_PLANE_KEY_FILE` and `SERVERFS_CORE_BEARER_FILE` (exact single-line `Bearer <Core API key>`, no trailing newline). Admit actual `serverfs-mcp:<HTTP port>` Host. OAuth-only Core is unsupported. Connector egress and image pulls are distinct.
 
-```bash
-docker compose pull
-docker compose up -d
-docker compose ps
-docker compose logs --tail=200 openai-tunnel
-```
+Validate with `config --quiet`, pull/select intended image and use the complete Compose array for `up -d --no-deps --no-build openai-tunnel`. Do not print expanded config or run project-wide up/down. Check local Core and selected service, then `exec openai-tunnel /usr/bin/tunnel-client health --port 8080 --require-control-plane-poll --json` for the named overlay; verify actual installed client supports the flags.
 
-If the Host Bridge is already used for Agent delegation and/or v0.23 Repo Ops, or file ingress is enabled, preserve the deployment's existing overlay/profile when recreating the stack. Do not drop `compose.agent.yml` merely because Agent mode is disabled; Repo Ops may still depend on that Host Bridge transport.
-
-Use the running Tunnel's own layered health evidence:
-
-```bash
-docker compose ps openai-tunnel
-docker compose exec openai-tunnel /usr/bin/tunnel-client health --port 8080 --json
-docker compose exec openai-tunnel \
-  /usr/bin/tunnel-client health --port 8080 --require-control-plane-poll --json
-```
-
-When deeper evidence is needed, query the loopback-only component endpoints from inside the container as documented in Tunnel Diagnostics. Do not publish the health/admin port just for troubleshooting.
-
-`SERVERFS_OPENAI_TUNNEL_USE_PROXY` controls Tunnel egress only. It does not configure Docker image pulls, Agent provider traffic, Jev or OAuth-provider traffic.
+A successful poll is not proof of response delivery. Verify public MCP from intended client, provider admission, and missing/wrong key denial at local Core separately. Scoped stop/start only; verify fresh sessions and unchanged other components.

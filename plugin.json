@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "serverfs",
-  "version": "0.24.2",
-  "description": "Deploy, configure, upgrade, and diagnose ServerFS on supported Linux, Windows, and macOS systems, including optional Linux Docker, native macOS and native Windows Cloudflare Tunnel ingress.",
+  "version": "0.25.0",
+  "description": "Seven operational Agent Skills for ServerFS installation, configuration, upgrade, diagnosis, Connectors, HTTP admission and host Bridge on Linux, macOS and Windows. Skills only; configure the MCP connection separately.",
   "author": {
     "name": "NTLx"
   },
