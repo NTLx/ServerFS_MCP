@@ -21,7 +21,7 @@ No SSR, database, serverless runtime or third-party hosting service is required.
 
 ## Local development
 
-Requires Node.js 22.12 or newer.
+Requires Node.js 22.22.0 or newer, as declared in `package.json`. Use the locked dependencies (`npm ci`); the website package version is independent of the ServerFS release.
 
 ```bash
 cd site
@@ -35,7 +35,7 @@ Production build:
 npm run build
 ```
 
-The GitHub Pages project path is configured as `/ServerFS_MCP/` in `astro.config.mjs`.
+The GitHub Pages project path is configured as `/ServerFS_MCP/` with trailing slashes in `astro.config.mjs`. Use `npm run preview` for the built site. Verify both locale landing pages and all bilingual docs/navigation targets under that base path, the custom 404 page, local assets and external links. Check narrow-screen, keyboard navigation and reduced-motion behavior. A build does not publish the site or validate live ServerFS endpoints.
 
 ## Structure
 
@@ -53,4 +53,4 @@ site/
 └── package.json
 ```
 
-The landing page intentionally uses no React island or animation library. Motion is implemented with CSS plus a small native browser script that only tracks viewport visibility and the Hero system-stage scroll state; it respects `prefers-reduced-motion`. Add a UI dependency only when a concrete interaction justifies it.
+The landing page intentionally uses no React island or animation library. Motion is implemented with CSS plus a native browser script for viewport reveals, Hero scroll state and platform navigation; reduced-motion behavior is separate. Add a UI dependency only when a concrete interaction justifies it.

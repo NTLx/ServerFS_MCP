@@ -1,26 +1,15 @@
 ---
 title: Deterministic Repo Ops
-description: ServerFS v0.24.0 Deterministic Repo Ops：在 Linux、已验收原生 macOS 与已验收原生 Windows 上，无需 Agent 委托即可执行有界 Git 检查、完整性固定的仓库动作、显式文件提交、精确当前 upstream 推送和固定发布动作。
+description: 通过显式授权的宿主机 Bridge 执行确定性仓库操作，无需 Agent 委托。
 ---
 
-Deterministic Repo Ops 是可选的 **非 Agent 仓库能力**：Linux Host Bridge 在 **v0.23.0** 首次发布，已验收的 Apple Silicon 原生 macOS 在 **v0.23.1** 加入，已验收的 Windows 11 x64 原生支持在 **v0.23.2** 加入。它让 MCP 调用方可以完成机械性的仓库收尾步骤，而不获得 Shell，也不需要把这些步骤委托给服务器上的 AI Agent。
+Deterministic Repo Ops 是可选的非 Agent 仓库能力，仅通过显式授权的宿主机 Bridge 提供有界仓库操作，不提供 Shell，也不回退到 Agent。
 
-当前稳定版为 **v0.24.0**。Repo Ops 支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署。
+Repo Ops 按 workdir 启用，并须通过所选 Bridge 接入方式的授权。命名共享 Core grant 相互独立；macOS owned 使用私有原生授权。macOS 命名共享 Core 不支持 Repo Ops。
 
 ## 产品边界
 
-Repo Ops 复用已认证的 Host Bridge transport，是因为该进程已经掌握宿主机 Workdir 路径、当前用户的 Git/网络凭据上下文，以及共享 writer lease。它**不会**复用 Agent 执行路径。
-
-Repo Ops 永远不会：
-
-- 选择模型或 Runtime；
-- 创建 Agent task 或 Provider session；
-- 调用 Provider adapter；
-- 暴露 Shell 或通用命令执行器；
-- 接收调用方可控的 executable、argv、environment、cwd、remote、ref、force 或 Shell syntax；
-- 自动回退到 `submit_agent_task`。
-
-一个 Workdir 可以在 Agent mode 保持 disabled 的同时单独启用 Repo Ops。
+宿主机 Bridge 管理仓库路径、Git 凭据和 writer lease。Repo Ops 不选择模型、不创建 Provider 任务、不回退到 `submit_agent_task`；不接受 Shell 命令或调用方指定的 executable、argv、environment、cwd、remote、ref、force。Agent mode 可以保持 disabled。
 
 ## 公共 MCP 工具
 
@@ -33,27 +22,26 @@ Repo Ops 永远不会：
 | `commit_repo_changes` | 仅提交调用方显式指定的路径，并走固定的安全 Git 路径 | 是 |
 | `push_repo` | 将当前分支推送到其已配置 upstream，并使用唯一精确 refspec | 是 |
 
-`inspect_repo` 支持 `status`、`diff`、`staged_diff` 和 `actions`。Diff 视图必须提供显式的 Workdir 相对路径，并先通过 ServerFS 的路径/deny 策略。
+先调用 `inspect_repo(workdir="project", view="status")` 和 `inspect_repo(workdir="project", view="actions")`（替换为实际授权别名），这两个视图不接收路径；`diff` 和 `staged_diff` 必须指定 1–64 个互不重复、符合策略的相对路径。没有配置 action 时，不得虚构动作或回退到 Agent 执行。
 
-`commit_repo_changes` 会拒绝预先存在的 staged changes，只 stage 指定路径，拒绝外部 Git content filter，并在这条确定性路径上关闭 hooks 和 commit signing，最后返回 commit SHA。它不会自动 push。
+`commit_repo_changes` 仅接受 1–64 个互不重复的显式文件路径（不接受目录）和单行提交消息。拒绝已有暂存变更及外部 Git content filter，关闭 hooks 与 commit signing，返回 commit SHA。提交后检查状态；不会自动 push。
 
 `push_repo` 会在 Host Bridge 内部解析当前 branch/upstream，并精确推送 `HEAD:<upstream-branch>` 到解析出的 remote。调用方不能选择 remote/ref，也不能请求 force。Git 以非交互方式运行，Provider/API secret 不会被转发到子进程环境。
 
 ## 按 Workdir 配置
 
-Repo Ops 默认关闭，并按 Workdir 独立开启。Linux/Compose 使用以下环境变量形式：
+Repo Ops 默认关闭。Linux 命名部署需在 Core slot 和对应的 owner 私有 JSON `workdirs` 条目（`repo_ops_enabled: true`）中同时启用，签名 grant 允许所需 `repo.*` 方法。详见 [Linux 指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)。签名 overlay 仅支持一个 Agent/Repo Ops slot（01）。可写仓库的 Core 侧设置如下：
 
 ```text
 WORKDIR_01_ALIAS=project
 WORKDIR_01_PATH=/srv/project
 WORKDIR_01_READ_ONLY=false
 WORKDIR_01_REPO_OPS_ENABLED=true
-WORKDIR_01_REPO_ACTIONS_JSON={...}
 ```
 
-必须启用已认证的 Host Bridge transport，但不需要启用任何 Agent Runtime。`WORKDIR_XX_REPO_ACTIONS_JSON` 属于宿主机私有策略：它只会被渲染到 Bridge 配置，不会转发进入 MCP 容器。
+Named action 定义在授权 owner workdir 的私有 JSON `repo_actions` 中。只有旧 Linux 单实例渲染器才使用 `WORKDIR_XX_REPO_ACTIONS_JSON`，且不会将策略转发到 Core 容器。原生 TOML 使用 `repo_ops_enabled = true` 和对应 workdir 的 `repo_actions` 表，按 [macOS](../macos-native/) 或 [Windows](../windows-native/) 指南配置对应 owner 策略及接入。
 
-Repo Ops named action 要求 Workdir 为 read-write。Git inspection 可以不依赖 named action；commit/push 和所有 named action 都会参与共享的独占 writer lease。
+授权只读仓库可以执行 inspection，不需要 named action。Commit、push 及所有 named action 均需要可写策略和 writer lease。不需要 Agent Provider。
 
 Workdir 策略模型见[配置](../configuration/)；完整 Linux 环境变量以版本化 [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example) 为准。
 
@@ -61,7 +49,7 @@ Workdir 策略模型见[配置](../configuration/)；完整 Linux 环境变量�
 
 `run_repo_action` 是一个通用的**策略机制**，不是项目专用命令 API。每个 Workdir 都可以配置自己的管理员定义 action profile。调用方只能选择已配置的 action 名称，并且仅当 profile 允许时提供一个 Workdir 相对路径。
 
-一个 action profile 包含：
+命令动作（`kind: "command"`，默认值）包含：
 
 - `argv`：管理员拥有的固定、非空 argv；
 - `mutates`：描述/审计元数据；
@@ -85,7 +73,7 @@ Workdir 策略模型见[配置](../configuration/)；完整 Linux 环境变量�
 }
 ```
 
-部署前必须把每个占位符替换为真实、经过审核的 digest；renderer 会拒绝 malformed action profile。
+将每个占位符替换为已审核的 64 位小写 SHA-256 摘要。策略允许 1–32 个 argv 项（每项最多 4096 UTF-8 字节）、1–32 个完整性 pin。此例仅展示策略结构，不是可直接执行的动作。
 
 Integrity pinning 是强制要求。原因是：即使 argv 固定，如果它执行的是可被调用方修改的仓库代码，也会退化成间接任意代码执行能力。Bridge 会在创建进程之前独立验证每个 pinned input 是否受 Workdir 约束、是否为普通文件、是否满足大小上限，并重新计算 digest。任何不匹配都会 fail closed。
 
@@ -93,7 +81,7 @@ Integrity pinning 是强制要求。原因是：即使 argv 固定，如果它�
 
 ## Release tag 与固定 npm workflow 触发
 
-v0.23.0 Linux 部署可为 npm/`package.json` 发布型 workdir 在 `WORKDIR_XX_REPO_ACTIONS_JSON` 中配置两个内置动作类型，继续使用原有四个公共工具、独占 writer lease、完整性校验和有界执行。管理员固定仓库，调用方只能提交动作名与 `release_tag`；内置动作不接受 executable 或 argv 配置。通用 Repo Ops 能力本身适用于一般仓库；这两个内置动作有意实现更窄的 npm 发布契约，不应被理解为适用于所有仓库类型的通用发布抽象。
+对于 npm/`package.json` 发布型 workdir，运维者可在上述私有 owner 策略中配置两个内置动作类型，沿用原有工具、完整性校验及 writer lease。仓库由运维者固定；调用方仅提交动作名与 `release_tag`，不能指定 argv。以下 Linux 示例是专用 npm 发布契约，不是通用发布接口或其他平台的验收证明。
 
 ```json
 {
@@ -122,11 +110,11 @@ v0.23.0 Linux 部署可为 npm/`package.json` 发布型 workdir 在 `WORKDIR_XX_
 
 审查输入后替换仓库和摘要占位符。这两个 pin 必填，可按需增加其他已审查的发布输入。被 pin 文件变更后，必须单独由操作者审查并更新摘要，不能自动刷新。此配置不会修改目标仓库或 workflow。
 
-先用 `inspect_repo(workdir="DingtalkCard", view="actions")` 发现能力，再调用：
+先用 `inspect_repo(workdir="project", view="actions")` 发现能力；仅在创建 tag 和触发 workflow 分别获得授权时，调用已配置动作：
 
 ```text
-run_repo_action(workdir="DingtalkCard", action="tag_release", release_tag="v1.1.0-beta.3")
-run_repo_action(workdir="DingtalkCard", action="publish_npm", release_tag="v1.1.0-beta.3")
+run_repo_action(workdir="project", action="tag_release", release_tag="v1.1.0-beta.3")
+run_repo_action(workdir="project", action="publish_npm", release_tag="v1.1.0-beta.3")
 ```
 
 Tag 必须完整匹配 `v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.(0|[1-9][0-9]*))?`，最长 128 字符。前导零、路径、分支名、空白、shell 语法和其他预发布渠道均被拒绝。`path` 与 `release_tag` 互斥；公共动作调用中的未知字段（包括 `force`、`commit`、`remote`、`ref`、`workflow`）直接报错，不会被忽略。
@@ -139,13 +127,13 @@ Tag 必须完整匹配 `v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta
 
 此配置唯一正式 npm 发布路径仍是 Git tag → 现有 GitHub Actions → Trusted Publisher/OIDC → npm。ServerFS 不调用 npm，也不新增 PAT/npm token。任意 Git/workflow 命令可能扩大到分支重写、其他 refs 或凭据滥用，因此不属于此接口。ChatGPT 正常发布应优先使用确定性 Repo Ops，不再为这些步骤提交服务器 AI Agent 任务。
 
-更新用户级 Bridge 和 MCP 构建产物后，重新渲染私有配置，并保留全部已有 overlay/profile 重建 MCP。验证运行服务的 actions 发现及 `release_tag` 工具 schema。缓存旧 schema 的客户端需要刷新连接器，再使用新参数；不能回退到 Agent 委派。
+授权升级或策略变更后，按平台生命周期及 grant 配置流程操作。命名 owner provision 不是在线策略更新机制。验证目标 owner、Core、动作发现及当前 `release_tag` schema；客户端 schema 过期时刷新。不得重建无关组件或替换成 Agent 任务。
 
 ## Writer lease 与进程生命周期
 
 Repo Ops commit、push，以及**所有 named action**，都会获取与 ServerFS 文件修改和 Agent workspace-write task 相同的独占 writer lease。即使 `mutates=false`，named action 仍会获取 lease；该标志无法证明操作绝对无副作用，也不能允许 integrity verification 与实际执行之间出现 TOCTOU 窗口。
 
-Repo Ops 子进程在所有支持平台上都受时间和输出大小限制。POSIX 主机在 timeout、output overflow 或 cancellation 时终止整个 subprocess group，并在释放 writer lease 前收敛进程与 pipe。Windows 会先以 suspended 状态创建子进程，成功加入 Bridge 自有 Job Object 后才 resume；异常时必须终止并收敛完整 descendant tree 才能释放 writer lease。如果 cleanup 无法被证明，操作 fail closed，并保留 lease 直到外部重启 Bridge generation。
+Repo Ops 子进程在所有支持平台上都受时间和输出大小限制。POSIX 主机在 timeout、output overflow 或 cancellation 时终止整个 subprocess group，并在释放 writer lease 前收敛进程与 pipe。Windows 会先以 suspended 状态创建子进程，成功加入 Bridge 自有 Job Object 后才 resume；异常时必须终止并收敛完整 descendant tree 才能释放 writer lease。无法证明 cleanup 时，操作失败关闭，保留该 Bridge generation 的 lease。先核实实际进程状态，再按平台恢复流程操作，不得仅为释放 lease 而盲目重启。
 
 ## 安全不变量
 
@@ -163,9 +151,9 @@ Repo Ops 延续 ServerFS 现有信任模型：
 
 相邻信任边界见[安全模型](../security/)与[架构](../architecture/)。
 
-## v0.23.3 中的工具数量
+## 工具数量
 
-稳定版 v0.24.0 保留既有文件系统、二进制与 Agent 的 11 / 13 / 21 / 23 组合，并在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署上独立增加 4 个 Repo Ops 工具：
+Repo Ops 独立增加 4 个工具；组合如下：
 
 | 能力面 | 工具数 |
 | --- | ---: |
@@ -178,18 +166,4 @@ Repo Ops 延续 ServerFS 现有信任模型：
 | 文件系统 + Agent + Repo Ops | 25 |
 | 文件系统 + 二进制 + Agent + Repo Ops | 27 |
 
-## v0.23.0 发布验收
-
-Linux bootstrap / 内部 E2E 已 **CLOSED-PASS**，公共 ChatGPT MCP E2E 也已 **PASS**：
-
-- 根项目测试：1780 passed，320 skipped；只有 1 个上游 Starlette deprecation warning；
-- Agent Bridge：497 passed，15 skipped，0 warning；
-- Ruff 与 format：PASS；
-- documentation freeze 前的文档站构建：PASS（实际 bootstrap 中构建了 37 页）；freeze 后的站点 build/deploy：PASS；
-- scratch MCP image 构建：PASS；
-- 用户级 Host Bridge verification：PASS；
-- 内部 MCP Repo Ops surface verification：PASS；
-- Host Repo Ops action-set verification：PASS；
-- 公共 ChatGPT MCP E2E：PASS —— 完成 `actions → status → wiki_lint → explicit diff → explicit-file commit → current-upstream push`，全程未使用 Agent task；提交 `b3621bc5342e834990c170720de149d846d7de34` 已推送到 `LLM_WiKi` 的 `origin/main`，最终 worktree clean。
-
-Linux/public-MCP 已执行证据记录在 [`docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md)；原生 Apple Silicon macOS 证据记录在 [`docs/v0.23.1-macos-repo-ops-acceptance-2026-10-27.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.1-macos-repo-ops-acceptance-2026-10-27.md)；原生 Windows 11 x64 证据记录在 [`docs/v0.23.2-windows-repo-ops-acceptance-2026-10-28.md`](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.23.2-windows-repo-ops-acceptance-2026-10-28.md)。最终打包与发布 gate 见各版本 release checklist。
+实际验收以目标版本发布清单和所选平台独立组件的验证记录为准。

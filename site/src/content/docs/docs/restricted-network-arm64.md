@@ -1,152 +1,95 @@
 ---
 title: Restricted-network ARM64 Deployment
-description: Deploy ServerFS on Linux ARM64 when GHCR or GitHub access requires a proxy or an offline image transfer.
+description: Prepare a version-matched Linux ARM64 image set for a restricted or offline host.
 ---
 
-ServerFS publishes `linux/arm64` images. On restricted networks, keep two different network paths separate:
+This guide applies to Linux ARM64 Docker deployments. ServerFS release workflows build amd64 and arm64 images. Select the actual target release: a v0.25.0 image is not available as a published stable artifact until the release has completed. Candidate testing uses the verified local candidate image instead.
 
-1. **Docker daemon registry access** — used by `docker pull` / Compose image pulls from GHCR.
-2. **Tunnel control-plane egress** — used by the optional `openai-tunnel` container after it has started.
+## 1. Separate image acquisition from runtime networking
 
-`SERVERFS_OPENAI_TUNNEL_USE_PROXY` configures only the second path. It does **not** configure the Docker daemon and cannot make an otherwise blocked `docker pull` succeed.
+| Network path | Required when |
+| --- | --- |
+| Docker daemon → registry | Pulling any selected image |
+| Host → source/dependency cache | Obtaining the checkout or installing a host Bridge |
+| Connector → provider | Using that OpenAI or Cloudflare Connector |
+| Authorization service → identity provider | Enabling OAuth |
+| File ingress sidecar → allowed HTTPS source | Enabling file-parameter ingress |
+| Host Agent → provider | Running a configured native Agent |
 
-## Confirm the target architecture
+A file-only Core with direct HTTP needs neither Tunnel nor Agent credentials. A disconnected registry does not imply disconnected runtime traffic, and a proxy configured for one component does not configure the others.
 
-On the target host:
+Check the target using `uname -m`; a native ARM64 deployment expects `aarch64` or `arm64`. The downloading host may be a different architecture.
 
-```bash
-uname -m
-```
+## 2. Choose the exact image
 
-For the supported Linux ARM64 path, expect `aarch64` or `arm64`. Do not infer image architecture from the machine that downloaded the image.
-
-## Path A: Docker daemon can use an HTTP/HTTPS proxy
-
-If the target can reach GHCR through a proxy, configure the Docker daemon using Docker's documented daemon-proxy mechanism. Docker Engine supports daemon proxy settings in `daemon.json` and, for systemd installations, service environment configuration.
-
-Official reference: [Docker daemon proxy configuration](https://docs.docker.com/engine/daemon/proxy/).
-
-This is host-level Docker configuration, not a ServerFS setting. ServerFS does not edit Docker daemon configuration automatically.
-
-After the daemon proxy is working, pin an exact ServerFS release rather than `latest`:
+Get the version-matched checkout and a trusted exact image reference from the intended release or candidate build. Avoid `latest` and ambiguous development tags. The examples use shell variables; replace the placeholder with the actual verified, version-tagged image reference and use the same reference on both machines.
 
 ```bash
-VERSION=0.17.0
-IMAGE="ghcr.io/ntlx/serverfs_mcp:${VERSION}"
-docker pull --platform linux/arm64 "$IMAGE"
-docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE"
+IMAGE='<exact-version-tagged-image-reference>'
+ARCH=linux/arm64
+docker pull --platform "$ARCH" "$IMAGE"
+docker image inspect --format '{{.Os}}/{{.Architecture}} {{.Id}}' "$IMAGE"
 ```
 
-The final command must report:
+For an already built, trusted local ARM64 candidate image, skip the pull above and inspect that exact local image instead. Require `linux/arm64`; record the expected image ID. Validate the source against the trusted release manifest/digest or your verified candidate build. Image architecture alone is not authenticity.
 
-```text
-linux/arm64
-```
+If the target can access GHCR through a proxy, configure the Docker daemon using the [official Docker daemon proxy guide](https://docs.docker.com/engine/daemon/proxy/) and execute the pull on the target. Docker daemon proxy configuration is host-level and outside ServerFS ownership. Otherwise acquire the image on a connected machine and transfer it using the next section.
 
-Then set the same exact image in `.env`:
+## 3. Transfer images when the target cannot reach the registry
 
-```text
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.17.0
-```
-
-Use the exact currently published release version for your deployment; the version above is an example of explicit pinning.
-
-### Tunnel proxy is separate
-
-If image pulls work but the optional OpenAI Tunnel also needs a proxy, configure ServerFS's Tunnel-specific switch and shared proxy endpoint:
-
-```text
-SERVERFS_OPENAI_TUNNEL_USE_PROXY=true
-SERVERFS_PROXY_HOST=proxy.example.internal
-SERVERFS_PROXY_PORT=3128
-```
-
-The Tunnel setting affects control-plane egress after startup. It does not alter `dockerd`, registry authentication or image pulling. See [Tunnel Diagnostics](../tunnel-diagnostics/) for runtime checks.
-
-## Path B: target cannot reach GHCR
-
-Use a connected machine to obtain the exact ARM64 image, save it, transfer it through a trusted channel, and load it on the target.
-
-### 1. Pull the ARM64 variant on the connected machine
+On the connected machine, after the ARM64 pull and inspection:
 
 ```bash
-VERSION=0.17.0
-IMAGE="ghcr.io/ntlx/serverfs_mcp:${VERSION}"
-docker pull --platform linux/arm64 "$IMAGE"
-docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE"
+ARCHIVE=serverfs-core-linux-arm64.tar
+docker image save --platform "$ARCH" -o "$ARCHIVE" "$IMAGE"
 ```
 
-Require `linux/arm64` before creating the archive.
-
-### 2. Save the image
-
-On a current Docker Engine/API that supports platform-selective save:
+Use platform-selective save only if the installed Docker API supports it. Otherwise first ensure the local tag contains the intended ARM64 image, then use `docker save -o "$ARCHIVE" "$IMAGE"`. In either case create the checksum *after* the final archive:
 
 ```bash
-docker image save --platform linux/arm64 \
-  -o "serverfs-mcp-${VERSION}-linux-arm64.tar" \
-  "$IMAGE"
-sha256sum "serverfs-mcp-${VERSION}-linux-arm64.tar" \
-  > "serverfs-mcp-${VERSION}-linux-arm64.tar.sha256"
+sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+docker image inspect --format '{{.Os}}/{{.Architecture}} {{.Id}}' "$IMAGE"
 ```
 
-If your Docker API does not support `docker image save --platform`, ensure the local tag contains the intended ARM64 variant, then use ordinary `docker save`:
+Use save/load, not export/import. Save/load retains the image/tag/layer model used by Compose. Transfer the tar, checksum, exact image reference and expected image ID through a trusted channel. The archive checksum checks transfer integrity; it does not by itself establish publisher authenticity.
+
+On the target, set the same actual image reference and archive filename again:
 
 ```bash
-docker save -o "serverfs-mcp-${VERSION}-linux-arm64.tar" "$IMAGE"
+IMAGE='<same-exact-version-tagged-image-reference>'
+ARCHIVE=serverfs-core-linux-arm64.tar
+sha256sum -c "$ARCHIVE.sha256" &&
+  docker image load -i "$ARCHIVE" &&
+  docker image inspect --format '{{.Os}}/{{.Architecture}} {{.Id}}' "$IMAGE"
 ```
 
-Use `docker save` / `docker load`, **not** `docker export` / `docker import`. Save/load preserves the image/tag/layer model expected by Compose.
+Stop if the checksum fails, the architecture is not `linux/arm64`, or the image ID does not match the trusted recorded ID. Do not accept accidental emulation as equivalent to native ARM64.
 
-### 3. Transfer and verify
+## 4. Start only the selected Core without pulling or rebuilding
 
-Copy both the tar archive and checksum using your trusted transfer mechanism. On the target:
+Follow [Getting Started](../getting-started/) to prepare a new private env, actual workdir, nonroot UID/GID, unused port, Host allowlist and caller authentication. Set `SERVERFS_IMAGE` to the exact locally loaded tag. Do not add Tunnel or Bridge settings unless those components are required. From the matching checkout root, for a direct-HTTP file-only deployment:
 
 ```bash
-sha256sum -c "serverfs-mcp-${VERSION}-linux-arm64.tar.sha256"
-docker load -i "serverfs-mcp-${VERSION}-linux-arm64.tar"
-docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE"
+ENV_FILE=/absolute/private/blue.env
+core=(docker compose -p serverfs-blue --env-file "$ENV_FILE"
+  -f compose.yml -f compose.http.yml
+  -f deployment/linux/compose.publish-http.yml
+  -f deployment/linux/compose.bridge-disabled.yml)
+
+"${core[@]}" config --quiet
+"${core[@]}" up -d --no-deps --no-build --pull never serverfs-mcp
+"${core[@]}" ps serverfs-mcp
 ```
 
-Do not continue unless the loaded image reports:
+Fail closed on missing images or invalid configuration. With all optional capabilities disabled, verify authenticated MCP initialize, tools/list (11 tools), list_workdirs and safe read/negative write checks, as described in Getting Started. The same exact project, env and overlay selection applies to later operations.
 
-```text
-linux/arm64
-```
+## 5. Optional components on a restricted network
 
-### 4. Pin Compose to the loaded image
+Prepare only what the chosen topology needs:
 
-In `.env`:
+- Cloudflare: separately acquire the selected `CLOUDFLARED_IMAGE`, verify the ARM64 variant and transfer it. The runtime also needs its independent public Tunnel route and provider connectivity.
+- OpenAI: separately acquire the verified `OPENAI_TUNNEL_IMAGE` that supports the named HTTP upstream and file-based credential options; verify ARM64 compatibility and transfer it. If runtime proxying is needed, use `SERVERFS_OPENAI_TUNNEL_USE_PROXY` with the documented `SERVERFS_PROXY_*` settings. This does not configure Docker daemon pulling or any other component's proxy. See [Tunnel Diagnostics](../tunnel-diagnostics/).
+- OAuth and file ingress: their Linux services use the same `SERVERFS_IMAGE`; prepare their separate configuration, persisted auth state and actual required provider/fetch egress. A local image does not establish runtime external connectivity.
+- Host Agent Bridge: prepare the version-matched Bridge source, uv cache and dependencies on the host. Use the documented offline installer option only when the required cache is available; provider executables, credentials and routing remain host-side. Repo Ops-only does not require a provider execution baseline.
 
-```text
-SERVERFS_IMAGE=ghcr.io/ntlx/serverfs_mcp:0.17.0
-```
-
-Then render the deployment before starting it:
-
-```bash
-docker compose config --quiet
-docker compose up -d
-```
-
-Because the exact tag is already present locally, Compose can use the loaded image. Avoid `latest` for offline/restricted deployments because it creates ambiguity about what was transferred.
-
-## If you also use the OpenAI Tunnel
-
-The base Compose deployment also needs the separately pinned `OPENAI_TUNNEL_IMAGE`. A target with no registry access must have that image available locally as well. Apply the same pattern: explicitly pull the required `linux/arm64` Tunnel image on a connected machine, verify its architecture, `docker save`, transfer, `docker load`, and keep `OPENAI_TUNNEL_IMAGE` pinned to the tested tag from `.env.example`.
-
-If you use only generic Streamable HTTP (`compose.yml` + `compose.http.yml`), the OpenAI Tunnel image is not required.
-
-## Pre-start checklist
-
-Before starting a restricted-network ARM64 deployment, verify:
-
-```bash
-uname -m
-docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE"
-docker compose config --quiet
-```
-
-Expected architecture: `linux/arm64`.
-
-This catches the common failure mode where an amd64 image was downloaded or transferred accidentally. QEMU/emulation may make some mismatches appear to run, but ServerFS documentation does not treat accidental emulation as equivalent to a verified native ARM64 deployment.
+Use the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md) for exact overlay/profile selection, signed attachment and scoped start/stop. Maintain the complete selected Compose arguments; use `--no-build --pull never` for offline starts, and start/check required dependencies according to their runbooks. Public Connector, OAuth and native Agent behavior requires its own live verification, not merely successful image transfer.

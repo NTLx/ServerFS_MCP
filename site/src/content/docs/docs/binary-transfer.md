@@ -1,46 +1,40 @@
 ---
 title: Binary Transfer
-description: Bounded whole-file binary download and revision-guarded upload.
+description: Enable bounded whole-file downloads and guarded uploads.
 ---
 
-Binary transfer is optional and disabled by default.
+Binary transfer is optional. Enable it only if the client supports MCP binary resources or needs to upload raw bytes. Text-only workdirs do not need it.
 
-Enable it globally with `SERVERFS_BINARY_TRANSFER_ENABLED=true` or for a specific workdir with `WORKDIR_XX_BINARY_TRANSFER_ENABLED=true`.
+## Enable transfer
+
+| Platform | Configuration |
+| --- | --- |
+| Linux | `SERVERFS_BINARY_TRANSFER_ENABLED=true` or `WORKDIR_XX_BINARY_TRANSFER_ENABLED=true` |
+| macOS / Windows | `binary_transfer_enabled = true` in native TOML `[defaults]` (all workdirs in that Core) |
+
+No Bridge is needed for binary transfer itself. Ordinary workdir authorization still applies: downloads may use read-only roots, uploads require writable roots. If no workdir enables transfer, neither binary tool is exposed.
 
 ## Download
 
-`download_binary_file` returns:
-
-- raw binary content through the MCP binary resource channel
-- exact byte size
-- best-effort MIME type
-- SHA-256
-- an opaque revision
-
-The structured metadata is exposed through the tool output schema.
+Call `download_binary_file` with a workdir alias and relative path. The result contains the file bytes as an MCP EmbeddedResource/BlobResourceContents (base64 on the wire) plus structured metadata: size, MIME type, SHA-256 and opaque revision. Use the binary resource, not the metadata, to reconstruct the file. Check the hash when integrity matters.
 
 ## Upload
 
-`upload_binary_file` accepts exactly one whole-file source:
+Call `upload_binary_file` with alias, destination path and exactly one source:
 
-1. `data_base64`: strict RFC 4648 base64, retained for generic MCP clients
-2. `file`: a ChatGPT/OpenAI file parameter when optional file ingress is enabled
+- `data_base64`: complete file encoded as strict RFC 4648 base64.
+- `file`: ChatGPT/OpenAI file parameter, only when file ingress is available.
 
-Publication semantics are unchanged:
+`overwrite=false` is create-only and rejects an existing path. For replacement use `overwrite=true` and the current `expected_revision` from stat/download. Replacement is atomic and refuses multiply linked regular files. Do not supply a revision for create-only. The explicit destination path is authoritative; file name or ID in client metadata never selects a filesystem path.
 
-- `overwrite=false` creates only
-- `overwrite=true` performs a revision-guarded atomic replacement and requires the current `expected_revision`
+## Optional ChatGPT file ingress
 
-The explicit ServerFS `path` always selects the destination. Client metadata such as `file_name` and `file_id` never becomes a filesystem path.
+For Linux, add the `file-ingress` Compose profile to the selected deployment and set `SERVERFS_FILE_INGRESS_ENABLED=true`. Configure exact hosts in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` or explicitly enable `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` for the constrained `oaisdmntpr<suffix>.blob.core.windows.net` family. Generic wildcards and non-global DNS addresses are rejected. The isolated sidecar fetches temporary HTTPS files; Core does not browse arbitrary URLs. See [Security](../security/) for the trust boundary.
 
-### ChatGPT file ingress
+The upload tool advertises `_meta["openai/fileParams"] = ["file"]` on the enabled ingress path. Do not assume a named native Core has this sidecar: named macOS HTTP instances disable shared file ingress, Windows native uses direct binary transfer. A separate macOS compatibility helper exists for its documented deployment path. Check the actual tool schema and readiness, not just an env switch.
 
-File ingress is independently disabled by default. Set `SERVERFS_FILE_INGRESS_ENABLED=true` and start Compose with `--profile file-ingress`. Exact hosts can be configured in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`. Real ChatGPT fileParams use region-varying OpenAI Azure Blob accounts, so `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` enables only the measured `oaisdmntpr<account-suffix>.blob.core.windows.net` family; generic host wildcards remain unsupported.
+## Size and context limits
 
-When enabled, `upload_binary_file` advertises `_meta["openai/fileParams"] = ["file"]`. The MCP process calls only the fixed internal `serverfs-file-ingress:8081/fetch` endpoint and does not follow internal redirects. The isolated ingress sidecar fetches the temporary HTTPS URL; the main ServerFS MCP container keeps no Internet egress. The sidecar has no workdir mounts, no OpenAI credentials or published port. It accepts exact hosts or the opt-in constrained OpenAI Blob family, then independently rejects non-global DNS answers, pins the connection to a validated IP while verifying TLS for the original hostname, and revalidates every upstream redirect.
+Default raw size is 8 MiB. Linux global `SERVERFS_MAX_BINARY_TRANSFER_BYTES` provides the default, and a slot's `WORKDIR_XX_MAX_BINARY_TRANSFER_BYTES` can replace it for direct upload/download. File ingress enforces the smaller of the slot limit and sidecar global ceiling. Native TOML uses `max_binary_transfer_bytes` in `[defaults]`. The HTTP request-body limit accommodates the largest enabled raw transfer after base64 expansion.
 
-Binary transfer never bypasses workdir authorization. Upload still requires a read-write workdir.
-
-## Limits
-
-`SERVERFS_MAX_BINARY_TRANSFER_BYTES` is the single public global size ceiling for native binary upload/download and the optional file-ingress fetch path. The default is 8 MiB. `WORKDIR_XX_MAX_BINARY_TRANSFER_BYTES` can further tighten final publication for one workdir, while the isolated ingress sidecar remains deliberately workdir-unaware and enforces only the global ceiling. The legacy `SERVERFS_FILE_INGRESS_MAX_BYTES` name is accepted only as an ingress compatibility fallback when the unified setting is absent. The MCP HTTP request-body ceiling is derived from the largest enabled raw binary limit so the base64 compatibility path is not accidentally constrained by the SDK's smaller default body limit.
+Whole-file transfer is not chunked or resumable. Base64 adds roughly one third to byte size and may consume substantial client context. Agents should use the binary resource or file parameter when supported; avoid copying large base64 strings into conversational prompts. For text inspection, use bounded text reads instead. Verify size, SHA-256 and destination revision after transfer.

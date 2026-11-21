@@ -1,143 +1,69 @@
 ---
 title: Agent Bridge
-description: 可选的结构化 Codex、Claude 与 Qoder 原生运行时及可配置 ACP v1 profile 委派。
+description: 可选的宿主机 Agent 委派与确定性 Repo Ops。
 ---
 
-Agent Bridge 是一个**可选的宿主机边界**。它暴露结构化 Agent 任务工具，不会把 runtime 放进 MCP 容器。v0.19.0 在原生 Codex、Claude 和 Qoder runtime 之外提供通用 ACP v1 profile。运维人员为每个 profile 配置绝对可执行文件路径和固定 argv；任务调用不能覆盖 command、argv 或环境变量，ACP 任务必须使用 `workspace-write`。ServerFS 不会从 ACP Registry 安装 Agent；认证仍由 Provider 管理。能力保守报告。ACP 模型发现/覆盖、elicitation、Client 文件系统和 terminal 方法均不支持。
+Agent Bridge 在宿主机运行，独立于 MCP Core 和 Connector，负责 Agent 执行、任务状态、写入协调与 Repo Ops。
 
-OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 已通过 Linux、macOS 和 Windows 的真实端到端验收，覆盖 prompt、持久 session continuation 和 active-tool cancellation/cleanup。
+## 选择接入模式
 
-## 关联式 Agent 诊断（v0.22+）
+| 模式 | 适用场景 |
+| --- | --- |
+| `disabled` | 纯文件服务，无需 Bridge。 |
+| `owned` | 一个 Core 拥有专用 Bridge。 |
+| `shared` | 独立管理的 Bridge 为同一宿主机上显式授权的 Core 提供服务。 |
 
-ServerFS v0.22.0 通过既有 Bridge 私有 RPC 提供有界、进程内的 Agent diagnostics。仅当目标安装版本明确提供这些命令时才可使用；先检查版本或运行 `serverfs diagnostics --help` 做 capability 检测。使用 `serverfs diagnostics snapshot --format json` 获取 Bridge 范围诊断快照，使用 `serverfs diagnostics task <task-id> --format json` 获取单个已保留任务的诊断投影；省略 `--format json` 可使用 human rendering。这些命令不新增公开 MCP tool、监听端口、持久 trace store、OpenTelemetry 依赖或 telemetry egress。任务诊断可区分 `available`、`unknown_task`、`not_retained` 与 CLI 层的 `bridge_unavailable`；Bridge 重启后不会伪造重启前历史。该能力包含在 v0.22.0 中。
+Linux 命名实例使用宿主机用户级 systemd 服务及签名 Unix Socket 接入。macOS 使用原生 SMAppService 和 Unix Socket；owned 模式使用私有 manifest、策略与 IPC 校验，而不是共享 v2 grant。Windows 使用原生计划任务和 Named Pipe 授权。部署见 [Linux 指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)、[macOS](../macos-native/) 或 [Windows](../windows-native/)。
 
-```text
-ChatGPT
-  │
-  ▼
-ServerFS MCP
-  │  结构化 Agent RPC
-  ▼
-Unix socket
-  │
-  ▼
-宿主机 Agent Bridge
-  ├── Codex
-  ├── Claude Code
-  ├── Qoder
-  └── ACP v1 profiles（运维配置）
-```
+共享 Core grant 限制允许的方法与 workdir 别名。共享 Core 无权启动、停止或退役 owner。相同 UID/SID 不代表授权；独立 owner 的可写目录不得重叠。owner 的凭据、状态与配置必须位于对外 workdir 之外。
 
-## 为什么要独立存在
+## 按需启用能力
 
-基础 `compose.yml` 不感知 Host Bridge。Linux 部署如果需要 Agent 委托，或需要 v0.23.0 Repo Ops transport，都显式叠加 `compose.agent.yml`。该 overlay 只提供已认证的宿主机 socket / lock transport；Agent runtime 仍必须通过独立策略显式启用。
+Core 默认提供 11 个文件工具。二进制传输增加 2 个，Agent 委派增加 10 个，[Repo Ops](../repo-ops/) 独立增加 4 个。仅启用 Repo Ops 也需要 Bridge，但不需要可用的 Agent Provider，更不会创建 Agent 任务。
 
-这样可以保证：
+Agent 委派不是 Shell 或任意 argv 接口。Codex、Claude、Qoder 及已配置的 [ACP profile](../acp/) 需要授权的可写 workdir 和 `workspace-write` 策略。并非各平台的所有接入方式都支持全部能力，例如 macOS 命名共享 Core 仅允许一个 Agent workdir，不支持 Repo Ops。
 
-- 没有原生 Agent runtime 或 Repo Ops 时，文件系统 MCP 仍可独立使用
-- 宿主机 socket 与 writer lock 不进入基础部署
-- 安全边界在部署配置中保持可见
-- 现有纯文件系统部署保持向后兼容
+## 提交与跟踪任务
 
-## Runtime 行为
+1. 调用 `list_workdirs` 确认别名、访问权限、Agent 策略与 runtime 白名单；通过 `list_agent_runtimes` 查看当前能力。发现操作不会安装或启动 Provider。
+2. 可选调用 `list_agent_models`。Codex 使用 runtime 模型目录，Qoder 使用当前账户目录；Claude 和 ACP 明确报告不支持发现。发现操作不启动推理。
+3. 使用 `submit_agent_task` 提交一个已授权目标，写清允许变更范围、停止条件与验收证据。可选 `model` 只影响本次任务，不传则沿用原生默认或续接会话行为。无效选择不会被静默替换。
+4. 通过 `get_agent_task` 查询状态，通过 `read_agent_task_events` 按游标读取有界事件。遇到实际 Provider 请求时使用 `respond_agent_approval` 或 `answer_agent_question`；ServerFS 不自动批准。只有明确支持实时 steering 的 runtime 才使用 `send_agent_message`。
+5. 读取结果并独立验证目标是否完成；确需取消时使用 `cancel_agent_task`。
 
-启用 Agent 策略后，ServerFS 会暴露 10 个结构化 Agent 工具，覆盖 runtime/模型发现、任务提交、状态/事件、spool 最终结果的精确读取、approval/question 处理、受支持 runtime 的 steering，以及任务取消。
+兼容 v1 的接入路径在提交响应丢失时，可使用相同的可选 `idempotency_key` 和相同语义重试，返回保留期内的原任务，不重复启动推理轮次。同 key 对应不同内容返回 `AGENT_IDEMPOTENCY_CONFLICT`。签名 v2 Core grant（Linux 命名、macOS shared、启用 grant 的 Windows）目前拒绝 `idempotency_key` 和 `continue_from_task_id`，即使 runtime 声明支持会话续接也不例外。此类路径省略两字段，提交响应不确定时不可盲目重试。可选 `correlation_id` 用于关联诊断，不用于去重。任务记录执行 manifest，标准化事件使用 v1 envelope。
 
-这些工具**不是** Shell、argv 透传或通用命令执行器。
+Qoder 支持原生会话续接、approval、question 与取消，但不支持实时 steering，也不能在 Bridge 重启后重新附着到旧的运行中进程。以实际声明的 runtime 能力为准，不从其他 Provider 类推。
 
-稳定版 v0.23.0 的 Agent 部署可形成：
+## 限制与恢复
 
-- 21 个工具：文件系统 + Agent
-- 23 个工具：文件系统 + 二进制 + Agent
+| 配置项 | 默认值 |
+| --- | --- |
+| 任务超时 | 2 小时 |
+| Approval/question 超时 | 30 分钟 |
+| 活跃任务上限 | 4 |
+| 终态保留期 | 7 天 |
+| 内联结果阈值 | 256 KiB |
+| 持久化结果上限 | 8 MiB |
 
-v0.23.0 还会复用已认证的 Host Bridge transport，提供独立门控的 **Deterministic Repo Ops**。Repo Ops 增加 4 个 MCP 工具（`inspect_repo`、`run_repo_action`、`commit_repo_changes`、`push_repo`），不会创建 Agent task，也不会调用 provider adapter。Workdir 可以在 Agent mode 保持 disabled 时单独开启 Repo Ops。Linux Host Bridge 支持始于 v0.23.0，已验收的 Apple Silicon 原生 macOS 支持在 v0.23.1 加入，v0.23.2 再加入已验收的 Windows 11 x64 原生支持。
+这些 Bridge 策略不同于 Core RPC 超时与 Provider event-idle 超时。命名 owner 使用平台对应的私有配置；Linux 兼容渲染器将相应的 `SERVERFS_AGENT_*` 环境变量映射到 Bridge 配置。
 
-Repo Ops 不是通用命令通道：Git 操作语义固定；named action 使用运维人员固定 argv 与 SHA-256 integrity pins；调用方不能传 executable、argv、environment、remote、ref、force 或 shell syntax。Repo Ops 写操作与所有 named action 都复用现有 writer lease，与文件修改和 Agent workspace-write task 互斥。Linux bootstrap / 内部 E2E、公共 ChatGPT MCP E2E、刷新后的 root/Agent Bridge CI、MCP conformance、Windows/macOS 回归以及 documentation freeze 后的站点 build/deploy 均在 v0.23.0 发布前通过。完整配置、安全、工具与验收契约见 [Deterministic Repo Ops](../repo-ops/)。
+结果先标准化并对 workdir 路径脱敏，再持久化，不是 Provider 原始日志。超过内联阈值时，`get_agent_task` 返回有界预览、字节数和 SHA-256；通过 `read_agent_task_result` 分块读取存储的准确 UTF-8 文本（每块最多 64 KiB）。超出结果上限返回 `AGENT_RESULT_TOO_LARGE`。按需读取相关区块即可。
 
-## v0.12 Linux 出站与交互契约
+断开客户端或停止轮询不会取消健康的任务。交互超时后变为 stale，任务以 `AGENT_INTERACTION_TIMED_OUT` 中断。取消（含 approval 的 `cancel_task`）在 RPC 返回前持久化，Provider interrupt 为尽力执行，限时 10 秒。终态不代表 Provider 已退出或写入租约已释放。
 
-v0.12.0 保持现有 10 个公开 Agent 工具不变，增加的是显式 Linux 部署控制，而不是新的编排层。`SERVERFS_AGENT_USE_PROXY` 独立决定原生 Agent provider 流量是否使用共享 HTTP 代理。Claude 与 Qoder 获得经过清洗的确定性代理环境；Codex 在代理模式下使用 Bridge 自己管理的 standalone app-server，因此 ServerFS 不会为了施加代理策略而重启或改写用户共享的 managed Codex daemon。关闭 Agent 代理时继续沿用既有原生 provider 路径。
+workspace-write 任务、Repo Ops 与文件修改通过 writer lease 协调。异常退出后，持久化 recovery guard 可拒绝写入并返回 `WORKDIR_RECOVERY_REQUIRED`。只有 reconciliation 证明 Provider 已停止，才能清除 guard；保留的非终态记录会以 `AGENT_PROVIDER_INACTIVE` 中断。状态未知时失败关闭。不要删除 guard、重启无关 Provider 或盲目重跑中断任务。
 
-v0.12 的 Agent 代理刻意限制为**无凭据代理**。当 `SERVERFS_AGENT_USE_PROXY=true` 且共享代理配置了用户名/密码时，部署渲染会 fail closed；需要认证的上游应通过无凭据本地 broker 转接。Tunnel 与 Jev 各自拥有独立代理开关，并可使用带认证的共享端点。
+## 出站代理与可选顾问
 
-Provider 原生 approval 通过现有 `respond_agent_approval` 工具显式返回；ServerFS 不自动批准，也不弱化 provider 语义。`SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES` 配置 inline/spool 边界，公开默认值仍为 256 KiB，最大 spool 结果仍为 8 MiB。大型标准化 message event 会独立限界，避免阻止合法的大型最终结果进入 spool 流程。
+Provider 认证由原生 runtime 管理。Linux 命名 owner 使用私有 Bridge JSON（`proxy` 与 runtime 的 `use_proxy`）；旧单实例渲染器使用 `SERVERFS_AGENT_USE_PROXY`。Agent 代理端点必须无凭据；认证上游需经无凭据本地 broker 转接。Linux Codex 代理模式使用 Bridge 专属的 standalone app-server，不改动用户共享 daemon；Claude 和 Qoder 接收受控代理设置。Tunnel 与 Jev 的出站独立配置。
 
-## v0.9 模型发现与选择
+可选 [Jev 顾问](../jev-advisors/) 在提交前、带显式任务上下文的原生模型发现阶段或真实 approval 请求出现时提供建议。建议始终为 `automatic=false`，不能改变 runtime、model、策略、writer lease 或 Provider 决策。未配置 Key 时，Agent 流程不依赖 Jev。
 
-`list_agent_models` 是唯一新增的只读 Agent 工具。Codex 使用 App Server `model/list`；Qoder 使用结构化 Agent SDK 的当前账户模型目录；Claude 因当前 Claude Code/Agent SDK 没有等价、稳定的原生账户枚举 API，因此明确返回 `model_discovery=unsupported`。模型发现不会启动推理任务。
+## 验证与诊断
 
-`submit_agent_task` 新增可选 `model`。省略时继续使用 runtime 原生默认或续接 session 的模型行为；显式传入 provider-native ID 时只影响本次提交。ServerFS 会把它作为 task/manifest 证据持久化并纳入 idempotency identity，但绝不会写成 runtime/workdir/user 默认配置；模型不可用时由 provider 正常报错，不做静默 fallback。
+先验证目标 owner、接入方式、workdir 授权和 runtime 发现，再在授权范围内执行小任务。命名实例按平台指南诊断；通用 `serverfs diagnostics snapshot --format json` 和 `serverfs diagnostics task <task-id> --format json` 依赖兼容的本地端点，不能作为签名命名接入的验收证据。
 
-## v0.8 Qoder runtime
+诊断通过私有 RPC 提供有界投影，不新增公开工具，也不是持久化分布式追踪系统。任务诊断可能返回 `available`、`unknown_task`、`not_retained` 或 CLI 的 `bridge_unavailable`。重启不会重建丢失的内存历史。勿对外暴露私有日志或凭据。
 
-v0.8.0 把 `qoder` 加为第三个 production runtime。它使用官方 Qoder Agent SDK 和服务器现有的 `qodercli`，支持原生 session continuation、approval/`AskUserQuestion` brokerage，以及通过 `interrupt()` 取消任务。
-
-Qoder 的重启语义保持保守：已经持久化的 native session 可以由新 task 继续，但 ServerFS 不宣称 Bridge 重启后可以重新附着到旧的 in-flight qodercli 进程。Live steering 也明确保持关闭：2026-09-29 的真实 SDK/CLI 探针证明，`priority="now"` 会先让当前 `receive_response()` 以 `error_during_execution` Result 结束，而真正的 steer 成功结果只会在第二次 response 迭代中出现；这与当前 one-task/one-terminal-Result 的 Bridge 契约不兼容。
-
-## v0.7 Runtime Reliability
-
-v0.7.0 在现有 Bridge 上补强可靠性与证据链，而不是增加工作流编排。新任务会冻结不可变执行 manifest，并可携带可选的 opaque `correlation_id`；标准化事件采用 envelope schema v1。v0.7.0 最初的 task deadline 默认值为 24 小时，终态默认保留 7 天。
-
-v0.7.1 保持上述契约不变，修复了一个可证明发生在 provider 启动前的 Codex control-socket 恢复边界。v0.7.2 继续做维护性收口：当 lazy reconciliation 能明确证明 `provider_active=false` 时，仍处于非终态的 ServerFS task 会先以 `AGENT_PROVIDER_INACTIVE` 转为 `interrupted`，待处理 interaction 通过正常终态转换变为 stale，随后才清除 recovery guard；无法证明 provider 已停止时仍保持 fail-closed，并保留 guard。
-
-### v0.7.3：生命周期可靠性
-
-v0.7.3 新增面向 `task.submit` 响应丢失场景的可重试提交。`submit_agent_task` 增加可选 opaque `idempotency_key`，它与 `correlation_id` 含义独立；同一个 key 配合同一语义请求重试时返回仍在保留期内的原 task，不会再启动第二个 provider turn；同 key 对应不同请求则返回 `AGENT_IDEMPOTENCY_CONFLICT`。
-
-Agent 生命周期改为管理员策略，不再固定为 24 小时。默认值为 task timeout 2 小时、approval/question timeout 30 分钟、最多 4 个 active task、终态保留 7 天。无人响应的 interaction 会变为 stale，并以 `AGENT_INTERACTION_TIMED_OUT` 中断 task。显式取消（包括 approval 中选择 `cancel_task`）会在 RPC 返回前先把 task 持久化为 `cancelled`；provider interrupt 采用 best-effort，并在内部限制为 10 秒，避免卡住 Bridge 侧取消流程。实时 writer lease 仍只在后台清理完成后释放，且只有 provider-aware reconciliation 能证明 provider 已停止时才清除持久 recovery guard；单纯 MCP/ChatGPT 断开或停止轮询不会取消健康的异步任务。
-
-这些限制与 MCP→Bridge RPC timeout、provider event-idle timeout 是不同机制。部署 `.env` 使用 `SERVERFS_AGENT_TASK_TIMEOUT_SECONDS`、`SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS`、`SERVERFS_AGENT_MAX_ACTIVE_TASKS` 和 `SERVERFS_AGENT_TASK_RETENTION_HOURS`。
-
-workspace-write 任务还会在现有 `flock` 之外发布持久化的 slot recovery guard。Bridge 异常退出后，在 provider-aware reconciliation 能证明旧 provider 已停止之前，文件写入会以 `WORKDIR_RECOVERY_REQUIRED` 失败关闭；ServerFS 不会盲目重跑中断任务。
-
-最终响应在配置的 spool 阈值以内时内联返回。默认值仍为 256 KiB；v0.12 通过 `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES` 暴露这一边界。超过阈值且不超过 8 MiB 时，会原子写入 Bridge 私有 spool，`get_agent_task` 返回有界 preview 以及大小/SHA-256 元数据，`read_agent_task_result` 可分块精确重建 UTF-8 原文。超过 8 MiB 仍返回 `AGENT_RESULT_TOO_LARGE`。
-
-## 部署验收
-
-当前 Agent-enabled 部署验收使用：
-
-```bash
-uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --require-runtimes
-```
-
-严格模式先验证用户级 Bridge 部署，再对所有已启用原生 runtime 做有界、只读的 `runtime.list` 重试。它不会启动、重启、bootstrap、update、kill 或以其它方式管理 Codex/Claude/Qoder；如果 retry 窗口结束后 runtime 仍不可用，验收失败，provider 生命周期诊断仍由运维人员通过原生工具完成。对 Codex 而言，如果 `codex app-server daemon update` 成功但返回 `runningVersion: null`，同时 managed control socket 不存在，应先确认没有活动 Agent task，再执行不带 `--remote-control` 的 `codex app-server daemon bootstrap`，随后重新核对 `daemon version` 并再次运行严格验收。
-
-重建使用 Host Bridge capability 的 MCP 容器时，必须同时保留 `-f compose.yml -f compose.agent.yml`；如果只使用基础 Compose，即使 `.env` 中仍保留 Agent 或 Repo Ops 策略，也会丢失 Bridge socket/lock 挂载。
-
-## 可选 Jev Advisors
-
-宿主机 Bridge 可以按需使用 TypeSafe Jev 作为 **advisory-only** 决策辅助层。它不会成为新的 Agent runtime 或自动路由器。
-
-配置 `SERVERFS_JEV_API_KEY` 后，任务提交阶段的一次请求会给出 Agent Task Preflight 与 Runtime Router 建议。v0.9.0 还允许 `list_agent_models` 携带即将提交的任务上下文：原生模型发现成功后，Model Advisor 可以在提交前从当前暴露的候选模型中给出建议；返回值始终 `automatic=false`，ServerFS 不会把建议自动填入 `submit_agent_task.model`。v0.12 中，`SERVERFS_JEV_USE_PROXY` 独立决定 Jev 的显式 HTTP client 是否使用共享代理，不会影响 Agent provider 或 Tunnel 的路由。如果原生 provider 后续真的生成 approval request，Approval Advisor 才可能再发起一次 Jev 请求，同一 task 内完全相同的 approval 会复用缓存。未配置 Key 时，模型发现和任务提交照常工作，但不会发生 Jev 请求。
-
-Jev 不会覆盖显式 runtime/model、workdir policy、writer lease、provider approval 状态或 `respond_agent_approval`。模型契约、请求流、数据最小化与失败行为详见 [Jev Advisors](../jev-advisors/)。
-
-## 委派任务编排规范
-
-`submit_agent_task` 的定位是“目标级接口”，不是把整段运维过程原样塞进去的地方。
-对于正常、已授权的工程或运维任务，每次委派都应尽量窄且明确：
-
-- 明确正在操作的是用户自有 workdir 或现有部署；
-- 只给一个具体目标；
-- 写清允许修改的范围和停止条件；
-- 只要求返回完成验收所需的最小证据；
-- 能用现有 ServerFS / 项目结构化动作时，不附带无关的 Shell、网络或安全分析细节；
-- 当实现、验证、部署、Git 发布确实属于不同能力边界时，拆成独立原子任务。
-
-推荐模板：
-
-```text
-目标：<只做一件事>
-范围：<workdir/path 或现有部署组件>
-允许变更：<精确修改边界>
-停止条件：<失败或歧义条件>
-返回：<需要的验收证据>
-```
-
-这是一条“降低歧义 + 最小权限”的规则，不是规避 provider 安全检查的方法。ServerFS
-会按原样转发提交的 prompt，不会为了改变 provider 的安全判断而自动重写、编码或清洗
-指令。不要为了绕过分类器而编码、伪装、碎片化或转移指令。如果一个合法任务被拦截，
-应按真实能力边界进一步收窄，或改用已有的结构化 ServerFS primitive；不得因此削弱授权、
-审计、writer lease 或网络隔离控制。
-
-ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](../acp/)。
+委派任务只需写清目标、精确范围、允许变更、停止条件和所需证据；按真实能力边界拆分。ServerFS 原样转发 prompt，不得通过伪装或碎片化指令绕过 Provider 安全检查，也不得削弱授权及审计。

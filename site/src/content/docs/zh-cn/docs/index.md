@@ -1,47 +1,48 @@
 ---
 title: ServerFS MCP
-description: 面向 Linux、Windows 与 macOS 的安全、标准优先 MCP 文件系统服务。
+description: 从纯文件 Core 开始，按需选择入口和宿主机执行能力。
 ---
 
-ServerFS MCP 通过 Model Context Protocol，将你明确配置的目录（Linux 容器为既有形态，v0.10.0 起支持 Windows 原生，v0.13.0 起支持 macOS 原生）暴露为**受控 workdir**。
+ServerFS MCP 为 AI 客户端提供对显式配置的本地目录（Workdir）的受控访问。默认只读；写入需要明确策略和 revision 检查。可选能力包括有界二进制传输、确定性 Repo Ops 和宿主机 Agent 委托，不提供通用 Shell。
 
-当前稳定版本：**v0.24.2**。Linux Docker Cloudflare Tunnel 已随 v0.24.0 正式发布，并通过隔离环境中的 ChatGPT、SSE 与会话重连验收。macOS 原生 Cloudflare 已随 v0.24.1 提供。Windows 原生 Cloudflare 已随 v0.24.2 发布。两个独立、同用户 Task Scheduler owner 已通过公网 ChatGPT 工具与跨入口文件操作验收。真实公网 SSE 子门槛已通过：三次分别保持 75.0、70.0、65.0 秒，约每 15 秒收到 keepalive；同一 session 的 `tools/list` 返回 200（27 个工具），新 session 返回 200。Operator 于 2026-11-10 豁免本次 Windows 整代 restart/recovery 测试；该测试未测试、未通过。不得声称 Connector-only restart 或 lossless SSE replay 已通过。两个 owner 共享一个 Agent Bridge/Repo Ops 服务，Cloudflare 依赖期间必须保持 Bridge 可用。见 [Cloudflare Tunnel](./cloudflare-tunnel/)、[Windows 原生部署](./windows-native/)与 [macOS 原生部署](./macos-native/)。ServerFS 以标准 MCP 为中心：兼容 MCP 的宿主可使用原生 stdio 或标准 Streamable HTTP。
-
-v0.22.0 通过既有 Agent Bridge 私有 RPC 增加 Correlated Agent Diagnostics：`serverfs diagnostics snapshot` 提供有界的 Bridge 诊断快照，`serverfs diagnostics task <task-id>` 提供单个已保留任务的诊断投影。诊断状态仅驻留于 Bridge 进程内并保持有界；不新增 MCP tool、监听端口、持久 trace store、OpenTelemetry 依赖或 telemetry egress。Linux/VPS、受支持 macOS 与受支持 Windows 的 Phase F 均已通过，Phase G 发布就绪验收为 PASS。详见 [v0.22 Phase G 预检](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.22.0-phase-g-preflight-2026-10-22.md)。
-
-它**默认只读**。管理员可以按 workdir 显式启用受控文件写入、有界整文件二进制传输，以及隔离且独立门控的 ChatGPT 文件参数入口。v0.23.3 支持在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署上独立门控 **Deterministic Repo Ops**，无需 Agent 委托即可执行有界 Git inspection、完整性固定的 named action、显式文件 commit、精确当前 upstream push，以及面向已验证 `package.json` 发布形态的固定 npm 发布动作。宿主机 Agent Bridge 仍然是可选能力；Codex、Claude 和 Qoder 原生 runtime 及可配置 ACP v1 profile 提供 Agent 委托；provider-neutral 模型发现与单次任务模型覆盖仍取决于 runtime，同时可按需启用 advisory-only 的 TypeSafe Jev 支持。Windows 始终保持原生形态：预构建 Rust/NTFS 内核 wheel 之上的 MCP stdio 服务，无需 Docker、WSL 或 MSVC；v0.14.0 进一步让正常 Windows 生命周期不再依赖终端/会话存活。
-
-## 能力面
-
-| 能力面 | 工具数 | 启用方式 |
-| --- | ---: | --- |
-| 文件系统 | 11 | 基础部署 |
-| 文件系统 + 二进制 | 13 | 启用二进制传输 |
-| 文件系统 + Repo Ops | 15 | 启用 Repo Ops（Linux / 已验收原生 macOS / 已验收原生 Windows） |
-| 文件系统 + 二进制 + Repo Ops | 17 | 同时启用二进制 + Repo Ops |
-| 文件系统 + Agent | 21 | 启用 Agent overlay |
-| 文件系统 + 二进制 + Agent | 23 | 同时启用二进制 + Agent |
-| 文件系统 + Agent + Repo Ops | 25 | 同时启用 Agent + Repo Ops |
-| v0.24.0 完整能力 | 27 | 同时启用二进制 + Agent + Repo Ops |
-
-稳定版 v0.24.0 保留既有 11 / 13 / 21 / 23 文件系统、二进制与 Agent 组合，并在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署上增加上表所示独立门控的 Repo Ops 组合。ServerFS 不提供 Shell、通用命令执行器、递归删除或无保护覆盖。
+**文档目标版本：v0.25.0。** 正式发布尚未完成，见[最新稳定版本](https://github.com/NTLx/ServerFS_MCP/releases/latest)。
 
 ## 从这里开始
 
-- [快速开始](./getting-started/) — 从标准 MCP 开始，需要远程访问时再选择经过认证的入口。
-- [Cloudflare Tunnel](./cloudflare-tunnel/) — Linux v0.24.0 稳定版 Docker 连接器；macOS v0.24.1。
-- [配置](./configuration/) — 定义 workdir 与每个 workdir 的最终生效策略。
-- [架构](./architecture/) — 理解 MCP Core、传输/入口适配器、部署边界与 Agent Bridge。
-- [安全模型](./security/) — 查看纵深防御模型。
-- [静态 API Key](./api-key/) — 使用一个可选共享 bearer secret 保护 Linux 远程 Streamable HTTP。
-- [OAuth 2.1](./oauth/) — 使用可选 OAuth、身份联合与精确稳定 principal 准入保护 Linux 远程 Streamable HTTP。
-- [二进制传输](./binary-transfer/) — 启用有界 download/upload，以及可选的 ChatGPT 文件参数入口。
-- [Deterministic Repo Ops](./repo-ops/) — v0.23.3 Linux Host Bridge、已验收 Apple Silicon 原生 macOS 与已验收 Windows 11 x64 原生能力，无需 Agent 委托即可完成有界 Git/action/commit/push，以及面向 `package.json` 仓库的固定 npm 发布操作。
-- [Agent Bridge](./agent-bridge/) — 按需启用结构化 Codex/Claude/Qoder 与可配置 ACP profile 委派。
-- [Windows 原生部署](./windows-native/) —— Windows 11 x64 + 本地 NTFS 原生部署，包括当前用户持久服务生命周期、健康检查、Tunnel bootstrap 与 Agent 委派。
-- [macOS 原生部署](./macos-native/) —— Apple M 系列 + macOS 27 原生部署，包括 Darwin 文件系统边界、launchd Agent Bridge 与平台门控。
-- [Jev Advisors](./jev-advisors/) — 按需启用实验性的 task preflight、五路 runtime routing、提交前模型建议与 approval advice；v0.12 新增独立、显式的 Jev 代理路由。
+1. 阅读[架构](./architecture/)，理解独立 Core、可选 Connector 和可选 Agent Bridge，以及各平台支持边界。
+2. 按[快速开始](./getting-started/)选择宿主机上的最小部署。Linux 使用 Docker Compose；[macOS](./macos-native/)和 [Windows](./windows-native/)遵循原生部署流程。
+3. 依据[配置](./configuration/)与[安全](./security/)设定精确 Workdir、访问策略和 HTTP 准入。先验证 Core，再增加依赖组件。
 
-本文档站是面向用户与运维的权威参考；仓库 README 有意保持为简洁的项目入口。
+## 按需增加组件
 
-ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](./acp/)。
+| 需求 | 指南 |
+| --- | --- |
+| 远程或本地直接 HTTP，无 Tunnel | [快速开始](./getting-started/) |
+| Cloudflare 公网入口 | [Cloudflare Connector](./cloudflare-tunnel/) |
+| OpenAI 入口 | [快速开始](./getting-started/)与 [Tunnel 诊断](./tunnel-diagnostics/) |
+| HTTP 调用方认证 | [API Key](./api-key/)或 [OAuth](./oauth/) |
+| 有界整文件传输 | [二进制传输](./binary-transfer/) |
+| 确定性 Git 与命名仓库动作 | [Repo Ops](./repo-ops/) |
+| 原生或 ACP Agent 任务 | [Agent Bridge](./agent-bridge/)与 [ACP](./acp/) |
+| 可选建议能力 | [Jev 建议器](./jev-advisors/) |
+
+Connector 不拥有 Core 或 Bridge 的生命周期。每个签名 Bridge 接入需要显式 Core grant；共享 Core 不管理 Bridge owner。Agent 和 Repo Ops 按 Workdir 分别启用。
+
+## 能力组合
+
+工具集合由已启用的能力决定，入口方式不会增加文件或 Agent 权限。
+
+| 能力组合 | 工具数 |
+| --- | ---: |
+| 文件系统 | 11 |
+| 文件系统 + 二进制 | 13 |
+| 文件系统 + Repo Ops | 15 |
+| 文件系统 + 二进制 + Repo Ops | 17 |
+| 文件系统 + Agent | 21 |
+| 文件系统 + 二进制 + Agent | 23 |
+| 文件系统 + Agent + Repo Ops | 25 |
+| 完整可选能力 | 27 |
+
+## 运维与维护
+
+使用 [Agent Skills](./agent-skills/)指导版本匹配的安装、配置、诊断、升级与组件操作。特定部署场景可参阅[宿主机可观测性](./host-observability/)与[受限网络 ARM64](./restricted-network-arm64/)。不要将历史兼容命令当作当前命名实例流程。精确发布版本及实机验收另见[发布清单](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.25.0-release-checklist-2026-11-21.md)。

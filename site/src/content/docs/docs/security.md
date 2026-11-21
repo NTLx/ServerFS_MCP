@@ -1,74 +1,55 @@
 ---
 title: Security Model
-description: Defense in depth across MCP, Docker, filesystem, transport, and Agent boundaries.
+description: Independent authorization, filesystem, ingress and host execution boundaries.
 ---
 
-ServerFS is designed around **narrow capabilities and independent enforcement layers**.
+ServerFS exposes narrow capabilities, not a general host shell. Each layer enforces its own policy; enabling a Connector, Bridge or capability does not authorize other operations.
 
-## Core properties
+## 1. Trust boundaries
 
-- Read-only by default.
-- Per-workdir mutation opt-in.
-- No shell or generic command execution.
-- No generic `write_file`.
-- No recursive delete or force mode.
-- Revision-guarded destructive operations.
-- FD-based path traversal with symlink rejection.
-- Built-in credential deny rules.
-- Read/write/search/binary size limits.
-- Structured audit logging without file contents.
-- Read-only container root filesystem.
-- Non-root container user, dropped capabilities, and no-new-privileges.
-- Internal-only MCP networks with no published ports or Internet egress.
-- Optional ChatGPT file ingress is isolated in a separate sidecar with no workdir mounts or OpenAI credentials.
-- v0.23.3 Repo Ops is non-Agent, per-workdir opt-in, supported on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64, and exposes no caller-controlled shell/argv/environment/remote/ref/force surface. Native Windows support was first validated in v0.23.2.
+| Boundary | Enforcement |
+| --- | --- |
+| Remote caller → Core | TLS at public ingress, exact Host/Origin admission, API Key or OAuth |
+| Core → workdir | Explicit aliases, read-only by default, bounded operations, credential deny rules and OS permissions |
+| Core → Bridge | Instance identity, private native IPC and scoped policy/grants |
+| Bridge → Git / Agent | Fixed Repo Ops actions or authorized provider runtimes, writer leases, native approvals |
+| Optional external fetch/advice | Isolated file ingress or advisory Jev; neither expands workdir authority |
 
-## File-ingress boundary
+A Tunnel key proves Connector identity, not caller identity. Independent instances need distinct credentials/private state. A common UID or SID is not proof of authorization; same-user component isolation is not a security sandbox against hostile same-user processes.
 
-v0.5.0 keeps Internet egress out of the ServerFS MCP container. When explicitly enabled, `serverfs-file-ingress` receives a dedicated egress network and a separate internal network shared only with the MCP service. The tunnel is not attached to that ingress network.
+## 2. Filesystem and mutation
 
-The MCP-to-sidecar endpoint is fixed to the internal Compose service and the MCP client does not follow redirects. The sidecar accepts HTTPS on port 443 only. Host authorization is either an exact administrator-configured hostname or the explicit constrained OpenAI Azure Blob family measured from real ChatGPT fileParams (`oaisdmntpr` storage-account prefix, lowercase ASCII letters/digits only, Azure account-length limit, exact `.blob.core.windows.net` suffix). Generic host wildcards are rejected. After host authorization, the sidecar rejects any DNS answer that is not globally routable, pins the connection to the validated address while verifying TLS for the original hostname, revalidates every upstream redirect, and enforces independent byte and timeout ceilings. It is not a generic URL proxy.
+Core tools use descriptor-relative POSIX or native Windows HANDLE-relative traversal. Symlinks and redirected Windows paths are rejected; OS permissions still apply. The service exposes only configured workdir aliases and relative paths.
 
-## Transport hardening
+- Read-only is the default; mutations require an explicitly writable workdir.
+- Text edits, deletion and binary overwrite use opaque revision guards. No generic overwrite/force switch or recursive directory deletion.
+- Hidden paths and credential deny rules are separate. Linux extra deny rules are additive; disabling built-in deny is risky. Native TOML retains the built-in deny floor.
+- Reads, searches and writes have bounded sizes and counts. Structured operation logs omit file contents; keep credentials out of prompts and logs.
 
-v0.4.0 introduced MCP Streamable HTTP DNS-rebinding protection; v0.5.0 retains that transport boundary unchanged.
+Linux adds nonroot containers, read-only root filesystem, dropped capabilities and no-new-privileges. Native deployments use current-user permissions, private directories/ACLs and native lifecycle controls, not a container boundary. Never expose instance state or provider credential roots as workdirs.
 
-The transport accepts only the fixed internal authority `serverfs-mcp:8000`, rejects unexpected or missing Host values, and rejects non-empty unapproved Origin values before MCP dispatch.
+## 3. HTTP admission
 
-## Static API Key boundary
+Streamable HTTP keeps DNS-rebinding protection enabled. The configured Host allowlist is authoritative; Linux's empty default derives the internal service authority, while named native Core admission uses the configured hostname and loopback authority. Unapproved Host/Origin values are rejected. Use exact entries rather than broadening policy to troubleshoot a proxy.
 
-v0.17 can protect remote Streamable HTTP with one optional shared API Key. The key is checked before MCP dispatch, compared with a constant-time comparison, and does not create a user identity or alter workdir authorization. Header authentication (`Authorization: Bearer <key>`) is preferred. The compatibility `?key=` form is accepted for one-line MCP URLs, but ServerFS disables its own default Uvicorn access log in this mode because query credentials are more likely to leak through URL logs. Upstream proxies remain the operator's responsibility. Static API Key and built-in OAuth are mutually exclusive. See [Static API Key](../api-key/).
+[API Key](../api-key/) checks a shared secret before dispatch with constant-time comparison. Prefer bearer headers; query credentials risk leaking into URL logs. The key does not identify individual users or change workdir policy.
 
-## OAuth boundary
+[OAuth](../oauth/) uses opaque resource-bound tokens issued by the separate authorization service and validated over private introspection. Provider credentials stay with that service; provider-native tokens are not MCP tokens. Exact stable-principal admission defaults to deny, codes/state are single-use, refresh tokens rotate, and raw bearer values are not persisted. OAuth scopes do not replace workdir policy. API Key and OAuth are mutually exclusive; named OpenAI HTTP ingress requires static bearer admission.
 
-v0.16 can protect remote Streamable HTTP with an isolated `serverfs-auth` authorization server. OAuth is default-off. The auth service alone receives provider credentials and provider/CIMD Internet egress; `serverfs-mcp` receives neither and validates only ServerFS-issued opaque resource-bound tokens through a private introspection link.
+## 4. File ingress and network isolation
 
-Admission is default-deny and uses exact stable provider subjects. Provider-native tokens are never accepted at MCP. Authorization codes/provider state are single-use, refresh tokens rotate, raw bearer values are not persisted, and resource/audience validation remains strict. Existing workdir policy stays authoritative after identity admission; ServerFS does not duplicate workdir permissions into OAuth scopes.
+Linux internal-only mode has no host-published Core port; direct HTTP publication adds a network that may permit ordinary container egress. Do not equate the two isolation levels.
 
-The OpenAI Tunnel OAuth path keeps the same validation. A known upstream resource-rewrite issue is documented rather than bypassed with wildcard audiences. See [OAuth 2.1](../oauth/) for deployment, revocation, backup and provider details.
+Optional Linux file ingress uses a separate egress-enabled sidecar with no workdir mounts, OpenAI credentials or published port. Core calls its fixed internal endpoint, not the supplied temporary URL. Fetch requires HTTPS:443 and an exact configured hostname or explicitly enabled constrained OpenAI Blob family. The sidecar rejects non-global DNS answers, pins the connection to a validated IP, checks TLS for the original hostname and revalidates redirects. Byte and timeout caps apply. See [Binary Transfer](../binary-transfer/).
 
-## Deterministic Repo Ops boundary (v0.23+; current v0.24.0)
+## 5. Host execution and component identity
 
-Repo Ops is an independently gated host capability supported on Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64, not an Agent execution mode. It reuses the authenticated host Bridge transport and shared writer lease, but its `repo.*` RPC path never creates an Agent task or invokes a provider adapter.
+Bridge is optional. Linux signed attachments and Windows named attachments use scoped grants; macOS owned instances use private native socket and manifest/policy checks, while Shared Cores use signed v2 grants. Shared owners retain control of grants and lifecycle; unauthorized methods, revoked/stale grants and foreign task access must fail closed. Independent Bridge owners must not claim overlapping writable roots.
 
-Git operations have fixed semantics. Callers cannot select executable, argv, environment, cwd, remote, ref, force, hooks, signing, askpass, repository SSH overrides, or custom remote helpers. Commit accepts explicit policy-valid paths only and refuses pre-existing staged state; push derives the current branch/upstream internally and supplies one exact refspec. Child environments are allowlisted so Bridge/provider secrets are not inherited wholesale.
+[Repo Ops](../repo-ops/) executes deterministic Git and administrator-pinned named actions, never an Agent task. Callers cannot supply arbitrary argv, environment, remote, ref, hooks or force. Commit is explicit-path only and refuses pre-existing staged changes; push uses the configured current upstream. Named actions verify SHA-256 pins before execution and always acquire an exclusive writer lease, even when marked non-mutating. Process-tree cleanup must be proven before releasing the lease; Windows uses Job containment and refuses unsafe reparse traversal.
 
-Named actions are administrator-owned fixed argv profiles. Every action requires a non-empty SHA-256 integrity map over repository-controlled execution inputs, and the Bridge verifies those pins immediately before process creation. All named actions acquire the exclusive writer lease even when marked `mutates=false`, preventing an integrity-check/execute race with another ServerFS or Agent writer. Timeout, output overflow, and cancellation terminate the whole child tree before the lease is released: POSIX uses the subprocess group, while Windows uses a Bridge-owned Job Object and fails closed if descendant cleanup cannot be proven. Native Windows Repo Ops also rejects reparse points/junctions before repository execution.
+[Agent delegation](../agent-bridge/) permits only configured runtimes and workdir profiles through host IPC, not a generic MCP command endpoint. Native provider permissions, sandboxing and approvals still govern what an Agent can do. Linux Agent proxying is credentialless-only; proxied Codex uses a Bridge-owned standalone app-server. Never grant approval just to clear a failure or share credentials across instances.
 
-See [Deterministic Repo Ops](../repo-ops/) for the complete tool, policy, and acceptance contract.
+[Jev](../jev-advisors/) is advisory only. It cannot authorize tools, select permissions or answer native approval requests. Its private key stays with the Bridge; approval advice uses minimized, sanitized inputs. A failed advisor call does not change authority.
 
-## Agent boundary
-
-Agent support is opt-in and lives behind a host-side Unix socket. The MCP container receives structured Agent capabilities, not shell access to the host.
-
-In v0.12, Linux Agent egress is explicit and independent from Tunnel/Jev routing. `SERVERFS_AGENT_USE_PROXY=true` may use only a credentialless shared HTTP proxy; authenticated proxy fields cause rendering/startup to fail closed so provider credentials are never embedded in standard proxy environment variables. Proxied Codex is isolated in a Bridge-owned standalone app-server rather than changing the user's shared managed daemon. Native provider approvals remain provider-controlled and require an explicit response through the existing public Agent tool.
-
-## Jev advisor boundary
-
-Jev is optional and runs only from the host Agent Bridge. It is not part of the MCP authorization path, runtime allowlist, writer lease, or native provider approval authority. A missing/failed Jev call removes advisory context only; it never grants additional capability.
-
-The TypeSafe API key is rendered only into the user-owned Bridge config and is never passed to the MCP container. In v0.12, `SERVERFS_JEV_USE_PROXY` supplies the shared proxy through Jev's explicit HTTP client rather than mutating process-wide proxy variables. Approval Advisor sends a minimized, redacted approval state and applies an additional secret/token/password sanitizer before the external request. Identical approval advice may be cached only within the same task and never resolves the approval automatically.
-
-See [Jev Advisors](../jev-advisors/) for the complete advisory contract.
-
-For adjacent trust-boundary detail, see [Architecture](../architecture/), [Configuration](../configuration/), [Deterministic Repo Ops](../repo-ops/), [Static API Key](../api-key/) and [OAuth 2.1](../oauth/). Version-specific implementation evidence remains in the repository's phase acceptance records rather than the project README.
+See [Architecture](../architecture/) for platform limits and [Configuration](../configuration/) for policy. Verify actual authorization and denial behavior independently of process health.

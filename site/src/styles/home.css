@@ -1704,25 +1704,6 @@ h1 {
   background: linear-gradient(180deg, rgba(156, 171, 255, 0.055), transparent 78%);
 }
 
-.cap-card:not(:last-child)::after {
-  content: "→";
-  position: absolute;
-  z-index: 3;
-  top: 50%;
-  right: -9px;
-  display: grid;
-  width: 18px;
-  height: 18px;
-  place-items: center;
-  transform: translateY(-50%);
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--bg);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 9px;
-}
-
 .cap-top strong {
   color: var(--text-strong);
   font-size: 46px;
@@ -2495,10 +2476,6 @@ h1 {
 
   .cap-card:last-child {
     grid-column: 1 / -1;
-  }
-
-  .cap-card:not(:last-child)::after {
-    display: none;
   }
 
   .platform-scroll {

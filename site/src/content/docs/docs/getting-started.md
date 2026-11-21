@@ -1,176 +1,80 @@
 ---
 title: Getting Started
-description: Deploy ServerFS MCP with standard Streamable HTTP; add the OpenAI Secure MCP Tunnel only when needed.
+description: Deploy and verify a minimal Core, then attach optional components.
 ---
 
-This page covers the Linux/Docker deployment. For native deployments, use [Windows Native](../windows-native/) or [macOS Native](../macos-native/) instead.
+## 1. Choose a deployment
 
-## Prerequisites
+Read [Architecture](../architecture/) first. For local MCP clients, native stdio on macOS or Windows does not require a persistent HTTP service. For persistent remote MCP, start with a file-only HTTP Core and add only the components you need.
 
-- Linux server
-- Docker + Docker Compose
+| Platform | Start here |
+| --- | --- |
+| Linux amd64 / arm64 | Docker Compose; the direct HTTP example below |
+| Apple Silicon macOS 27, APFS | [macOS native deployment](../macos-native/) |
+| Windows 11 x64, NTFS | [Windows native deployment](../windows-native/) |
 
-An OpenAI Secure MCP Tunnel and Runtime API Key are optional and only needed for the ChatGPT Tunnel ingress path.
+Use version-matched artifacts and source. Do not treat an unpublished build as a stable release or implicitly migrate an existing instance.
 
-Linux Docker Cloudflare Tunnel shipped in v0.24.0. Native macOS Cloudflare shipped in v0.24.1 for Apple Silicon/macOS 27. v0.24.2 adds native Windows Cloudflare. Two independent same-user Task Scheduler owners passed public 401/200, ChatGPT tools and cross-ingress file operations. The public SSE gate passed with 75.0/70.0/65.0-second holds, approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200. The operator waived full-generation Windows restart/recovery testing on 2026-11-10; it was not tested and did not pass.  Connector-only restart and lossless SSE replay are not claimed. The owners share one Agent Bridge/Repo Ops service; preserve it if OpenAI is retired while Cloudflare still depends on it. See the [Windows Native guide](../windows-native/), [Windows runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/windows-cloudflare-tunnel.md), and [macOS Native](../macos-native/).
+## 2. Linux: a file-only Core with direct HTTP
 
-## Standard MCP deployment
-
-```bash
-git clone https://github.com/NTLx/ServerFS_MCP.git
-cd ServerFS_MCP
-cp .env.example .env
-chmod 600 .env
-```
-
-Configure at least one workdir in `.env`. Before starting, set the Host allowlist in `.env` for the default loopback endpoint:
+Install Docker and Compose v2.24+. Obtain a verified image for the intended version (or locally build under a distinct scratch tag). Use an actual existing directory and a nonroot container UID/GID that can read it. In a private mode-0600 env file outside Git and every exposed directory, configure the following example values, replacing placeholders and choosing a unique high-entropy bearer key locally.
 
 ```text
-SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:8000,localhost:8000
+SERVERFS_IMAGE=<verified-version-matched-image>
+SERVERFS_UID=1000
+SERVERFS_GID=1000
+SERVERFS_HTTP_HOST=0.0.0.0
+SERVERFS_HTTP_PORT=8000
+SERVERFS_HTTP_PATH=/mcp
+SERVERFS_HTTP_PUBLISH_HOST=127.0.0.1
+SERVERFS_HTTP_PUBLISH_PORT=18080
+SERVERFS_HTTP_ALLOWED_HOSTS=serverfs-mcp:8000,127.0.0.1:18080
+SERVERFS_HTTP_ALLOWED_ORIGINS=
+SERVERFS_HTTP_API_KEY=<generate-a-unique-secret-locally>
+SERVERFS_OAUTH_ENABLED=false
+WORKDIR_01_ALIAS=docs
+WORKDIR_01_PATH=/srv/serverfs-blue/docs
+WORKDIR_01_READ_ONLY=true
+SERVERFS_AGENT_BRIDGE_ENABLED=false
+SERVERFS_AGENT_MODE=disabled
+SERVERFS_AGENT_RUNTIMES=
+WORKDIR_01_AGENT_MODE=disabled
+WORKDIR_01_REPO_OPS_ENABLED=false
+CONTROL_PLANE_API_KEY=
+CONTROL_PLANE_TUNNEL_ID=
 ```
 
-An empty allowlist only permits the Docker-internal authority. Keep `serverfs-mcp:8000` for the Tunnel/internal path and explicitly add `127.0.0.1:8000` and `localhost:8000` for direct local clients. If you customize ports, use the actual published port for loopback authorities and the container HTTP port for `serverfs-mcp`. For external clients or a reverse proxy, add each exact Host authority received by ServerFS to the allowlist rather than disabling Host validation. Then start the standard Streamable HTTP endpoint:
+Do not expose the literal example directory or credentials automatically. Preserve unused workdir slots as disabled, read-only placeholders. This example binds the container's port 8000 to host loopback port 18080; keep them distinct. The explicit allowlist includes the internal and published authorities.
+
+In Bash from the version-matched checkout root:
 
 ```bash
-docker compose pull
-docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
-docker compose -f compose.yml -f compose.http.yml ps
+ENV_FILE=/absolute/private/blue.env
+core=(docker compose -p serverfs-blue --env-file "$ENV_FILE"
+  -f compose.yml -f compose.http.yml
+  -f deployment/linux/compose.publish-http.yml
+  -f deployment/linux/compose.bridge-disabled.yml)
+
+"${core[@]}" config --quiet
+# If using a published image not yet present:
+"${core[@]}" pull serverfs-mcp
+"${core[@]}" up -d --no-deps --no-build serverfs-mcp
+"${core[@]}" ps serverfs-mcp
 ```
 
-The HTTP override publishes `127.0.0.1:8000/mcp` by default and keeps the OpenAI Tunnel disabled. The 11-tool filesystem surface remains read-only unless a workdir explicitly sets `WORKDIR_XX_READ_ONLY=false`. Before exposing ServerFS beyond loopback, configure the Host allowlist and terminate TLS at an explicit ingress boundary.
+Skip the pull when using the already built local scratch image. Stop on any failed command. Use the same project, private env and overlay selection for subsequent operations. Do not print expanded Compose configuration.
 
-## Optional static API Key for remote HTTP
+## 3. Connect and verify
 
-For a simple built-in shared-secret boundary, set:
+Configure your MCP client for Streamable HTTP at `http://127.0.0.1:18080/mcp`, with the configured bearer credential in the client's private authorization-header field. Client and Core must be on the same host for this loopback URL unless you explicitly configure another access path.
 
-```text
-SERVERFS_HTTP_API_KEY=<long-random-secret>
-```
+A running container or TCP healthcheck is not enough. Confirm initialize and tools/list, list_workdirs, a safe read of the selected directory, rejected writes to the read-only workdir, and denied requests with absent/wrong credentials. With all optional capabilities disabled the tool surface has 11 tools.
 
-Keep the same `compose.yml` + `compose.http.yml` deployment. Clients should prefer `Authorization: Bearer <key>`. ServerFS also accepts a DingTalk-style `https://mcp.example.com/mcp?key=<key>` URL for clients that only support a complete URL, but query credentials may be captured by upstream access logs. API Key mode is mutually exclusive with built-in OAuth. See [Static API Key](../api-key/).
+## 4. Extend the deployment only when needed
 
-## Optional OAuth 2.1 for remote HTTP
+- Direct remote HTTP: configure the exact Host/Origin admission and an independently administered HTTPS reverse proxy; public access needs caller authentication. The [API Key](../api-key/) and [OAuth](../oauth/) guides explain the available modes.
+- Tunnel-only or internal-only: select the internal-only overlay instead of the publication overlay. Add [Cloudflare](../cloudflare-tunnel/) or OpenAI using the provider-specific overlay/profile and separate credentials; neither provider is required for direct HTTP.
+- Agent delegation or deterministic [Repo Ops](../repo-ops/): deploy an authorized [host Bridge](../agent-bridge/), with the exact Core identity and allowed workdir/method scope. Do not start a provider runtime just to enable Repo Ops.
+- [Binary transfer](../binary-transfer/): enable the capability explicitly; optional file ingress is a separate sidecar path.
 
-v0.16.0 can add OAuth to the generic Streamable HTTP deployment without changing local/native stdio:
-
-Before starting, set `SERVERFS_OAUTH_ENABLED=true`, the canonical public MCP resource URL, the `serverfs-auth` public/issuer URL, an introspection secret, at least one provider and the exact stable-principal allowlist.
-
-Before starting Compose, prepare the auth state directory for the configured `SERVERFS_UID:SERVERFS_GID`. With the default `10001:10001` and `SERVERFS_AUTH_STATE_HOST_DIR=./.serverfs-auth-state`, run from the checkout root:
-
-```bash
-sudo install -d -m 700 -o 10001 -g 10001 -- .serverfs-auth-state
-```
-
-Assigning ownership to `10001:10001` normally requires `sudo` (or an administrator); the container still runs as that non-root identity. If you customize `SERVERFS_UID`, `SERVERFS_GID` or `SERVERFS_AUTH_STATE_HOST_DIR` in `.env`, replace the numeric IDs and path above with those actual values. Compose reads `.env`; these values are not automatically exported into your shell.
-
-For a current-user deployment, you may instead set `SERVERFS_UID` and `SERVERFS_GID` in `.env` to the outputs of `id -u` and `id -g`, provided that identity also suits the MCP workdir permissions. For a new directory owned by that user, no privilege is needed:
-
-```bash
-install -d -m 700 -- .serverfs-auth-state
-```
-
-Use the configured state path if customized. Mode `700` alone does not grant a different container UID write access; verify the directory owner matches the configured UID before starting. Keep the directory private; do not widen its permissions.
-
-
-```bash
-docker compose --env-file .env \
-  -f compose.yml \
-  -f compose.http.yml \
-  -f compose.oauth.yml \
-  up -d
-```
-
-Public deployments should expose the MCP and authorization-server loopback ports only through an HTTPS reverse proxy. See [OAuth 2.1](../oauth/) for provider callbacks, CIMD/DCR, backup/revocation and the OpenAI Tunnel compatibility boundary.
-
-## Optional Cloudflare Tunnel ingress (Linux v0.24.0 stable)
-
-For outbound-only connectivity with a fixed public HTTPS hostname, add `compose.cloudflare.yml` to `compose.yml`. This connects cloudflared to the private Docker network without publishing a host port. Configure a remotely managed Tunnel with the origin `http://serverfs-mcp:8000`, an external token file, an exact public Host allowlist and ServerFS API Key/OAuth. The connector token does **not** authenticate MCP callers. See [Cloudflare Tunnel](../cloudflare-tunnel/) for the full security and verification procedure. The Linux Cloudflare ingress shipped in v0.24.0. An isolated read-only VPS staging instance passed actual ChatGPT tool calls, long-lived SSE and MCP session reuse after Connector restart. That evidence does not include production workdirs, Agent/Repo Ops, or native Windows/macOS Cloudflare integration.
-
-## Optional ChatGPT / OpenAI Tunnel deployment
-
-Set `CONTROL_PLANE_TUNNEL_ID` and `CONTROL_PLANE_API_KEY` in `.env`, then use the historical base Compose path:
-
-```bash
-docker compose pull
-docker compose up -d
-docker compose ps
-docker compose logs -f openai-tunnel
-```
-
-This remains a supported authenticated ingress adapter; it is no longer required for generic MCP clients. For operational troubleshooting, use [Tunnel Diagnostics](../tunnel-diagnostics/); container `Up` state alone is not proof of Tunnel readiness or control-plane continuity.
-
-On Linux hosts with restricted registry/network access, see [Restricted-network ARM64 Deployment](../restricted-network-arm64/) for the separate Docker-daemon proxy and offline image-transfer paths.
-
-For a least-privilege monitoring pattern that exposes generated host status rather than host authority, see [Read-only Host Observability](../host-observability/).
-
-## Agent deployment
-
-Agent support is deliberately an explicit overlay:
-
-```bash
-docker compose --env-file .env -f compose.yml -f compose.agent.yml up -d
-uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --require-runtimes
-```
-
-Before enabling it, install and verify the host-side Agent Bridge as described in the repository's [Agent Bridge deployment guide](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/agent-bridge/README.md). Keep the Agent overlay on every later recreation; using base Compose alone removes the Agent socket/lock mounts. Source-checkout Python commands should run through the project uv environment rather than the host's unqualified `python3`.
-
-## Optional Deterministic Repo Ops (v0.23.0)
-
-Repo Ops is separate from Agent delegation but reuses the authenticated host Bridge transport and writer-lease infrastructure. On a writable Linux/Compose workdir, set:
-
-```text
-WORKDIR_01_REPO_OPS_ENABLED=true
-WORKDIR_01_REPO_ACTIONS_JSON={...}
-```
-
-No Agent runtime needs to be enabled. v0.23.0 adds `inspect_repo`, `run_repo_action`, `commit_repo_changes`, and `push_repo`; named actions use operator-owned fixed argv plus mandatory SHA-256 integrity pins, and the caller never receives shell/argv/remote/ref/force control. Release acceptance covered Linux bootstrap/internal E2E, public ChatGPT MCP E2E, full root/Agent Bridge CI, MCP conformance, Windows/macOS regression, and the post-freeze site build/deploy. See [Deterministic Repo Ops](../repo-ops/) before enabling it.
-
-### Optional Jev advisors
-
-If you want advisory task preflight, runtime routing, and provider-approval context, add a TypeSafe API key to the existing untracked `.env` before installing/updating the Bridge:
-
-```text
-SERVERFS_JEV_API_KEY=<your key>
-```
-
-Leave it empty to keep the Agent Bridge completely Jev-free. No extra MCP container configuration or ChatGPT plugin refresh is required. See [Jev Advisors](../jev-advisors/) for details.
-
-## ChatGPT file-parameter ingress
-
-Since v0.5.0, ServerFS has supported accepting a ChatGPT/OpenAI `file` parameter as the source for `upload_binary_file` without giving the main MCP container Internet egress. Binary transfer and file ingress are separate opt-ins. For the common ChatGPT path, set:
-
-```text
-SERVERFS_BINARY_TRANSFER_ENABLED=true
-SERVERFS_FILE_INGRESS_ENABLED=true
-SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true
-```
-
-Then start the isolated sidecar with the `file-ingress` profile:
-
-```bash
-docker compose --profile file-ingress pull
-docker compose --profile file-ingress up -d
-```
-
-If Agent Bridge is also enabled, keep both the Agent overlay and the file-ingress profile in the same invocation:
-
-```bash
-docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.agent.yml pull
-docker compose --env-file .env --profile file-ingress -f compose.yml -f compose.agent.yml up -d
-```
-
-The sidecar has no workdir mounts, tunnel/OpenAI credentials, or published port. Generic hostname wildcards are not supported; see [Binary Transfer](../binary-transfer/) and [Security Model](../security/) for the file-ingress host policy and network boundary introduced in v0.5.0.
-
-## Current stable release: v0.24.2
-
-The v0.24.2 release was published on 2026-11-10 from immutable tag `v0.24.2` at SHA `0b31d47e2205bdd121ce407cc5339444a9ab8e95`. Its GHCR stable tags are:
-
-```text
-ghcr.io/ntlx/serverfs_mcp:latest
-ghcr.io/ntlx/serverfs_mcp:0.24
-ghcr.io/ntlx/serverfs_mcp:0.24.2
-```
-
-For production deployments, pin version `0.24.2` rather than following `latest` or `edge`. The successful Release workflow attached four verified assets: the product wheel, `serverfs-agent-bridge` wheel, `serverfs-windows-native` abi3 wheel, and skills-only portable Agent Plugin `serverfs-plugin-v0.24.2.zip`. macOS uses the product and Bridge Python distributions directly, has no separate native filesystem wheel, and retains the small ServiceManagement companion introduced in v0.13.2 for persistent Tunnel/Bridge services. See [Agent Skills](../agent-skills/), [Windows Native](../windows-native/) and [macOS Native](../macos-native/).
-
-For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).
+See the [complete Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md) for configuration, Connector-specific lifecycle, signed Bridge provision, rollback and retirement. If operating another platform, use its native runbook rather than translating these Docker commands.

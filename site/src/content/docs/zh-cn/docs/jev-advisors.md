@@ -1,163 +1,62 @@
 ---
 title: Jev Advisors
-description: 在 Agent 任务质量、运行时路由、模型选择和 provider 审批中按需使用 TypeSafe Jev 提供结构化建议。
+description: 为 Agent 任务、路由、模型选择与审批提供可选的 TypeSafe Jev 建议。
 ---
 
-ServerFS 可以在**宿主机 Agent Bridge** 中按需启用 [TypeSafe Jev](https://docs.typesafe.ai/introduction)，作为结构化的决策辅助层。
+ServerFS 可在宿主机 Agent Bridge 中启用 [TypeSafe Jev](https://docs.typesafe.ai/introduction)，针对任务上下文进行结构化评估，而不执行 Agent 工作。它需要显式启用，仅提供建议，既不是 Agent runtime，也不是授权边界。
 
-Jev 属于 System One 模型：它不是生成面向人类阅读的长文本，而是针对共享 state 评估带类型的问题，直接返回 Choice 概率/置信度、Noul 等结构化结果。ServerFS 利用这一特性做窄范围 advisory judgment，并把真正的控制逻辑继续留在确定性代码里。
+## 决定是否启用
 
-这套集成始终是 **opt-in、advisory-only、fail-open**。Jev 不是 Agent runtime，不是授权源，也不是安全边界。
+启用 Jev 意味着允许任务上下文离开宿主机并发送至外部 TypeSafe API。未经授权不得启用。不要在任务 prompt 中放入凭据、私有文件内容或不必要的个人信息。Bridge 不会自动上传 workdir 文件，但任务提交时的 Preflight 会发送原始 prompt，不经过模型与审批顾问额外使用的文本清洗器。
 
-> **状态：**这套 opt-in 实验能力在 v0.6.0 引入，v0.9.0 增加 Model Advisor，并包含在稳定版 v0.23.0 中。v0.12 增加独立、显式的 Jev 代理开关；v0.13 将该契约延伸到 macOS 原生 Bridge；v0.13.2 改变 macOS 服务生命周期；v0.14.0 新增 Windows 持久生命周期，但不改变 Jev 的 advisory 权限。Jev 本身仍只是宿主机 Bridge 内部 advisor，不获得执行权。
+禁用时不构造 Jev client、不发送顾问请求。Agent 执行及 Provider 显式审批不依赖 Jev。
 
-## 启用方式
+## 配置 owner
 
-在仓库现有、未跟踪的 `.env` 中配置 TypeSafe API Key：
+在所选 Bridge owner 的私有配置中设置 Jev，配置必须位于对外 workdir 之外。Linux 命名 owner 使用如下私有 Bridge JSON 片段；它不是 Core 环境变量，也不是完整 owner 配置：
 
-```text
-SERVERFS_JEV_API_KEY=<your key>
+```json
+{
+  "jev": {
+    "api_key": "<私有 TypeSafe API Key>",
+    "use_proxy": false
+  }
+}
 ```
 
-留空即可关闭全部 Jev 能力。关闭时：
+省略 `jev` 或留空 Key 即关闭顾问。按 [Linux owner provision 流程](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)使用受保护的配置。旧 Linux 单实例渲染器使用私有 env 文件中的 `SERVERFS_JEV_API_KEY` 和 `SERVERFS_JEV_USE_PROXY` 并渲染至 Bridge JSON。macOS 旧版原生配置 helper 也识别这些变量，但命名 macOS owned staging 不传递该私有 overlay。不能因 Bridge parser 支持 Jev 就推断原生 helper 支持其 provision。遵循 [macOS](../macos-native/) 或 [Windows](../windows-native/) 实际支持的 owner 流程，不直接覆盖已安装 owner 快照或共享 grant。
 
-- 不构造 TypeSafe client；
-- 不产生 Jev 网络请求；
-- Agent task 与 approval 行为回到完全不依赖 Jev 的路径。
+当 `jev.use_proxy=true` 时，私有 JSON 必须配置有效共享 `proxy`。Jev 使用显式 HTTP client，不修改进程级代理变量。为 false 时 ServerFS 不传入显式 Jev 代理；涉及出站隔离时应核对 owner 环境与实际路由。仅 Jev 使用时可采用带认证的共享端点；如果 Agent 也使用同一端点，则必须无凭据。Tunnel 路由独立。
 
-安装器只会把已配置的 Key 渲染到用户自有、权限为 `0600` 的 Agent Bridge 配置中；Key 不会进入 MCP 容器。
+Bridge 固定 `jev-1.13.0` 与 `typesafe-sdk==0.7.1`。模型升级需要单独校准。Client 配置 5 秒超时与重试策略（`max_retries=1`，超时 8 秒）；一次逻辑顾问调用不一定只有一次网络尝试。
 
-v0.12 中，Jev 出站由 `SERVERFS_JEV_USE_PROXY` 独立控制。为 false 时，即使 Tunnel 或 Agent 已启用代理，Jev client 仍不使用代理；为 true 时，Bridge 通过显式 `httpx2.AsyncClient` 把共享 ServerFS HTTP 代理交给 Jev，而不会修改进程级代理环境变量，因此 provider 子进程不会意外继承 Jev 路由。Jev 可以使用带认证的共享代理，这与 Linux Agent 代理仅允许无凭据代理的规则彼此独立。
+## 四项顾问能力
 
-## 当前模型契约
+| 顾问 | 触发时机 | 输出与权限 |
+| --- | --- | --- |
+| Task Preflight | 已授权 Agent 提交 | 评估目标是否单一、范围与停止条件是否明确、是否可验证，以及执行方式是否适合。 |
+| Runtime Router | 同一次提交请求 | 建议 `direct_serverfs_tool`、`codex`、`claude`、`qoder` 或 `human_review`；没有自动或 ACP 路由选项。 |
+| Model Advisor | 模型发现时显式传入任务上下文 | 推荐符合条件的原生模型，不自动改变提交。 |
+| Approval Advisor | 实际 Provider approval | 评估必要性、范围、不可逆风险、敏感访问和外部副作用，不代替审批。 |
 
-ServerFS 当前固定使用：
+Task Preflight 与 Runtime Router 在执行前共享一次逻辑评估。Router 的固定候选及判断规则不是当前能力发现，也不覆盖所有结构化操作（含 Repo Ops）。以实际工具、grant、策略及 Provider 能力决定执行路径。
 
-```text
-jev-1.13.0
-typesafe-sdk==0.7.1
-```
+需要模型建议时先选择已授权 runtime。调用 `list_agent_models` 时同时传入 `workdir` 与 `task_prompt`，可选相对 `path` 和 `profile`；仅查模型目录时不传任务上下文。Codex、Qoder 支持原生目录，Claude、ACP 不支持。顾问只考虑 1–32 个互不重复、未隐藏、未禁用的候选 ID，使用实际提供的元数据，不凭模型名称推断成本或质量。完成时返回 `recommended_model`、置信度/概率及 `automatic=false`。只有 runtime 支持时才由调用方显式提交所选模型。
 
-这里故意固定版本而不是使用 `jev-latest`，以便在升级前对评分与置信度进行可重复校准。
+只对真实 approval 提供审批建议。ACP 等采用的 Provider 专用 `response_options` 列表不适用此通用顾问。对支持的审批结构，可以建议 `approve_once`、`approve_session`、`deny`、`cancel_task` 或 `review_carefully`。须核对 `recommended_decision_available` 与实际待处理请求，不把建议当作可用选项或权限。调用方通过 `respond_agent_approval` 显式回应，或遵循交互超时/取消流程。
 
-TypeSafe 当前文档说明 Jev 1.13 只接受文本输入，总请求预算为 64k，同时 state + 单个最长 question 还有 32k 上限；英语是主要训练语言、准确性最好，CJK 可以处理但应在自己的真实数据上验证。因此 ServerFS 始终把这些分数和推荐视为“证据”，而不是“权限”。
+## 请求与数据边界
 
-## 四项 advisory 能力
+- Preflight/Router：runtime、别名、相对路径、profile、续接标记及原始任务 prompt。
+- Model Advisor：任务上下文和标准化候选模型元数据；文本经过清洗与限界。
+- Approval Advisor：任务上下文及已做路径脱敏的 approval 的白名单字段，再清洗常见敏感模式。仅同一任务内相同 approval 的已完成建议被缓存。
 
-### Agent Task Preflight
+模型与审批顾问的清洗器将字符串限制为 4096 字符后添加截断标记，列表最多 50 项。这是尽力过滤，不保证保密。不同 approval 可分别产生请求；失败的评估不缓存。重试可能增加网络尝试次数。模型建议不需要 Provider 原始 payload 或 workdir 扫描。
 
-每次启用 Jev 的 `submit_agent_task` 可以评估：
+## 失败行为与验证
 
-- 是否只有一个窄目标；
-- 是否明确限定修改范围；
-- 是否明确停止条件；
-- 是否明确要求可验证证据；
-- 任务更适合 ServerFS 结构化 primitive，还是需要原生 Agent。
+顾问超时、限流、响应无效等失败返回 `unavailable`；没有候选目录或不支持的审批结构可返回 `not_applicable`，模型建议也可能返回 `disabled`。其他已授权 Agent 任务或待处理审批按正常流程继续。Fail-open 只代表缺少建议，不扩大权限或自动批准。配置校验是独立机制，仍可失败关闭。
 
-### Runtime Router
+按所选 owner 指南验证私有配置与就绪状态。在授权测试任务中检查 preflight/routing 和 approval advice 事件或 model advice 结果，不打印 Key。实际 Provider/网络验收须独立于源码支持记录。
 
-同一次任务提交 Jev 请求还会给出一个路由建议：
-
-- `direct_serverfs_tool`
-- `codex`
-- `claude`
-- `qoder`
-- `human_review`
-
-它**不会**增加 `runtime=auto`。调用者显式选择的 runtime，以及 workdir 上的确定性 runtime allowlist，仍然具有最终约束力。
-
-### Model Advisor
-
-`list_agent_models` 可以选择性携带 ChatGPT 正准备交给 Agent 的具体任务。当所选 runtime 能成功返回原生模型目录且 Jev 已启用时，ServerFS 会在真正提交 Agent task 之前，把经过清洗的任务上下文与标准化候选模型 metadata 交给 Jev。
-
-Model Advisor：
-
-- 只考虑当前已暴露且未明确 disabled/hidden 的候选模型；
-- 仅在 runtime 明确提供时使用 reasoning/context/modalities/free/price 等 metadata；
-- 不根据模型名称自行推断质量或成本；
-- 返回精确 provider-native `recommended_model`、置信度/概率以及 `automatic=false`；
-- 永远不会自动写入或转发到 `submit_agent_task.model`。
-
-后续是否采纳仍由 ChatGPT 或用户决定。Claude 当前无法通过同等级的原生账户模型枚举接口发现候选，因此其模型建议为 `not_applicable`。
-
-### Approval Advisor
-
-如果 Codex、Claude 或 Qoder 后续真的生成 provider approval request，ServerFS 才可能针对这个具体 approval 再发起一次 Jev 请求。
-
-它评估：
-
-- 该权限是否确实是完成已授权目标所必需；
-- 权限范围是否足够窄；
-- 是否具有破坏性或不可逆风险；
-- 是否涉及敏感访问；
-- 是否会产生外部副作用；
-- 给出 `approve_once`、`approve_session`、`deny`、`cancel_task` 或 `review_carefully` 等建议。
-
-真正的 provider request 仍会保持阻塞，直到调用方通过原有 approval 工具显式响应。Jev 自己不会完成批准或拒绝。
-
-## 请求数量
-
-ServerFS 刻意减少 Jev 请求：
-
-```text
-list_agent_models + task context
-  └─ 最多 1 次 Jev 请求
-       └─ Model Advisor
-
-submit_agent_task
-  └─ 1 次 Jev 请求
-       ├─ Preflight
-       └─ Runtime Router
-
-是否出现 provider approval？
-  ├─ 否 -> 0 次额外 Jev 请求
-  └─ 是 -> 1 次 approval-specific Jev 请求
-              └─ 同一 task 内完全相同 approval -> 复用缓存
-```
-
-Model Advisor 刻意使用独立的提交前请求，因为 ChatGPT 必须先看到模型建议，再决定是否向 `submit_agent_task` 传入 `model`。真正提交时，Preflight 与 Runtime Router 共用一次 `system_one`，因为 Jev 可以针对同一 state 独立并行评估多个 typed question。Approval Advisor 必须更晚运行，因为任务提交时具体的 provider approval 对象还不存在。
-
-## 数据最小化
-
-启用 Jev 并不意味着 ServerFS 会把 workdir 内容发送给 Jev。
-
-任务级评估只提供 advisory question 所需的任务上下文。Model Advisor 额外接收原生模型发现已经返回的标准化 metadata，不发送 provider raw payload 或凭据。Approval 评估使用已经过 Bridge redaction 的 approval 对象，只保留 allowlist 字段，并再次清洗明显的 secret/token/password/credential 字段和常见模式。
-
-任何 Jev 结果都不能削弱：
-
-- workdir/path 授权；
-- runtime allowlist；
-- writer lease；
-- provider 原生审批语义；
-- MCP 传输与网络隔离；
-- provider 自身安全检查。
-
-## 失败行为
-
-如果 TypeSafe 不可用、超时、限流或返回异常结构，advisor 会返回 `status=unavailable`。
-
-已经通过确定性授权的 Agent task 或等待中的 provider approval 仍走 ServerFS 原有路径。Fail-open 的含义只是“缺少 advisory context”，不是“获得更宽权限”。
-
-## 当前验证状态
-
-目前已经用真实调用验证过：
-
-- 有界文件读取；
-- Git / pytest 任务；
-- 明确的 Codex / Claude provider 选择错误；
-- Qoder 路由与提交前模型建议已包含在 v0.9.0 中，并保持 advisory-only；
-- 应交由人工判断的任务；
-- 故意捆绑或宽泛的 prompt；
-- 一次性有界写入；
-- 重复的 session 范围写入；
-- workdir 外部读取 approval。
-
-项目目前仍然**没有**启用自动 runtime 路由、自动模型选择或自动 approval threshold。
-
-上游资料：[Introduction](https://docs.typesafe.ai/introduction)、[Models](https://docs.typesafe.ai/models) 与 [API reference](https://docs.typesafe.ai/api)。
-
-实现细节与实测数据见仓库：
-
-- [Agent Task Preflight](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-agent-preflight-experiment.md)
-- [Runtime Router](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-runtime-router-experiment.md)
-- [Approval Advisor](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-approval-advisor-experiment.md)
+历史评估记录：[Task Preflight](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-agent-preflight-experiment.md)、[Runtime Router](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-runtime-router-experiment.md)、[Approval Advisor](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-approval-advisor-experiment.md)。它们不代表当前命名实例验收。任务操作见 [Agent Bridge](../agent-bridge/)，上游模型限制见 [TypeSafe 模型文档](https://docs.typesafe.ai/models)。
