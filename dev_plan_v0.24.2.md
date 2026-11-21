@@ -1,5 +1,7 @@
 # ServerFS v0.24.2 — Native Windows Cloudflare Tunnel
 
+> Historical v0.24.2 candidate plan. The subsequent [v0.24.2 release notes](docs/releases/v0.24.2.md) record the release and its explicit restart/recovery waiver, not a test pass. Preserve the original pending gates below as planning evidence. For current named lifecycle and release gates see [Windows operations](deployment/windows/v0250-native-operations.md) and the [v0.25.0 checklist](docs/v0.25.0-release-checklist-2026-11-21.md).
+
 Status: **release candidate pending final CI and long-lived SSE/reconnect evidence**. Native HTTP, cloudflared bootstrap, independent same-user Task Scheduler owners, credential ACL validation, and Windows implementation acceptance are complete. Live ChatGPT MCP acceptance passed for both ingress owners, including tools and cross-ingress read/write/edit/delete on the same writable workdirs, plus Codex and Claude. A >60-second SSE hold and same-session behavior after a Connector-only restart remain pending. v0.24.2 is **not published**; v0.24.1 remains stable. Depends on v0.24.1's accepted provider-selection and credential/lifecycle contract; do not silently inherit macOS operating-system assumptions.
 
 ## Objective and supported scope

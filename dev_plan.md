@@ -1,5 +1,7 @@
 # ServerFS MCP v0.1 完整开发实施任务书
 
+> **历史文档（v0.1，2026-09-17）**：保留项目最初的开发任务书，不是现行需求或运维手册。v0.2 已将永久只读改为默认只读、按 workdir 显式启用写入；后续版本新增二进制传输、Agent Bridge、标准 HTTP/stdio、认证、原生平台、Repo Ops 及命名实例。下文的六工具表面、OpenAI Tunnel 独占方案、旧依赖版本、部署/验收命令及禁止后续功能等要求仅适用于原始版本。尤其第 35 节的路径解析伪代码不是当前安全实现：应以实际 FD/原生安全后端和现行策略为准，不得仅用路径字符串或 `resolve()` 替代。当前维护规则见 [维护不变量](docs/maintainers/invariants.md)、[维护流程](docs/maintainers/workflow.md) 和 [Linux 部署文档](deployment/linux/README.md)。原始目标与完成条件保留，不代表本次重新执行或验收。
+
 ## 0. 任务目标
 
 开发一个名为 **ServerFS MCP** 的开源项目。

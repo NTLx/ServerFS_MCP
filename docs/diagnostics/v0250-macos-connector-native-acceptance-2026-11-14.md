@@ -1,5 +1,7 @@
 # ServerFS MCP v0.25.0 — macOS 命名 Connector 独立生命周期验收
 
+> **历史验收边界（2026-11-14）**：保留当日 file-only Core 与合成 Connector 的测试证据。第 4 节为当日待办，不是当前完整状态；后续 owned 双 Connector、命名 ID 与 shared Bridge 的验收见后续日期的记录和[现行发布清单](../v0.25.0-release-checklist-2026-11-21.md)。跨平台私有协议不必一致，按[原生优先 ADR](../architecture/v0.25.0-native-platform-boundaries.md)执行。合成进程结论不能外推到实际公网隧道。
+
 **日期：** 2026-11-14
 **结论：** macOS 非默认 `bridge_mode=disabled` 文件型 Core 已分别通过合成 Cloudflare/OpenAI Connector 的**真实 SMAppService 原生生命周期**验收。未访问任何 Cloudflare/OpenAI 公网隧道；本阶段不是公开 MCP ingress E2E，也不是 `owned` Core 的 Connector 验收。
 

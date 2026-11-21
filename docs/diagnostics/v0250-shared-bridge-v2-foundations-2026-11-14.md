@@ -1,5 +1,7 @@
 # v0.25.0 macOS — Shared Bridge v2 Foundations (2026-11-14)
 
+> Historical superseded experiment. The later [native-first ADR](../architecture/v0.25.0-native-platform-boundaries.md) supersedes the original requirement for cross-OS private-wire parity, not the requirement for same-host explicit per-Core authorization and fail-closed isolation. The proposed envelope, nonce/store and continuation semantics below are not the current signed-grant contract; consult [maintainer invariants](../maintainers/invariants.md) and the [release checklist](../v0.25.0-release-checklist-2026-11-21.md). No operational authority or current runtime acceptance follows from these tests.
+
 **Status: SUPERSEDED SOURCE-ONLY EXPERIMENT / NOT OPERATIONAL.** The earlier Mac-only v2 wire is incompatible with the verified Windows core_grants.py contract. See docs/architecture/v0.25.0-bridge-v2-macos-windows-reconciliation.md. No shared Bridge runtime mode was enabled.
 
 ## Objective and baseline

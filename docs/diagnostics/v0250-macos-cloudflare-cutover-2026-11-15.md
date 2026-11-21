@@ -1,5 +1,7 @@
 # ServerFS MCP macOS v0.25.0 Cloudflare in-place cutover audit — 2026-11-15
 
+> Historical in-place cutover and rollback evidence for the then-installed candidate. The subsequent [Connector-only restart acceptance](v0250-macos-cloudflare-connector-restart-acceptance-2026-11-16.md) adds bounded authenticated public SSE/recovery evidence, not production unclean-exit or delegated nested MCP authorization. The recorded paths, PIDs and rollback steps are not current state or instructions to operate on production; re-establish the actual baseline and explicit authorization for any future operation. See the [current release checklist](../v0.25.0-release-checklist-2026-11-21.md) and [macOS runbook](../../deployment/macos/README.md).
+
 ## Result
 
 The dirty v0.25.0 source candidate Core and independent Cloudflare Connector are staged, registered, and running. This is an in-place cutover on the existing hostname and loopback port. It does not change DNS, WAF, Cloudflare Tunnel configuration, OpenAI credentials, Bridge configuration, or version metadata. The installed metadata may still report v0.24.2; this audit makes no release claim.

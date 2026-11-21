@@ -1,5 +1,7 @@
 # v0.25.0 macOS native instance foundation — 2026-11-13
 
+> Historical foundation checkpoint: the remaining gates and handoff describe the 2026-11-13 source increment, not the present implementation. Subsequent [named-instance runtime evidence](v0250-macos-named-instance-runtime-2026-11-13.md) and later native reports add separate acceptance. The [native-first ADR](../architecture/v0.25.0-native-platform-boundaries.md) supersedes any assumption that different OSes must share private IPC/protocol implementations; see the [release checklist](../v0.25.0-release-checklist-2026-11-21.md) for current open gates.
+
 **Status: SOURCE / ISOLATED BUNDLE ACCEPTED; MULTI-INSTANCE RUNTIME NOT ACCEPTED.**
 No Git fetch, pull, commit, push, tag or release; no production service registration, migration, restart, credential change, or public workdir mutation.
 

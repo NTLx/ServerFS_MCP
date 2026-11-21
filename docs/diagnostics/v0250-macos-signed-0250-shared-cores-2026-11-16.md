@@ -1,5 +1,7 @@
 # macOS v0.25.0 signed two Shared Cores: isolated SMAppService acceptance — 2026-11-16
 
+> Chronological historical record: the initial preflight stopped (NOT RUN); later separately authorized lock repair, source-backed owner, installed owner, same-source and post-guard JUnit runs have their own results below. The final durable JUnit run passed, but the intervening dot-only run remains inconclusive. The candidate is a mutable private 0.25.0 snapshot, not an immutable release SHA or current authorization. See the [integrated release checklist](../v0.25.0-release-checklist-2026-11-21.md).
+
 ## Result
 
 **NOT RUN — preflight stopped at lock-record comparison.** No native test was invoked and no test-owned SMAppService Core was registered. Per the one-attempt instruction, no retry was made.

@@ -1,5 +1,7 @@
 # ServerFS v0.20.0 Development Plan
 
+> Historical v0.20.0 accepted implementation candidate, not a separately published release. Preserve the dated protocol/conformance pins, exact-SHA CI results and Registry preview limitations as recorded. The version-specific tag workflow and distribution assumptions are not current publication instructions; see [maintainer workflow](docs/maintainers/workflow.md) and [current Registry documentation](deployment/registry/README.md). No Registry namespace claim, client interoperability or publication is implied by this record.
+
 Status: **Implementation ACCEPTED; v0.20.0 is a release-ready candidate, NOT RELEASED.** Final acceptance is based on exact SHA `ad75b324545db773726a20ac4da6b2945eb3b4c2`: Container run 39640005506, Windows native run 39640005437, and macOS Native run 39640005522 all succeeded. Criterion 3's clean post-correction CI requirement is satisfied; the earlier redundant stdio subprocess test failure and its removal remain documented in the acceptance record. Registry-client OCI + Streamable HTTP installer interoperability, official preview validation, and namespace claim remain **Not verified**, disclosed non-blocking Registry preview limitations under criterion 7. See [`docs/v0.20.0-release-acceptance-2026-10-22.md`](docs/v0.20.0-release-acceptance-2026-10-22.md). v0.19.0 remains the current stable release.
 
 Planning date: 2026-10-21.

@@ -1,5 +1,7 @@
 # ServerFS MCP v0.5.0 development plan
 
+> Historical released v0.5.0 OpenAI file-input/isolated ingress design and exact-byte acceptance. Legacy ingress service topology, fixed endpoint and size-variable examples are version-scoped; v0.9 consolidated the documented Linux global binary ceiling, and later named/native deployments have distinct ingress boundaries. Use [current Linux runbook](deployment/linux/README.md) and [maintainer invariants](docs/maintainers/invariants.md) for actual enablement and security limits. Historical regional host measurements and test evidence do not establish present provider behavior or current release acceptance.
+
 Status: **RELEASED / FROZEN v0.5.0**
 
 Final branch: `main`

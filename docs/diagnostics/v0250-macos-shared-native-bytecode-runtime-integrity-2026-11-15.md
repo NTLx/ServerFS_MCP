@@ -1,5 +1,7 @@
 # macOS v0.25.0 — Shared Core native runtime bytecode integrity regression
 
+> Historical failed native attempt and targeted repair. Later [same-source native Shared Core acceptance](v0250-macos-latest-versioned-native-acceptance-2026-11-16.md) passed a separate signed two-Core test. This record retains the original failed run and refused follow-up; those are not retroactively passes, and the later private candidate is not an immutable release SHA.
+
 ## Confirmed outcome
 
 **The native two-Shared-Core SMAppService end-to-end gate remains NOT ACCEPTED.** A live opt-in run on Apple Silicon macOS 27.2.1 performed offline runtime provisioning, built the signed native companion, registered and started the first random Shared Core, then failed while staging the second with `managed Shared Core runtime integrity check failed`. That run returned **1 failed / exit 1**. Its test-owned labels, instances, processes and scratch were checked absent afterward; the four production PIDs stayed unchanged (OpenAI Tunnel 1779, Bridge 1790, HTTP Core 40516, Cloudflare Connector 40543).

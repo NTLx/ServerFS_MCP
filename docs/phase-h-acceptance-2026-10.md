@@ -9,7 +9,9 @@ each acceptance point.
 **Post-release (2026-10-09): `v0.11.0` was tagged at `78f4547` and the stable
 release published with the three wheel assets and the two-environment install
 notes. The two contract rows below that were "outstanding by design" are now
-complete — v0.11.0 was the stable release produced by this phase; repository current stable is v0.18.0.**
+complete — v0.11.0 was the stable release produced by this phase; v0.18.0 was recorded as stable at a later documentation checkpoint, not as the current release pointer.**
+
+> Historical release closure. The original two-environment packaging, singleton service-pause window, local candidate digests and tag workflow are evidence for v0.11 only. Current named-instance installation and dispatch-first publication follow [maintainer invariants](maintainers/invariants.md), [maintainer workflow](maintainers/workflow.md) and the [integrated release checklist](v0.25.0-release-checklist-2026-11-21.md). Do not repeat the historical production pause as authorization.
 
 ## Layered evidence map
 

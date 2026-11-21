@@ -1,5 +1,7 @@
 # ServerFS v0.25.0 — macOS M1 OpenAI direct HTTP Connector source checkpoint (2026-11-12)
 
+> Historical source checkpoint. The following bare `--mcp.server-url` argument was subsequently corrected to `url=http://127.0.0.1:<port>/mcp` after inspecting the installed client's actual syntax; see [later M1 capability/safety verification](v0250-macos-m1-native-capability-and-safety-2026-11-12.md). Neither stage-only source nor command help proves a real public OpenAI connection. Use the [current macOS runbook](../../deployment/macos/README.md) for current supported deployment and the [release checklist](../v0.25.0-release-checklist-2026-11-21.md) for remaining gates.
+
 **Status:** OpenAI direct HTTP Connector staged-source candidate implemented; installed-Mac and public E2E **NOT VERIFIED**. No release, no production cutover.
 
 ## Implementation scope and ownership

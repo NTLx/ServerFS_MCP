@@ -1,5 +1,7 @@
 # ServerFS MCP v0.25.0 — macOS owned 四组件原生组合验收（2026-11-14）
 
+> **历史验收边界**：原始四组件合成 Connector 验收及第 4 节当日待办保留。后续 macOS Shared Core 与同 provider 命名 ID 有独立验收记录；跨 OS 私有协议不要求统一，遵循[原生优先 ADR](../architecture/v0.25.0-native-platform-boundaries.md)。当前未关闭门禁以[发布清单](../v0.25.0-release-checklist-2026-11-21.md)为准，本报告不证明真实双公网 Connector 或 Provider 执行。
+
 **结论：** 在独立随机实例中，`owned` Core + 独立 Agent Bridge + Cloudflare Connector + OpenAI Connector 已通过真实 macOS SMAppService 注册/注销、独立进程生命周期和本机 MCP 调用。两个 Connector 是 `/bin/sleep` **无网络模拟程序**；**不代表双真实公网 Tunnel 或 Shared Bridge v2 通过**。本轮没有 Git 提交、推送、生产服务切换。
 
 ## 本轮先发现并修复的真实问题

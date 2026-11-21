@@ -1,5 +1,7 @@
 # v0.10.0 Release Checklist (Phase F closure order)
 
+> Historical v0.10.0 release checklist. Preserve its original two-wheel acceptance, checked and unchecked items and scope limits. Manual tag-first publication, package versions and follow-up steps below are not current instructions; v0.23.3 introduced dispatch-first exact-SHA gates. Follow the [current maintainer workflow](maintainers/workflow.md) and [integrated release checklist](v0.25.0-release-checklist-2026-11-21.md).
+
 Acceptance preconditions:
 
 - [x] Phase F evidence document (`docs/phase-f-acceptance-2026-10.md`) complete

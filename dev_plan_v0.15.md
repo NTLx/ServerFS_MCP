@@ -1,5 +1,7 @@
 # ServerFS v0.15.0 Development Plan
 
+> Historical released v0.15.0 standards-first ingress design and measured client interoperability. The recorded client versions, Linux-only generic HTTP deployment, no-built-in-auth assumptions, old Compose and serial cross-platform integration/release steps are version-specific. Subsequent releases introduced OAuth, API Key, Cloudflare and independent named native lifecycles. For current transport/admission and platform boundaries use [current architecture decisions](docs/architecture/v0.25.0-instance-model.md), [maintainer invariants](docs/maintainers/invariants.md) and [maintainer workflow](docs/maintainers/workflow.md); historical client smoke does not prove current client or artifact acceptance.
+
 Status: released — v0.15.0 release complete.
 
 ## Implementation checkpoint — 2026-10-19

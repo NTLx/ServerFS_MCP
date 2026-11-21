@@ -1,5 +1,7 @@
 # ServerFS MCP v0.7.3 Release Plan
 
+> Historical v0.7.3 lifecycle reliability and v1 retry semantics. Preserve the dated acceptance defects and fixes. The same-key retry contract below is not available on current signed-v2 paths, which reject `idempotency_key` and `continue_from_task_id`; an uncertain submission must not be blindly retried. Use [current Agent Bridge documentation](agent_bridge/README.md) and [maintainer invariants](docs/maintainers/invariants.md) for effective capabilities and [maintainer workflow](docs/maintainers/workflow.md) for release operations.
+
 Status: frozen historical release plan; v0.7.3 was the stable release before v0.8.0
 Theme: **Runtime Lifecycle Reliability**
 Previous stable baseline: v0.7.2

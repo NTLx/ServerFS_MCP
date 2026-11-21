@@ -1,5 +1,7 @@
 # Phase G — Claude Windows Runtime Acceptance Evidence (2026-10)
 
+> Historical v0.11 Windows Claude acceptance. The original provider versions, host-specific direct/proxy reachability and singleton supervision describe the measured environment. Session resume is not in-flight reattachment, and legacy continuation evidence does not establish support on signed-v2 submissions. Current [maintainer invariants](maintainers/invariants.md) and [Windows runbook](../deployment/windows/README.md) govern authorization, recovery and routing; no new real provider test is implied.
+
 Execution host: WorkPC (Windows 11 x64, local NTFS). All real-provider turns below were
 executed against the installed native `claude.EXE` through the public MCP surface, with the
 frozen pin `claude-agent-sdk==0.2.156` running under the Bridge venv. No model was ever

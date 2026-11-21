@@ -1,5 +1,7 @@
 # ServerFS v0.14.0 Development Plan
 
+> Historical v0.14.0 Windows persistence design and dated release acceptance. Retain the measured three recovery layers, non-elevated current-user constraint and the untested reboot/login boundary. The original singleton Tunnel/process ownership and generic service commands are superseded for named instances by the v0.25.0 independent Core/Bridge/Connector architecture; use [current Windows runbook](deployment/windows/README.md), [instance model](docs/architecture/v0.25.0-instance-model.md) and [maintainer workflow](docs/maintainers/workflow.md). Do not execute the old live termination or tag steps as current instructions.
+
 Status: implementation and Windows release acceptance complete; release closeout approved.
 
 ## Goal

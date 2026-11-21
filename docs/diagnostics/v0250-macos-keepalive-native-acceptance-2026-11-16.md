@@ -20,7 +20,7 @@ The failing run did not emit its generated test label or initial PID before the 
 
 ## Corrected opt-in test
 
-Added [test_darwin_v0250_named_core_keepalive_live_macos.py](/Users/lx/Projects/ServerFS_MCP/tests/test_darwin_v0250_named_core_keepalive_live_macos.py). It reuses the existing file-only HTTP MCP roundtrip and named launchd cleanup helpers, sets `hello.txt` to the helper's required `synthetic-file-only` content, and emits test label/PID/config/port evidence before the HTTP probe. PID ownership is checked against the exact launchd PID, current UID, manifest-pinned executable, unique absolute config path and port. It requires `KeepAlive=true`, signed bundle verification and the existing `register-preflight http-origin` contract before registration; it authorizes at most one SIGKILL and caps recovery at 120 seconds. Bridge mode is disabled; configuration and key are in a disposable temp tree, outside the exposed workdir.
+Added [test_darwin_v0250_named_core_keepalive_live_macos.py](../../tests/test_darwin_v0250_named_core_keepalive_live_macos.py). It reuses the existing file-only HTTP MCP roundtrip and named launchd cleanup helpers, sets `hello.txt` to the helper's required `synthetic-file-only` content, and emits test label/PID/config/port evidence before the HTTP probe. PID ownership is checked against the exact launchd PID, current UID, manifest-pinned executable, unique absolute config path and port. It requires `KeepAlive=true`, signed bundle verification and the existing `register-preflight http-origin` contract before registration; it authorizes at most one SIGKILL and caps recovery at 120 seconds. Bridge mode is disabled; configuration and key are in a disposable temp tree, outside the exposed workdir.
 
 The Swift usage contract confirms `register-preflight http-origin` is the existing supported invocation. The native plist template sets `KeepAlive=true`. The opt-in test will skip by default.
 
@@ -47,4 +47,4 @@ Before and after the native attempt, protected PIDs were unchanged:
 
 Read-only `launchctl print` showed the Cloudflare Connector and HTTP Core running; the Core loopback `/mcp` endpoint returned the expected anonymous **401**. The user's report that the Cloudflare MCP `list_workdirs` tool returned an internal error twice, while the preserved OpenAI Tunnel entry succeeded, is separate from this test. Its cause is **unproven**. No Cloudflare, production Core, Tunnel or Bridge restart/stop/kill was performed.
 
-The corrected recovery acceptance remains outstanding for a later explicitly bounded run. No commit, push or tag was made.
+At this checkpoint the corrected recovery acceptance remained outstanding; the later explicitly bounded [native KeepAlive rerun](v0250-macos-keepalive-native-rerun-2026-11-16.md) passed for an isolated file-only Core, not the production Connector. The failed first attempt above remains unchanged as evidence. No commit, push or tag was made.

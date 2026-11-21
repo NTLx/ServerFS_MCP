@@ -1,5 +1,7 @@
 # Phase 0 — macOS 27 / Apple Silicon M-series Capability Probe
 
+> Historical v0.13 capability probe on the measured host. The manual LaunchAgent experiment and legacy single-user socket topology below are not current installation instructions or shared-Bridge authorization. Subsequent [ServiceManagement feasibility](phase-v0.13.2-servicemanagement-probe-2026-10.md) and [native-first architecture](architecture/v0.25.0-native-platform-boundaries.md) govern their later scope; use the [current macOS runbook](../deployment/macos/README.md). Preserve the original unverified Rosetta, runtime and descendant-containment boundaries.
+
 **Date:** 2026-10-10
 **Machine:** MacBook Air (Mac16,12), Apple M4, 24 GB RAM
 **OS:** macOS 27.0.1 (build 26A434), Darwin kernel 27.0.0 (`xnu-13432.1.9~1/RELEASE_ARM64_T8132`)
