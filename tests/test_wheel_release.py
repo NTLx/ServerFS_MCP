@@ -194,8 +194,9 @@ class TestNotesMatrix:
         assert replaced.endswith("\n" + after)
         assert replaced.count(START) == 1 and replaced.count(END) == 1
 
-    def test_rerun_is_byte_idempotent(self) -> None:
-        _code, once = notes_main("prose\n")
+    @pytest.mark.parametrize("body", ["", "prose\n"])
+    def test_rerun_is_byte_idempotent(self, body: str) -> None:
+        _code, once = notes_main(body)
         _code2, twice = notes_main(once)
         assert once == twice
 
@@ -211,9 +212,10 @@ class TestNotesMatrix:
         [
             START + "\nblock never closed\n",
             "orphan end " + END + "\n",
+            END + "\nhuman notes\n" + START + "\nhuman epilogue\n",
             START + "\nx\n" + END + "\n" + START + "\ny\n" + END,
         ],
-        ids=["unclosed", "stray-end", "duplicate-pair"],
+        ids=["unclosed", "stray-end", "reversed-pair", "duplicate-pair"],
     )
     def test_marker_conflicts_fail_closed_without_output(self, broken: str) -> None:
         with tempfile.TemporaryDirectory() as scratch:

@@ -101,8 +101,11 @@ def update_release_notes(existing: str, block: str) -> NotesResult:
         return NotesResult(body=body, action="appended")
     if starts == 1 and ends == 1:
         head, _, remainder = existing.partition(MARKER_START)
-        _, _, tail = remainder.partition(MARKER_END)
-        body = head.rstrip("\n") + "\n\n" + block + "\n"
+        _, end_marker, tail = remainder.partition(MARKER_END)
+        if not end_marker:
+            raise ValueError("reversed release-notes markers; refusing to rewrite")
+        head = head.rstrip("\n")
+        body = (head + "\n\n" + block if head else block) + "\n"
         if tail.strip():
             body += "\n" + tail.strip("\n") + "\n"
         return NotesResult(body=body, action="replaced")
