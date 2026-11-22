@@ -118,6 +118,23 @@ class TestVersionGate:
         wheel = make_wheel(tmp_path, "x-1.whl", name="serverfs-mcp", version=metadata_version)
         assert gate_main(tag, wheel) == 0
 
+    def test_crlf_shell_member_fails(self, tmp_path: Path) -> None:
+        wheel = make_wheel(tmp_path, "crlf.whl", name="serverfs-mcp", version="0.25.0")
+        with zipfile.ZipFile(wheel, "a") as bundle:
+            bundle.writestr("serverfs_mcp/build.sh", b"#!/bin/bash\r\nset -euo pipefail\r\n")
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            result = wheel_release.main(["version-gate", "--tag", "v0.25.0", "--wheel", str(wheel)])
+        assert result == wheel_release.EXIT_VERSION_MISMATCH
+        diagnostic = "shell script member serverfs_mcp/build.sh contains CRLF line endings"
+        assert diagnostic in stderr.getvalue()
+
+    def test_lf_shell_member_passes(self, tmp_path: Path) -> None:
+        wheel = make_wheel(tmp_path, "lf.whl", name="serverfs-mcp", version="0.25.0")
+        with zipfile.ZipFile(wheel, "a") as bundle:
+            bundle.writestr("serverfs_mcp/build.sh", b"#!/bin/bash\nset -euo pipefail\n")
+        assert gate_main("v0.25.0", wheel) == 0
+
     def test_mismatched_versions_fail(self, tmp_path: Path) -> None:
         good = make_wheel(tmp_path, "a.whl", name="serverfs-mcp", version="0.10.0")
         stale = make_wheel(tmp_path, "b.whl", name="serverfs-windows-native", version="0.9.0")

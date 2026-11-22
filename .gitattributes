@@ -1,0 +1,5 @@
+*.sh text eol=lf
+/src/serverfs_mcp/** text=auto eol=lf
+/agent_bridge/src/serverfs_agent_bridge/** text=auto eol=lf
+/native/macos/service_manager/** text=auto eol=lf
+/LICENSE text eol=lf

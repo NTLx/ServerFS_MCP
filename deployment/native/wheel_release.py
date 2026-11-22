@@ -56,6 +56,11 @@ def wheel_version(wheel: Path) -> tuple[str, str]:
         ]
         if len(candidates) != 1:
             raise ValueError(f"{wheel.name}: expected exactly one dist-info METADATA")
+        for info in bundle.infolist():
+            if info.filename.endswith(".sh") and b"\r\n" in bundle.read(info):
+                raise ValueError(
+                    f"{wheel.name}: shell script member {info.filename} contains CRLF line endings"
+                )
         message = Parser().parsestr(bundle.read(candidates[0]).decode("utf-8"), headersonly=True)
     version = message["Version"]
     if not version:
@@ -70,7 +75,7 @@ def cmd_version_gate(tag: str, wheels: list[Path]) -> int:
         try:
             name, version = wheel_version(wheel)
         except (OSError, ValueError, zipfile.BadZipFile) as exc:
-            sys.stderr.write(f"version-gate: cannot read {wheel}: {exc}\n")
+            sys.stderr.write(f"version-gate: invalid wheel {wheel.name}: {exc}\n")
             return EXIT_VERSION_MISMATCH
         if normalize_release_version(version) != want:
             sys.stderr.write(
