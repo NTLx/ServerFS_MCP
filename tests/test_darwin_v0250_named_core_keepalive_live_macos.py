@@ -40,11 +40,6 @@ from v0250_named_launchd_acceptance import (  # noqa: E402
     _production_pids,
 )
 
-pytestmark = pytest.mark.skipif(
-    sys.platform != "darwin" or os.environ.get("SERVERFS_ENABLE_NAMED_CORE_KEEPALIVE_LIVE") != "1",
-    reason="requires explicit disposable macOS SMAppService KeepAlive acceptance opt-in",
-)
-
 _PROTECTED = {
     "com.ntlx.serverfs.tunnel",
     "com.ntlx.serverfs.bridge",
@@ -76,16 +71,28 @@ def _verified_pid(pid: int, config: Path, port: int, executable: str) -> bool:
         check=False,
     )
     fields = result.stdout.strip().split(None, 2)
-    return (
-        result.returncode == 0
-        and len(fields) == 3
-        and fields[0] == str(pid)
-        and fields[1] == str(os.getuid())
-        and fields[2].startswith(executable)
-        and str(config) in fields[2]
-        and "--http-port" in fields[2]
-        and str(port) in fields[2]
+    if (
+        result.returncode != 0
+        or len(fields) != 3
+        or fields[0] != str(pid)
+        or fields[1] != str(os.getuid())
+    ):
+        return False
+
+    # launchd/ps can report /tmp where the manifest pins /private/tmp.
+    # Compare physical executable identity, but require the entire expected
+    # file-only Core argv, rather than accepting path/port substrings.
+    suffix = (
+        f" -m serverfs_mcp.cli serve --transport streamable-http"
+        f" --config {config} --http-port {port}"
     )
+    if not fields[2].endswith(suffix):
+        return False
+    observed_executable = Path(fields[2][: -len(suffix)])
+    try:
+        return observed_executable.is_absolute() and observed_executable.samefile(executable)
+    except (OSError, ValueError):
+        return False
 
 
 def _no_test_process(config: Path) -> bool:
@@ -104,6 +111,73 @@ def _mcp(port: int, key: str) -> dict[str, object]:
     return asyncio.run(_mcp_roundtrip(f"http://127.0.0.1:{port}/mcp", key))
 
 
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("same-path", True),
+        ("same-file-alias", True),
+        ("different-file", False),
+        ("prefix-lookalike", False),
+        ("missing-file", False),
+        ("wrong-pid", False),
+        ("wrong-uid", False),
+        ("wrong-config", False),
+        ("wrong-port", False),
+        ("extra-argument", False),
+    ],
+)
+def test_verified_pid_requires_same_executable_and_exact_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, expected: bool
+) -> None:
+    executable = tmp_path / "python"
+    executable.touch()
+    other = tmp_path / "python-other"
+    other.touch()
+    alias = tmp_path / "alias" / "python"
+    config = tmp_path / "core.toml"
+    port = 54321
+    observed = {
+        "same-file-alias": alias,
+        "different-file": other,
+        "prefix-lookalike": Path(str(executable) + "-other"),
+        "missing-file": tmp_path / "missing",
+    }.get(case, executable)
+
+    # Mock physical equivalence for the alias; the real macOS live gate
+    # exercises the actual filesystem alias and launchd process identity.
+    samefile = Path.samefile
+
+    def physical_match(path: Path, target: str) -> bool:
+        if path == alias:
+            return Path(target) == executable
+        return samefile(path, target)
+
+    monkeypatch.setattr(Path, "samefile", physical_match)
+    monkeypatch.setattr(os, "getuid", lambda: 501, raising=False)
+    process_pid = 124 if case == "wrong-pid" else 123
+    process_uid = 502 if case == "wrong-uid" else 501
+    actual_config = str(config) + ".other" if case == "wrong-config" else config
+    actual_port = 543210 if case == "wrong-port" else port
+    command = (
+        f"{observed} -m serverfs_mcp.cli serve --transport streamable-http"
+        f" --config {actual_config} --http-port {actual_port}"
+    )
+    if case == "extra-argument":
+        command += " --extra"
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, f"{process_pid} {process_uid} {command}\n"
+        ),
+    )
+    assert _verified_pid(123, config, port, str(executable)) is expected
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin" or os.environ.get("SERVERFS_ENABLE_NAMED_CORE_KEEPALIVE_LIVE") != "1",
+    reason="requires explicit disposable macOS SMAppService KeepAlive acceptance opt-in",
+)
 def test_named_file_core_keepalive_recovers_after_one_sigkill() -> None:
     before = _production_pids()
     if any(pid is None for pid in before.values()):
