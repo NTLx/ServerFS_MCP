@@ -2,9 +2,13 @@
 
 **English** · [简体中文](README.md)
 
-[![Release](https://img.shields.io/github/v/release/NTLx/ServerFS_MCP)](https://github.com/NTLx/ServerFS_MCP/releases/latest) · [Website](https://ntlx.github.io/ServerFS_MCP/) · [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/) · [Releases](https://github.com/NTLx/ServerFS_MCP/releases)
+[![Release](https://img.shields.io/github/v/release/NTLx/ServerFS_MCP)](https://github.com/NTLx/ServerFS_MCP/releases/latest)
 
-**This documentation targets v0.25.0; publication is pending.** [Latest stable release](https://github.com/NTLx/ServerFS_MCP/releases/latest).
+- [Website](https://ntlx.github.io/ServerFS_MCP/)
+- [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/)
+- [Releases](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.25.0)
+
+**Current stable release: [v0.25.0](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.25.0).**
 
 ServerFS MCP is a cross-platform, self-hosted MCP filesystem service. It exposes explicitly configured local directories (workdirs) to AI clients, with read-only defaults and revision-guarded writes. Optional binary transfer, deterministic repository operations (Repo Ops) and host Agent delegation extend its capabilities. There is no shell or general command-execution interface.
 
