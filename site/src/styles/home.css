@@ -1957,6 +1957,7 @@ h1 {
 
 .platform-spec {
   display: grid;
+  min-width: 0;
   min-height: 0;
   grid-template-rows: minmax(0, 1fr) auto;
   overflow: hidden;
@@ -1969,6 +1970,7 @@ h1 {
 
 .platform-architecture {
   display: grid;
+  min-width: 0;
   min-height: 0;
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 18px;
@@ -2166,6 +2168,7 @@ h1 {
 }
 
 .platform-terminal {
+  min-width: 0;
   border-top: 1px solid rgba(156, 171, 255, 0.12);
   background: var(--panel-strong);
 }
