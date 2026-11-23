@@ -104,6 +104,7 @@ def _patch_owner(tmp_path, monkeypatch, *, fail_ready=False, proxy=None):
     monkeypatch.setattr(native_lifecycle, "LifecycleLease", FakeLease)
     monkeypatch.setattr(windows_job, "WindowsJob", lambda name: FakeJob(name, events))
     monkeypatch.setattr(agent_lifecycle, "spawn_bridge", fake_spawn)
+
     def fake_bridge_env(selected_proxy):
         events.append(("bridge-env", selected_proxy))
         return {}
@@ -143,7 +144,8 @@ def test_independent_bridge_lifecycle_owns_only_its_job_and_lease(tmp_path, monk
 
 
 def test_named_bridge_passes_private_proxy_only_to_clean_child_and_bootstrap(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ) -> None:
     from serverfs_mcp.agent_proxy import AgentProxyConfig
 
@@ -151,9 +153,7 @@ def test_named_bridge_passes_private_proxy_only_to_clean_child_and_bootstrap(
         url="http://127.0.0.1:20170",
         no_proxy="127.0.0.1,localhost,::1",
     )
-    manifest, _plan_value, process, events = _patch_owner(
-        tmp_path, monkeypatch, proxy=proxy
-    )
+    manifest, _plan_value, process, events = _patch_owner(tmp_path, monkeypatch, proxy=proxy)
     assert runtime.run_independent_bridge_v2(manifest) == 3
     assert ("bridge-env", proxy) in events
     assert ("bootstrap-proxy", proxy, True) in events

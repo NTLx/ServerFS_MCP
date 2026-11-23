@@ -468,8 +468,7 @@ def provision(args):
             )
             proxy = parse_proxy_source(source.read_bytes())
             proxy_source = (
-                f"SERVERFS_AGENT_PROXY_URL={proxy.url}\n"
-                f"SERVERFS_AGENT_NO_PROXY={proxy.no_proxy}\n"
+                f"SERVERFS_AGENT_PROXY_URL={proxy.url}\nSERVERFS_AGENT_NO_PROXY={proxy.no_proxy}\n"
             ).encode()
         document = render_bridge(
             owner_request, bid, sid, home, WindowsBridgeResources(sid, bid).pipe_name

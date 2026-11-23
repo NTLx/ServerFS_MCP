@@ -61,7 +61,6 @@ def test_private_source_accepts_credentialless_http_and_forces_loopback_bypass()
     assert "example.local" in proxy.no_proxy.split(",")
 
 
-
 def test_named_owner_requires_valid_private_file_when_runtime_opts_in(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -119,12 +118,11 @@ def test_named_owner_reopens_its_private_source_not_process_proxy_environment(
         json.dumps({"bridge_id": "named-owner", "claude": {"enabled": True, "use_proxy": True}}),
         encoding="utf-8",
     )
-    (tmp_path / "agent-proxy.env").write_bytes(
-        b"SERVERFS_AGENT_PROXY_URL=http://127.0.0.1:20170\n"
-    )
+    (tmp_path / "agent-proxy.env").write_bytes(b"SERVERFS_AGENT_PROXY_URL=http://127.0.0.1:20170\n")
     monkeypatch.setenv("SERVERFS_AGENT_PROXY_URL", "http://ambient.invalid:3333")
     proxy = read_owned_named_agent_proxy(manifest=manifest, config_path=config)
     assert proxy is not None and proxy.url == "http://127.0.0.1:20170"
+
 
 def test_unproxied_owner_does_not_touch_proxy_file(tmp_path: Path) -> None:
     assert (
