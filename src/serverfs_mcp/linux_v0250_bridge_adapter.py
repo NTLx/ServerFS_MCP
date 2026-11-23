@@ -101,6 +101,68 @@ class LinuxV0250BridgeAdapter:
             raise AgentBridgeClientError("Core Bridge protocol error") from None
 
 
+
+_TASK_OWNED_METHODS = frozenset({
+    "task.get",
+    "task.events",
+    "task.result.read",
+    "task.cancel",
+    "task.message.send",
+    "task.approval.respond",
+    "task.question.answer",
+})
+
+
+class LinuxV026MultiBridgeAdapter:
+    """Route each signed call through its exact authorized workdir identity.
+
+    Task-only MCP methods expose no workdir parameter. Probe task ownership via
+    authenticated task.get, then dispatch; no untrusted task-id alias inference
+    or volatile task ownership cache is required after a Core restart.
+    """
+
+    def __init__(self, clients: dict[str, Any]) -> None:
+        if sys.platform != "linux" or not isinstance(clients, dict) or not 2 <= len(clients) <= 16:
+            raise ValueError("Core Bridge multi-alias grant is invalid")
+        if any(
+            getattr(client, "_workdir_alias", None) != alias for alias, client in clients.items()
+        ):
+            raise ValueError("Core Bridge client grant does not match adapter workdir")
+        self._adapters = {
+            alias: LinuxV0250BridgeAdapter(client, alias) for alias, client in clients.items()
+        }
+
+    def __repr__(self) -> str:
+        return "LinuxV026MultiBridgeAdapter(<grant credentials hidden>)"
+
+    async def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(method, str) or method not in _PARAMS:
+            raise AgentBridgeClientError("unsupported Agent Bridge method")
+        if not isinstance(params, dict) or any(key not in _PARAMS[method] for key in params):
+            raise AgentBridgeClientError("invalid Agent Bridge parameters")
+        alias = params.get("workdir")
+        if alias is not None:
+            if not isinstance(alias, str) or alias not in self._adapters:
+                raise AgentBridgeClientError("workdir is outside the authorized grant")
+            return await self._adapters[alias].call(method, params)
+        if method in _TASK_OWNED_METHODS:
+            if not isinstance(params.get("task_id"), str) or not params["task_id"]:
+                raise AgentBridgeClientError("invalid Agent task identifier")
+            for adapter in self._adapters.values():
+                try:
+                    observed = await adapter.call("task.get", {"task_id": params["task_id"]})
+                except AgentBridgeRemoteError as exc:
+                    if exc.code == "CORE_TASK_NOT_FOUND":
+                        continue
+                    raise
+                if method == "task.get":
+                    return observed
+                return await adapter.call(method, params)
+            raise AgentBridgeRemoteError("CORE_TASK_NOT_FOUND", "Core task is not available")
+        if method in {"bridge.ping", "runtime.list"}:
+            return await next(iter(self._adapters.values())).call(method, params)
+        raise AgentBridgeClientError("Agent Bridge workdir is required")
+
 def _credentials(client: Any) -> tuple[str, ...]:
     values: list[str] = []
     for name in ("_secret", "_bridge_id", "_core_id", "_key_id", "_policy_revision"):

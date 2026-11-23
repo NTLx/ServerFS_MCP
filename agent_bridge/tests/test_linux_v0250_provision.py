@@ -161,6 +161,104 @@ def test_provisioned_grant_and_binding_load_in_real_consumers(tmp_path, monkeypa
     assert binding["secret_hex"] not in repr(client)
 
 
+def test_v026_one_core_two_authorized_workdirs_nonfirst_slot(tmp_path, monkeypatch):
+    manifest, root, work, config_path = _fixture(tmp_path, monkeypatch)
+    docs = tmp_path / "work-docs"
+    docs.mkdir()
+    owner_policy = json.loads(config_path.read_text(encoding="utf-8"))
+    owner_policy["workdirs"].append(
+        {
+            "alias": "Docs",
+            "host_path": str(docs),
+            "read_only": False,
+            "agent_mode": "workspace-write",
+            "agent_runtimes": ["codex"],
+        }
+    )
+    config_path.write_text(json.dumps(owner_policy), encoding="utf-8")
+    manifest["core"] = {
+        "instance_id": "core-blue",
+        "workdirs": [
+            {"alias": "Repo", "container_path": "/workdirs/01", "host_path": str(work)},
+            {"alias": "Docs", "container_path": "/workdirs/03", "host_path": str(docs)},
+        ],
+        "methods": ["bridge.ping", "runtime.list", "task.submit", "task.get"],
+    }
+    assert provision(manifest) == root
+    saved = json.loads((root / "core-bindings/core-blue/core-bridge-binding.json").read_text())
+    assert saved["schema_version"] == 2
+    assert {item["alias"] for item in saved["workdirs"]} == {"Repo", "Docs"}
+    grants = json.loads((root / "bridge/state/core-grants.json").read_text())
+    assert len(grants["grants"]) == 1
+    assert len(grants["grants"][0]["workdirs"]) == 2
+    workdirs = [
+        Workdir(
+            "Repo", Path("/workdirs/01"), None,
+            agent_mode="review", agent_runtimes=frozenset({"codex"}),
+        ),
+        Workdir(
+            "Docs", Path("/workdirs/03"), None,
+            agent_mode="review", agent_runtimes=frozenset({"codex"}),
+        ),
+    ]
+    clients, alias = load_linux_core_client(
+        str(root / "core-bindings/core-blue/core-bridge-binding.json"),
+        instance_id="core-blue",
+        bridge_id="bridge-blue",
+        socket_path=saved["socket_path"],
+        workdirs=workdirs,
+    )
+    assert alias is None and set(clients) == {"Repo", "Docs"}
+    assert clients["Docs"]._policy_revision != clients["Repo"]._policy_revision
+
+
+@pytest.mark.parametrize("invalid_slot", ["/workdirs/00", "/workdirs/17", "/workdirs/01/escape"])
+def test_v026_provision_refuses_unmounted_slots_before_writes(
+    tmp_path, monkeypatch, invalid_slot,
+):
+    manifest, root, work, _ = _fixture(tmp_path, monkeypatch)
+    manifest["core"] = {
+        "instance_id": "core-blue",
+        "workdirs": [{"alias": "Repo", "container_path": invalid_slot, "host_path": str(work)}],
+        "methods": ["bridge.ping", "runtime.list"],
+    }
+    with pytest.raises(ValueError, match="Compose workdir slot"):
+        provision(manifest)
+    assert not root.exists()
+
+
+def test_v026_single_alias_schema_two_may_bind_only_slot_03(tmp_path, monkeypatch):
+    manifest, root, work, _config_path = _fixture(tmp_path, monkeypatch)
+    manifest["core"] = {
+        "instance_id": "core-blue",
+        "workdirs": [
+            {"alias": "Repo", "container_path": "/workdirs/03", "host_path": str(work)}
+        ],
+        "methods": ["bridge.ping", "runtime.list"],
+    }
+    assert provision(manifest) == root
+    saved = json.loads((root / "core-bindings/core-blue/core-bridge-binding.json").read_text())
+    assert saved["schema_version"] == 2
+    assert saved["workdirs"][0]["workdir_path"] == "/workdirs/03"
+    client, alias = load_linux_core_client(
+        str(root / "core-bindings/core-blue/core-bridge-binding.json"),
+        instance_id="core-blue",
+        bridge_id="bridge-blue",
+        socket_path=saved["socket_path"],
+        workdirs=[Workdir("Repo", Path("/workdirs/03"), None, agent_mode="review")],
+    )
+    assert alias == "Repo"
+    assert client._workdir_alias == "Repo"
+
+
+def test_v025_legacy_single_alias_binding_must_remain_in_slot_01(tmp_path, monkeypatch):
+    manifest, root, _work, _config_path = _fixture(tmp_path, monkeypatch)
+    manifest["core"]["container_path"] = "/workdirs/03"
+    with pytest.raises(ValueError, match="legacy single-alias"):
+        provision(manifest)
+    assert not root.exists()
+
+
 def test_two_cores_provision_independent_grants_and_real_bindings(tmp_path, monkeypatch):
     manifest, root, work, config_path = _fixture(tmp_path, monkeypatch)
     work_two = tmp_path / "work-two"

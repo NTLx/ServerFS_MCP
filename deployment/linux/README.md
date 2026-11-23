@@ -120,7 +120,7 @@ Check external registration, DNS/TLS and exact route, then authenticated MCP ini
 
 A file-only Core needs no host Bridge or provider credentials. A dedicated owner or a shared owner uses the same signed attachment mechanism. Linux provisioning requires distinct non-default Core and Bridge IDs, including a dedicated owner; this differs from native macOS/Windows owned naming. Ownership is established by the deployment and explicit grants, not a magic Compose project name. A shared Core never operates its owner.
 
-Only one Agent/Repo Ops-enabled workdir may attach through the supplied signed overlay, mapped to slot 01. Additional disjoint file-only roots are possible. Each Core receives its own grant and binding; independent Bridge owners must not claim overlapping writable roots. The provisioner is create-only, not live grant append or rotation.
+v0.26.0 candidate: the signed-v2 overlay can attach 1–16 explicitly granted Agent and/or Repo Ops-enabled workdirs per Core, in any selected slots `/workdirs/01`–`/workdirs/16`. A bounded `schema_version: 2` Core binding maps each alias to its independent policy revision and Compose slot; the earlier `schema_version: 1` single-alias binding remains supported. Unselected slots are disabled or file-only by explicit policy, never implicitly Agent-enabled. Each Core receives one independent signing credential/grant for exactly its authorized alias set; separate Bridge owners must not claim overlapping writable roots. The provisioner remains create-only, not live grant append, migration or rotation.
 
 ### Prepare the owner policy
 
@@ -314,16 +314,19 @@ a pass marker or fixed refusal stage; it does not write files or open the task
 database. Use matching explicit IDs and the same project, env file and overlays
 for the subsequent deployment.
 
-The check compares the actual bind sources and modes, owner UID/GID, exact
-Bridge/Core IDs and socket/lock/binding mounts, private grant and policy
-digest, slot-01 alias, read-only policy, runtime set and Repo Ops flag. It rejects
-privileged/container-namespace overrides, unexpected mounts, additional Agent/
-Repo-enabled slots, writable disabled placeholders, overlapping active roots
-and mounts exposing the local Bridge's private directories. Extra disjoint
-file-only workdirs are permitted. Global Agent defaults must stay disabled;
-specify the granted policy in slot 01. This is a deliberately static check of
-the supported overlay layout, not an assertion of daemon UID mapping, socket
-liveness, other projects' mounts, or protection against concurrent edits.
+The v0.26.0 candidate check compares the actual bind sources and modes, owner
+UID/GID, exact Bridge/Core identities, private socket/lock/binding mounts and
+**every** alias/policy revision against the signed owner grant. It checks the
+runtime set, read-only flag and Repo Ops policy separately for each authorized
+slot, including valid non-01 slots, and requires all ungranted slots to remain
+file-only or disabled. It rejects privileged/namespace overrides, unexpected
+mounts, ungranted Agent/Repo flags, writable disabled placeholders, overlapping
+active roots and exposure of the owner's private directories. Global Agent
+defaults remain disabled. This is a static Compose-model check, not proof of
+daemon UID mapping, socket liveness, cross-project isolation or protection
+against concurrent changes. Verify the selected authenticated Bridge aliases
+after Core startup; changing a v1 single-alias installed binding in place is
+not a supported migration.
 Keep independent writable roots disjoint across all deployments and run the
 signed Ping/runtime checks after startup. Verify the actual bind sources exist.
 

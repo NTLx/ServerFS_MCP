@@ -161,35 +161,90 @@ def validate(model: Any, *, bridge_id: str, core_id: str, project: str) -> None:
     _directory(config.state_dir, private=True)
     binding_dir = _directory(root / "core-bindings" / core_id, private=True)
     binding = _private_json(binding_dir / "core-bridge-binding.json")
-    alias = binding.get("workdir_alias")
-    _require(isinstance(alias, str) and bool(_ALIAS.fullmatch(alias)), "binding-alias")
-    policy = config.policies.get(alias)
-    revision = core_workdir_policy_digest(policy)
-    expected_binding = {
-        "schema_version": 1,
-        "instance_id": core_id,
-        "core_id": core_id,
-        "bridge_id": bridge_id,
-        "workdir_alias": alias,
-        "workdir_path": "/workdirs/01",
-        "policy_revision": revision,
-        "socket_path": f"{_SOCKET}/bridge.sock",
-    }
-    _require(
-        set(binding) == {*expected_binding, "key_id", "secret_hex"}
-        and type(binding.get("schema_version")) is int
-        and all(binding.get(k) == v for k, v in expected_binding.items()),
-        "binding-policy",
-    )
+    schema = binding.get("schema_version")
+    if schema == 1:
+        alias = binding.get("workdir_alias")
+        _require(isinstance(alias, str) and bool(_ALIAS.fullmatch(alias)), "binding-alias")
+        policy = config.policies.get(alias)
+        revision = core_workdir_policy_digest(policy)
+        expected_binding = {
+            "schema_version": 1,
+            "instance_id": core_id,
+            "core_id": core_id,
+            "bridge_id": bridge_id,
+            "workdir_alias": alias,
+            "workdir_path": "/workdirs/01",
+            "policy_revision": revision,
+            "socket_path": f"{_SOCKET}/bridge.sock",
+        }
+        _require(
+            set(binding) == {*expected_binding, "key_id", "secret_hex"}
+            and type(binding.get("schema_version")) is int
+            and all(binding.get(k) == v for k, v in expected_binding.items()),
+            "binding-policy",
+        )
+        selected = [{"alias": alias, "workdir_path": "/workdirs/01", "policy_revision": revision}]
+    elif schema == 2 and type(schema) is int:
+        _require(
+            set(binding) == {
+                "schema_version", "instance_id", "core_id", "bridge_id", "key_id",
+                "secret_hex", "socket_path", "workdirs",
+            }
+            and binding["instance_id"] == core_id
+            and binding["core_id"] == core_id
+            and binding["bridge_id"] == bridge_id
+            and binding["socket_path"] == f"{_SOCKET}/bridge.sock"
+            and isinstance(binding["workdirs"], list)
+            and 1 <= len(binding["workdirs"]) <= 16,
+            "binding-policy",
+        )
+        selected = binding["workdirs"]
+    else:
+        raise PreflightError("binding-policy")
+
+    scoped: dict[str, tuple[str, Any, str]] = {}
+    granted_aliases: set[str] = set()
+    for entry in selected:
+        _require(
+            isinstance(entry, dict)
+            and set(entry) == {"alias", "workdir_path", "policy_revision"},
+            "binding-policy",
+        )
+        alias, container_path, revision = (
+            entry["alias"], entry["workdir_path"], entry["policy_revision"]
+        )
+        _require(
+            isinstance(alias, str)
+            and bool(_ALIAS.fullmatch(alias))
+            and alias not in granted_aliases
+            and isinstance(container_path, str)
+            and container_path in _SLOTS
+            and container_path not in scoped
+            and isinstance(revision, str)
+            and re.fullmatch(r"[0-9a-f]{64}", revision) is not None,
+            "binding-policy",
+        )
+        policy = config.policies.get(alias)
+        _require(
+            core_workdir_policy_digest(policy) == revision
+            and (policy.mode.value != "disabled" or policy.repo_ops_enabled),
+            "binding-policy",
+        )
+        scoped[container_path] = (alias, policy, revision)
+        granted_aliases.add(alias)
+
     grants = _parse_grants(
         _private_json(config.state_dir / "core-grants.json"), bridge_id, config.policies
     )
     matching = [
         grant for grant in grants if grant.core_id == core_id and grant.key_id == binding["key_id"]
     ]
+    expected_grants = tuple(
+        sorted((alias, revision) for alias, _policy, revision in scoped.values())
+    )
     _require(
         len(matching) == 1
-        and matching[0].workdirs == ((alias, revision),)
+        and matching[0].workdirs == expected_grants
         and "bridge.ping" in matching[0].methods
         and isinstance(binding["secret_hex"], str)
         and hmac.compare_digest(matching[0].secret.hex(), binding["secret_hex"]),
@@ -225,43 +280,55 @@ def validate(model: Any, *, bridge_id: str, core_id: str, project: str) -> None:
             "bridge-directory",
         )
 
-    _require(
-        mounts["/workdirs/01"] == (policy.host_path, policy.read_only)
-        and env.get("WORKDIR_01_ALIAS", "").strip() == alias
-        and _bool(env.get("WORKDIR_01_READ_ONLY", ""), True) == policy.read_only
-        and env.get("WORKDIR_01_AGENT_MODE", "disabled").strip().lower() == policy.mode.value
-        and _bool(env.get("WORKDIR_01_REPO_OPS_ENABLED", "")) == policy.repo_ops_enabled,
-        "workdir-policy",
-    )
-    runtime_list = [
-        x.strip() for x in env.get("WORKDIR_01_AGENT_RUNTIMES", "").split(",") if x.strip()
-    ]
-    _require(
-        len(runtime_list) == len(set(runtime_list))
-        and set(runtime_list) == policy.runtimes
-        and (
-            policy.mode.value == "workspace-write"
-            and bool(policy.runtimes)
-            or policy.mode.value == "disabled"
-            and not policy.runtimes
-            and policy.repo_ops_enabled
-        ),
-        "runtime-policy",
-    )
     private_roots = (
         root.parent.parent,
         Path.home() / ".local/share/serverfs-agent-bridge",
         Path.home() / ".local/state/serverfs-agent-bridge",
     )
-    active_roots = [policy.host_path]
-    aliases = {alias}
+    active_roots = [policy.host_path for _, policy, _ in scoped.values()]
+    aliases = {alias for alias, _, _ in scoped.values()}
     for slot in range(1, 17):
         prefix = f"WORKDIR_{slot:02d}_"
-        source, readonly = mounts[f"/workdirs/{slot:02d}"]
+        target = f"/workdirs/{slot:02d}"
+        source, readonly = mounts[target]
         _require(not any(_overlap(source, p) for p in private_roots), "private-root-exposure")
         slot_alias = env.get(prefix + "ALIAS", "").strip()
-        if slot == 1:
-            _require(not (source / ".serverfs-disabled").exists(), "slot-one-disabled")
+        sentinel = source / ".serverfs-disabled"
+        authorized = scoped.get(target)
+        if authorized is not None:
+            alias, policy, _revision = authorized
+            _require(
+                mounts[target] == (policy.host_path, policy.read_only)
+                and slot_alias == alias
+                and _bool(env.get(prefix + "READ_ONLY", ""), True) == policy.read_only
+                and env.get(prefix + "AGENT_MODE", "disabled").strip().lower()
+                == policy.mode.value
+                and _bool(env.get(prefix + "REPO_OPS_ENABLED", ""))
+                == policy.repo_ops_enabled,
+                "workdir-policy",
+            )
+            _require(
+                not sentinel.exists(),
+                "slot-one-disabled" if slot == 1 else "workdir-policy",
+            )
+            runtime_list = [
+                item.strip()
+                for item in env.get(prefix + "AGENT_RUNTIMES", "").split(",")
+                if item.strip()
+            ]
+            _require(
+                len(runtime_list) == len(set(runtime_list))
+                and set(runtime_list) == policy.runtimes
+                and (
+                    (policy.mode.value == "workspace-write" and bool(policy.runtimes))
+                    or (
+                        policy.mode.value == "disabled"
+                        and not policy.runtimes
+                        and policy.repo_ops_enabled
+                    )
+                ),
+                "runtime-policy",
+            )
             continue
         _require(
             env.get(prefix + "AGENT_MODE", "").strip().lower() in {"", "disabled"}
@@ -269,7 +336,6 @@ def validate(model: Any, *, bridge_id: str, core_id: str, project: str) -> None:
             and not _bool(env.get(prefix + "REPO_OPS_ENABLED", "")),
             "additional-agent-slot",
         )
-        sentinel = source / ".serverfs-disabled"
         if not slot_alias:
             _require(
                 readonly is True
@@ -277,7 +343,7 @@ def validate(model: Any, *, bridge_id: str, core_id: str, project: str) -> None:
                 and not _bool(env.get(prefix + "BINARY_TRANSFER_ENABLED", ""))
                 and sentinel.is_file()
                 and not sentinel.is_symlink()
-                and {p.name for p in source.iterdir()} == {".serverfs-disabled"},
+                and {part.name for part in source.iterdir()} == {".serverfs-disabled"},
                 "disabled-slot",
             )
             continue
