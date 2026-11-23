@@ -96,6 +96,19 @@ def test_permission_writes_outside_blocked_reads_remain_provider_decided(roots):
     assert outside_workdir_write(permission, repo, "") is True
 
 
+def test_acp_choice_only_permission_is_not_misclassified_as_file_write(roots):
+    repo, _ = roots
+    payload = {
+        "category": "provider_permission",
+        "title": "ACP confirmation",
+        "response_options": [
+            {"option_id": "allow", "label": "Allow once", "kind": "allow_once"},
+            {"option_id": "reject", "label": "Reject", "kind": "reject_once"},
+        ],
+    }
+    assert outside_workdir_write(payload, repo, "") is False
+
+
 def test_arbitrary_commands_not_classified_by_free_text(roots):
     repo, outside = roots
     assert outside_workdir_write(

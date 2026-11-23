@@ -988,6 +988,43 @@ async def test_approval_round_trip(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_v026_acp_opaque_options_remain_human_decided(tmp_path: Path) -> None:
+    class OpaqueOptionAdapter(FakeAdapter):
+        async def run_task(self, context):
+            choice = await context.request_approval(
+                {
+                    "category": "provider_permission",
+                    "title": "ACP permission choice",
+                    "response_options": [
+                        {"option_id": "allow-once", "label": "Allow once", "kind": "allow_once"},
+                        {"option_id": "reject", "label": "Reject", "kind": "reject_once"},
+                    ],
+                }
+            )
+            return AdapterResult(final_response=choice["option_id"])
+
+    service = make_service(tmp_path)
+    service.adapters["fake"] = OpaqueOptionAdapter()
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake", workdir="repo", path="",
+            profile="workspace-write", prompt="complete:acp-options",
+        )
+        task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request = task["pending_request"]
+        assert "scope_status" not in request["payload"]
+        await service.respond_approval(
+            task_id=submitted["task_id"], request_id=request["request_id"],
+            option_id="allow-once",
+        )
+        done = await wait_for_status(service, submitted["task_id"], "succeeded")
+        assert done["final_response"] == "allow-once"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
 async def test_acp_option_selection_requires_exact_single_offered_option(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     await service.start()

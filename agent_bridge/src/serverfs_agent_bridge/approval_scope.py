@@ -67,7 +67,10 @@ def outside_workdir_write(payload: dict[str, Any], root: Path, relative_cwd: str
         return not targets or any(not _inside_root(path, trusted_root, cwd) for path in targets)
     permissions = payload.get("requested_permissions")
     if not isinstance(permissions, list):
-        return True
+        # ACP reports only option IDs/kinds, not structured filesystem
+        # roots. Its provider-owned choice protocol must not be mistaken
+        # for a native write-root grant with missing target data.
+        return "response_options" not in payload
     for permission in permissions:
         if not isinstance(permission, dict):
             return True

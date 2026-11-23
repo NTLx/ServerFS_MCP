@@ -21,7 +21,10 @@ existing symlinks). Missing or unresolvable file targets, traversal and explicit
 outside-root write targets receive `scope_status=outside_workdir_write_blocked`
 in the public approval. Only `deny`/`cancel_task` may resolve that request;
 an attempted positive decision fails with `PERMISSION_OUTSIDE_POLICY` without
-consuming the pending request. Read-only grants are unaffected.
+consuming the pending request. Read-only grants are unaffected. ACP option-only
+requests contain no structured write-root targets: their opaque provider-issued
+option IDs retain native approval semantics rather than being misclassified as
+missing file paths. This exception is not evidence that ACP can confine writes.
 
 This is a **remote approval-admission rule**, not an Agent sandbox or a way to
 parse arbitrary commands. Provider-native shell commands, MCP tools and free
