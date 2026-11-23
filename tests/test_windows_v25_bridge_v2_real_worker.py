@@ -28,6 +28,7 @@ from serverfs_mcp.agent_lifecycle import (
 )
 from serverfs_mcp.native_endpoint import current_user_sid
 from serverfs_mcp.windows_job import WindowsJob
+from serverfs_mcp.windows_private_artifacts import protect_new_file
 from serverfs_mcp.windows_v25.bridge_resources import WindowsBridgeResources
 from serverfs_mcp.windows_v25.bridge_v2_owner import (
     NativeBridgeV2Plan,
@@ -99,6 +100,9 @@ def _test_installation(tmp_path: Path):
         ),
         encoding="utf-8",
     )
+    # The named v2 owner now rechecks the protected config DACL before startup.
+    # Keep the real-worker fixture faithful to provisioned private artifacts.
+    protect_new_file(config_file, sid)
     secrets_by_core = {
         "core-a": secrets.token_bytes(32),
         "core-b": secrets.token_bytes(32),
