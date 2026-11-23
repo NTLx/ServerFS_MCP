@@ -554,7 +554,13 @@ def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
             client = asyncio.run(
                 prepare_shared_agent_adapter(identity, Path(args.config), trusted_socket)
             )
-            if getattr(client, "_workdir_alias", None) != workdir_alias:
+            bound = (
+                set(getattr(client, "_adapters", {}))
+                if isinstance(workdir_alias, tuple)
+                else {getattr(client, "_workdir_alias", None)}
+            )
+            expected = set(workdir_alias) if isinstance(workdir_alias, tuple) else {workdir_alias}
+            if bound != expected:
                 raise SharedCoreBootstrapError("shared Bridge grant mismatch")
             lock_dir = instance_service_home(identity) / "data" / "agent-bridge" / "locks"
             shared_wiring = (client, lock_dir)

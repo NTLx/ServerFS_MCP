@@ -98,7 +98,7 @@ def _resolve_manifest(
     home: Path | None,
     environ: Mapping[str, str] | None,
     expected_executable: Path | None,
-) -> tuple[str, Path]:
+) -> tuple[str | tuple[str, ...], Path]:
     if (
         not isinstance(identity, InstanceIdentity)
         or identity.instance_id == "default"
@@ -156,29 +156,39 @@ def _resolve_manifest(
     ):
         raise _deny("shared Core TOML location or digest drift")
     workdirs, settings = load_native_config(resolved)
-    alias = _read_json(root / "shared-bridge-binding.json").get("workdir_alias")
-    candidates = [item for item in workdirs if item.alias == alias]
+    binding_doc = _read_json(root / "shared-bridge-binding.json")
+    if binding_doc.get("schema_version") == 1:
+        aliases = (binding_doc.get("workdir_alias"),)
+    elif binding_doc.get("schema_version") == 2:
+        entries = binding_doc.get("workdirs")
+        if not isinstance(entries, list) or not 2 <= len(entries) <= 16:
+            raise _deny("shared Core multi-alias binding is invalid")
+        aliases = tuple(item.get("alias") if isinstance(item, dict) else None for item in entries)
+    else:
+        raise _deny("shared Core binding schema is unsupported")
     agent_workdirs = [item for item in workdirs if item.agent_mode != "disabled"]
-    if len(candidates) != 1 or len(agent_workdirs) != 1 or agent_workdirs[0].alias != alias:
-        raise _deny("shared Core must configure exactly one bound Agent workdir")
-    workdir = candidates[0]
     if (
-        workdir.agent_mode == "disabled"
-        or workdir.policy.repo_ops_enabled
+        len(agent_workdirs) != len(aliases)
+        or len(set(aliases)) != len(aliases)
+        or {item.alias for item in agent_workdirs} != set(aliases)
         or not settings.bridge_required
         or settings.repo_ops_enabled
+        or any(item.policy.repo_ops_enabled for item in workdirs)
     ):
-        raise _deny("shared Core must enable Agent and disable Repo Ops")
-    workdir_path = Path(workdir.root).expanduser()
-    _check_path(workdir_path, kind="shared Core workdir")
-    resolved_workdir = workdir_path.resolve(strict=True)
-    if (
-        not resolved_workdir.is_dir()
-        or root == resolved_workdir
-        or root in resolved_workdir.parents
-        or resolved_workdir in root.parents
-    ):
-        raise _deny("shared Core workdir is unsafe")
+        raise _deny("shared Core Agent workdirs do not match owner binding")
+    resolved_workdirs: dict[str, Path] = {}
+    for workdir in agent_workdirs:
+        workdir_path = Path(workdir.root).expanduser()
+        _check_path(workdir_path, kind="shared Core workdir")
+        resolved_workdir = workdir_path.resolve(strict=True)
+        if (
+            not resolved_workdir.is_dir()
+            or root == resolved_workdir
+            or root in resolved_workdir.parents
+            or resolved_workdir in root.parents
+        ):
+            raise _deny("shared Core workdir is unsafe")
+        resolved_workdirs[workdir.alias] = resolved_workdir
 
     service = services_doc.get("http-origin")
     if not isinstance(service, dict) or set(service) != {
@@ -261,10 +271,10 @@ def _resolve_manifest(
         binding_path=binding_path,
         expected_socket_path=Path(socket_raw),
     )
-    if (
-        binding.grant.workdir_alias != alias
-        or binding.grant.workdir_path.resolve(strict=True) != resolved_workdir
-    ):
+    grants = binding.grants or (binding.grant,)
+    if len(grants) != len(resolved_workdirs) or {
+        grant.workdir_alias: grant.workdir_path.resolve(strict=True) for grant in grants
+    } != resolved_workdirs:
         raise _deny()
     env = os.environ if environ is None else environ
     if (
@@ -273,7 +283,8 @@ def _resolve_manifest(
         or env.get("SERVERFS_FILE_INGRESS_ENABLED", "false") != "false"
     ):
         raise _deny("shared Core environment identity disagrees")
-    return alias, binding.socket_path
+    selected = tuple(sorted(resolved_workdirs))
+    return (selected[0] if len(selected) == 1 else selected), binding.socket_path
 
 
 def resolve_shared_core_manifest(
@@ -284,7 +295,7 @@ def resolve_shared_core_manifest(
     home: Path | None = None,
     environ: Mapping[str, str] | None = None,
     expected_executable: Path | None = None,
-) -> tuple[str, Path]:
+) -> tuple[str | tuple[str, ...], Path]:
     """Verify source-only v1 evidence and return (workdir alias, expected socket).
 
     No service is started and no live Bridge authentication is attempted here.

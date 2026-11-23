@@ -172,12 +172,12 @@ def stage_shared_core(
         raise DarwinSharedStageError("shared Core TOML is invalid") from None
     enabled = [workdir for workdir in workdirs if workdir.agent_mode != "disabled"]
     if (
-        len(enabled) != 1
+        not 1 <= len(enabled) <= 16
         or not settings.bridge_required
         or settings.repo_ops_enabled
         or any(workdir.policy.repo_ops_enabled for workdir in workdirs)
     ):
-        raise DarwinSharedStageError("shared Core requires one Agent workdir and no Repo Ops")
+        raise DarwinSharedStageError("shared Core requires 1–16 Agent workdirs and no Repo Ops")
     workdir_roots: list[Path] = []
     for workdir in workdirs:
         candidate_path = Path(workdir.root).expanduser()
@@ -294,7 +294,8 @@ def stage_shared_core(
             },
             expected_executable=python,
         )
-        if alias != enabled[0].alias:
+        authorized = {alias} if isinstance(alias, str) else set(alias)
+        if authorized != {item.alias for item in enabled}:
             raise DarwinSharedStageError("shared Core binding workdir mismatch")
     except BaseException:
         if created_candidate:
