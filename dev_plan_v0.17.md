@@ -1,5 +1,7 @@
 # ServerFS v0.17.0 Development Plan
 
+> Historical released v0.17.0 static API Key design and acceptance. Preserve the measured single-key/HTTP-only authentication and log-safety contract; historical no-auth topology, native stdio scope, old Compose/rotation commands and tag-triggered publication are version-specific, not present operational authority. Public ingress requires the currently supported caller-admission boundary; use [current API Key guidance](docs/api-key.md), version-matched platform runbooks and [maintainer workflow](docs/maintainers/workflow.md).
+
 Status: released — v0.17.0 release complete. Static API Key HTTP authentication is optional/default-off, OAuth/API-Key mutual exclusion is enforced, query-secret logging is bounded at the ServerFS/Uvicorn layer, stdio remains unchanged, and Linux/Windows/macOS release gates are closed.
 
 Plan frozen: 2026-10-19. Plan-only checkpoint: `8cb15bcbcc8d0adb4836e9e215a8139ce374da57`.

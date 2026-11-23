@@ -1,62 +1,48 @@
 ---
 title: Agent Skills
-description: Use ServerFS repository skills to guide AI Agents through safe installation, configuration, upgrade, diagnosis and optional subsystem operations.
+description: Choose a ServerFS operational Skill and install the portable skills-only Agent Plugin.
 ---
 
-> **Current stable release: v0.24.2.** All seven operational Agent Skills include v0.24.2 release guidance. The published v0.24.2 Plugin contains the seven runtime Skills and their references.
+ServerFS maintains seven operational [Agent Skills](https://github.com/NTLx/ServerFS_MCP/tree/main/skills). They guide safe use of existing product interfaces; they do not install a ServerFS service by themselves, add MCP tools or grant permissions.
 
-ServerFS keeps operational Agent Skills in the repository [`skills/`](https://github.com/NTLx/ServerFS_MCP/tree/main/skills) directory. They teach an Agent **how to use the existing ServerFS product interfaces safely**; they are not another configuration format or deployment implementation.
-
-## Seven task-oriented skills
+## Select one Skill
 
 | Objective | Skill |
 | --- | --- |
-| First installation | `serverfs-install` |
-| Workdir and ordinary policy changes, including v0.23 Repo Ops policy | `serverfs-configure` |
-| Existing deployment upgrade | `serverfs-upgrade` |
-| Read-first diagnosis and health verification | `serverfs-diagnose` |
-| OpenAI Secure MCP Tunnel, Linux/macOS Cloudflare, or Windows v0.24.2 Cloudflare | `serverfs-tunnel` |
-| Remote HTTP API Key / OAuth | `serverfs-auth` |
-| Host Bridge lifecycle / Codex / Claude / Qoder / ACP / Jev | `serverfs-agent-bridge` |
+| New local or named persistent Core | `serverfs-install` |
+| Existing Core/workdir policy | `serverfs-configure` |
+| Scoped version switch or explicit migration | `serverfs-upgrade` |
+| Read-first fault isolation | `serverfs-diagnose` |
+| Selected OpenAI or Cloudflare Connector | `serverfs-tunnel` |
+| HTTP caller admission | `serverfs-auth` |
+| Host Bridge, grants, runtimes or tasks | `serverfs-agent-bridge` |
 
-The v0.24.2 release retains exactly **seven** Skills. Linux, native macOS and Windows Cloudflare guidance live in the existing `serverfs-tunnel` Skill and references, not an eighth Skill. Two independent same-user Task Scheduler owners passed public ChatGPT tools and cross-ingress file-operation acceptance. The public SSE gate passed with 75.0/70.0/65.0-second holds, approximately 15-second keepalives, same-session `tools/list` 200 (27 tools), and new-session 200. The operator waived full-generation Windows restart/recovery testing on 2026-11-10; it was not tested and did not pass.  Connector-only restart and lossless SSE replay are not claimed.
+Repo Ops has no separate Skill: configure its policy with `serverfs-configure`, manage attachment with `serverfs-agent-bridge`, and perform authorized repository operations directly with the [Repo Ops MCP tools](../repo-ops/). Do not delegate deterministic operations merely to invoke Git.
 
-The repository-level `AGENTS.md` contains only a thin index. An Agent should load the smallest matching `SKILL.md` rather than placing all operational procedures in its base context.
+## Load only what the task needs
 
-Repo Ops intentionally does not add an eighth Skill. Its per-workdir/action policy is handled by `serverfs-configure`, its platform-native Bridge transport/lifecycle by `serverfs-agent-bridge`, and its actual repository operations by the deterministic public MCP tools rather than Agent delegation.
+1. Read the matching `SKILL.md`; identify installed version, platform, exact component IDs, objective and allowed changes.
+2. Load the applicable packaged platform/mode reference, if provided. Resolve checkout-relative paths against matching repository source, not the ZIP directory.
+3. Read the relevant runbook section, actual configuration and supported CLI/tool schema. If those cannot be established, stop at non-mutating guidance.
+4. Use bounded evidence, preserve unrelated work and record actual verification and missing gates.
 
-## Source of truth
+The repository Skills index is for navigation and maintenance; the essential stop conditions live within each runtime Skill. Avoid loading unrelated platform procedures, historical reports, broad logs or raw binary data into the Agent context.
 
-Skills deliberately refer back to the current checkout or installed release:
+## Operational boundary
 
-- `.env.example` for Linux/Docker configuration;
-- `serverfs.toml.example` for native non-secret policy;
-- Compose files and `deployment/*` helpers;
-- the current `serverfs` CLI and `serverfs doctor`;
-- the platform/product documentation on this site.
-
-Before mutation, the Agent must identify the platform, deployment owner and current configuration. Existing `.env` and `serverfs.toml` files are merged/surgically edited; example files are never used to overwrite operator configuration.
-
-## Safety model
-
-The skills preserve the same ServerFS invariants as manual operation:
-
-- current-user/non-elevated lifecycle;
-- read-only workdirs unless explicitly widened;
-- separate opt-in boundaries for Tunnel, HTTP Auth, v0.23 Repo Ops and Agent delegation;
-- deterministic Repo Ops remains non-Agent and is never replaced by Agent submission merely to perform mechanical Git/action/commit/push steps;
-- secrets outside tracked files, exposed workdirs and normal logs;
-- validation after every configuration mutation;
-- stop rather than guess when platform, ownership or active state is ambiguous.
+File-only needs no Bridge. Agent and Repo Ops are independent; a Shared Core cannot operate its owner. Connector credentials are not caller authentication. Respect each platform's supported lifecycle, including native create-only provisioning rather than speculative in-place updates. Never overwrite existing policy with an example, disclose private state, clear recovery guards, or treat registration as proof of live readiness. Skills do not override user authorization or the actual product enforcement.
 
 ## Portable Agent Plugin
 
-The repository root contains the portable Agent Plugins manifest `plugin.json`. The v0.24.2 GitHub Release published the seven runtime skills and their references as this asset:
+The root `plugin.json` is the skills-only portable Agent Plugins manifest. For release v0.25.0 the build produces `serverfs-plugin-v0.25.0.zip` (publication pending). Use a trusted version-matched artifact and the importing Agent client's own supported Plugin installation procedure.
 
-```text
-serverfs-plugin-v0.24.2.zip
+The archive contains `serverfs/plugin.json` and the seven Skill directories with Markdown references. It excludes the Skills index, full checkout, `mcp.json`, endpoint URLs and credentials. Configure the actual ServerFS MCP connection separately. The archive does not auto-copy Skills into provider-private directories.
+
+Maintainers can validate and build from the matching checkout using the repository packaging script:
+
+```bash
+python deployment/plugin/package_plugin.py validate --tag v0.25.0
+python deployment/plugin/package_plugin.py build --output-dir /absolute/private/output --tag v0.25.0
 ```
 
-The ZIP is a **skills-only** Plugin. It does not bundle `mcp.json`, a ServerFS instance URL, credentials, or provider-private settings. The published v0.24.2 Plugin contains the same seven Skill directories and references, including the Linux Cloudflare Tunnel reference. Plugin and skill content follow the ServerFS release version; there is no independent skill version lifecycle.
-
-The Git repository remains canonical. ServerFS does not automatically copy these skills into `~/.codex/skills`, Claude configuration, or other provider-private directories.
+Use Python 3.12 or later. Local build/validation is not release publication or proof of remote service acceptance.

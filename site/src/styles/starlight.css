@@ -23,6 +23,7 @@
 }
 
 :root[data-theme='light'] {
+  --sf-line: rgba(30, 42, 65, 0.12);
   --sl-color-accent-low: #e9ecff;
   --sl-color-accent: #5265cf;
   --sl-color-accent-high: #1c265f;
@@ -133,6 +134,7 @@ header.header {
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
+    --sf-line: rgba(30, 42, 65, 0.12);
     --sl-color-accent-low: #e9ecff;
     --sl-color-accent: #5265cf;
     --sl-color-accent-high: #1c265f;

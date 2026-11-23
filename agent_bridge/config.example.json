@@ -4,12 +4,14 @@
   "lock_dir": "/tmp/serverfs-agent-bridge/locks",
   "allowed_peer_uid": null,
   "allowed_peer_gid": null,
+  "protocol_mode": "v1",
   "enable_fake_runtime": true,
   "limits": {
     "task_timeout_seconds": 7200,
     "interaction_timeout_seconds": 1800,
     "max_active_tasks": 4,
-    "retention_seconds": 604800
+    "retention_seconds": 604800,
+    "result_spool_threshold_bytes": 262144
   },
   "codex": {
     "enabled": false,

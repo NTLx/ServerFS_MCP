@@ -1,18 +1,9 @@
-# Windows native
+# Windows host Bridge
 
-Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
+Use `deployment/windows/v0250-native-operations.md` and primary Skill gates. Native Windows 11 x64/NTFS, protected DACLs, current-user tasks, separate Bridge environment and Agent worker venv. No elevation, WSL or VM.
 
-Agent Bridge is a separate Python distribution/environment from the ServerFS connector environment. Preserve the frozen process boundary selected by `SERVERFS_BRIDGE_PYTHON`; never install both distributions into one environment to simplify deployment. v0.23.2 supports validated native Windows 11 x64 Deterministic Repo Ops through the same authenticated Bridge transport, while keeping Repo Ops policy independently gated from Agent delegation.
+Choose mode before private config. Owned Bridge ID equals Core ID; shared independently managed owner ID and explicit per-Core grants. Initial `configure-v25-private.py` supports up to 16 Cores, distinct caller keys/grants, exact subsets of owner workdir/action/runtime policy; nonproxy runtime policies and initial bearer only. Use manual documented path for specialized cases. Install/config helpers are create-only; no automatic live grant append/rotation or in-place update.
 
-Agent policy lives in `serverfs.toml`; secret/proxy/runtime values use the documented private env boundary. Run:
+Install verified matching wheels into each required runtime, stage private config, then separately authorize registration/start of exact Bridge before Core. Use `serverfs_mcp.windows_v25.cli bridge --instance <id>` and matching Core identity; verify actual task, worker and protected Named Pipe authorization. Same SID is not grant authorization. Signed grant-enabled submission rejects continuation/idempotency.
 
-```powershell
-& $serverfs doctor --config serverfs.toml
-& $serverfs service status
-```
-
-The current-user Task Scheduler lifecycle owns persistent operation. Do not use SCM/LocalSystem/Admin services.
-
-For provider/runtime failures, compare direct provider CLIs with ServerFS runtime discovery. ServerFS must not rewrite provider authentication or sandbox policy.
-
-ACP v1 profiles are included in released v0.19.0. See the [ACP Guide](https://ntlx.github.io/ServerFS_MCP/docs/acp/) for the full workflow. Profiles are operator-owned absolute executable paths with fixed argv, configured through `[[agent.acp_profiles]]`; task callers cannot override command/argv/environment. Require explicit `workspace-write` workdir authorization. Runtime listing/probe must not launch the Agent. ACP children inherit the supervisor's existing Job Object; stop the task process tree at task scope and do not create a second Job. Retain the recovery guard and writer lease if stop cannot be proven. OpenCode 2.1.2 acceptance is recorded across Linux, macOS, and Windows; do not generalize that evidence to all ACP Agents or versions.
+Verify permitted alias/method/runtime and foreign task denial where applicable. Repo Ops-only does not start a provider. Shared Core cannot manage owner; honor active tasks/leases before stopping owner, preserve failed attempt state. Uninstall selected task only, not private state.

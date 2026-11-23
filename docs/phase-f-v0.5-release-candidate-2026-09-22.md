@@ -1,5 +1,7 @@
 # v0.5.0 Phase F release-candidate acceptance — 2026-09-22
 
+> Historical candidate and publication chronology. The opening pending-tag disposition was superseded by the final Release point in this same record; the published v0.5.0 tag is immutable. The old ingress topology, host observations and tag-first steps do not govern current named/native ingress or dispatch-first release. See [current maintainer invariants](maintainers/invariants.md) and [maintainer workflow](maintainers/workflow.md).
+
 ## Disposition
 
 ServerFS MCP v0.5.0 has **completed the technical release gates, Git closeout, live

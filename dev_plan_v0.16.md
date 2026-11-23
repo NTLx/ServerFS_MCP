@@ -1,5 +1,7 @@
 # ServerFS v0.16.0 Development Plan
 
+> Historical released v0.16.0 OAuth design and acceptance record. Preserve the actual test evidence, provider prerequisites and historical Tunnel issue as recorded; proposed environment names, endpoint examples, version pins, deployment topology and release steps are not current operational guidance. In particular, the design rationale's immediate admission-policy effect does not establish revocation of already issued credentials: follow [current OAuth guidance](docs/oauth.md) for principal changes, explicit token revocation, state restoration and the actual provider/CIMD boundaries. Use [current platform runbooks](deployment/linux/README.md) and [maintainer workflow](docs/maintainers/workflow.md) for deployment and release. Do not treat the old upstream issue status as newly verified.
+
 Status: released — v0.16.0 release complete. OAuth is optional/default-off, cross-platform compatibility gates are closed, provider browser login retains explicit operator-owned live prerequisites, and the known OpenAI Tunnel OAuth resource-rewrite limitation remains documented without weakening ServerFS resource validation.
 
 Plan frozen: 2026-10-19.

@@ -1,5 +1,7 @@
 # Phase 0C — Codex Windows transport (measured 2026-10-04)
 
+> Historical open-decision probe. The Bridge-owned authenticated loopback WebSocket recommendation was subsequently implemented and measured in [Phase E](windows-phase-e-codex-2026-10-06.md), including provider-announced ephemeral port and corrected readiness measurements. The original 24.4-second samples and unverified managed-daemon alternative remain historical evidence, not current instructions or provider guarantees.
+
 Status: **OPEN DECISION FOR THE MAINTAINER.** Phase 0C disproved the plan's preferred transport
 assumption and validated the fallback. Both viable shapes now cost something the plan said we would
 keep, so the selection is a product decision, not an implementation detail. Recommendation at §5.

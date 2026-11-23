@@ -4,6 +4,15 @@
 >
 > Acceptance evidence: [`docs/phase-e-acceptance-2026-09-20.md`](docs/phase-e-acceptance-2026-09-20.md).
 > This document freezes the intended v0.3 architecture before implementation.
+>
+> Historical version boundary: the two-runtime, singleton Linux UDS/peer-UID trust model,
+> original tool counts and native approval settings below are v0.3-specific. Current named
+> shared Bridge authorization requires explicit per-Core grants, not just same-user identity;
+> signed-v2 submission rejects continuation and idempotency fields. Later releases also
+> introduced explicit interactive approval policy, recovery guards, additional runtimes and
+> bounded result retrieval. Use [current Agent Bridge documentation](agent_bridge/README.md),
+> [maintainer invariants](docs/maintainers/invariants.md) and [current Linux runbook](deployment/linux/README.md)
+> for current behavior. Preserve the dated acceptance and rollback-drill waiver as historical evidence.
 
 ## 1. Goal
 

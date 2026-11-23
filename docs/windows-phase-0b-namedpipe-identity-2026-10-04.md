@@ -1,5 +1,7 @@
 # Phase 0B — Windows Named Pipe IPC and peer identity (measured 2026-10-04)
 
+> Historical v0.11 transport and SID probe. The measured DACL and peer assertion are necessary transport protections, not sufficient current shared-Bridge authorization. Named signed-grant paths additionally require explicit per-Core authorization; consult [maintainer invariants](maintainers/invariants.md). Preserve the dated negative-case and concurrency limits.
+
 Status: **GATE PASS — byte-stream Named Pipe + measured client SID is frozen as the v0.11 Windows
 Bridge IPC contract**, with three hard platform constraints added to `dev_plan_v0.11.md` §4.
 

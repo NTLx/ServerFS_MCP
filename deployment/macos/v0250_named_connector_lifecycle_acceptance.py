@@ -61,6 +61,24 @@ def _verified_sleep_pid(pid: int, dummy: Path) -> bool:
     )
 
 
+def _await_verified_sleep_pid(label: str, pid: int, dummy: Path, timeout: float) -> bool:
+    """Wait for the registered PID to finish exec'ing the fixture.
+
+    launchd reports the job PID before its launcher image has been replaced
+    by the fixture, so `ps` briefly shows the launcher. Only the *same* PID
+    converging on the exact fixture command line counts as verified; a PID
+    change means the job we intended to observe is gone.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if darwin_service._launchd_job_pid(label) != pid:
+            return False
+        if _verified_sleep_pid(pid, dummy):
+            return True
+        time.sleep(0.1)
+    return False
+
+
 def _remove_only_test_logs(root: Path) -> None:
     logs = root / "logs"
     if not logs.is_dir() or logs.is_symlink():
@@ -175,6 +193,9 @@ def main() -> int:
         asyncio.run(_mcp_roundtrip(url, key))
         if args.verify_keepalive:
             connector_pid = darwin_service._launchd_job_pid(label)
+            connector_ready = connector_pid is not None and _await_verified_sleep_pid(
+                label, connector_pid, dummy, timeout=15.0
+            )
             signed_app = root / APP_NAME
             verify = subprocess.run(
                 ["codesign", "--verify", "--deep", "--strict", str(signed_app)],
@@ -189,8 +210,7 @@ def main() -> int:
             with plist.open("rb") as stream:
                 spec = plistlib.load(stream)
             if (
-                connector_pid is None
-                or not _verified_sleep_pid(connector_pid, dummy)
+                not connector_ready
                 or spec.get("Label") != label
                 or spec.get("KeepAlive") is not True
                 or _production_pids() != before

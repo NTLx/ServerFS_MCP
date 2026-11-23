@@ -1,5 +1,7 @@
 # ServerFS v0.19.0 Development Plan
 
+> Historical v0.19.0 ACP v1 architecture and acceptance evidence. The OpenCode version/model, reference-agent candidates and one-implementation cross-platform release exception are version-scoped; they do not establish current runtime availability or v0.25.0 signed-grant acceptance. In particular, the historical continuation/idempotency semantics apply only to compatible Bridge paths, not signed v2 requests. For current profile configuration, capabilities and authorization use [Agent Bridge documentation](agent_bridge/README.md) and [maintainer invariants](docs/maintainers/invariants.md). The original platform sequencing and delegation instructions are not current task instructions.
+
 Status: **v0.19.0 release acceptance is complete; this plan records the implementation and acceptance evidence.** OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed cross-platform real ACP end-to-end acceptance. The maintainer has decided that one independent real ACP implementation passing the Linux, macOS and Windows acceptance flow satisfies the v0.19 release gate; a second implementation is optional interoperability follow-up.
 
 Planning date: 2026-10-21.

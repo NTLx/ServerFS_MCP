@@ -1,5 +1,7 @@
 # ServerFS v0.10.0 Development Plan — Native Windows Filesystem Backend
 
+> Historical released v0.10.0 Windows native filesystem architecture and acceptance. Preserve the measured NTFS HANDLE-relative safety, atomic publication, metadata/refusal and external-writer limitations. The original stdio Tunnel-owned lifecycle, deferred Agent/file-ingress scope, proxy assumptions, artifact pins and tag-driven workflow describe that release, not current named/native operations. Later releases added host Agent Bridge and independent Core/Bridge/Connector lifecycles. Use [current Windows runbook](deployment/windows/README.md), [maintainer invariants](docs/maintainers/invariants.md) and [maintainer workflow](docs/maintainers/workflow.md); old acceptance evidence does not establish current artifact or platform expansion.
+
 Status: COMPLETE — v0.10.0 released 2026-10-04 (tag v0.10.0 -> commit 9087e0a; images 0.10.0/0.10/latest; release wheels published with SHA-256 notes; live ChatGPT native E2E passed). Full evidence: docs/phase-f-acceptance-2026-10.md
 Baseline: v0.9.0 / main  
 Primary release target: Windows 11 x64 + local NTFS workdirs  

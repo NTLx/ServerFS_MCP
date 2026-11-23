@@ -1,5 +1,7 @@
 # ServerFS v0.8.0 Release Plan — Qoder Native Runtime
 
+> Historical Qoder native-runtime introduction and dated SDK/CLI smoke evidence. The old no-model-override policy and default native permission-mode assumption were subsequently extended; current runtime/model/approval capabilities come from [Agent Bridge documentation](agent_bridge/README.md) and actual authorized runtime discovery. The named model and old package pin are historical evidence, not a present availability claim. Legacy continuation behavior applies only to compatible Bridge paths, not signed v2 requests.
+
 Status: frozen/released; v0.8.0 is a prior stable release, superseded by v0.9.0
 Baseline: v0.7.3 / main
 Scope: add Qoder as the third production Agent runtime without changing the public Bridge RPC protocol.

@@ -1,5 +1,7 @@
 # ServerFS v0.12.0 Development Plan — Linux network reachability, real interactive approval, and live result spooling
 
+> Historical released v0.12.0 Linux proxy, interactive approval and result-spool design and acceptance. The measured Codex/Qoder approval and Claude spool evidence remains version-scoped. Legacy environment switches, managed-daemon/process topology and the design's direct-mode wording do not establish current named-owner configuration or absence of ambient proxy routing. Use [current Agent Bridge documentation](agent_bridge/README.md), [current Linux runbook](deployment/linux/README.md) and [maintainer invariants](docs/maintainers/invariants.md) for effective configuration, runtime capabilities, Jev authority and limits. The original release and live-test steps are not current instructions.
+
 Status: **RELEASED / FROZEN v0.12.0 — implementation, live acceptance, deterministic tests, docs/site, platform CI, tag and GitHub Release complete**
 Target: **v0.12.0**
 Primary platform: **Linux deployment**

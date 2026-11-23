@@ -1,5 +1,7 @@
 # Phase J — Live ChatGPT E2E over the official darwin-arm64 tunnel (record + run book)
 
+> Historical v0.13 operator runbook, not an executed ChatGPT E2E verdict. The stdio Tunnel, old bootstrap pin and native ingress helper below describe the legacy topology, not current named-instance ingress or credential-use authorization. Use the [current macOS runbook](../deployment/macos/README.md) and [integrated release checklist](v0.25.0-release-checklist-2026-11-21.md). Preserve the distinction between process isolation and kernel-network isolation.
+
 **Date:** 2026-10-10
 **Machine:** MacBook Air (Mac16,12), Apple M4 — macOS 27.0.1, native arm64, not Rosetta
 **ServerFS commit:** `df94673e16927e4a27d22428ce693cac5f3ec665`

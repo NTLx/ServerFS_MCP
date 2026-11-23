@@ -1,121 +1,78 @@
 ---
 title: 配置
-description: 定义受控 workdir，并继承安全默认值。
+description: 配置 Core、Workdir 与可选能力。
 ---
 
-ServerFS 在启动时为每个已启用 workdir 解析出一份不可变的最终生效策略。
+每个 Core 拥有独立配置。Workdir 策略在启动时确定。不同平台使用各自的配置格式，统一安全结果，而非强制统一语法。
 
-macOS 原生 Cloudflare 已随 v0.24.1 提供，与下方稳定版 Linux Docker 配置分开。它要求只读 staging workdir，并将当前用户 Token/认证文件以 `0600` 权限存放于所有 workdir 之外。支持的 CLI 与精确 Host 匹配要求见 [macOS 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241)；不要将 Linux Compose 变量复制到原生配置。
+## 1. 选择配置格式
 
-## MCP 传输配置
+| 平台 | Core 策略 | 持久 HTTP 与组件 |
+| --- | --- | --- |
+| Linux | 私有 env + Compose，最多 16 个槽位 | 命名 project、所选暴露及 Bridge overlay、可选 Connector profile |
+| macOS / Windows | 原生 TOML，最多 64 个 Workdir | 私有 HTTP 准入输入、命名服务 manifest、独立 Bridge/Connector 配置 |
 
-Linux Streamable HTTP 使用以下显式配置：
+Linux 参考版本匹配的 [.env.example](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example)，原生平台参考 [serverfs.toml.example](https://github.com/NTLx/ServerFS_MCP/blob/main/serverfs.toml.example)。使用前替换所有生效的示例路径，私有输入不得位于暴露的 Workdir 中。
 
-```text
-SERVERFS_HTTP_HOST=0.0.0.0
-SERVERFS_HTTP_PORT=8000
-SERVERFS_HTTP_PATH=/mcp
-SERVERFS_HTTP_ALLOWED_HOSTS=
-SERVERFS_HTTP_ALLOWED_ORIGINS=
-SERVERFS_HTTP_API_KEY=
-```
+## 2. 定义最小必要 Workdir
 
-监听地址与对外发布彼此独立。`compose.http.yml` 默认只发布到 `127.0.0.1:8000`。DNS rebinding 防护始终保持启用：当部署通过其他主机名或反向代理访问时，只把确实允许的 Host authority 精确加入 `SERVERFS_HTTP_ALLOWED_HOSTS`。需要浏览器 Origin 时，通过 `SERVERFS_HTTP_ALLOWED_ORIGINS` 显式配置允许列表。不要为了让代理工作而关闭 Host 防护。任何公网或非 loopback 暴露都应在单独配置的入口边界终止 TLS。
+Linux env：
 
-默认 host/port/path 继续与既有 OpenAI Tunnel 的 Docker 内部路径一致，因此新增通用 MCP HTTP 支持不会强迫现有 Tunnel 部署迁移。
-
-### 可选 Cloudflare Tunnel 接入（Linux v0.24.0 稳定版）
-
-通过 `compose.cloudflare.yml` 接入远程管理型 Cloudflare Tunnel。Connector 仅从仓库及所有 Workdir 外部的绝对路径 `CLOUDFLARE_TUNNEL_TOKEN_FILE` 只读挂载 Token 文件；`CLOUDFLARED_IMAGE` 指定镜像。必须单独为公网 Host 加白名单，并配置客户端 API Key/OAuth；Tunnel Token 不等于 MCP 客户端身份认证。详见 [Cloudflare Tunnel](../cloudflare-tunnel/)。Linux v0.24.0 已在隔离、只读测试环境通过真实 ChatGPT 工具调用、SSE 与会话恢复验收，现已随 v0.24.0 正式发布，但不代表生产 Workdir/Agent 已验收。`CLOUDFLARED_UID/GID` 独立于 `SERVERFS_UID/GID`，Token 文件必须以 `0600` 权限存于所有工作目录之外。
-
-### 可选静态 API Key
-
-v0.17 通过 `SERVERFS_HTTP_API_KEY` 提供一个共享 HTTP bearer secret。留空即关闭。客户端优先使用 `Authorization: Bearer <key>`；也支持 `?key=<key>` 以兼容只接受一行 MCP URL 的产品，但 query secret 可能被上游 URL 日志记录。API Key 与内置 OAuth 互斥，并且不适用于原生 stdio。详见[静态 API Key](../api-key/)。
-
-### 可选 OAuth 2.1
-
-远程 HTTP 可以在 v0.16 中通过 `SERVERFS_OAUTH_ENABLED=true` + `compose.oauth.yml` 增加隔离的 OAuth 层。OAuth 默认关闭；关闭时不要求任何 OAuth 配置，也不适用于 Windows/macOS 原生 stdio。Provider 凭据与 provider/CIMD egress 只进入 `serverfs-auth`；MCP 服务只接收 Resource Server 配置和私有 introspection 边界。
-
-公开 URL 模型、稳定 principal allowlist、provider callback、CIMD/DCR、代理与运维流程详见 [OAuth 2.1](../oauth/)。完整版本化变量面仍以 `.env.example` 为准。
-
-## Workdir 槽位
-
-最多可配置 16 个 workdir：
-
-```text
-WORKDIR_01_ALIAS=projects
-WORKDIR_01_PATH=/srv/projects
-WORKDIR_01_DESCRIPTION="Projects"
+```dotenv
+WORKDIR_01_ALIAS=docs
+WORKDIR_01_PATH=/srv/serverfs-blue/docs
 WORKDIR_01_READ_ONLY=true
 ```
 
-另一个 workdir 可以显式开放写入：
+原生 TOML（macOS 示例，Windows 使用实际 Windows 路径）：
 
-```text
-WORKDIR_02_ALIAS=scratch
-WORKDIR_02_PATH=/srv/scratch
-WORKDIR_02_DESCRIPTION="Agent scratch space"
-WORKDIR_02_READ_ONLY=false
+```toml
+[[workdirs]]
+alias = "docs"
+path = "/Users/operator/ServerFS-data/docs"
+read_only = true
 ```
 
-## 策略继承
+别名唯一，以字母开头，最多 32 个字母、数字、下划线或连字符。路径必须是实际存在且已授权的目录。不要为了方便暴露私有服务根目录、凭据目录或整个用户主目录。可写 Workdir 同时需要显式策略和操作系统写权限。Linux 的 `READ_ONLY` 还控制 bind mount。
 
-全局 `SERVERFS_*` 设置充当默认值。某个槽位中的 `WORKDIR_XX_*` 标量配置会覆盖全局值；留空则继承全局默认值。
+## 3. 理解策略继承
 
-这一模型适用于：
+| 设置 | Linux env | 原生 TOML |
+| --- | --- | --- |
+| 隐藏文件、读写限制、二进制传输 | 全局默认值与逐槽覆盖 | 全部 Workdir 共用 `[defaults]` |
+| 额外 deny glob / 内建 deny 覆盖 | 支持；额外规则取全局与槽位并集 | 保留内建 deny，不接受这些覆盖字段 |
+| 只读、Agent mode/runtimes、Repo Ops | 逐槽配置 | 逐 `[[workdirs]]` 配置 |
 
-- 隐藏文件策略
-- 读写限制
-- 二进制传输
-- Repo Ops 启用策略
-- Agent 策略
+Linux 空标量继承默认值，显式值优先；Repo Ops 逐槽默认关闭。显式禁用 Agent 且 runtime 列表留空时，清空继承的 runtime。原生 TOML 拒绝未知字段，不要直接照搬 Linux 槽位字段。全局 Agent 默认保持禁用，仅对目标 Workdir 开启。
 
-额外 deny glob 更严格：全局规则与 workdir 规则会**取并集**，因此 workdir 可以增加限制，但不能移除全局 deny 下限。
+默认限制包括文本每页读取 512 KiB / 500 行、单次文本变更 1 MiB、整文件二进制传输 8 MiB。Linux 二进制全局值是默认值，不是不可突破的上限；直接传输使用显式槽位覆盖值。文件入口另外执行其全局上限。见[二进制传输](../binary-transfer/)。
 
-## 重要默认值
+## 4. 独立配置 HTTP 准入
 
-- Workdir 默认只读。
-- 二进制传输默认关闭。`SERVERFS_MAX_BINARY_TRANSFER_BYTES` 是原生二进制传输与可选文件入口唯一公开的全局大小配置；workdir 覆盖值只能进一步收紧对应 workdir 的最终发布路径。
-- ChatGPT 文件入口默认关闭，并且需要同时设置 `SERVERFS_FILE_INGRESS_ENABLED=true` 与启用 `file-ingress` Compose profile。
-- 受限 OpenAI Blob 主机家族策略也独立默认关闭；只有确实需要 ChatGPT 文件参数时才设置 `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true`。额外精确主机名通过 `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS` 配置；通用通配符会被拒绝。
-- 静态 API Key 默认关闭。非空 `SERVERFS_HTTP_API_KEY` 会使用一个共享密钥保护 Streamable HTTP，并且不能与内置 OAuth 同时启用。
-- OAuth 默认关闭。启用时需要 OAuth Compose overlay；loopback 之外必须使用 HTTPS resource/auth URL；必须配置非空 introspection secret、至少一个身份 provider，以及精确的 default-deny principal allowlist。
-- Repo Ops 默认关闭，通过 `WORKDIR_XX_REPO_OPS_ENABLED=true` 按 Workdir 独立启用。当前稳定版 v0.24.1 支持 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署；Windows 原生支持最早在 v0.23.2 完成验收。Repo Ops 要求已认证的 Host Bridge transport，但不要求启用任何 Agent Runtime。
-- `WORKDIR_XX_REPO_ACTIONS_JSON` 是 Repo Ops named action 的宿主机私有运维策略，只会被渲染到 Host Bridge 配置，不会转发进入 MCP 容器。Named action 要求 read-write Workdir，并强制配置 SHA-256 integrity pins。
-- Agent 策略只有在显式配置后才启用。
-- v0.12.0 把 Tunnel、Agent runtime 与 Jev 的代理选择保持独立：`SERVERFS_OPENAI_TUNNEL_USE_PROXY`、`SERVERFS_AGENT_USE_PROXY`、`SERVERFS_JEV_USE_PROXY` 复用同一组 `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` 端点字段，但不会互相隐式启用。
-- v0.12 的 Linux Agent 代理仅支持无凭据代理；若启用 Agent 代理同时配置了共享代理用户名/密码，部署渲染会 fail closed。需要认证的上游应通过无凭据本地 broker 转接。
-- `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES` 配置 inline/spool 边界；默认仍为 256 KiB，最大 spool 结果仍为 8 MiB。
-- Jev Advisors 只有在 `SERVERFS_JEV_API_KEY` 非空时才启用；该 Key 只进入宿主机 Agent Bridge 部署路径，不进入 MCP 容器。
-- MCP 工具结果不会暴露宿主机路径。
-- Workdir 路径拼写错误会明确失败，而不是静默创建目录。
+Linux 按[运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)选择仅内部 HTTP 或直接端口发布。Core 监听端口与宿主机发布端口分离。Linux Host 白名单留空时派生 `serverfs-mcp:<HTTP_PORT>`，只允许实际需要的 authority。Origin 白名单留空拒绝非空 Origin。保留 DNS rebinding 防护，公网访问使用 HTTPS。
 
-## 可选 Deterministic Repo Ops（v0.23.0）
+命名原生 HTTP 准入要求精确配置 hostname 和 loopback authority，使用 [macOS](../macos-native/) 或 [Windows](../windows-native/) 手册，而非 Linux env 模板。
 
-Repo Ops 是按 Workdir 配置、默认关闭的仓库能力。最小 Linux/Compose 配置示例：
+选择一种调用方认证方式：
 
-```text
-WORKDIR_01_ALIAS=project
-WORKDIR_01_PATH=/srv/project
-WORKDIR_01_READ_ONLY=false
-WORKDIR_01_REPO_OPS_ENABLED=true
-WORKDIR_01_REPO_ACTIONS_JSON={...}
-```
+- [静态 API Key](../api-key/)：优先使用 Authorization Header，URL 参数可能被日志记录。
+- [OAuth](../oauth/)：使用独立配置的授权服务与私有 introspection。
 
-`WORKDIR_XX_REPO_ACTIONS_JSON` 把调用方可见的 action 名称映射到管理员拥有的固定 `argv`、`mutates`、`argument` 与 `integrity` 策略。调用方永远不能提供 executable/argv/environment/remote/ref/force。每个 named action 都必须配置非空 integrity map，并且即使 `mutates=false` 也始终获取独占 writer lease。
+Linux 两者默认关闭，但不得发布未认证的 Core。原生 HTTP 必须配置一种认证方式。本地 stdio 不使用 HTTP 认证。Connector 凭据独立；命名 OpenAI HTTP Connector 要求静态 bearer 认证。
 
-只有至少一个 Workdir 启用 Repo Ops 时，公共 Repo Ops 工具才会注册。Host Bridge transport 必须启用，因为它掌握宿主机 Git 凭据/路径上下文以及 writer-lease 协调；Agent mode 可以保持 disabled。完整安全边界与 action profile 契约见 [Deterministic Repo Ops](../repo-ops/)。
+## 5. 按需启用能力
 
-## 可选 Jev Advisors
+| 能力 | 策略与前提 |
+| --- | --- |
+| [二进制传输](../binary-transfer/) | 显式开启；上传要求可写；文件入口另行配置 |
+| [Repo Ops](../repo-ops/) | 逐 Workdir 启用，需已授权宿主机 Bridge，无需 Agent runtime |
+| [Agent 委托](../agent-bridge/) / [ACP](../acp/) | 需授权 Bridge 与 runtime 白名单；运行要求 workspace-write 和可写 Workdir |
+| [Jev](../jev-advisors/) | Bridge 侧可选建议，不授予权限 |
 
-如需启用宿主机 advisory suite，在现有、未跟踪的 `.env` 中设置 TypeSafe API Key：
+Linux 命名签名接入仅支持一个 Agent/Repo Ops 槽位（01）。macOS Shared Core 只支持一个绑定的 Agent Workdir，不支持 Repo Ops。Windows 初始共享配置需要精确策略子集与独立 grant。按照平台手册配置；开启能力的开关不能替代有效绑定。
 
-```text
-SERVERFS_JEV_API_KEY=<your key>
-```
+Provider 可执行文件与凭据保留在宿主机。各组件的出站代理独立配置。Linux 兼容渲染器为 Tunnel、Agent 与 Jev 复用代理端点，但分别启用；Agent 代理必须无凭据。命名 Bridge owner 有自己的显式策略，不能假定修改 Core env 就会改变 owner。
 
-留空即可完全关闭 Agent Task Preflight、Runtime Router、Model Advisor 与 Approval Advisor。正常 Agent Bridge 安装器只会把已配置的 Key 渲染到用户自有、权限为 `0600` 的配置中。v0.12 中，`SERVERFS_JEV_USE_PROXY=true` 只让 Jev 的显式 HTTP client 使用共享代理；Agent 与 Tunnel 的路由仍彼此独立。运行行为与安全边界详见 [Jev Advisors](../jev-advisors/)。
+## 6. 验证生效策略
 
-完整 Linux/Docker 环境变量面请以版本化的 [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example) 为准。Windows 与 macOS 原生部署的非敏感策略使用 [`serverfs.toml.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/serverfs.toml.example)；`.env` 仅承载各平台指南所说明的少量 secret / proxy / runtime 配置。
-
-ACP 完整配置、验证、任务生命周期与排障请见 [ACP 指南](../acp/)。
+修改前读取实际实例配置，确认平台、身份和 Workdir 映射。验证所选部署，必要时仅重启已授权组件，再检查认证后的 MCP、预期工具、安全读取及拒绝行为。配置文件正确或 task 正在运行都不等于权限已经验证。见[安全模型](../security/)。

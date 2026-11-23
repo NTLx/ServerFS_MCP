@@ -1,5 +1,7 @@
 # macOS v0.25.0 Shared Core site-packages integrity (2026-11-15)
 
+> Historical schema-v3 integrity checkpoint. The subsequent [native bytecode failure and fix](v0250-macos-shared-native-bytecode-runtime-integrity-2026-11-15.md) disproved the assumption that `sitecustomize.py` alone prevents all startup bytecode; current managed Core argv must include the required `-B`. Preserve the earlier implementation/measurement below and the local-provenance (not publisher-authenticity) boundary.
+
 ## Objective and implementation
 
 Close the installed-package integrity gap in the offline, create-only Shared

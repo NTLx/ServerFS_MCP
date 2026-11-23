@@ -5,7 +5,7 @@ These are durable contracts. Change them only when a demonstrated defect or an e
 ## 1. Capability surface and authority
 
 - ServerFS exposes narrow filesystem/Agent capabilities, never ambient host authority.
-- The base filesystem surface has **11 tools**. Optional binary transfer expands it to **13**. Optional Agent delegation expands it to **21**. Enabling binary + Agent yields **23**. Starting with v0.23, optional Deterministic Repo Ops independently adds four tools: filesystem + Repo Ops = **15**, binary + Repo Ops = **17**, Agent + Repo Ops = **25**, and binary + Agent + Repo Ops = **27**.
+- The base filesystem surface has **11 tools**; the following are independent combinations, not a sequential expansion or a promise of parity across all attachments. Optional binary transfer expands it to **13**. Optional Agent delegation expands it to **21**. Enabling binary + Agent yields **23**. Optional Deterministic Repo Ops independently adds four tools: filesystem + Repo Ops = **15**, binary + Repo Ops = **17**, Agent + Repo Ops = **25**, and binary + Agent + Repo Ops = **27**.
 - Read-only remains the default per workdir. Mutation is an explicit workdir capability.
 - Do not add a generic shell/argv/env MCP tool or another general-purpose executor.
 - Public MCP schemas are contracts. Structured results must expose matching `outputSchema`; mixed binary results keep both the resource block and structured metadata.
@@ -56,9 +56,9 @@ Windows revisions are explicitly **metadata-derived optimistic-concurrency token
 
 The ChatGPT file-parameter ingress remains an isolated security boundary:
 
-- `serverfs-mcp` keeps no Internet egress for ingress fetching;
+- Core never fetches the temporary file URL directly; the isolated sidecar owns that path;
 - it talks only to the private `serverfs-file-ingress` endpoint;
-- the ingress sidecar has no workdir mounts, Tunnel/OpenAI credentials or published port;
+- the ingress sidecar has no workdir mounts, Tunnel/OpenAI credentials or published port; named persistent macOS and Windows disable this shared file-ingress path;
 - accepted remote destinations remain narrowly constrained, DNS/IP validated and TLS verified on every redirect hop;
 - never turn ingress into a generic URL fetcher or credential-bearing proxy;
 - destination path never derives from `file_name`, and URL/file IDs are not logged;
@@ -68,14 +68,14 @@ The public file parameter schema remains explicit and must stay synchronized wit
 
 ## 5. Streamable HTTP and MCP protocol safety
 
-The v0.4 transport-security fix remains a security invariant for every Linux Streamable HTTP ingress, including the v0.15 generic MCP path:
+Transport security is an invariant for every HTTP Core:
 
-- DNS-rebinding protection stays enabled; v0.15 deliberately provides no casual disable switch;
+- DNS-rebinding protection stays enabled; provide no casual disable switch;
 - production Host/Origin policy remains explicit and narrow for the deployed topology;
-- the compatibility default remains the Docker-internal OpenAI Tunnel authority, while generic HTTP deployments explicitly add the Host values they actually serve;
-- the base Compose shape keeps the MCP listener unpublished; the generic HTTP override binds loopback by default and wider publication is an explicit operator decision;
-- Internet-facing generic MCP endpoints terminate TLS and authentication at an explicit upstream gateway boundary unless a later ServerFS release adds an equally narrow built-in resource-server verifier;
-- adding generic MCP connectivity must not grant the main Linux MCP process general Internet egress;
+- legacy default-owner compatibility retains the Docker-internal OpenAI Tunnel authority; named HTTP explicitly admits its actual authority/Host values and keeps ingress independent;
+- named Linux Compose selects an explicit publish-http or internal-only exposure overlay; local publication defaults to loopback and wider exposure is an operator decision; native named HTTP uses the exact loopback authority;
+- Internet-facing MCP requires TLS and caller admission. Core supports one static API Key or OAuth resource verification, not both; no-auth Linux is limited to explicit isolation or validated external admission. Named native HTTP requires authentication. Connector credentials are not caller credentials; named OpenAI HTTP requires static Core bearer admission, not OAuth-only;
+- internal-only network selection isolates Core publication; direct HTTP publication explicitly selects a non-internal network, whose egress must be assessed. Keep OAuth introspection private, authorization service state separate, and distinguish principal removal from token revocation;
 - do not broaden Host/Origin policy to wildcard configuration merely to accommodate an unmeasured development topology;
 - keep real Host/Origin regression tests, startup-wiring tests, and both modern/legacy MCP-client compatibility tests.
 
@@ -87,7 +87,7 @@ Agent-facing errors use stable short error codes/messages. Internal paths, conte
 
 ## 6. Agent Bridge contract
 
-The Agent Bridge is optional and provider-neutral. Supported native runtime names are **Codex, Claude and Qoder**; `fake` remains development/test-only.
+The Agent Bridge is optional and provider-neutral. Supported native runtime names are **Codex, Claude and Qoder**; operator-configured ACP profiles are standard-protocol adapters, not new native runtimes. `fake` remains test-only. No automatic runtime installation or caller-defined executable/argv/env.
 
 ### Native runtime admission gate
 
@@ -110,7 +110,7 @@ Authorization is explicit and fail-closed:
 - the Bridge must be enabled;
 - the selected runtime must be enabled;
 - the workdir must allow that runtime/profile;
-- native provider modes currently use `workspace-write` so the shared writer lease is held;
+- native providers and ACP currently require an explicitly writable workdir and `workspace-write` so the shared writer lease is held;
 - the Bridge does not convert that lease into a provider sandbox or permission system.
 
 Provider-native configuration remains provider-owned. ServerFS selects the starting workdir/runtime and may pass an explicit request-scoped model when supported; it does not rewrite the user's provider authentication, native default model, sandbox, approval policy, MCP servers, skills/plugins or shell environment.
@@ -121,7 +121,7 @@ Provider-native configuration remains provider-owned. ServerFS selects the start
 
 Do not add ServerFS provider-default model environment variables, automatic cross-provider fallback, fabricated static model catalogs or a cross-provider `effective_model` claim.
 
-Model discovery is capability-based: Codex and Qoder expose native catalogs through their supported APIs; Claude may return `unsupported` when no stable native account enumeration API is available.
+Model discovery is capability-based: Codex uses its runtime catalog, Qoder its current-account catalog; Claude and ACP report unsupported discovery. ACP model override, elicitation/client filesystem/terminal and live steering are not supported. Runtime capability does not imply attachment authorization.
 
 ### Task lifecycle
 
@@ -130,11 +130,11 @@ Agent execution is asynchronous and normalized behind the Bridge contract. Prese
 - durable tasks/events/pending approvals/questions;
 - explicit terminal states;
 - bounded deadlines/interaction lifetimes and retention;
-- retry-safe submission via `idempotency_key` without duplicating a provider turn;
+- conditional retry-safe submission via `idempotency_key` on compatible v1 paths without duplicating a retained provider turn; signed v2 Core grants reject both `idempotency_key` and `continue_from_task_id`, even when runtime continuation is advertised. Never blindly retry an uncertain v2 submission;
 - optional opaque `correlation_id` as metadata only;
-- bounded large-result spooling + `read_agent_task_result` rather than unbounded inline results;
+- bounded large-result spooling + `read_agent_task_result` rather than unbounded inline results; defaults: 7200s task, 1800s interaction, 4 active, 7d retention, 256 KiB inline, 8 MiB maximum stored result, 64 KiB chunks of normalized path-redacted text;
 - provider-aware restart reconciliation; never blindly rerun an in-flight provider task after Bridge restart;
-- terminal-first cancellation semantics and bounded best-effort provider interrupt;
+- terminal-first cancellation semantics and best-effort provider interrupt bounded to 10s; disconnect does not cancel and terminal status is not proof of provider stop;
 - shared writer lease/recovery guard behavior when provider stop cannot be proven.
 
 Agent tools talk to the Bridge RPC contract; the MCP package does not import provider SDKs/adapters.
@@ -150,7 +150,7 @@ Approvals and questions remain provider-neutral but human-controlled:
 
 ## 7. Deterministic Repo Ops contract
 
-Starting with v0.23, Repo Ops is an optional, per-workdir, default-off **non-Agent** host repository capability. Its purpose is to let MCP callers finish deterministic repository gates without turning those steps into Agent delegation or exposing a generic host executor.
+Repo Ops is an optional, per-workdir, default-off **non-Agent** host repository capability. Its purpose is to let MCP callers finish deterministic repository gates without turning those steps into Agent delegation or exposing a generic host executor.
 
 Preserve these invariants together:
 
@@ -164,21 +164,21 @@ Preserve these invariants together:
 - Push derives the current branch/upstream internally and supplies exactly one `HEAD:<upstream-branch>` refspec. The caller cannot choose remote/ref/force. Git is non-interactive; hooks, askpass, repository SSH-command overrides and unapproved custom remote helpers remain neutralized/denied.
 - Repo Ops child environments are narrowly allowlisted; provider/API secrets are not forwarded wholesale. Runtime/output limits are mandatory. On Linux, timeout/output overflow/cancellation terminates the entire subprocess group and drains child pipes before releasing the writer lease.
 - Repo Ops RPC/service code must not import or invoke Agent provider adapters, select models, create sessions/tasks, or claim provider authority.
-- Initial v0.23 platform support is Linux only. Do not claim native Windows/macOS Repo Ops until their configuration renderer, process containment, credential behavior, tests and live acceptance exist.
+- Repo Ops retains platform-native process containment and uses explicit per-Core grants; do not infer authorization from a shared owner.
 - Release acceptance requires public MCP E2E through the four tools, including status/action/diff/commit/push as applicable, and explicit evidence that no Agent task was created. Private Bridge/internal checks are necessary but not a substitute for public MCP acceptance.
 
 ## 8. Jev is advisory only
 
 Jev Preflight, Runtime Router, Model Advisor and Approval Advisor are opt-in advisors, not an Agent runtime, authorization system or safety authority.
 
-- With no `SERVERFS_JEV_API_KEY`, construct no Jev client and make no Jev request.
+- Without a configured Jev key, construct no Jev client and make no Jev request. Named Linux owner uses private `jev` JSON policy; `SERVERFS_JEV_API_KEY` is legacy renderer input. Do not infer native installer support from parser support.
 - With a key, Jev failures remain fail-open with respect to an otherwise authorized explicit task.
 - Runtime Router may recommend but never switch the requested runtime/tool automatically.
 - Model Advisor ranks only the normalized candidates supplied to it and never populates/overrides `submit_agent_task.model`.
 - Approval Advisor can advise only after the provider creates an approval request; it cannot approve/deny, grant permission IDs or bypass `respond_agent_approval` validation.
-- Jev credentials remain outside the MCP container and must not appear in logs/RPC/task events.
+- Jev credentials remain outside the MCP container and must not appear in logs/RPC/task events. Preflight sends the original prompt to the external TypeSafe API; authorize that data transfer explicitly. Model/approval redaction is best-effort, not a comprehensive secret filter.
 
-v0.12 added independent proxy control for Jev without increasing its authority.
+Jev has independent proxy control without increasing its authority. Agent provider proxy is separate and requires a credentialless endpoint; Connector egress and registry pulls are independent.
 
 ## 9. Platform containment
 
@@ -186,35 +186,25 @@ Platform support is implemented behind explicit platform seams, not by weakening
 
 ### Linux
 
-The established Linux deployment remains containerized ServerFS MCP with two supported ingress shapes: the existing outbound OpenAI Secure MCP Tunnel and the v0.15 opt-in generic Streamable HTTP publication override. The base Compose shape does not publish the MCP port. Optional host-side Bridge transport remains behind the Linux deployment overlay and may carry independently gated Agent delegation, Deterministic Repo Ops, or both. User-scoped host-Bridge deployment is non-root; do not require system users, `/etc`/`/opt`/`/var/lib` writes or automatic login lingering.
-
-Host-Bridge-enabled Linux deployment must use the measured peer identity and the same user/group contract documented by Phase E. Do not synthesize peer UID/GID as a substitute for kernel measurement. Base `compose.yml` remains host-Bridge-unaware; the opt-in overlay owns the socket/lock mounts while Agent and Repo Ops authorization remain independent.
+Use Compose for Core and optional Connectors; direct HTTP and tunnel-only exposure are distinct overlay selections. Host Bridge remains an optional user systemd owner. Verify actual socket peer identity, private signed bindings and grants; do not synthesize identity or replace a denied signed attachment with a legacy transport. Preserve project isolation and non-root ownership. Named signed attachment uses one enabled Agent/Repo Ops alias in slot 01, distinct Core/Bridge IDs even for dedicated owner and up to 32 initial grants; no live grant append/rotation via initial provisioning.
 
 ### Windows
 
-Native Windows filesystem service and native Agent delegation are supported through the Windows-specific backend/product boundary. Do not route Windows work through Docker/WSL merely to reuse Linux code, and do not describe the Windows revision token as stronger than its accepted NTFS semantics.
-
-Since v0.14.0, the normal Windows outer lifecycle is a **current-user Task Scheduler 2.0 task**. Preserve all of these properties together:
-
-- no administrator/UAC requirement for install, runtime, maintenance or removal;
-- current-user `InteractiveToken` identity and `LeastPrivilege` run level; never SCM/LocalSystem, HKLM service registration, stored passwords or another machine-wide owner;
-- a logon trigger for session startup plus an indefinite one-minute time-trigger heartbeat; `MultipleInstancesPolicy=IgnoreNew` keeps exactly one Task action while allowing the OS to recreate a missing watchdog;
-- Task Scheduler owns a windowless watchdog, the watchdog owns one runner in a kill-on-close Job Object and restarts it with bounded short backoff, and the runner owns/restarts one Tunnel generation at a time with its own bounded backoff;
-- the native Tunnel ownership mutex prevents a managed tree and a direct/manual `serverfs tunnel` tree from coexisting for the same current-user lifecycle;
-- install/update preserves enabled/disabled operator intent; a fresh install is registered disabled, `service start` enables and starts it, and `service stop` disables before ending it so the heartbeat cannot resurrect an intentional stop;
-- v0.13.x manual-launcher migration uses the frozen process-identity hand-over path. Never identify/kill a legacy tree by name alone or by an unverified PID.
-
-For v0.14.0+, `deployment/windows/start-native.ps1` is compatibility/emergency material rather than the intended persistent operator path. Public lifecycle operations are `serverfs service install/start/stop/restart/status/uninstall`.
+Windows 11 x64, local NTFS, current-user least-privilege Task Scheduler, windowless components, Job Objects and signed Named Pipe authorization are the native boundary. Only the selected component owner may install, start, stop or unregister its own task. No SCM/LocalSystem or administrator escalation. Do not identify or kill trees merely by process name or unverified PID. Preserve HANDLE-relative filesystem and reparse-point constraints. Named initial runtime/config/Connector helpers are create-only, not in-place upgrades or rotation; up to 16 initial Cores per shared owner, distinct grants and exact owner-policy subsets. Preserve failed attempt state.
 
 ### macOS
 
-v0.13 supports Apple M-series only, native arm64, macOS 27 Golden Gate. Preserve the measured runtime gate and fail closed outside that boundary. Darwin uses POSIX-generic filesystem/Agent seams where proven, Darwin-specific peer/runtime primitives where required, the macOS application-data home, native arm64 Tunnel asset and private AF_UNIX file ingress. **Since v0.13.2, persistent lifecycle is app-associated `SMAppService` + per-user LaunchAgents for both Tunnel and Agent Bridge.** Normal operation must not recreate a hand-installed `~/Library/LaunchAgents` plist, root LaunchDaemon, shell-profile bootstrap or `nohup` persistence. Registration/approval state belongs to ServiceManagement/Login Items and user denial must be respected. The bundled launcher contains no secrets, reads only private 0600 lifecycle state, uses absolute executable/config paths, and preserves exactly-one managed Tunnel/Bridge semantics. Lifecycle operations that must replace the managed Agent Bridge may use ServerFS's product-owned bounded one-shot launchd hand-over so the operation can outlive its Bridge-owned caller; final success requires verified service readiness/health plus proof that the temporary hand-over job and plist are absent. Maintainer one-shot handoffs must not be implemented as persistent or `KeepAlive` `launchctl submit` jobs. Do not claim Intel, Rosetta, macOS 26/28 or a `darwin-amd64` asset without new measured support.
+Apple Silicon, native arm64, macOS 27 and APFS. Preserve Darwin descriptor-relative containment, TCC, signed app/runtime and authenticated Unix IPC. Named components use user SMAppService/LaunchAgents, with explicit Login Items approval. No root service, hand-installed legacy plist or approval bypass. Preserve exact identity and component scope. Owned mode uses private IPC/manifest/policy checks, not shared v2 grant protocol; shared Core requires independent existing owner, one Agent alias, no Repo Ops or named Connector staging. Native staging is create-only. Unsupported platforms fail closed pending measured support.
+
+### Component identity
+
+Every Core, Connector and Bridge has an immutable named identity. File-only requires no Bridge. Owned native pairs use the same instance ID; named Linux dedicated owner uses distinct IDs. Signed grant paths restrict alias/methods and task ownership; macOS owned uses private native policy/IPC. Shared attachments require explicit owner-issued grants. Shared Core cannot manage its owner; independent owners must not overlap writable roots. Caller authentication is independent of Connector credentials; revocation, wrong identity, replay and cross-Core access fail closed. Use native implementations rather than forcing private IPC parity.
 
 ## 10. Secrets and configuration
 
-- Repository-root `.env` is the deployment configuration source; do not reintroduce `.env.agent` or another competing deployment env layer.
+- Linux named Compose uses one private env per exact project selection; root `.env` is the compatibility default only. Native Core policy uses TOML plus private auth inputs; named Bridge owner configuration and grants are private, distinct from Core config. Never expose private configuration/state through workdir mounts.
 - `.env.example` documents the public configuration surface without secrets.
-- Provider-native secrets/shell-only variables remain outside the repository except where an explicitly documented integration uses the untracked root `.env` and renders only the minimum private host-side config.
+- Provider-native secrets/shell-only variables remain outside the repository and Core containers; only the explicitly documented legacy renderer reads private env inputs for host-side config. Never edit protected manifests or installed snapshots to bypass integrity/create-only checks.
 - Never print raw `docker compose config` output when it can expand secrets; query only the field needed.
 
 ## 11. Intentional product decisions and traps
@@ -229,6 +219,6 @@ v0.13 supports Apple M-series only, native arm64, macOS 27 Golden Gate. Preserve
 - Diagnose localization in the order: source text → built HTML → raw live response → rendering. Do not rewrite content based only on a screenshot.
 - A bare MCP `GET` can disturb a live Tunnel session; use the intended readiness path for operational probing.
 - Build is not deploy. A running container keeps its old image until recreated.
-- On Linux Agent deployments, recreating only the base Compose shape drops the Agent overlay even if Agent variables remain configured.
-- Recreating ServerFS can strand an existing Tunnel session; deployment procedures must restart/re-establish the Tunnel as documented.
+- Retain exact Compose project, env, all exposure/auth/ingress/Bridge overlays and profiles for scoped operations; a base-only recreate can drop policy/mount selections even with unchanged env.
+- Core recreation can strand an existing MCP session. Verify fresh authorized MCP; scope any necessary Connector restart separately, never assume old SSE replay. Stop ingress before Core when required by native guards.
 - Build under a scratch image tag. Never let a local build shadow a published production tag named in `.env`.

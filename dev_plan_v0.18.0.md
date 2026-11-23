@@ -1,5 +1,7 @@
 # ServerFS v0.18.0 Development Plan
 
+> Historical v0.18.0 Skills/Plugin design and released artifact evidence. Original seven-skill architecture, package hash and measured gates are retained at their recorded version. The historical 13-reference inventory, proposed command placeholders, two-process deployment assumptions and tag-driven publisher are not the current package or lifecycle contract. Use [current Skills index](skills/README.md), the actual packaging utility and [maintainer workflow](docs/maintainers/workflow.md). The dispatch-first release workflow superseded the older tag-triggered model in v0.23.3.
+
 Status: released — v0.18.0 release contract complete. The release commit carries the final Agent Skills, portable Plugin packaging, validation gates, version metadata and release-facing documentation before the immutable `v0.18.0` tag is created. Publication follows the repository rule that hosted CI must be green on that exact release commit before tagging. Plan frozen from the 2026-10-20 Decision Grilling session.
 
 ## Implementation checkpoint — 2026-10-20

@@ -12,6 +12,10 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+PROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+CURRENT_VERSION = PROJECT["project"]["version"]
+CURRENT_TAG = f"v{CURRENT_VERSION}"
+MISMATCH_VERSION = "0.0.0" if CURRENT_VERSION != "0.0.0" else "0.0.1"
 _CHECKER = ROOT / "deployment/native/release_metadata.py"
 _SPEC = importlib.util.spec_from_file_location("release_metadata", _CHECKER)
 assert _SPEC is not None and _SPEC.loader is not None
@@ -47,30 +51,34 @@ def update_json(path: Path, mutate) -> None:
     path.write_text(json.dumps(data), encoding="utf-8")
 
 
-def test_current_0242_baseline_is_consistent(fixture_root: Path) -> None:
-    result = validate(fixture_root, "v0.24.2")
-    assert result["root"] == result["registry"] == "0.24.2"
+def test_current_release_baseline_is_consistent(fixture_root: Path) -> None:
+    result = validate(fixture_root, CURRENT_TAG)
+    assert result["root"] == result["registry"] == CURRENT_VERSION
 
 
 def test_nested_registry_package_version_must_match(fixture_root: Path) -> None:
-    update_json(fixture_root / "server.json", lambda d: d["packages"][0].update(version="0.24.1"))
+    update_json(
+        fixture_root / "server.json", lambda d: d["packages"][0].update(version=MISMATCH_VERSION)
+    )
     with pytest.raises(MetadataError, match=r"packages\[0\]\.version"):
-        validate(fixture_root, "v0.24.2")
+        validate(fixture_root, CURRENT_TAG)
 
 
 def test_missing_nested_registry_package_version_fails(fixture_root: Path) -> None:
     update_json(fixture_root / "server.json", lambda d: d["packages"][0].pop("version"))
     with pytest.raises(MetadataError, match=r"packages\[0\]\.version"):
-        validate(fixture_root, "v0.24.2")
+        validate(fixture_root, CURRENT_TAG)
 
 
 def test_oci_tag_must_match_release_tag(fixture_root: Path) -> None:
     update_json(
         fixture_root / "server.json",
-        lambda d: d["packages"][0].update(identifier="ghcr.io/ntlx/serverfs_mcp:0.24.1"),
+        lambda d: d["packages"][0].update(
+            identifier=f"ghcr.io/ntlx/serverfs_mcp:{MISMATCH_VERSION}"
+        ),
     )
     with pytest.raises(MetadataError, match=r"packages\[0\]\.identifier"):
-        validate(fixture_root, "v0.24.2")
+        validate(fixture_root, CURRENT_TAG)
 
 
 @pytest.mark.parametrize(
@@ -93,7 +101,7 @@ def test_missing_local_lock_record_fails(fixture_root: Path, relative: str, name
     path.write_text("[[package]]".join(chunks), encoding="utf-8")
     assert len(records) > 0
     with pytest.raises(MetadataError, match="exactly one local package record"):
-        validate(fixture_root, "v0.24.2")
+        validate(fixture_root, CURRENT_TAG)
 
 
 @pytest.mark.parametrize(
@@ -107,11 +115,11 @@ def test_missing_local_lock_record_fails(fixture_root: Path, relative: str, name
 def test_stale_local_lock_record_fails(fixture_root: Path, relative: str, name: str) -> None:
     path = fixture_root / relative
     content = path.read_text(encoding="utf-8")
-    package = f'name = "{name}"\nversion = "0.24.2"'
+    package = f'name = "{name}"\nversion = "{CURRENT_VERSION}"'
     assert content.count(package) == 1
-    path.write_text(content.replace(package, f'name = "{name}"\nversion = "0.24.1"'))
-    with pytest.raises(MetadataError, match="expected '0.24.2'"):
-        validate(fixture_root, "v0.24.2")
+    path.write_text(content.replace(package, f'name = "{name}"\nversion = "{MISMATCH_VERSION}"'))
+    with pytest.raises(MetadataError, match=f"expected {CURRENT_VERSION!r}"):
+        validate(fixture_root, CURRENT_TAG)
 
 
 def test_malformed_tag_fails_closed(fixture_root: Path) -> None:

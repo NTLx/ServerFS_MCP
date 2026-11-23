@@ -1,121 +1,78 @@
 ---
 title: Configuration
-description: Define scoped workdirs and inherit secure defaults.
+description: Configure a Core, its workdirs and optional capabilities.
 ---
 
-ServerFS resolves an immutable effective policy for each enabled workdir at startup.
+Each Core has its own configuration. Workdir policy is resolved at startup. Choose the platform's configuration format; the security outcomes are shared, not the syntax.
 
-Native macOS Cloudflare shipped in v0.24.1, separate from the stable Linux Docker configuration below. It requires a read-only staging workdir and private current-user Token/auth files (`0600`) outside all workdirs. See the [macOS deployment runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md#optional-cloudflare-tunnel-v0241) for the supported CLI and exact Host matching requirements; do not copy Linux Compose variables into native configuration.
+## 1. Choose the configuration format
 
-## MCP transport settings
+| Platform | Core policy | Persistent HTTP and components |
+| --- | --- | --- |
+| Linux | Private env + Compose; up to 16 slots | Named project, selected exposure and Bridge overlays; optional Connector profiles |
+| macOS / Windows | Native TOML; up to 64 workdirs | Private HTTP admission inputs, named service manifests and separate Bridge/Connector configuration |
 
-Linux Streamable HTTP uses these explicit settings:
+Use the version-matched [.env.example](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example) for Linux and [serverfs.toml.example](https://github.com/NTLx/ServerFS_MCP/blob/main/serverfs.toml.example) for native policy. These are reference templates: replace all active example paths and keep private inputs outside every exposed workdir.
 
-```text
-SERVERFS_HTTP_HOST=0.0.0.0
-SERVERFS_HTTP_PORT=8000
-SERVERFS_HTTP_PATH=/mcp
-SERVERFS_HTTP_ALLOWED_HOSTS=
-SERVERFS_HTTP_ALLOWED_ORIGINS=
-SERVERFS_HTTP_API_KEY=
-```
+## 2. Define the smallest necessary workdir
 
-The listener address is independent from publication. `compose.http.yml` publishes it on `127.0.0.1:8000` by default. DNS-rebinding protection stays enabled: when a deployment is reached through another hostname or reverse proxy, add only the exact Host authorities that should be accepted through `SERVERFS_HTTP_ALLOWED_HOSTS`. `SERVERFS_HTTP_ALLOWED_ORIGINS` provides the corresponding explicit browser Origin allowlist where an Origin header is expected. Do not disable Host protection to make a proxy work. Public/non-loopback exposure should terminate TLS at a separately configured ingress boundary.
+Linux env:
 
-The default host/port/path continue to match the existing OpenAI Tunnel's Docker-internal path, so Tunnel deployments do not require a migration merely because generic MCP HTTP is now supported.
-
-### Optional Cloudflare Tunnel ingress (Linux v0.24.0 stable)
-
-Use `compose.cloudflare.yml` with a remotely managed Tunnel; the connector reads a read-only token file from the absolute `CLOUDFLARE_TUNNEL_TOKEN_FILE` path outside checkout/workdirs. `CLOUDFLARED_IMAGE` selects its image. The public Host must be allowlisted, and client API Key/OAuth is independent from the Tunnel Token. See [Cloudflare Tunnel](../cloudflare-tunnel/). The Linux v0.24.0 capability has passed real ChatGPT/SSE/session-recovery tests with an isolated read-only staging fixture and shipped in v0.24.0; these isolated tests are not a production workdir/Agent acceptance. `CLOUDFLARED_UID/GID` control the Connector token reader independently of `SERVERFS_UID/GID`; keep the token file `0600` outside all workdirs.
-
-### Optional static API Key
-
-v0.17 adds one shared HTTP bearer secret through `SERVERFS_HTTP_API_KEY`. Leave it empty to disable. Clients should prefer `Authorization: Bearer <key>`; `?key=<key>` is also supported for one-line MCP URL compatibility but may be captured by upstream URL logs. API Key mode is mutually exclusive with built-in OAuth and does not apply to native stdio. See [Static API Key](../api-key/).
-
-### Optional OAuth 2.1
-
-Remote HTTP can add the isolated v0.16 OAuth overlay with `SERVERFS_OAUTH_ENABLED=true` plus `compose.oauth.yml`. OAuth is default-off, requires no settings on the disabled path, and does not apply to native Windows/macOS stdio. Provider credentials and provider/CIMD egress live only in `serverfs-auth`; the MCP service receives only Resource Server settings and the private introspection boundary.
-
-Use [OAuth 2.1](../oauth/) for the exact public URL model, stable-principal allowlist, provider callbacks, CIMD/DCR behavior, proxy settings and operational procedures. Keep `.env.example` as the complete versioned variable reference.
-
-## Workdir slots
-
-Up to 16 workdirs can be configured:
-
-```text
-WORKDIR_01_ALIAS=projects
-WORKDIR_01_PATH=/srv/projects
-WORKDIR_01_DESCRIPTION="Projects"
+```dotenv
+WORKDIR_01_ALIAS=docs
+WORKDIR_01_PATH=/srv/serverfs-blue/docs
 WORKDIR_01_READ_ONLY=true
 ```
 
-A second workdir can opt into writes:
+Native TOML (macOS example; use a real native Windows path on Windows):
 
-```text
-WORKDIR_02_ALIAS=scratch
-WORKDIR_02_PATH=/srv/scratch
-WORKDIR_02_DESCRIPTION="Agent scratch space"
-WORKDIR_02_READ_ONLY=false
+```toml
+[[workdirs]]
+alias = "docs"
+path = "/Users/operator/ServerFS-data/docs"
+read_only = true
 ```
 
-## Policy inheritance
+Aliases are unique, begin with a letter and contain up to 32 letters, digits, underscores or hyphens. Paths must be existing authorized directories. Do not expose the private service root, credential directory or an entire home directory by convenience. A writable workdir requires both explicit policy and OS write permission. Linux `READ_ONLY` also controls the bind mount.
 
-Global `SERVERFS_*` settings act as defaults. A workdir-specific `WORKDIR_XX_*` scalar overrides the global value for that slot; an empty workdir value inherits the global default.
+## 3. Understand policy inheritance
 
-This model applies to:
+| Setting | Linux env | Native TOML |
+| --- | --- | --- |
+| Hidden files, read/write limits, binary transfer | Global defaults, slot overrides | Shared `[defaults]` for all workdirs |
+| Extra deny globs / built-in deny override | Supported; extra globs union global and slot rules | Built-in deny retained; these override keys are not accepted |
+| Read-only, Agent mode/runtimes, Repo Ops | Per slot | Per `[[workdirs]]` |
 
-- hidden-file policy
-- read/write limits
-- binary transfer
-- Repo Ops enablement
-- Agent policy
+Linux empty scalar overrides inherit; explicit values take precedence. Repo Ops defaults off per slot. An explicitly disabled Agent mode with an empty runtime list resets that list. Native TOML rejects unknown keys; do not copy Linux slot fields into it. Keep global Agent defaults disabled and opt in only on intended workdirs.
 
-Extra deny globs are stricter: global and workdir rules are **unioned**, so a workdir can add restrictions but cannot remove the global deny floor.
+Default limits include 512 KiB / 500 lines per text-read page, 1 MiB per text mutation and 8 MiB per whole-file binary transfer. The Linux binary limit is a default, not an unchangeable ceiling: an explicit slot override replaces it for direct transfer. File ingress additionally enforces its global ceiling. See [Binary Transfer](../binary-transfer/).
 
-## Important defaults
+## 4. Configure HTTP admission separately
 
-- Workdirs are read-only by default.
-- Binary transfer is disabled by default. `SERVERFS_MAX_BINARY_TRANSFER_BYTES` is the single public global size setting for native binary transfer and optional file ingress; workdir overrides can only further constrain their own publication path.
-- ChatGPT file ingress is disabled by default and requires both `SERVERFS_FILE_INGRESS_ENABLED=true` and the `file-ingress` Compose profile.
-- The constrained OpenAI Blob host-family policy is separately disabled by default; enable it with `SERVERFS_FILE_INGRESS_ALLOW_OPENAI_BLOB_HOSTS=true` only when ChatGPT file parameters are required. Exact additional hosts belong in `SERVERFS_FILE_INGRESS_ALLOWED_HOSTS`; generic wildcards are rejected.
-- Static API Key authentication is disabled by default. A non-empty `SERVERFS_HTTP_API_KEY` protects Streamable HTTP with one shared secret and cannot be combined with built-in OAuth.
-- OAuth is disabled by default. Enabling it requires the OAuth Compose overlay, an HTTPS resource/auth URL pair outside loopback, a non-empty introspection secret, at least one configured identity provider, and an exact default-deny principal allowlist.
-- Repo Ops is disabled by default and is independently enabled per workdir with `WORKDIR_XX_REPO_OPS_ENABLED=true`. Current intended stable v0.24.2 supports Linux Host Bridge, validated native Apple Silicon macOS, and validated native Windows 11 x64; Windows support was first validated in v0.23.2. It requires the authenticated host Bridge transport but does not require any Agent runtime.
-- `WORKDIR_XX_REPO_ACTIONS_JSON` is private operator policy for Repo Ops named actions. It is rendered only into the host Bridge configuration and is intentionally not forwarded into the MCP container. Named actions require a read-write workdir and mandatory SHA-256 integrity pins.
-- Agent policy is disabled unless explicitly configured.
-- v0.12.0 keeps Tunnel, Agent runtime and Jev proxy decisions independent: `SERVERFS_OPENAI_TUNNEL_USE_PROXY`, `SERVERFS_AGENT_USE_PROXY`, and `SERVERFS_JEV_USE_PROXY` each reuse the same `SERVERFS_PROXY_HOST/PORT/USERNAME/PASSWORD` endpoint fields but never implicitly enable one another.
-- Linux Agent proxying in v0.12 is credentialless-only. If Agent proxying is enabled while shared proxy credentials are configured, deployment rendering fails closed; use a credentialless local broker for an authenticated upstream.
-- `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES` configures the inline/spool boundary; the default remains 256 KiB and the maximum spooled result remains 8 MiB.
-- Jev advisors are disabled unless `SERVERFS_JEV_API_KEY` is non-empty. The key is consumed only by the host Agent Bridge deployment path, not the MCP container.
-- Host paths are not exposed through MCP tool results.
-- A typo in a workdir path fails loudly instead of silently creating a directory.
+For Linux, choose internal-only HTTP or direct publication using the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md). The Core listener is independent of the published host port. Empty Linux Host policy derives `serverfs-mcp:<HTTP_PORT>`; admit only the actual authorities needed. Empty Origin policy rejects nonempty Origin. Preserve DNS-rebinding protection and use HTTPS for public access.
 
-## Optional deterministic Repo Ops (v0.23.0)
+Named native HTTP admission requires an exact configured hostname and loopback authority; follow the [macOS](../macos-native/) or [Windows](../windows-native/) runbook rather than the Linux env template.
 
-Repo Ops is a per-workdir, default-off repository capability. A minimal Linux/Compose workdir configuration is:
+Choose one caller authentication mode:
 
-```text
-WORKDIR_01_ALIAS=project
-WORKDIR_01_PATH=/srv/project
-WORKDIR_01_READ_ONLY=false
-WORKDIR_01_REPO_OPS_ENABLED=true
-WORKDIR_01_REPO_ACTIONS_JSON={...}
-```
+- [Static API Key](../api-key/): prefer the Authorization header. Query credentials can leak through URL logs.
+- [OAuth](../oauth/): use an independently configured authorization service and private introspection.
 
-`WORKDIR_XX_REPO_ACTIONS_JSON` maps caller-visible action names to operator-owned fixed `argv`, `mutates`, `argument`, and `integrity` policy. The caller never supplies executable/argv/environment/remote/ref/force. Every named action requires a non-empty integrity map and always acquires the exclusive writer lease, even when `mutates=false`.
+Linux defaults both off, but do not publish an unauthenticated Core. Native HTTP requires one mode. Local stdio does not use HTTP authentication. Connector credentials are separate; the named OpenAI HTTP Connector requires static bearer admission.
 
-The public Repo Ops tools are registered only when at least one workdir enables the capability. The host Bridge transport must be enabled because it owns host Git credentials/path context and writer-lease coordination; Agent mode may remain disabled. See [Deterministic Repo Ops](../repo-ops/) for the complete security and action-profile contract.
+## 5. Enable capabilities only when needed
 
-## Optional Jev advisors
+| Capability | Policy and prerequisite |
+| --- | --- |
+| [Binary transfer](../binary-transfer/) | Explicit enablement; writable workdir for upload; independent file-ingress configuration if needed |
+| [Repo Ops](../repo-ops/) | Per-workdir opt-in, authorized host Bridge; no Agent runtime needed |
+| [Agent delegation](../agent-bridge/) / [ACP](../acp/) | Authorized Bridge and configured runtime allowlist; runtime execution requires workspace-write and a writable workdir |
+| [Jev](../jev-advisors/) | Optional Bridge-side advice, never authorization |
 
-To enable the host-side advisory suite, set the TypeSafe API key in the existing untracked `.env`:
+For named Linux signed Bridge attachment, only one Agent/Repo Ops-enabled slot (01) is supported. macOS Shared Core supports one bound Agent workdir and no Repo Ops. Windows initial shared provisioning requires exact policy subsets and individual grants. Use the platform runbooks; a capability switch is not a substitute for a valid binding.
 
-```text
-SERVERFS_JEV_API_KEY=<your key>
-```
+Keep provider executables and credentials on the host. Configure each component's outbound proxy independently. The Linux compatibility renderer shares endpoint fields for Tunnel, Agent and Jev but has separate switches; Agent proxying requires a credentialless endpoint. Named Bridge owners have their own explicit policy. Do not assume changing a Core env changes the owner.
 
-Leave it empty to disable Agent Task Preflight, Runtime Router, Model Advisor, and Approval Advisor completely. The normal Agent Bridge installer renders a configured key only into its user-owned `0600` config. In v0.12, `SERVERFS_JEV_USE_PROXY=true` routes only that explicit Jev HTTP client through the shared proxy; Agent and Tunnel routing remain independent. See [Jev Advisors](../jev-advisors/) for the runtime behavior and security boundary.
+## 6. Verify effective policy
 
-For the complete Linux/Docker environment-variable surface, use the versioned [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example). Native Windows and macOS deployments use [`serverfs.toml.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/serverfs.toml.example) for non-secret policy plus `.env` only for the narrow secret/proxy/runtime values documented in their platform guides.
-
-For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).
+Read the actual instance configuration and confirm its platform, identity and workdir mapping before changing it. Validate the selected deployment, restart only the authorized component when required, then check authenticated MCP, expected tools, safe reads and denied operations. Never infer access from a configuration file or a running task alone. See [Security](../security/).

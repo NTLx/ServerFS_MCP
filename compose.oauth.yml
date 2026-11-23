@@ -1,14 +1,11 @@
 # Optional OAuth 2.1 overlay for remote Streamable HTTP deployments.
 #
-# OAuth remains disabled by default. Enable it explicitly in .env, prepare the
-# state directory for the configured ServerFS UID/GID, then include this file:
-#
-#   # Defaults shown; substitute the actual .env UID, GID and state path.
-#   # Assigning ownership normally requires sudo; containers remain non-root.
-#   sudo install -d -m 700 -o 10001 -g 10001 -- .serverfs-auth-state
-#   # For matching current-user UID/GID, see docs/oauth.md for no-sudo setup.
-#   docker compose --env-file .env \
-#     -f compose.yml -f compose.http.yml -f compose.oauth.yml up -d
+# OAuth remains disabled by default. Enable it in the selected private env file,
+# prepare a dedicated state directory for the actual non-root ServerFS UID/GID,
+# then include this file in the complete project/overlay selection.
+# Follow docs/oauth.md for scoped startup, authorization state and no-sudo setup;
+# follow deployment/linux/README.md for named Core exposure/Bridge overlays.
+# Do not start or recreate unrelated services when adding OAuth.
 #
 # A reverse proxy should terminate public HTTPS for both the MCP resource URL
 # and SERVERFS_AUTH_PUBLIC_URL. The default host publications remain loopback.

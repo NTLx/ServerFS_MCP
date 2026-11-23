@@ -1,5 +1,7 @@
 # ServerFS v0.13.2 Development Plan — Native macOS Service Persistence
 
+> Historical released v0.13.2 macOS Service Management design. Preserve the app-associated SMAppService and current-user boundary, the original migration contract and expressly deferred logout/login, reboot and Login Items tests. The two singleton LaunchAgents, legacy manifest paths and migration instructions describe that version, not the current named-instance topology. Use [current macOS runbook](deployment/macos/README.md) and [instance model](docs/architecture/v0.25.0-instance-model.md) for operations; no historical deferral establishes current acceptance.
+
 **Status:** RELEASED — v0.13.2
 **Target:** v0.13.2
 **Baseline:** released v0.13.1 on `main` (`98ce98fee38a9cea56b8eb2087553a2e7920b178`)

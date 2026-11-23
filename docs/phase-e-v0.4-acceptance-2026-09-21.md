@@ -1,5 +1,7 @@
 # v0.4 Phase E acceptance — 2026-09-21
 
+> Historical Phase E evidence. The deferred direct ChatGPT binary calls were subsequently accepted after connector refresh in [Phase F](phase-f-v0.4-release-candidate-2026-09-21.md). The old tool counts, temporary Tunnel reuse and Compose procedures are dated observations, not current deployment instructions or authority to repeat them. See the [current Linux runbook](../deployment/linux/README.md).
+
 ## Scope
 
 Phase E validates the v0.4 filesystem/binary/Agent capability matrix through real

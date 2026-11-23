@@ -1,5 +1,7 @@
 # ServerFS v0.13.0 Development Plan — Native macOS 27 on Apple Silicon M-series
 
+> Historical released v0.13.0 native Darwin filesystem and Agent Bridge design. Keep the measured platform/APFS boundary, exact acceptance evidence and separately identified operator prerequisites; the original launchctl-managed singleton Bridge was superseded by [v0.13.2 Service Management](dev_plan_v0.13.2.md) and later named lifecycles. The old tool counts, runtime/idempotency assumptions, requested live tests and aspirational final claim are version-scoped, not proof of every runtime or current signed-v2 capability. Use [current macOS runbook](deployment/macos/README.md) and [maintainer invariants](docs/maintainers/invariants.md) instead of executing the original deployment/release steps.
+
 **Status:** RELEASED — v0.13.0
 **Target:** v0.13.0
 **Baseline:** released/frozen v0.12.0 on `main`

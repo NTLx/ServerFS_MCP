@@ -1,7 +1,7 @@
-# Linux / generic HTTP: no built-in auth
+# HTTP without built-in authentication
 
-Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
+Use only for explicitly authorized isolated Linux local/private HTTP or a validated independent external caller admission boundary. Named macOS/Windows HTTP requires API Key or OAuth; named OpenAI HTTP requires a static Core bearer. Never remove required auth to accommodate a Connector.
 
-Keep both ServerFS-owned auth mechanisms disabled. This is appropriate only when the operator intentionally relies on a private network, OpenAI Tunnel, or an external authenticated gateway.
+Before changing Linux admission, inspect published bind address, network membership, reverse-proxy enforcement, alternate routes and exact Host policy. Loopback alone is not per-caller authorization; Tunnel registration, token or unguessable URL are not caller auth. Stop if any reachable path bypasses intended admission. Prefer explicit Core auth.
 
-Do not remove an existing API Key/OAuth configuration merely because another ingress exists unless the user requests the change.
+Use the exact Linux runbook/Compose selection; any env change requires scoped recreate, not restart. Verify from intended and disallowed networks/clients using safe requests, and confirm no unintended publication. Do not claim external admission works without testing that boundary.

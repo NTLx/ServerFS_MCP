@@ -2,21 +2,13 @@
 
 `/AGENTS.md` is the repository-wide entry point. This directory carries the detailed maintainer contracts that should not make the root instruction file grow without bound.
 
-## Current release
+## Current release target
 
-- **v0.24.2 is the current stable release. ** Optional native Windows 11 x64 Cloudflare Tunnel passed the recorded two-owner public ChatGPT/file-operation acceptance and 75.0/70.0/65.0-second SSE holds. On 2026-11-10 the operator waived restart/recovery testing for this release; full-generation recovery was not tested and did not pass.  This acceptance does not establish broader production workdir/Agent acceptance. See [v0.24.2 release notes](../releases/v0.24.2.md), [release checklist](../v0.24.2-release-checklist-2026-11-07.md), [v0.24.1 release](../releases/v0.24.1.md), [v0.24.0 release](../releases/v0.24.0.md), and the [Windows](../../windows-cloudflare-tunnel.md), [macOS](../../deployment/macos/README.md) / [Linux](../cloudflare-tunnel.md) runbooks.
-- **v0.23.3 is the previous stable release.** It retains the native Windows 11 x64 Deterministic Repo Ops support delivered in v0.23.2 and closes the stable-publication gate defect exposed by that release: the exact release SHA must pass Linux/Container, Windows Native, Windows Agent, macOS Native, and Pages gates before the stable tag is created.
-- **v0.23.2 is the previous released stable version.** Its Windows Repo Ops behavior remains valid, while its historical release record preserves the publication-gate exception.
-- Native deployment families: Linux, Windows and macOS.
-- Native Agent runtimes: Codex, Claude and Qoder, subject to the platform/runtime gates documented for each deployment.
-- Generic ACP v1 profiles are also supported when operator-configured with an absolute executable and fixed argv; OpenCode 2.1.2 passed real end-to-end acceptance on Linux, macOS and Windows.
-- Windows v0.14.0 replaces the manual outer launcher with a current-user, least-privilege Task Scheduler 2.0 lifecycle: logon + repeating time triggers own a windowless watchdog, the watchdog restarts the managed runner, and the runner restarts Tunnel generations. Installation, runtime, maintenance and removal remain non-elevated.
-- macOS v0.13 support is intentionally narrow: Apple M-series, native arm64, macOS 27 Golden Gate; no Intel, Rosetta, macOS 26/28 or `darwin-amd64` tunnel asset is claimed. v0.13.2 moves persistent Tunnel/Bridge lifecycle to app-associated `SMAppService` LaunchAgents.
-- `dev_plan_v*.md`, acceptance reports and audits are historical records. Update a stale present-tense status when it becomes false, but do not mechanically rewrite historical evidence or milestone facts.
+v0.25.0 is the architecture and documentation baseline; publication is pending. Read [release checklist](../v0.25.0-release-checklist-2026-11-21.md) and [release notes](../releases/v0.25.0.md) for evidence and remaining gates. Core, optional Connector and optional Bridge are independently managed, with explicit per-Core authorization and native lifecycle implementations; macOS owned IPC uses private policy checks rather than shared v2 grants.
 
 ## Read order
 
-1. [`/AGENTS.md`](../../AGENTS.md) — scope, current baseline and non-negotiable working rules.
+1. [`AGENTS.md`](../../AGENTS.md) — scope, current baseline and non-negotiable working rules.
 2. [`invariants.md`](./invariants.md) — durable filesystem, mutation, protocol, Agent Bridge, platform and security contracts.
 3. [`workflow.md`](./workflow.md) — change protocol, validation gates, website rules and release workflow.
 4. The implementation, tests and release-facing docs for the subsystem being changed.
@@ -27,45 +19,14 @@ When sources appear to conflict, investigate the actual implementation and accep
 
 1. implementation + executable tests + current configuration/schema;
 2. current `README.md`, release-facing docs and site content;
-3. accepted subsystem/phase evidence;
+3. accepted subsystem/phase evidence, bound to its actual source/artifact SHA and scope;
 4. historical `dev_plan_v*.md` records for the version they describe.
 
-A later plan may explicitly extend an older invariant. Do not erase an older historical statement merely because a later release superseded it.
+A later plan may explicitly extend an older invariant. A plan or green historical test cannot establish current artifact acceptance. Do not erase an older historical statement merely because a later release superseded it.
 
-## Release landmarks
+## Deployment and historical records
 
-These landmarks are navigation aids, not substitutes for their plans:
-
-- **v0.3** — provider-neutral Agent Bridge contract and production Linux deployment baseline.
-- **v0.4** — hierarchical workdir policy, binary transfer and Streamable HTTP transport-security fix.
-- **v0.5** — isolated ChatGPT/OpenAI file-parameter ingress.
-- **v0.6** — optional advisory-only Jev suite.
-- **v0.7–v0.7.3** — Agent reliability, evidence, recovery, bounded result spooling and lifecycle/idempotency work.
-- **v0.8** — Qoder as the third native Agent runtime.
-- **v0.9** — provider-native model discovery, optional Jev model advice and request-scoped model override.
-- **v0.10** — native Windows filesystem deployment and binary transfer.
-- **v0.11** — native Windows Agent delegation for Codex, Claude and Qoder.
-- **v0.12** — independent Linux proxy controls for Tunnel, Agent runtimes and Jev, plus related restricted-network reliability work.
-- **v0.13** — native macOS filesystem + Agent deployment, POSIX-generic Codex seam and Darwin acceptance; v0.13.2 adds Apple-native ServiceManagement persistence for the Tunnel and Agent Bridge.
-- **v0.14** — Windows current-user persistent lifecycle through Task Scheduler 2.0, a windowless watchdog, controlled legacy hand-over, exactly-one native Tunnel ownership and layered Tunnel/runner/watchdog recovery without administrator requirements.
-- **v0.15** — standards-first generic Streamable HTTP support and MCP SDK 2.3.0 portability baseline.
-- **v0.16** — optional OAuth 2.1 Resource Server plus isolated identity broker for remote HTTP.
-- **v0.17** — optional one-secret static API Key authentication for Streamable HTTP, with Bearer and DingTalk-style query-key interoperability; v0.17.1 adds Tunnel readiness/control-plane diagnostics, a read-only host-observability recipe, and restricted-network ARM64 deployment guidance.
-
-- **v0.18** — seven operational Agent Skills and one skills-only portable Agent Plugin release asset, `serverfs-plugin-v0.18.0.zip`.
-- **v0.19.0** — introduced generic ACP v1 profiles alongside the native Codex/Claude/Qoder baseline. OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS and Windows. See [`dev_plan_v0.19.md`](../../dev_plan_v0.19.md) for scope and evidence.
-- **v0.20.0** — completed the next post-ACP platform/reliability milestone; see [`dev_plan_v0.20.md`](../../dev_plan_v0.20.md) and its release acceptance evidence.
-- **v0.21.0** — an earlier stable release; introduced the secret-safe observation contract, bounded process-local Bridge metrics, and the opt-in sanitized common native status projection while keeping diagnostics/exporters outside the public MCP surface.
-- **v0.22.0** — previous stable release; adds bounded process-local Correlated Agent Diagnostics through private Bridge RPC only: `diagnostics snapshot` and per-task diagnostics, with no new MCP tool, listener, trace persistence, OpenTelemetry dependency or telemetry egress. Phase F is accepted on Linux/VPS, supported macOS and supported Windows, and Phase G release-readiness acceptance is PASS; see [`dev_plan_v0.22.md`](../../dev_plan_v0.22.md) and the v0.22 acceptance evidence.
-
-- **v0.22.1** — previous stable maintenance release for the Linux Agent Bridge installer staged-Python fix, macOS restart readiness/health closure, one-shot self-restart hand-over with verified cleanup, and test-isolation regression fix; see [`dev_plan_v0.22.1.md`](../../dev_plan_v0.22.1.md) and [`v0.22.1-release-checklist-2026-10-23.md`](../v0.22.1-release-checklist-2026-10-23.md) for release evidence.
-- **v0.23.1** — previous stable maintenance release; enabled independently gated Deterministic Repo Ops on validated native Apple Silicon macOS while retaining Linux Host Bridge support. See [release notes](../releases/v0.23.1.md), [`v0.23.1 release checklist`](../v0.23.1-release-checklist-2026-10-27.md), and [`macOS native Repo Ops acceptance`](../v0.23.1-macos-repo-ops-acceptance-2026-10-27.md).
-- **v0.23.2** — previous stable maintenance release; extended the deterministic, no-Agent-fallback Repo Ops contract to validated native Windows 11 x64, but its immutable release record includes a publication-gate exception. See [release notes](../releases/v0.23.2.md), [`v0.23.2 release checklist`](../v0.23.2-release-checklist-2026-10-28.md), and [`Windows native Repo Ops acceptance`](../v0.23.2-windows-repo-ops-acceptance-2026-10-28.md).
-- **v0.23.3** — previous stable release-hygiene patch; preserves the v0.23.2 Windows Repo Ops product contract and makes stable publication dispatch-first and exact-SHA gated across Linux/Container, Windows Native, Windows Agent, macOS Native, and Pages before tag creation. See [`dev_plan_v0.23.3.md`](../../dev_plan_v0.23.3.md) and [release notes](../releases/v0.23.3.md).
-
-- **v0.24.0** — previous stable release, optional Linux Docker Cloudflare Tunnel ingress; real isolated ChatGPT/SSE/reconnect acceptance and exact-SHA CI. See [release notes](../releases/v0.24.0.md).
-- **v0.24.1** — previous stable release, optional native Apple Silicon/macOS 27 Cloudflare Tunnel using existing `SMAppService`/LaunchAgent ownership; isolated public MCP/security/lifecycle acceptance. See [release notes](../releases/v0.24.1.md) and [development record](../../dev_plan_v0.24.1.md).
-- **v0.24.2** — intended current stable release, optional native non-admin Windows 11 x64 Cloudflare Tunnel. Two independent same-user Task Scheduler owners passed public ChatGPT tools and cross-ingress file operations. The >60-second public SSE gate passed at 75.0, 70.0, and 65.0 seconds with approximately 15-second keepalives; same-session `tools/list` returned 200 with 27 tools, and a new session returned 200. The operator waived restart/recovery testing on 2026-11-10; full-generation restart/recovery was not tested and did not pass. Do not claim Connector-only restart, same-session survival, or lossless replay.  See [development plan](../../dev_plan_v0.24.2.md), [release notes](../releases/v0.24.2.md) and [release checklist](../v0.24.2-release-checklist-2026-11-07.md).
+Use the [Linux](../../deployment/linux/README.md), [macOS](../../deployment/macos/README.md) and [Windows](../../deployment/windows/v0250-native-operations.md) runbooks for current operations. For operational guidance load only the matching [Skill](../../skills/README.md) and runbook section. Past release landmarks and acceptance evidence are retained in [release notes](../releases/) and [diagnostics](../diagnostics/), not repeated as current behavior.
 
 ## Keep this index small
 

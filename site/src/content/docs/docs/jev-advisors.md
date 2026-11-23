@@ -1,163 +1,62 @@
 ---
 title: Jev Advisors
-description: Optional TypeSafe Jev decision support for Agent task quality, runtime routing, model choice, and provider approvals.
+description: Optional TypeSafe Jev advice for Agent tasks, routing, model selection and approvals.
 ---
 
-ServerFS can optionally use [TypeSafe Jev](https://docs.typesafe.ai/introduction) inside the **host-side Agent Bridge** as a structured decision-support layer.
+ServerFS can use [TypeSafe Jev](https://docs.typesafe.ai/introduction) inside the host Agent Bridge. Jev evaluates structured questions against task context rather than executing Agent work. It is opt-in and advisory only; it is neither an Agent runtime nor an authorization boundary.
 
-Jev is a System One model: instead of generating prose, it evaluates typed questions against shared state and returns structured values such as Choice probabilities/confidence and Noul values. ServerFS uses that shape for narrow advisory judgments and keeps deterministic policy in code.
+## Decide whether to enable it
 
-The integration is **opt-in, advisory-only, and fail-open**. Jev is not an Agent runtime, authorization source, or security boundary.
+Enabling Jev permits task context to leave the host for the external TypeSafe API. Leave it disabled if that transfer is not authorized. Do not include secrets, private file contents or unnecessary personal information in task prompts. The Bridge does not automatically upload workdir files, but task-submission preflight sends the supplied prompt itself, without the model/approval advisor's additional text sanitizer.
 
-> **Status:** this opt-in experimental capability was introduced in v0.6.0, extended with Model Advisor in v0.9.0, and is included in the stable v0.23.0 release. v0.12 added an independent explicit Jev proxy switch; v0.13 carried that contract into the native macOS Bridge; v0.13.2 changed the macOS service lifecycle; and v0.14.0 adds the Windows persistent lifecycle without changing Jev's advisory authority. Jev remains an internal host-Bridge advisor and never gains execution authority.
+When disabled, no Jev client is constructed and no advisory request is made. Agent execution and explicit provider approval do not depend on Jev.
 
-## Enable it
+## Configure the owner
 
-Set the TypeSafe API key in the repository's existing untracked `.env`:
+Configure Jev in the selected Bridge owner's private configuration, outside exposed workdirs. For a named Linux owner, the following is a fragment of the private Bridge JSON, not Core environment or a full owner configuration:
 
-```text
-SERVERFS_JEV_API_KEY=<your key>
+```json
+{
+  "jev": {
+    "api_key": "<private TypeSafe API key>",
+    "use_proxy": false
+  }
+}
 ```
 
-Leave the value empty to disable every Jev feature. When disabled:
+Omit the `jev` section or leave the key empty to disable advice. Use the [Linux owner provisioning procedure](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md) and protected configuration. The older Linux singleton renderer uses `SERVERFS_JEV_API_KEY` and `SERVERFS_JEV_USE_PROXY` in a private env file and renders them to Bridge JSON. macOS's legacy native configuration helper also understands those env keys; named macOS owned staging does not pass that private overlay. Do not assume a native helper exposes Jev provisioning merely because the Bridge parser accepts it. Follow the exact supported owner procedure for [macOS](../macos-native/) or [Windows](../windows-native/); do not edit an installed owner snapshot or shared grant in place.
 
-- no TypeSafe client is constructed;
-- no Jev network request is made;
-- Agent submission and approval behavior follow the non-Jev path.
+With `jev.use_proxy=true`, the private JSON must contain a valid shared `proxy` configuration. Jev uses an explicit HTTP client and does not modify process-wide proxy variables. With false, ServerFS supplies no explicit Jev proxy; verify the owner's environment and actual routing if isolation matters. Jev alone can use an authenticated shared endpoint; an Agent using that same endpoint requires it to be credentialless. Tunnel routing is independent.
 
-The installer renders a configured key only into the user-owned Agent Bridge config with mode `0600`. The key is not passed into the MCP container.
+The Bridge pins `jev-1.13.0` and `typesafe-sdk==0.7.1`. A model upgrade needs separate calibration. The client configures a five-second timeout and retry policy (`max_retries=1`, timeout eight seconds); a logical advisor call is not necessarily one network attempt.
 
-In v0.12, Jev egress is controlled independently with `SERVERFS_JEV_USE_PROXY`. When false, the Jev client is created without a proxy even if Tunnel or Agent proxying is enabled. When true, the Bridge supplies the shared ServerFS HTTP proxy to Jev through an explicit `httpx2.AsyncClient`; it does not mutate process-wide proxy environment variables, so provider children cannot inherit Jev routing accidentally. Jev may use authenticated shared proxy credentials; this is separate from the credentialless-only Linux Agent proxy rule.
+## Four advisors
 
-## Current model contract
+| Advisor | Trigger | Output and authority |
+| --- | --- | --- |
+| Task Preflight | Authorized Agent submission | Scores whether the task is narrow, scoped, bounded and verifiable, and evaluates execution fit. |
+| Runtime Router | Same submission request | Suggests `direct_serverfs_tool`, `codex`, `claude`, `qoder` or `human_review`; no automatic/ACP routing option. |
+| Model Advisor | Explicit task context in model discovery | Recommends an eligible provider-native model; never changes the submission automatically. |
+| Approval Advisor | Actual provider approval | Assesses necessity, scope, irreversible risk, sensitive access and external effects; does not resolve approval. |
 
-ServerFS currently pins:
+Task Preflight and Runtime Router share one logical assessment before execution. The router's fixed choices and criteria are not current capability discovery and do not cover every structured operation (including Repo Ops). Use actual tools, grants, policy and provider capabilities to decide.
 
-```text
-jev-1.13.0
-typesafe-sdk==0.7.1
-```
+For model advice, first choose an allowed runtime. Call `list_agent_models` with that runtime plus both `workdir` and `task_prompt` (optional relative `path` and `profile`). Omit task context for catalog-only discovery. Codex and Qoder expose native catalogs; Claude and ACP do not. The advisor considers unique, non-hidden, non-disabled candidate IDs (1–32), using only available metadata; it does not estimate cost or quality from names. Returned advice contains `recommended_model`, confidence/probabilities and `automatic=false` when completed. The caller may explicitly submit the chosen model only where the runtime supports it.
 
-The version is pinned instead of using `jev-latest` so evaluation behavior can be calibrated and reproduced before deliberately moving to a newer model.
+Approval advice runs only for a real approval. Provider-specific `response_options` lists, such as those used by ACP, are not applicable to this generic advisor. For supported approval shapes, the advice can recommend `approve_once`, `approve_session`, `deny`, `cancel_task` or `review_carefully`. Check `recommended_decision_available` and the actual pending request; do not treat a recommendation as an available option or authorization. The caller must explicitly respond via `respond_agent_approval` or follow the interaction expiry/cancellation path.
 
-TypeSafe currently documents Jev 1.13 as text-only with a 64k total request budget and an additional 32k limit for the state plus the single longest question. English is its strongest language; CJK is supported but should be validated on the application's own data. ServerFS therefore treats all scores and recommendations as evidence, never as authority.
+## Request and data boundaries
 
-## Four advisory capabilities
+- Preflight/router: runtime, alias, relative path, profile, continuation indicator and original task prompt.
+- Model advice: the task context and normalized eligible model metadata; text is sanitized and bounded.
+- Approval advice: the task context and an allowlisted projection of the already path-redacted approval; another sanitizer masks obvious secret patterns. Only completed advice is cached for identical approvals in the same task.
 
-### Agent Task Preflight
+The model/approval sanitizer caps strings at 4096 characters before the truncation marker and lists at 50 entries. This is best-effort filtering, not a guarantee of confidentiality. Different approvals can cause additional calls; failed evaluations are not cached. Retries may add network attempts. No provider raw payload or workdir scan is needed for model advice.
 
-Every Jev-enabled `submit_agent_task` can evaluate:
+## Failure and verification
 
-- whether the prompt is one narrow objective;
-- whether mutation scope is explicit;
-- whether stop conditions are explicit;
-- whether verification evidence is explicit;
-- whether the task fits structured ServerFS primitives or a native Agent.
+A failed advisor call (timeout, rate limit, invalid response) reports `unavailable`; missing catalogs or unsupported approval shapes can report `not_applicable`, and model advice can report `disabled`. An otherwise authorized Agent task or provider approval follows its normal path. Fail-open means only missing advice, never widened permissions or automatic approval. Configuration validation is separate and can fail closed.
 
-### Runtime Router
+Use the selected owner's runbook to verify private configuration and readiness. Inspect task preflight/routing and approval advice events or model advice results in authorized test tasks; do not print the API key. Record actual provider/network acceptance separately from source support.
 
-The same task-submission Jev request also recommends one route:
-
-- `direct_serverfs_tool`
-- `codex`
-- `claude`
-- `qoder`
-- `human_review`
-
-This does **not** add `runtime=auto`. The explicitly requested runtime and deterministic per-workdir runtime policy remain authoritative.
-
-### Model Advisor
-
-`list_agent_models` can optionally include the exact task ChatGPT is considering. When the selected runtime successfully exposes a native model catalog and Jev is enabled, ServerFS sends the sanitized task context plus the normalized eligible model metadata to Jev before any Agent task is submitted.
-
-Model Advisor:
-
-- considers only currently exposed candidates that are not explicitly disabled/hidden;
-- uses runtime-provided reasoning/context/modalities/free/price metadata when present;
-- does not infer quality or cost from a model name alone;
-- returns an exact provider-native `recommended_model`, confidence/probabilities, and `automatic=false`;
-- never writes or forwards that recommendation into `submit_agent_task.model` automatically.
-
-ChatGPT or the user remains responsible for the later submission choice. Claude model advice is currently `not_applicable` because Claude Code does not expose the same stable native-account model-enumeration capability as Codex/Qoder.
-
-### Approval Advisor
-
-If Codex, Claude or Qoder later produces a real provider approval request, ServerFS may make one additional Jev request for that concrete approval.
-
-It evaluates:
-
-- necessity for the authorized objective;
-- whether scope is bounded;
-- destructive or irreversible risk;
-- sensitive access;
-- external side effects;
-- an advisory recommendation such as `approve_once`, `approve_session`, `deny`, `cancel_task`, or `review_carefully`.
-
-The provider request remains blocked until the caller explicitly responds through the existing approval tool. Jev never resolves the approval itself.
-
-## Request economy
-
-ServerFS deliberately minimizes Jev traffic:
-
-```text
-list_agent_models + task context
-  └─ up to 1 Jev request
-       └─ Model Advisor
-
-submit_agent_task
-  └─ 1 Jev request
-       ├─ Preflight
-       └─ Runtime Router
-
-provider approval?
-  ├─ no  -> 0 extra Jev requests
-  └─ yes -> 1 approval-specific Jev request
-              └─ identical approval in the same task -> reuse cached advice
-```
-
-Model Advisor is deliberately a separate pre-submit request because ChatGPT must receive its recommendation before deciding whether to pass a `model`. Preflight and Runtime Router then share one `system_one` request at actual submission because Jev can evaluate multiple typed questions independently against the same state. Approval Advisor runs later only because the concrete provider approval object does not exist at task-submission time.
-
-## Data minimization
-
-ServerFS does not send the workdir contents to Jev just because the advisor is enabled.
-
-Task-level evaluation receives only the task context needed for the advisory questions. Model Advisor additionally receives the normalized model metadata already returned by native discovery; raw provider payloads and provider credentials are never sent. Approval evaluation uses the existing redacted approval object, restricts it to an allowlisted field set, and applies another sanitizer for obvious secret/token/password/credential fields and patterns.
-
-No Jev result may weaken:
-
-- workdir/path authorization;
-- runtime allowlists;
-- writer leases;
-- native provider approval semantics;
-- MCP transport/network isolation;
-- provider safety checks.
-
-## Failure behavior
-
-If TypeSafe is unavailable, times out, rate-limits the request, or returns an unexpected result, the advisor reports `status=unavailable`.
-
-The already-authorized Agent task or pending provider approval continues through the normal ServerFS path. Jev failure does not fail open into broader authority; it only removes advisory context.
-
-## Evaluation status
-
-The current integration has been live-tested with:
-
-- bounded filesystem reads;
-- Git/test tasks;
-- explicit Codex/Claude provider mismatches;
-- Qoder routing and pre-submit model advice are included in v0.9.0 and remain advisory-only;
-- human-review decisions;
-- intentionally bundled or vague prompts;
-- bounded one-time writes;
-- repeated session-scoped writes;
-- outside-workdir approval requests.
-
-The project intentionally does **not** use automatic runtime routing, automatic model selection, or automatic approval thresholds.
-
-Upstream references: [Introduction](https://docs.typesafe.ai/introduction), [Models](https://docs.typesafe.ai/models), and [API reference](https://docs.typesafe.ai/api).
-
-For implementation and measured examples, see the repository notes:
-
-- [Agent Task Preflight](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-agent-preflight-experiment.md)
-- [Runtime Router](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-runtime-router-experiment.md)
-- [Approval Advisor](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-approval-advisor-experiment.md)
+Historical evaluation records: [Task Preflight](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-agent-preflight-experiment.md), [Runtime Router](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-runtime-router-experiment.md), [Approval Advisor](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/jev-approval-advisor-experiment.md). They are not current named-instance acceptance. See [Agent Bridge](../agent-bridge/) for task operations and [TypeSafe model documentation](https://docs.typesafe.ai/models) for upstream model limits.

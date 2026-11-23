@@ -1,5 +1,7 @@
 # ServerFS v0.23 Development Plan — Deterministic Repo Ops
 
+> Historical v0.23.0 design and frozen Linux Repo Ops acceptance. The Linux-only scope, dated workdir/action names and integrity pins, historical deployment and tag-triggered rollout below are not current policy or authorization. Native Repo Ops subsequently expanded in v0.23.1/v0.23.2; [v0.23.3](docs/releases/v0.23.3.md) replaced tag-first publication. Consult [current Repo Ops documentation](site/src/content/docs/docs/repo-ops.md) and [maintainer workflow](docs/maintainers/workflow.md) for current constraints.
+
 Status: **v0.23.0 RELEASED / FROZEN.** Implementation, Linux bootstrap/internal E2E, public ChatGPT MCP E2E, refreshed full root/Agent Bridge validation, MCP conformance, Windows/macOS regression, post-freeze site build/deploy, final release-commit CI, stable multiarch GHCR publication, Windows wheel/Plugin publication, and GitHub Release all PASS. Immutable release tag `v0.23.0` points to `cfb0a3f70b768ad63c2b27f05e3ef8aec085f0e4`. Executed evidence is recorded in [`docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md`](docs/v0.23.0-linux-repo-ops-bootstrap-acceptance-2026-10-26.md) and the [`v0.23.0 release checklist`](docs/v0.23.0-release-checklist-2026-10-26.md).
 
 ## 1. Problem

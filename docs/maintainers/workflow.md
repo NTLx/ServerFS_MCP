@@ -33,12 +33,12 @@ uv sync --frozen
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest
-docker compose config
-docker compose -f compose.yml -f compose.http.yml config
+docker compose config --quiet
+docker compose -f compose.yml -f compose.http.yml config --quiet
 SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 ```
 
-Run all applicable gates when the change crosses that boundary. The generic HTTP Compose render is mandatory for v0.15+ ingress/deployment changes; use `--quiet` when only validity is required so expanded secrets are never printed. The scratch image tag is mandatory: Compose builds to the image name it is given, so building under a published production tag can shadow that release locally.
+Run all applicable gates when the change crosses that boundary. The generic HTTP Compose render is mandatory for ingress/deployment changes; use `--quiet` when only validity is required so expanded secrets are never printed. The scratch image tag is mandatory: Compose builds to the image name it is given, so building under a published production tag can shadow that release locally.
 
 ### Agent Skills / portable Plugin
 
@@ -51,15 +51,19 @@ uv run python deployment/plugin/package_plugin.py validate
 uv run pytest tests/test_agent_skills.py
 ```
 
-For a packaging change, also build the archive into a disposable directory and inspect the file list:
+For changes to packaged content or packaging, also build the archive into a disposable directory and inspect its file list:
 
 ```bash
 uv run python deployment/plugin/package_plugin.py build --output-dir /tmp/serverfs-plugin-check
 ```
 
-The archive must contain exactly one top-level `serverfs/` Plugin, root `plugin.json`, and the seven runtime skill directories. It must not contain `skills/README.md`, local configuration, source/VCS state, `mcp.json`, credentials, or a parallel `.codex-plugin/plugin.json`.
+The archive must contain exactly one top-level `serverfs/` Plugin, its `plugin.json`, and the seven runtime Skill directories with Markdown references. Verify tag-matched archive contents; no packaged link escapes its Skill directory. It must not contain `skills/README.md`, local configuration, source/VCS state, `mcp.json`, credentials, or a parallel `.codex-plugin/plugin.json`.
 
 `plugin.json` version must equal the root project version. On a release tag, the packaging command also receives `--tag vX.Y.Z` and fails closed unless tag, project and Plugin versions agree. Agent Skill instructions must keep platform/source-of-truth links current; do not copy the whole `.env`/TOML schema into skill prose merely to satisfy a test.
+
+### Release metadata and Registry
+
+From repository root run `uv run python deployment/native/release_metadata.py --root . --tag vX.Y.Z` (substitute the intended tag), `uv run python deployment/registry/validate.py`, and focused release metadata/version-gate tests. Check both Python locks with `uv lock --check --offline` from their respective roots; verify the native locked Cargo build on Windows. Version-match the Core, Bridge, native wheel, OCI tag and Plugin; site package version is independent. Registry is a loopback-only read-only Docker entry without built-in caller authentication, not the full deployment. Do not add secrets or broaden its binding to satisfy validation.
 
 ### Agent Bridge
 
@@ -74,7 +78,7 @@ uv run pytest
 
 For the two-process MCP E2E harness, install/sync the Bridge environment and invoke the harness from the repository root using the root environment as documented by `agent_bridge/README.md`.
 
-When Linux Phase E shell scripts change, additionally run:
+When Linux host-Bridge shell scripts change, additionally run:
 
 ```bash
 bash -n deployment/agent-bridge/*.sh
@@ -82,9 +86,11 @@ bash -n deployment/agent-bridge/*.sh
 
 Platform-native Windows/macOS changes must also run their platform-specific tests/acceptance path; a green Linux root suite is not a substitute.
 
-For v0.14.0+ Windows lifecycle changes, run the explicit Windows native source/wheel tests that include `tests/test_windows_service.py`, then perform local current-user acceptance on Windows. The live acceptance must cover: registered task contract + least-privilege identity, windowless managed tree, Tunnel-generation recovery, watchdog→runner recovery, Task Scheduler→watchdog recovery, intentional stop remaining stopped, explicit start recovery and exactly-one native Tunnel ownership. Hosted CI must not install/mutate a developer's persistent Scheduled Task.
+For Windows lifecycle changes, run native source/wheel tests plus isolated current-user acceptance for the selected named Core, Connector and Bridge owner. Verify least-privilege task registration, signed IPC, Job containment, explicit stop/start, crash recovery and independence of unrelated components. Hosted CI must not mutate persistent operator tasks.
 
-For v0.13.2+ macOS lifecycle changes, additionally build and validate the ServiceManagement companion on the supported Mac and verify the wheel carries its build sources:
+For Windows pre-upgrade acceptance, do not assume the installed Bridge supports checkout-new private RPCs. Only the exact legacy `METHOD_NOT_FOUND` for a newly introduced probe permits narrowly scoped read-only proof from installed durable state; different or ambiguous failure fails closed. PowerShell 5.1 may promote native stderr to terminating `NativeCommandError` under `$ErrorActionPreference = 'Stop'` even when exit succeeds: temporarily use non-terminating handling, capture streams, restore preference, use `$LASTEXITCODE` and explicit output validation. Do not pass multiline/quote-sensitive source via native argv (`python -c $PythonCode`); use stdin or controlled temporary file with ordinary data as separate args.
+
+For macOS lifecycle changes, additionally build and validate the ServiceManagement companion on the supported Mac and verify the wheel carries its build sources:
 
 ```bash
 bash native/macos/service_manager/build.sh /tmp/serverfs-service-manager-check
@@ -93,13 +99,13 @@ uv build --wheel --out-dir /tmp/serverfs-wheel-check
 
 Real `SMAppService` registration, Login Items approval and reboot/login recovery are local operator acceptance steps; hosted CI must not mutate a runner's Login Items.
 
-**v0.24.1 macOS Cloudflare exception (decision 2026-11-06):** The new opt-in Cloudflare Connector and HTTP origin use the same already accepted user-level ServiceManager.app, `SMAppService.agent(plistName:)`, app-owned LaunchAgents and `RunAtLoad`/`KeepAlive` restart policy as the existing OpenAI Tunnel and Agent Bridge. Verify those shared contracts through code review and platform-specific tests, plus isolated service registration, functional and security acceptance. An additional real user logout/login or whole-machine reboot of the production Mac is **not required** for v0.24.1 and must not be performed solely for this release. Record this as *architecture equivalence, not a performed login/reboot test*. Do not weaken the generic acceptance requirement for future changes that alter lifecycle architecture.
+Prior release-specific waivers are historical, not automatic acceptance for named components. Record isolated native registration, identity, restart/recovery and public ingress evidence separately. Do not reboot a production host solely to obtain evidence.
 
-### Deterministic Repo Ops (v0.23+)
+### Deterministic Repo Ops
 
 Repo Ops crosses the root MCP surface, host Bridge service, Linux deployment rendering, Git/process execution, writer-lease coordination and release-facing documentation. Run every affected root + `agent_bridge/` gate, plus Linux Compose/render checks and `bash -n deployment/agent-bridge/*.sh` when deployment scripts/config rendering change.
 
-Before release, prove all of the following on the supported Linux deployment:
+Before release, prove the applicable Repo Ops gates on supported deployments; Linux public acceptance requires all of the following:
 
 1. at least one workdir can enable Repo Ops while Agent mode remains disabled;
 2. the public MCP surface exposes exactly `inspect_repo`, `run_repo_action`, `commit_repo_changes`, and `push_repo` in addition to the applicable existing tools;
@@ -130,7 +136,7 @@ git diff --check
 
 If dependencies are already present and the task explicitly forbids installation/update, use the existing declared build script without mutating dependencies or lockfiles; otherwise report the missing prerequisite instead of silently changing it.
 
-A static build proves routes/syntax, not rendered geometry. Visual CSS/layout changes require browser evidence. If no browser check was executed, report visual rendering as `Not verified`.
+A static build proves generated routes/syntax, not rendered geometry. Use Node >=22.22.0 per `site/package.json` and locked dependencies; check bilingual route/link parity, base-path assets, both themes, narrow widths, keyboard and reduced motion. Visual CSS/layout changes require browser evidence. If none was executed report visual rendering as `Not verified`.
 
 ### Cross-boundary changes
 
@@ -152,7 +158,7 @@ When current platform/release copy changes, update English and Chinese together 
 
 ## 5. Documentation status hygiene
 
-Release-facing docs must describe the released product, not the development state that preceded it.
+Release-facing docs must distinguish released product from the current candidate. Before publication, label the target pending; after successful publication, update stable-state copy on main without moving the released tag. Track current-file review, historical classification and check evidence separately.
 
 After a release-state cleanup, scan managed docs/site for stale concepts such as:
 
@@ -170,7 +176,7 @@ Do not make a search result disappear by falsifying history.
 
 Use Semantic Versioning and the repository's established version surfaces. Before publication, reconcile current version/status claims across the release-facing README/docs/site, package metadata/version gates, deployment examples and release notes/checklists that are intended to describe the upcoming/current release. For a release that introduces a new public MCP capability such as Repo Ops, public client E2E acceptance remains a release gate; internal/private RPC evidence alone is insufficient.
 
-### Stable publication contract (v0.23.3+)
+### Stable publication contract
 
 Stable publication is **dispatch-first, not tag-first**. Do not manually push a stable tag and then wait to see whether CI passes.
 
@@ -198,17 +204,17 @@ Do **not** commit, push, create/move tags or publish a release unless the user e
 ## 7. Deployment discipline
 
 - Build is not deploy; verify the running artifact separately when deployment is requested.
-- Linux Agent-enabled recreation must include the Agent overlay, not only base `compose.yml`.
-- Restart/re-establish the Tunnel when the documented deployment procedure requires it after ServerFS recreation; readiness alone may not prove the active MCP session points at the new container.
-- Use user-scoped service lifecycle for the established Linux Agent deployment; do not introduce root/system-wide service requirements as a shortcut.
+- Linux named recreation must retain the exact project, env, exposure/auth/file-ingress/Bridge and Connector overlays/profiles. Operate only selected services with documented `--no-deps --no-build`; no generic project restart/down.
+- After Core recreation establish fresh authenticated MCP; operate affected ingress separately only when required. No old SSE replay guarantee. Stop ingress before Core where native guards require it; shared Core never stops its owner.
+- Linux host Bridge uses user-scoped named systemd and explicit release stage/select; rollback selects an executable label, not a database/config rollback. Native named staging/helpers are create-only: preserve attempt markers and private state; unsupported updates require explicit migration planning.
 - Windows development/deployment work belongs on the Windows-native workflow; macOS work belongs on the macOS-native workflow. Do not use one host to infer another host's live state.
-- Windows v0.14.0+ uses `serverfs service ...` backed by the current user's Task Scheduler 2.0 task. `deployment/windows/start-native.ps1` is compatibility/emergency material, not the intended v0.14+ operator path; do not replace the scheduled task with an SCM/LocalSystem service or another elevation-dependent mechanism.
-- macOS v0.13.2 persistent deployment uses `serverfs service ...`/`SMAppService`. Direct operator/maintainer `launchctl` mutation is not a normal lifecycle path; project-owned launchd mutation is limited to the bounded one-shot migration/self-restart hand-over implemented by ServerFS itself.
+- Windows uses the named component CLI documented in `deployment/windows/v0250-native-operations.md`; never replace current-user Task Scheduler with SCM/LocalSystem.
+- macOS uses named SMAppService lifecycle documented in `deployment/macos/README.md`; respect Login Items approval, do not mutate raw launchd state.
 - Never use a persistent or `KeepAlive` `launchctl submit` job as a one-shot delayed maintenance handoff. Temporary macOS maintenance actions must be bounded, and completion evidence must include verification that the temporary launchd job/artifact no longer exists. When ServerFS reports a restart hand-over was scheduled, reconnect and verify the native `service status` hand-over result rather than treating scheduling as completion.
 
 ## 8. Reporting completion
 
-Report only evidence actually obtained:
+Report only evidence actually obtained. If deterministic Repo Ops actions or a direct executor are unavailable, record unexecuted gates rather than silently substituting Agent execution or reporting historical evidence as new:
 
 - files changed and why;
 - tests/build/checks actually run, with pass/fail status and relevant counts where available;

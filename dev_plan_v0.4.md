@@ -8,6 +8,12 @@
 > progress, this baseline overrides historical statements in v0.1/v0.2/v0.3 plans only
 > where it explicitly says so. Existing accepted v0.3 Agent Bridge contracts remain frozen
 > unless this document explicitly extends their configuration inheritance.
+>
+> Historical version boundary: the original tool counts, Linux-only transport/Agent topology,
+> SDK pin and phase gates below describe v0.4.0. Subsequent file ingress, authentication,
+> native platforms, Repo Ops and named-instance releases extend that contract. Use
+> [maintainer invariants](docs/maintainers/invariants.md) and the [current Linux runbook](deployment/linux/README.md)
+> for present configuration and security; dated tests do not establish current acceptance.
 
 ## 1. Goal
 

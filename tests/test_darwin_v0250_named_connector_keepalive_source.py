@@ -106,3 +106,88 @@ def test_keepalive_flag_requires_execute(monkeypatch: pytest.MonkeyPatch) -> Non
     with pytest.raises(SystemExit) as exc:
         _ACCEPTANCE.main()
     assert exc.value.code == 2
+
+
+def test_launcher_exec_race_is_waited_for_and_pid_change_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """launchd reports the job PID before the fixture replaces the launcher image.
+
+    The readiness wait must converge on the *same* PID, and it must refuse as
+    soon as that PID is gone, so a replacement process is never accepted as
+    the crash target. The fixture starts *unconverged* so the polling loop is
+    genuinely exercised instead of passing on the first probe.
+    """
+    dummy = tmp_path / "synthetic-cloudflared"
+    dummy.write_text("#!/bin/sh\nexec /bin/sleep 300\n", encoding="utf-8")
+    observed: list[bool] = []
+    sequence = [False, False, True]
+
+    def verified(_pid: int, _dummy: Path) -> bool:
+        value = sequence.pop(0)
+        observed.append(value)
+        return value
+
+    job_pid_calls: list[str] = []
+
+    def job_pid(label: str) -> int:
+        job_pid_calls.append(label)
+        return 4242
+
+    monkeypatch.setattr(_ACCEPTANCE.darwin_service, "_launchd_job_pid", job_pid)
+    monkeypatch.setattr(_ACCEPTANCE, "_verified_sleep_pid", verified)
+    assert _ACCEPTANCE._await_verified_sleep_pid("label", 4242, dummy, timeout=5.0)
+    # The loop had to probe three times, and it did not stop on the first
+    # "not yet converged" answer.
+    assert observed == [False, False, True]
+    assert sequence == []
+    assert len(job_pid_calls) >= 3
+
+    def gone(_label: str) -> int | None:
+        return None
+
+    monkeypatch.setattr(_ACCEPTANCE.darwin_service, "_launchd_job_pid", gone)
+    assert not _ACCEPTANCE._await_verified_sleep_pid("label", 4242, dummy, timeout=2.0)
+
+    monkeypatch.setattr(_ACCEPTANCE.darwin_service, "_launchd_job_pid", lambda _label: 5151)
+    assert not _ACCEPTANCE._await_verified_sleep_pid("label", 4242, dummy, timeout=2.0)
+
+
+def test_readiness_wait_gives_up_when_never_converging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A PID that never reaches the fixture argv must not be trusted."""
+    dummy = tmp_path / "synthetic-cloudflared"
+    dummy.write_text("#!/bin/sh\nexec /bin/sleep 300\n", encoding="utf-8")
+    probes: list[bool] = []
+
+    def verified(_pid: int, _dummy: Path) -> bool:
+        probes.append(False)
+        return False
+
+    monkeypatch.setattr(_ACCEPTANCE.darwin_service, "_launchd_job_pid", lambda _label: 4242)
+    monkeypatch.setattr(_ACCEPTANCE, "_verified_sleep_pid", verified)
+    assert not _ACCEPTANCE._await_verified_sleep_pid("label", 4242, dummy, timeout=0.5)
+    assert probes and not any(probes)
+
+
+def test_keepalive_preflight_uses_the_readiness_wait() -> None:
+    tree = ast.parse(_SCRIPT.read_text(encoding="utf-8"))
+    main = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+    keepalive = next(
+        node
+        for node in ast.walk(main)
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Attribute)
+        and isinstance(node.test.value, ast.Name)
+        and node.test.value.id == "args"
+        and node.test.attr == "verify_keepalive"
+    )
+    names = {
+        node.func.id
+        for node in ast.walk(keepalive)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "_await_verified_sleep_pid" in names

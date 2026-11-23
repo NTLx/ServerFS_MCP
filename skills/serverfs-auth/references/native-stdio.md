@@ -1,5 +1,7 @@
-# Windows/macOS native
+# Local native stdio
 
-Use this branch after the source-resolution and preflight gates in `SKILL.md`. Repository paths and command examples refer to the located checkout/deployment; confirm syntax and settings against its current CLI, templates and guide before execution.
+Local stdio has no HTTP listener, HTTP bearer or OAuth admission. The client launches the installed Core in its own local process context; filesystem policy still applies.
 
-ServerFS built-in HTTP API Key/OAuth does not apply to the native stdio deployment. If the user's actual goal is ChatGPT connectivity, use `serverfs-tunnel`. If they need a Linux remote HTTP ServerFS endpoint, configure that Linux deployment rather than bolting HTTP auth onto native stdio.
+Use the matching native runbook and `serverfs serve --config <absolute TOML>` with trusted installed runtime. Verify MCP initialize/tools/list, intended read and expected policy denial through that stdio client. Do not register persistent jobs or add HTTP secrets for this purpose.
+
+Remote access is a separate persistent authenticated HTTP Core deployment with optional ingress; use install and the relevant auth/Connector reference. Do not mutate stdio config into a pretend HTTP admission boundary.

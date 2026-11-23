@@ -102,6 +102,37 @@ def test_release_gates_are_reusable_without_tag_push_side_effects() -> None:
     assert "deploy_pages: false" in pages_gate
 
 
+def test_pages_pr_preview_is_not_a_publication_step() -> None:
+    pages = text("pages.yml")
+    preview = pages.split("      - name: Retain PR preview", 1)[1].split(
+        "      - name: Configure GitHub Pages", 1
+    )[0]
+    assert "if: github.event_name == 'pull_request'" in preview
+    assert "actions/upload-artifact@" in preview
+    assert "name: site-preview-${{ github.sha }}" in preview
+    assert "path: site/dist" in preview
+    assert "if-no-files-found: error" in preview
+    assert "deploy-pages" not in preview
+
+
+def test_pages_pr_preview_manifest_is_machine_readable_and_pr_only() -> None:
+    pages = text("pages.yml")
+    manifest = pages.split("      - name: Write PR preview provenance", 1)[1].split(
+        "      - name: Retain PR preview", 1
+    )[0]
+    assert "if: github.event_name == 'pull_request'" in manifest
+    for value in (
+        "PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+        "PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
+        "GITHUB_RUN_ID: ${{ github.run_id }}",
+        "GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}",
+    ):
+        assert value in manifest
+    assert '["git", "rev-parse", "HEAD"]' in manifest
+    assert "json.dump(manifest" in manifest and "dist/provenance.json" in manifest
+    assert "${{" not in manifest.split("run: |", 1)[1]
+
+
 def test_stable_container_publish_verifies_tag_points_to_candidate_sha() -> None:
     publish = text("container-publish.yml")
     assert "workflow_call:" in on_block("container-publish.yml")

@@ -1,5 +1,7 @@
 # ServerFS v0.24.0 — Linux Cloudflare Tunnel ingress
 
+> Historical v0.24.0 plan and dated Linux staging evidence. The named projects, endpoints, credentials' locations, process state and commands below describe that historical setup, not current inventory or permission to operate it. See [v0.24.0 release notes](docs/releases/v0.24.0.md) and the [current Linux runbook](deployment/linux/README.md) for their respective version boundaries.
+
 Status: **v0.24.0 released 2026-11-06** from immutable SHA `62573553db8660c28736f32d64cb7a83cf525606`; exact-SHA [release workflow](https://github.com/NTLx/ServerFS_MCP/actions/runs/42178152341) and [GitHub Release](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.24.0) succeeded. Native macOS and Windows Cloudflare lifecycle support is planned separately for v0.24.1 and v0.24.2.
 
 ## Objective

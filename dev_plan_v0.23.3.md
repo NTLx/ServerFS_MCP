@@ -1,5 +1,7 @@
 # ServerFS v0.23.3 Plan — Release-Gate Closure for Native Windows Repo Ops
 
+> Versioned release-process design; the dispatch-first contract remains reflected in current maintainer workflow. For outcome see [v0.23.3 release notes](docs/releases/v0.23.3.md); for current release operations use [maintainer workflow](docs/maintainers/workflow.md). This plan is not a live release instruction.
+
 ## Objective
 
 v0.23.3 is the release-hygiene patch that closes the publication defect exposed by v0.23.2 and makes the Windows Repo Ops adaptation a fully gated stable release rather than a release with a post-publication exception.

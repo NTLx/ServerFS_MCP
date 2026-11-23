@@ -1,6 +1,8 @@
 # Jev Agent Task Preflight experiment
 
-Status: opt-in experimental capability introduced before v0.8.0 and included in the current **v0.13.2 stable release** (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge)
+Status: historical opt-in experiment introduced before v0.8.0; v0.13.2 was the stable release recorded at a later documentation checkpoint (the original `experiment/jev-agent-preflight` branch was removed after fast-forward merge).
+
+> Historical activation/configuration examples below are legacy, not named-instance installation instructions. Current [maintainer invariants](maintainers/invariants.md) govern opt-in, private owner policy and proxy controls. Preflight sends the original submitted prompt to the external TypeSafe API; no added host path or file content does not mean that the prompt is free of secrets or sensitive data. Obtain authorization for that transfer; do not infer native installer support or current external model availability from this record.
 
 This experiment evaluates whether TypeSafe Jev can improve the quality and routing signal of
 ServerFS Agent delegation without becoming part of the authorization or safety boundary.

@@ -1,5 +1,7 @@
 # Windows Phase E — Codex runtime
 
+> Historical v0.11 provider acceptance and troubleshooting chronology. Preserve the actual public approval, cancellation, Job containment, session-resume and credential-boundary evidence and the withdrawn harness conclusions. Legacy v1 continuation and singleton supervision are not current signed-v2 capabilities; use [maintainer invariants](maintainers/invariants.md) and the [Windows runbook](../deployment/windows/README.md). Do not replay historical credential, process-stop or provider instructions as current authorization. The dated catalog and readiness timings are not current provider guarantees.
+
 Status: **CLOSED-PASS**. Every gate measured on the real provider through the public MCP surface.
 
 | Gate | Result |

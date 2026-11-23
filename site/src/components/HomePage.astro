@@ -14,46 +14,46 @@ const copy = {
     lang: 'en',
     title: 'ServerFS MCP — Controlled filesystem access for AI on Linux, Windows, and macOS',
     description:
-      'ServerFS MCP securely exposes selected directories as controlled workdirs on Linux, Windows, and macOS; v0.23.3 ships independently gated Deterministic Repo Ops across Linux Host Bridge, validated Apple Silicon macOS, and validated native Windows 11 x64, without Agent fallback.',
+      'Named MCP Core, independent Connectors and optional host Agent Bridge for secure workdir access on Linux, macOS and Windows.',
     nav: { docs: 'Docs', connect: 'Connect', architecture: 'Architecture', security: 'Security' },
     languageSwitch: '简中',
     languageLabel: '切换到简体中文',
     themeToLight: 'Switch to light theme',
     themeToDark: 'Switch to dark theme',
-    release: 'v0.24.2',
+    release: 'v0.25.0 · release pending',
     heroEyebrow: 'SECURE MCP FOR LINUX · WINDOWS · MACOS WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
-      'Expose selected workdirs through native stdio or standard Streamable HTTP. Read-only by default, with guarded writes and bounded binary transfer; API Key, OAuth 2.1, OpenAI Tunnel, file ingress, Agent delegation, and Agent Skills stay explicit capabilities. v0.23.3 supports independently gated Deterministic Repo Ops on Linux Host Bridge, validated Apple Silicon macOS, and validated native Windows 11 x64, without Agent fallback.',
+      'Expose explicitly configured workdirs, read-only by default. Choose a file-only, owned or shared Core before provisioning. Add independent OpenAI or Cloudflare Connectors where supported; use guarded writes and separately authorized optional capabilities.',
     getStarted: 'Get started',
     viewSource: 'View source',
-    guaranteesShort: ['No shell', 'No escape', 'Scoped writes', 'MIT licensed'],
+    guaranteesShort: ['No generic shell', 'Scoped workdirs', 'Guarded writes', 'MIT licensed'],
     diagramLabel: 'CONTROLLED DATA PATH',
     mcpClient: 'MCP client',
-    outboundOnly: 'outbound only',
+    outboundOnly: 'direct HTTP or optional Connector',
     serverRows: [
       ['FILESYSTEM', 'scoped workdirs'],
       ['MUTATIONS', 'revision guarded'],
       ['BINARY I/O', 'bounded · optional'],
-      ['REPO OPS', 'v0.23.3 · Linux + validated macOS + Windows'],
-      ['AGENT BRIDGE', 'native host · optional'],
+      ['REPO OPS', 'independently gated'],
+      ['BRIDGE IPC', 'optional attachment'],
     ],
     workdirs: 'Scoped Workdirs',
     workdirDefault: 'read-only by default',
-    userSocket: 'user-owned socket',
-    internalNetwork: 'Linux: loopback/private HTTP by default',
-    noPorts: 'Native default: stdio · HTTP ingress opt-in',
+    userSocket: 'authorized local IPC',
+    internalNetwork: 'Linux: explicit publication or internal-only',
+    noPorts: 'Native: local stdio or authenticated HTTP',
     connectEyebrow: 'STANDARD MCP CONNECTIVITY',
     connectTitle: 'Connect your way. Keep one policy boundary.',
     connectBody:
       'Use the transport and authentication model that fits the host. ServerFS keeps filesystem authorization separate from ingress choice.',
     connectionModes: [
       ['stdio', 'Native local', 'Windows / macOS native MCP without a network listener'],
-      ['Streamable HTTP', 'Standard remote MCP', 'Loopback by default; place authenticated TLS ingress in front for remote use'],
+      ['Streamable HTTP', 'Standard remote MCP', 'Named Core: explicit publication and caller admission; use TLS for remote access'],
       ['Static API Key', 'Lightweight auth', 'One high-entropy secret for simple remote deployments'],
-      ['OAuth 2.1', 'Identity-aware auth', 'Optional brokered authentication for production remote deployments'],
-      ['OpenAI Tunnel', 'Optional ChatGPT ingress', 'Authenticated outbound tunnel path; no longer the generic MCP default'],
-      ['Cloudflare Tunnel', 'Linux + macOS + Windows stable', 'v0.24.0 Linux / v0.24.1 Apple Silicon / v0.24.2 Windows'],
+      ['OAuth 2.1', 'Identity-aware auth', 'Linux auth service; native Core uses an independent authorization service'],
+      ['OpenAI Tunnel', 'Optional ChatGPT ingress', 'Optional outbound HTTP Connector; static Core bearer required'],
+      ['Cloudflare Tunnel', 'Optional Connector', 'Independent ingress to the selected HTTP Core'],
     ],
     exploreHttp: 'HTTP setup',
     exploreApiKey: 'API Key',
@@ -62,18 +62,18 @@ const copy = {
     capabilityEyebrow: 'PROGRESSIVE CAPABILITY',
     capabilityTitle: 'Start narrow. Expand deliberately.',
     capabilityBody:
-      'ServerFS grows by explicit opt-in. Each added surface is bounded, independently gated, and visible in the tool contract.',
+      'Optional tool groups add to the 11-tool base independently; counts below are examples, not a cumulative sequence. Actual availability depends on workdir policy and platform attachment.',
     surfaces: [
       { count: '11', label: 'Filesystem', detail: 'safe read + guarded mutation surface' },
-      { count: '13', label: '+ Binary', detail: 'bounded whole-file transfer' },
-      { count: '15', label: '+ Repo Ops', detail: 'v0.23.3 · Linux + validated macOS + Windows' },
-      { count: '21', label: '+ Agent', detail: 'native delegation + model discovery' },
-      { count: '27', label: 'v0.24.0 full', detail: 'binary + Agent + Repo Ops enabled' },
+      { count: '13', label: 'Base + Binary', detail: 'bounded whole-file transfer' },
+      { count: '15', label: 'Base + Repo Ops', detail: 'independently gated' },
+      { count: '21', label: 'Base + Agent', detail: 'native delegation + runtime discovery' },
+      { count: '27', label: 'Combined', detail: 'where all three groups are supported' },
     ],
     platformEyebrow: 'THREE DEPLOYMENT SHAPES',
     platformTitle: 'One contract. Native boundaries on every platform.',
     platformBody:
-      'The MCP capability model stays consistent. Deployment, filesystem containment, transport, and lifecycle follow the operating system instead of pretending every host is Linux.',
+      'The MCP contract is common, but actual supported combinations and deployment, filesystem containment, transport and lifecycle follow the operating system.',
     platformScrollHint: 'Scroll vertically to move across platforms · or choose a tab',
     platformPathLabel: 'NATIVE EXECUTION PATH',
     platformWhyLabel: 'WHY THIS SHAPE',
@@ -83,20 +83,19 @@ const copy = {
         name: 'Linux',
         kicker: 'DOCKER-NATIVE SERVER DEPLOYMENT',
         title: 'Containers define the outer boundary.',
-        body: 'Linux is the server-oriented shape: Docker Compose on amd64 or arm64, standard Streamable HTTP by default, and optional overlays for authentication, file ingress, the host Bridge (Agent delegation and v0.23 Repo Ops), the OpenAI Tunnel, or the Linux v0.24 Cloudflare Tunnel.',
+        body: 'Use a separate Compose project for each Core. Choose direct HTTP or independent OpenAI / Cloudflare Connectors. Optional Agent Bridge remains a user-scoped host service.',
         path: [
-          ['01', 'INGRESS', 'Streamable HTTP', 'Authenticated TLS edge · optional OpenAI Tunnel'],
-          ['02', 'RUNTIME', 'ServerFS container', 'Policy-bound MCP surface · no shell'],
+          ['01', 'INGRESS', 'Streamable HTTP', 'Direct HTTP · optional OpenAI / Cloudflare'],
+          ['02', 'RUNTIME', 'ServerFS container', 'Policy-bound MCP · no generic shell'],
           ['03', 'BOUNDARY', 'Bind-mounted workdirs', 'Only explicitly configured paths are visible'],
-          ['04', 'HOST BRIDGE', 'Optional host capability', 'Agent delegation and v0.23 Repo Ops stay outside the container'],
+          ['04', 'HOST BRIDGE', 'Optional host capability', 'Agent and Repo Ops run on the host'],
         ],
         insights: [
           ['Container boundary', 'Compose makes runtime and filesystem mounts explicit, so adding capability never silently expands host access.'],
-          ['Remote by design', 'Linux is the server-facing shape: HTTP is first-class, while authentication and Tunnel remain independent overlays.'],
+          ['Remote by design', 'Linux HTTP uses explicit exposure, independent authentication and optional provider overlays; the external reverse proxy remains operator-managed.'],
         ],
         commands: [
-          'docker compose pull',
-          'docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp',
+          'docker compose -p serverfs-blue --env-file /absolute/private/blue.env -f compose.yml -f compose.http.yml -f deployment/linux/compose.publish-http.yml -f deployment/linux/compose.bridge-disabled.yml config --quiet',
         ],
         href: 'docs/getting-started/',
         cta: 'Linux deployment guide',
@@ -106,10 +105,10 @@ const copy = {
         name: 'macOS',
         kicker: 'APPLE-NATIVE USER DEPLOYMENT',
         title: 'Darwin-native semantics, owned by the current user.',
-        body: 'The macOS shape is native arm64 on Apple M-series Macs with local APFS workdirs. ServerFS uses descriptor-relative Darwin filesystem primitives and Apple SMAppService for persistent per-user Tunnel and Agent Bridge lifecycle.',
+        body: 'Apple Silicon, native arm64, macOS 27 and local APFS. Signed SMAppService jobs manage named file-only/owned instances and Connectors. Shared Core requires an independently provisioned owner; one Agent workdir, no Repo Ops or named Connector staging.',
         path: [
           ['01', 'LIFECYCLE', 'SMAppService', 'Current-user persistence · no LaunchDaemon'],
-          ['02', 'TRANSPORT', 'Native stdio', 'No MCP network listener'],
+          ['02', 'TRANSPORT', 'Native stdio / HTTP', 'Named HTTP Core or local stdio'],
           ['03', 'FILESYSTEM', 'Darwin FD backend', 'Descriptor-relative traversal · symlinks fail closed'],
           ['04', 'WORKDIR', 'Local APFS', 'TCC and user permissions remain authoritative'],
         ],
@@ -118,8 +117,7 @@ const copy = {
           ['Native containment', 'ServerFS follows Darwin file-descriptor semantics and never bypasses macOS privacy controls.'],
         ],
         commands: [
-          'serverfs doctor --config serverfs.toml',
-          'serverfs service install --config serverfs.toml --env-file .env',
+          'python -m serverfs_mcp.darwin_instance_cli --instance blue status',
         ],
         href: 'docs/macos-native/',
         cta: 'macOS native guide',
@@ -129,10 +127,10 @@ const copy = {
         name: 'Windows',
         kicker: 'WINDOWS-NATIVE USER DEPLOYMENT',
         title: 'NTFS-native semantics without administrator privileges.',
-        body: 'The Windows shape runs natively on Windows 11 x64 with local NTFS. A HANDLE-relative Rust kernel provides filesystem containment, while a current-user Task Scheduler watchdog owns persistent lifecycle without SCM, LocalSystem, or UAC elevation.',
+        body: 'Windows 11 x64 and local NTFS, with a HANDLE-relative Rust kernel. Current-user Task Scheduler and Job Objects isolate individual Core, Connector and Bridge lifecycles.',
         path: [
-          ['01', 'LIFECYCLE', 'Task Scheduler', 'Current-user watchdog · least privilege'],
-          ['02', 'TRANSPORT', 'Native stdio', 'No MCP network listener'],
+          ['01', 'LIFECYCLE', 'Task Scheduler', 'Independent component owners · least privilege'],
+          ['02', 'TRANSPORT', 'Native stdio / HTTP', 'Named HTTP Core or local stdio'],
           ['03', 'FILESYSTEM', 'Rust NTFS kernel', 'HANDLE-relative traversal · reparse points blocked'],
           ['04', 'WORKDIR', 'Local NTFS', 'No network shares · no elevation'],
         ],
@@ -141,8 +139,7 @@ const copy = {
           ['Measured native boundary', 'The prebuilt abi3 kernel enforces NTFS-specific containment instead of emulating POSIX filesystem semantics.'],
         ],
         commands: [
-          'serverfs doctor --config serverfs.toml',
-          'serverfs service install --config serverfs.toml --env-file .env',
+          'python -I -B -m serverfs_mcp.windows_v25.cli core --instance blue status',
         ],
         href: 'docs/windows-native/',
         cta: 'Windows native guide',
@@ -151,13 +148,13 @@ const copy = {
     architectureEyebrow: 'ARCHITECTURE',
     architectureTitle: 'Capability, not ambient authority.',
     architectureBody:
-      'Every layer has one job. Optional powers are explicit, narrow, and independently gated.',
+      'Core, Connectors and Bridge have distinct identities and scoped lifecycles, with dependency and stop guards. File and optional Bridge operations are separate capability paths.',
     layers: [
       ['01', 'MCP hosts', 'Claude Code · Codex · Qoder · ChatGPT · harnesses'],
       ['02', 'Ingress', 'stdio · Streamable HTTP · optional OpenAI / Cloudflare Tunnel'],
       ['03', 'ServerFS MCP Core', 'Policy, path confinement, revisions, audit'],
-      ['04', 'Deployment boundary', 'Linux Docker · Windows/macOS native stdio'],
-      ['05', 'Scoped workdirs', 'Read-only unless explicitly released'],
+      ['04', 'Direct file operations', 'Scoped workdirs · read-only by default'],
+      ['05', 'Optional Agent Bridge', 'Owned or explicitly authorized shared attachment'],
     ],
     bound: 'BOUND',
     principleLabel: 'DESIGN PRINCIPLE',
@@ -170,22 +167,22 @@ const copy = {
     securityStatement: 'Narrow primitives. Explicit boundaries. No ambient authority.',
     guarantees: [
       'Read-only by default',
-      'No shell or generic executor',
+      'No generic shell in MCP Core',
       'Scoped workdir boundary',
       'Revision-guarded mutation',
       'No recursive delete',
       'Transport Host / Origin validation',
-      'No public bind by default',
+      'Explicit HTTP publication',
       'Agent Bridge is opt-in',
     ],
     agentEyebrow: 'OPTIONAL AGENT BRIDGE',
     agentTitle: 'Native agents stay on the host.',
     agentBody:
-      'The optional Agent Bridge delegates structured tasks to native Codex, Claude and Qoder runtimes, plus operator-configured ACP v1 profiles using an absolute executable and fixed argv. OpenCode 2.1.2 with opencode/glm-5.3-flash-free passed real end-to-end acceptance on Linux, macOS and Windows, including prompts, persisted-session continuation, and active-tool cancellation/cleanup. ACP model discovery/override, elicitation, client filesystem and terminal are unsupported; capabilities remain conservative. Windows v0.14.0 uses current-user Task Scheduler persistence with a windowless watchdog and layered recovery; macOS v0.13.2+ uses Apple SMAppService for persistent per-user lifecycle. Provider defaults stay native; request-scoped model overrides remain explicit, while optional Jev advisors can add pre-submit advice without becoming execution authority.',
+      'Agent Bridge runs Codex, Claude, Qoder or configured ACP profiles on the host. Shared attachments require per-Core grants; a shared Core cannot operate its owner. Repo Ops is independent of Agent delegation, and Jev remains optional advice with external task-context transfer.',
     exploreAgent: 'Explore Agent Bridge',
     exploreAcp: 'ACP Guide',
     exploreJev: 'Explore Jev Advisors',
-    mcpContainer: 'MCP CONTAINER',
+    mcpContainer: 'MCP CORE',
     hostService: 'HOST USER SERVICE',
     advisoryOnly: 'ADVISORY ONLY',
     policyDecides: 'policy decides',
@@ -194,7 +191,7 @@ const copy = {
     quickTitleLine1: 'One controlled service.',
     quickTitleLine2: 'Your machine. Your policy.',
     quickBody:
-      'Start with standard Streamable HTTP on Linux, then add only the capabilities you need. OpenAI Tunnel remains available for ChatGPT, while the v0.24.0 Cloudflare Tunnel is an optional Linux Docker ingress with separate API Key/OAuth admission. File ingress, v0.23 Repo Ops, Agent delegation, Agent Skills, and Jev stay explicit opt-ins.',
+      'This example validates a new Linux file-only HTTP Core configuration. Choose the required Bridge mode before provisioning; native named staging is create-only. Add supported ingress only when needed.',
     readDeployment: 'Read the deployment guide',
     finalTitleLine1: 'Make your server legible to AI.',
     finalTitleLine2: 'Keep the boundary explicit.',
@@ -202,7 +199,7 @@ const copy = {
     skillsEyebrow: 'PORTABLE AGENT SKILLS',
     skillsTitle: 'Operational knowledge ships with the project.',
     skillsBody:
-      'The published v0.24.2 release carries seven Agent Skills and one skills-only Plugin. Linux Cloudflare Tunnel guidance ships within the existing tunnel skill, preserving the same seven-skill packaging and a separate HTTP admission boundary.',
+      'Seven operational Skills guide component-scoped installation, configuration, upgrade, diagnosis, ingress, auth and Bridge operations. Load one matching Skill and reference; the portable Plugin contains no MCP connection or credentials.',
     exploreSkills: 'Explore Agent Skills',
     footer: 'Secure MCP access to explicitly configured workdirs on Linux, Windows, and macOS.',
     footerDocs: 'Docs',
@@ -213,46 +210,46 @@ const copy = {
     lang: 'zh-CN',
     title: 'ServerFS MCP — 让 AI 在 Linux、Windows 和 macOS 上受控访问文件系统',
     description:
-      'ServerFS MCP 在 Linux、Windows 和 macOS 上将明确指定的目录安全开放为受控 workdir；v0.23.3 在 Linux Host Bridge、已验证 Apple Silicon macOS 与已验证 Windows 11 x64 原生部署上提供独立门控的 Deterministic Repo Ops，且不会回退到 Agent。',
+      '面向 Linux、macOS 与 Windows 的安全 Workdir 访问，支持独立 MCP Core、Connector 与可选宿主机 Agent Bridge。',
     nav: { docs: '文档', connect: '接入', architecture: '架构', security: '安全' },
     languageSwitch: 'EN',
     languageLabel: 'Switch to English',
     themeToLight: '切换到浅色主题',
     themeToDark: '切换到深色主题',
-    release: 'v0.24.2',
+    release: 'v0.25.0 · 待发布',
     heroEyebrow: '面向 Linux · Windows · macOS Workdir 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
-      '通过原生 stdio 或标准 Streamable HTTP 只开放你明确指定的 workdir。默认只读，并支持受控写入与有界二进制传输；API Key、OAuth 2.1、OpenAI Tunnel、文件入口、Agent 委托与 Agent Skills 都保持显式可选。v0.23.3 的独立门控 Deterministic Repo Ops 支持 Linux Host Bridge、已验证 Apple Silicon 原生 macOS 与已验证 Windows 11 x64 原生部署，不会回退到 Agent。',
+      '只开放显式配置的 Workdir，默认只读。部署前选择纯文件、owned 或 shared Core；在支持的模式下按需增加独立 OpenAI 或 Cloudflare Connector。写入受控，可选能力独立授权。',
     getStarted: '快速开始',
     viewSource: '查看源码',
-    guaranteesShort: ['无 Shell', '无法越界', '受控写入', 'MIT 许可'],
+    guaranteesShort: ['无通用 Shell', '限定 Workdir', '受控写入', 'MIT 许可'],
     diagramLabel: '受控数据路径',
     mcpClient: 'MCP 客户端',
-    outboundOnly: '仅出站连接',
+    outboundOnly: '直接 HTTP 或可选 Connector',
     serverRows: [
       ['文件系统', '限定 workdir'],
       ['写入操作', 'revision 保护'],
       ['二进制 I/O', '有界 · 可选'],
-      ['REPO OPS', 'v0.23.3 · Linux + 已验证 macOS + Windows'],
-      ['AGENT BRIDGE', '原生宿主机 · 可选'],
+      ['REPO OPS', '独立门控'],
+      ['BRIDGE IPC', '可选接入'],
     ],
     workdirs: '限定 Workdirs',
     workdirDefault: '默认只读',
-    userSocket: '用户自有 socket',
-    internalNetwork: 'Linux：默认仅 loopback / 私有 HTTP',
-    noPorts: '原生默认 stdio · HTTP 入口须主动启用',
+    userSocket: '授权本地 IPC',
+    internalNetwork: 'Linux：显式发布或仅内部网络',
+    noPorts: '原生：本地 stdio 或带认证 HTTP',
     connectEyebrow: '标准 MCP 接入',
     connectTitle: '按需选择接入方式，始终保持同一策略边界。',
     connectBody:
       '根据宿主选择合适的传输与认证方式。ServerFS 将文件系统授权与入口方式分离，不因接入方式扩大权限。',
     connectionModes: [
       ['stdio', '原生本地', 'Windows / macOS 原生 MCP，不开放网络监听端口'],
-      ['Streamable HTTP', '标准远程 MCP', '默认仅 loopback；远程使用时在前方部署带认证的 TLS 入口'],
+      ['Streamable HTTP', '标准远程 MCP', '命名 Core：显式发布和调用方认证；远程使用 TLS'],
       ['Static API Key', '轻量认证', '使用单个高熵密钥满足简单远程部署'],
-      ['OAuth 2.1', '身份感知认证', '面向正式远程部署的可选代理认证层'],
-      ['OpenAI Tunnel', '可选 ChatGPT 入口', '经过认证的出站 Tunnel；不再作为通用 MCP 默认入口'],
-      ['Cloudflare Tunnel', 'Linux + macOS + Windows 稳定版', 'Linux v0.24.0、Apple Silicon v0.24.1、Windows v0.24.2'],
+      ['OAuth 2.1', '身份感知认证', 'Linux auth service；原生 Core 使用独立授权服务'],
+      ['OpenAI Tunnel', '可选 ChatGPT 入口', '可选出站 HTTP Connector；需要静态 Core bearer'],
+      ['Cloudflare Tunnel', '可选 Connector', '独立入口，转发到指定 HTTP Core'],
     ],
     exploreHttp: 'HTTP 配置',
     exploreApiKey: 'API Key',
@@ -261,18 +258,18 @@ const copy = {
     capabilityEyebrow: '渐进式能力',
     capabilityTitle: '从最小能力开始，按需扩展。',
     capabilityBody:
-      'ServerFS 的能力通过显式 opt-in 逐层增加；每一层都范围受限、独立门控，并直接体现在工具契约中。',
+      '可选工具组分别在 11 个基础工具上独立增加；以下为组合示例而非累加顺序，实际可用能力取决于 workdir 策略和平台接入。',
     surfaces: [
       { count: '11', label: '文件系统', detail: '安全读取 + 受控写入能力面' },
-      { count: '13', label: '+ 二进制', detail: '有界的整文件传输' },
-      { count: '15', label: '+ Repo Ops', detail: 'v0.23.3 · Linux + 已验证 macOS + Windows' },
-      { count: '21', label: '+ Agent', detail: '原生 Agent 委派 + 模型发现' },
-      { count: '27', label: 'v0.24.0 完整', detail: '二进制 + Agent + Repo Ops' },
+      { count: '13', label: '基础 + 二进制', detail: '有界的整文件传输' },
+      { count: '15', label: '基础 + Repo Ops', detail: '独立门控' },
+      { count: '21', label: '基础 + Agent', detail: '原生 Agent 委派 + runtime 发现' },
+      { count: '27', label: '组合能力', detail: '支持全部三个可选工具组时' },
     ],
     platformEyebrow: '三种部署形态',
     platformTitle: '同一套能力契约，各自遵循平台原生边界。',
     platformBody:
-      'MCP 能力模型保持一致，但部署方式、文件系统约束、传输与生命周期管理遵循各自操作系统，而不是把所有主机都抽象成 Linux。',
+      'MCP 契约一致，但支持的具体组合、部署方式、文件系统约束、传输和生命周期遵循各自操作系统。',
     platformScrollHint: '继续向下滚动即可横向浏览 · 也可以直接点击标签',
     platformPathLabel: '原生执行路径',
     platformWhyLabel: '为什么采用这种形态',
@@ -282,20 +279,19 @@ const copy = {
         name: 'Linux',
         kicker: 'DOCKER 原生服务器部署',
         title: '用容器定义外层边界。',
-        body: 'Linux 是面向服务器的部署形态：通过 Docker Compose 支持 amd64 与 arm64，默认采用标准 Streamable HTTP，并可按需叠加认证、文件入口、Host Bridge（Agent 委托与 v0.23 Repo Ops）、OpenAI Tunnel 或 Linux v0.24 的 Cloudflare Tunnel。',
+        body: '每个 Core 使用独立 Compose project。选择直接 HTTP 或独立 OpenAI / Cloudflare Connector。可选 Agent Bridge 仍由宿主机当前用户管理。',
         path: [
-          ['01', '入口', 'Streamable HTTP', '带认证的 TLS 边界 · 可选 OpenAI Tunnel'],
-          ['02', '运行时', 'ServerFS 容器', '策略约束的 MCP 能力面 · 无 Shell'],
+          ['01', '入口', 'Streamable HTTP', '直接 HTTP · 可选 OpenAI / Cloudflare'],
+          ['02', '运行时', 'ServerFS 容器', '策略约束的 MCP · 无通用 Shell'],
           ['03', '边界', 'Bind mount Workdir', '仅能看到显式配置的路径'],
-          ['04', 'HOST BRIDGE', '可选宿主机能力', 'Agent 委托与 v0.23 Repo Ops 保持在容器外'],
+          ['04', 'HOST BRIDGE', '可选宿主机能力', 'Agent 与 Repo Ops 留在宿主机'],
         ],
         insights: [
           ['容器就是外层边界', 'Compose 将运行时与文件系统挂载显式化，增加能力时不会悄悄扩大宿主机访问范围。'],
-          ['天然面向远程服务', 'Linux 是服务器形态：HTTP 是一等入口，而认证与 Tunnel 仍是相互独立的可选叠加层。'],
+          ['天然面向远程服务', 'Linux HTTP 使用显式发布、独立认证和可选 Provider overlay；外部反向代理由运维者管理。'],
         ],
         commands: [
-          'docker compose pull',
-          'docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp',
+          'docker compose -p serverfs-blue --env-file /absolute/private/blue.env -f compose.yml -f compose.http.yml -f deployment/linux/compose.publish-http.yml -f deployment/linux/compose.bridge-disabled.yml config --quiet',
         ],
         href: 'docs/getting-started/',
         cta: 'Linux 部署指南',
@@ -305,10 +301,10 @@ const copy = {
         name: 'macOS',
         kicker: 'APPLE 原生用户级部署',
         title: '使用原生 Darwin 语义，由当前用户管理。',
-        body: 'macOS 形态运行于 Apple M 系列、原生 arm64 与本地 APFS Workdir。ServerFS 使用 descriptor-relative Darwin 文件系统原语，并通过 Apple SMAppService 管理持久的用户级 Tunnel 与 Agent Bridge 生命周期。',
+        body: 'Apple Silicon、原生 arm64、macOS 27 和本地 APFS。签名 SMAppService jobs 管理命名纯文件/owned 实例和 Connector。Shared Core 需要独立 provision 的 owner，仅一个 Agent workdir，不支持 Repo Ops 或命名 Connector staging。',
         path: [
           ['01', '生命周期', 'SMAppService', '当前用户持久化 · 无 LaunchDaemon'],
-          ['02', '传输', '原生 stdio', '不开放 MCP 网络监听端口'],
+          ['02', '传输', '原生 stdio / HTTP', '命名 HTTP Core 或本地 stdio'],
           ['03', '文件系统', 'Darwin FD backend', 'Descriptor-relative 遍历 · 符号链接 fail closed'],
           ['04', 'Workdir', '本地 APFS', 'TCC 与当前用户权限继续生效'],
         ],
@@ -317,8 +313,7 @@ const copy = {
           ['遵循 Darwin 原生约束', 'ServerFS 使用 Darwin 文件描述符语义，并且不会绕过 macOS 的隐私与 TCC 控制。'],
         ],
         commands: [
-          'serverfs doctor --config serverfs.toml',
-          'serverfs service install --config serverfs.toml --env-file .env',
+          'python -m serverfs_mcp.darwin_instance_cli --instance blue status',
         ],
         href: 'docs/macos-native/',
         cta: 'macOS 原生部署指南',
@@ -328,10 +323,10 @@ const copy = {
         name: 'Windows',
         kicker: 'WINDOWS 原生用户级部署',
         title: '使用原生 NTFS 语义，无需管理员权限。',
-        body: 'Windows 形态原生运行于 Windows 11 x64 与本地 NTFS。HANDLE-relative Rust 内核负责文件系统约束；当前用户 Task Scheduler watchdog 负责持久生命周期，不依赖 SCM、LocalSystem 或 UAC 提权。',
+        body: 'Windows 11 x64 与本地 NTFS、HANDLE-relative Rust 内核。当前用户 Task Scheduler 与 Job Object 隔离 Core、Connector 和 Bridge 的生命周期。',
         path: [
-          ['01', '生命周期', 'Task Scheduler', '当前用户 watchdog · 最小权限'],
-          ['02', '传输', '原生 stdio', '不开放 MCP 网络监听端口'],
+          ['01', '生命周期', 'Task Scheduler', '独立组件 owner · 最小权限'],
+          ['02', '传输', '原生 stdio / HTTP', '命名 HTTP Core 或本地 stdio'],
           ['03', '文件系统', 'Rust NTFS kernel', 'HANDLE-relative 遍历 · 拒绝 reparse point'],
           ['04', 'Workdir', '本地 NTFS', '不支持网络共享 · 无需提权'],
         ],
@@ -340,8 +335,7 @@ const copy = {
           ['真实的 Windows 原生边界', '预编译 abi3 内核直接执行 NTFS 专用约束，而不是把 POSIX 文件系统语义硬套到 Windows 上。'],
         ],
         commands: [
-          'serverfs doctor --config serverfs.toml',
-          'serverfs service install --config serverfs.toml --env-file .env',
+          'python -I -B -m serverfs_mcp.windows_v25.cli core --instance blue status',
         ],
         href: 'docs/windows-native/',
         cta: 'Windows 原生部署指南',
@@ -350,13 +344,13 @@ const copy = {
     architectureEyebrow: '架构',
     architectureTitle: '提供能力，而不是环境权限。',
     architectureBody:
-      '每一层只做一件事。所有可选能力都显式启用、范围受限，并由独立策略门控。',
+      'Core、Connector 与 Bridge 具有独立身份和限定范围的生命周期，受依赖与停止保护约束。文件操作和可选 Bridge 操作是不同能力路径。',
     layers: [
       ['01', 'MCP 宿主', 'Claude Code · Codex · Qoder · ChatGPT · harness'],
       ['02', '入口', 'stdio · Streamable HTTP · 可选 OpenAI / Cloudflare Tunnel'],
       ['03', 'ServerFS MCP Core', '策略、路径约束、revision 与审计'],
-      ['04', '部署边界', 'Linux Docker · Windows/macOS 原生 stdio'],
-      ['05', '限定 Workdirs', '除非显式放开，否则保持只读'],
+      ['04', '直接文件操作', '限定 Workdir · 默认只读'],
+      ['05', '可选 Agent Bridge', 'Owned 或显式授权的 shared 接入'],
     ],
     bound: '受控',
     principleLabel: '设计原则',
@@ -368,22 +362,22 @@ const copy = {
     securityStatement: '最小能力。显式边界。无环境权限。',
     guarantees: [
       '默认只读',
-      '无 Shell 或通用执行器',
+      'MCP Core 无通用 Shell',
       'Workdir 边界约束',
       '基于 revision 的写入保护',
       '无递归删除',
       'Host / Origin 传输校验',
-      '默认不公开绑定 MCP',
+      '显式 HTTP 发布',
       'Agent Bridge 按需启用',
     ],
     agentEyebrow: '可选 AGENT BRIDGE',
     agentTitle: '原生 Agent 留在宿主机。',
     agentBody:
-      '可选 Agent Bridge 通过平台原生本地 IPC 与生命周期集成，将结构化任务委托给 Codex、Claude、Qoder 原生 runtime，以及运维人员配置的通用 ACP v1 profile；每个 profile 固定绝对可执行文件与 argv。OpenCode 2.1.2 使用 opencode/glm-5.3-flash-free 已通过 Linux、macOS、Windows 真实端到端验收，覆盖 prompt、持久 session continuation 和 active-tool cancellation/cleanup。ACP 不支持模型发现/覆盖、elicitation、client filesystem 和 terminal；能力保持保守报告。Windows v0.14.0 使用当前用户 Task Scheduler、无窗口 watchdog 与分层恢复的持久生命周期；macOS v0.13.2+ 使用 Apple SMAppService 管理持久的用户级生命周期。Provider 默认配置保持原生；单次任务模型覆盖必须显式指定，可选 Jev Advisors 可在提交前提供建议，但不会获得执行权。',
+      'Agent Bridge 在宿主机运行 Codex、Claude、Qoder 或配置的 ACP profile。共享接入需要逐 Core grant，Shared Core 不能管理 owner。Repo Ops 独立于 Agent 委派；Jev 仅提供可选建议，涉及任务上下文外部传输。',
     exploreAgent: '了解 Agent Bridge',
     exploreAcp: 'ACP 指南',
     exploreJev: '了解 Jev Advisors',
-    mcpContainer: 'MCP 容器',
+    mcpContainer: 'MCP CORE',
     hostService: '宿主机用户服务',
     advisoryOnly: '仅提供建议',
     policyDecides: '策略决定',
@@ -392,7 +386,7 @@ const copy = {
     quickTitleLine1: '一个受控服务。',
     quickTitleLine2: '你的机器，你的策略。',
     quickBody:
-      'Linux 从标准 Streamable HTTP 开始，按需增加能力。OpenAI Tunnel 仍可用于 ChatGPT；v0.24.0 Cloudflare Tunnel 正式提供可选 Linux Docker 入口，并独立要求 API Key/OAuth 认证。文件入口、v0.23 Repo Ops、Agent 委托、Agent Skills 与 Jev 仍然显式 opt-in。',
+      '此例验证新 Linux 纯文件 HTTP Core 的配置。部署前选定所需 Bridge 模式；原生命名 staging 为 create-only。仅按需添加受支持的入口。',
     readDeployment: '阅读部署指南',
     finalTitleLine1: '让 AI 理解你的服务器。',
     finalTitleLine2: '让边界始终清晰。',
@@ -400,7 +394,7 @@ const copy = {
     skillsEyebrow: '可移植 AGENT SKILLS',
     skillsTitle: '让运维知识随项目一起交付。',
     skillsBody:
-      '已发布的 v0.24.2 包含 7 个面向任务的 Agent Skills 与一个仅包含 Skills 的 Plugin。在既有 Tunnel Skill 中提供 Linux Cloudflare 接入分支，仍保持 7 个 Skills，并与 HTTP 认证边界分离。',
+      '七个运维 Skills 指导组件级安装、配置、升级、诊断、接入、认证与 Bridge 操作。按需加载一个匹配的 Skill 与 Reference；可移植 Plugin 不含 MCP 连接或凭据。',
     exploreSkills: '了解 Agent Skills',
     footer: '让 MCP 在 Linux、Windows 和 macOS 上安全访问你明确配置的 workdir。',
     footerDocs: '文档',
@@ -498,7 +492,7 @@ const canonicalUrl = isZh
         <div class="hero-copy">
           <a
             class="release-pill"
-            href="https://github.com/NTLx/ServerFS_MCP/releases/latest"
+            href="https://github.com/NTLx/ServerFS_MCP/releases"
             target="_blank"
             rel="noreferrer"
           >
@@ -550,7 +544,7 @@ const canonicalUrl = isZh
               <span class="node-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M7 8h10M14 5l3 3-3 3M17 16H7M10 13l-3 3 3 3" /></svg>
               </span>
-              <div><strong>Secure MCP Tunnel</strong><small>{c.outboundOnly}</small></div>
+              <div><strong>HTTP / Connector</strong><small>{c.outboundOnly}</small></div>
             </div>
 
             <div class="flow-line" data-system-flow="tunnel-server" aria-hidden="true"><span></span></div>
@@ -558,7 +552,7 @@ const canonicalUrl = isZh
             <div class="server-card" data-system-node="server">
               <div class="server-head">
                 <span class="server-led"></span>
-                <strong>ServerFS MCP</strong>
+                <strong>ServerFS MCP Core</strong>
                 <code>{c.release}</code>
               </div>
               {c.serverRows.map(([label, detail]) => (
@@ -574,7 +568,7 @@ const canonicalUrl = isZh
                   </span>
                   <strong>{c.workdirs}</strong>
                 </div>
-                <code>/srv/projects</code>
+                <code>{isZh ? '显式配置路径' : 'configured path'}</code>
                 <small>{c.workdirDefault}</small>
               </div>
 
@@ -773,8 +767,8 @@ const canonicalUrl = isZh
             <p class="mini-label">{c.principleLabel}</p>
             <blockquote>{c.principle}</blockquote>
             <div class="principle-tags">
-              <span>openat(2)</span>
-              <span>O_NOFOLLOW</span>
+              <span>POSIX fd</span>
+              <span>NTFS HANDLE</span>
               <span>atomic publish</span>
               <span>revision CAS</span>
             </div>
@@ -826,7 +820,7 @@ const canonicalUrl = isZh
             <small>{c.mcpContainer}</small>
             <strong>ServerFS</strong>
           </div>
-          <div class="agent-link"><span></span><code>bridge.sock</code></div>
+          <div class="agent-link"><span></span><code>{c.userSocket}</code></div>
           <div class="agent-box bridge-box">
             <small>{c.hostService}</small>
             <strong>Agent Bridge</strong>
@@ -853,15 +847,14 @@ const canonicalUrl = isZh
             <span>{c.quickStartBar}</span>
             <span></span>
           </div>
-          <pre><code><span class="prompt">$</span> git clone https://github.com/NTLx/ServerFS_MCP.git
-<span class="prompt">$</span> cd ServerFS_MCP
-<span class="prompt">$</span> cp .env.example .env
-<span class="prompt">$</span> docker compose pull
-<span class="prompt">$</span> docker compose -f compose.yml -f compose.http.yml up -d serverfs-mcp
-<span class="prompt">$</span> docker compose -f compose.yml -f compose.http.yml ps
+          <pre><code><span class="prompt">$</span> docker compose -p serverfs-blue \
+  --env-file /absolute/private/blue.env \
+  -f compose.yml -f compose.http.yml \
+  -f deployment/linux/compose.publish-http.yml \
+  -f deployment/linux/compose.bridge-disabled.yml \
+  config --quiet
 
-<span class="success">✓ serverfs-mcp      healthy</span>
-<span class="success">✓ http://127.0.0.1:8000/mcp</span></code></pre>
+<span class="success">{isZh ? '预期：配置校验成功（不是在线验收）' : 'Expected: valid configuration (not live acceptance)'}</span></code></pre>
         </div>
 
         <div class="quickstart-copy" data-reveal-item>

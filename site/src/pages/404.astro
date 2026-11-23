@@ -17,7 +17,7 @@ const base = import.meta.env.BASE_URL;
         min-height: 100vh;
         margin: 0;
         place-items: center;
-        overflow: hidden;
+        padding-block: 20px;
         background:
           radial-gradient(circle at 50% 20%, rgba(111, 129, 232, 0.14), transparent 32rem),
           #090b10;
@@ -38,7 +38,7 @@ const base = import.meta.env.BASE_URL;
       main {
         position: relative;
         width: min(calc(100% - 40px), 720px);
-        padding: 64px;
+        padding: clamp(24px, 8vw, 64px);
         border: 1px solid rgba(255,255,255,.09);
         border-radius: 18px;
         background: rgba(15,18,27,.72);
@@ -78,6 +78,12 @@ const base = import.meta.env.BASE_URL;
         font-weight: 600;
         text-decoration: none;
       }
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+      }
       .hint {
         position: absolute;
         right: 18px;
@@ -93,11 +99,15 @@ const base = import.meta.env.BASE_URL;
       <div class="code">PATH_NOT_FOUND</div>
       <h1>404</h1>
       <p>
-        This path is outside the exposed surface. Return to the ServerFS project site or
-        use the documentation navigation to continue.
+        This website page could not be found. Return to the project home or choose a documentation language.
+        <span lang="zh-CN">此网页不存在，请返回首页或选择文档语言。</span>
       </p>
-      <a href={base}>Back to ServerFS</a>
-      <span class="hint">no escape · by design</span>
+      <nav class="links" aria-label="Documentation navigation">
+        <a href={base}>Home</a>
+        <a href={`${base}docs/`}>English docs</a>
+        <a href={`${base}zh-cn/docs/`} lang="zh-CN">简体中文文档</a>
+      </nav>
+      <span class="hint">ServerFS MCP · 404</span>
     </main>
   </body>
 </html>

@@ -1,5 +1,7 @@
 # ServerFS v0.22.0 Development Plan
 
+> Historical v0.22.0 correlated-diagnostics design and acceptance record. The future OTLP/exporter pre-declaration was planning context, not a delivered feature; v0.23.0 instead introduced [Deterministic Repo Ops](docs/releases/v0.23.0.md). Earlier stable/candidate statements, diagnostic limits, transport and retry assumptions are version-scoped; the current named signed-grant protocol and operator commands govern current behavior. See [maintainer invariants](docs/maintainers/invariants.md) and [current Agent Bridge documentation](site/src/content/docs/docs/agent-bridge.md).
+
 Status: **IMPLEMENTED / PHASE F ACCEPTED / PHASE G ACCEPTED / RELEASED.** v0.22.0 was the stable release produced by this plan and is now superseded by stable v0.22.1. This document began as the frozen v0.22.0 design and acceptance contract and now also records implementation/acceptance progress without rewriting its original design decisions.
 
 Planning date: 2026-10-22. Acceptance update: 2026-10-23.

@@ -1,148 +1,69 @@
 ---
 title: Agent Bridge
-description: Optional structured delegation to native Codex, Claude and Qoder runtimes and configurable ACP v1 profiles.
+description: Optional host-side Agent delegation and deterministic Repo Ops.
 ---
 
-The Agent Bridge is an **optional host-side boundary**. It exposes structured Agent task tools without putting runtimes inside the MCP container. v0.19.0 ships generic ACP v1 profiles alongside native Codex, Claude and Qoder runtimes. Operators configure an absolute executable path and fixed argv for each profile; tasks cannot override command, argv or environment, and ACP tasks require `workspace-write`. ServerFS does not install Agents from the ACP Registry; authentication remains provider-owned. Capabilities are reported conservatively. ACP model discovery/override, elicitation, Client filesystem and terminal methods are unsupported.
+Agent Bridge runs on the host and manages provider execution, task state, writer coordination and Repo Ops independently of MCP Core and Connectors.
 
-OpenCode 2.1.2 with `opencode/glm-5.3-flash-free` passed real end-to-end acceptance on Linux, macOS and Windows, covering prompt, persisted-session continuation, and active-tool cancellation/cleanup.
+## Choose the attachment
 
-## Correlated Agent Diagnostics (v0.22+)
+| Mode | When to use |
+| --- | --- |
+| `disabled` | File service only; no Bridge needed. |
+| `owned` | One Core has a dedicated owner. |
+| `shared` | Independently managed owner serves explicitly authorized Cores on the same host. |
 
-ServerFS v0.22.0 adds bounded process-local Agent diagnostics over the existing private Bridge RPC. These commands are available only when the installed version advertises them; feature-detect through the version or `serverfs diagnostics --help` before use. Use `serverfs diagnostics snapshot --format json` for a Bridge-wide snapshot and `serverfs diagnostics task <task-id> --format json` for one retained task; omit `--format json` for human rendering. These commands add no public MCP tool, listener, persistent trace store, OpenTelemetry dependency, or telemetry egress. Task diagnostics can distinguish `available`, `unknown_task`, `not_retained`, and CLI-level `bridge_unavailable`; a Bridge restart never fabricates pre-restart history. This capability is included in v0.22.0.
+Named Linux uses a host user systemd service and signed Unix-socket attachments. macOS uses native SMAppService and Unix sockets; owned mode uses private manifest/policy checks, not the shared v2 grant path. Windows uses native scheduled tasks and Named Pipe authorization. Follow the [Linux](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md), [macOS](../macos-native/) or [Windows](../windows-native/) guide.
 
-```text
-ChatGPT
-  │
-  ▼
-ServerFS MCP
-  │  structured Agent RPC
-  ▼
-Unix socket
-  │
-  ▼
-Host Agent Bridge
-  ├── Codex
-  ├── Claude Code
-  ├── Qoder
-  └── ACP v1 profiles (operator-configured)
-```
+Shared Core grants restrict methods and aliases. A shared Core cannot start, stop or retire its owner. Matching UID/SID is not sufficient authorization; independent owners must not overlap writable roots. Keep owner credentials, state and configuration outside exposed workdirs.
 
-## Why it is separate
+## Enable only the required capabilities
 
-The base `compose.yml` remains host-Bridge-unaware. Linux deployments that need Agent delegation — or the v0.23.0 Repo Ops transport — explicitly add `compose.agent.yml`. Adding the overlay provides the authenticated host socket/lock transport; Agent runtimes still require their own independent policy enablement.
+The base Core has 11 filesystem tools. Binary transfer adds two; Agent delegation adds ten; [Repo Ops](../repo-ops/) adds four independently. Repo Ops-only still needs a Bridge but does not require a provider. It never creates an Agent task.
 
-This keeps:
+Agent delegation is not a shell or arbitrary argv interface. Codex, Claude, Qoder and configured [ACP profiles](../acp/) require an authorized writable workdir and `workspace-write` policy. Not every platform attachment supports every capability: for example, named macOS shared Cores expose one Agent workdir and no Repo Ops.
 
-- the filesystem MCP usable without native Agent runtimes or Repo Ops
-- the host socket and writer locks out of the base deployment
-- the security boundary visible in deployment configuration
-- existing filesystem-only deployments backward compatible
+## Submit and follow an Agent task
 
-## Runtime behavior
+1. Call `list_workdirs` to check the alias, access, Agent policy and runtime allowlist. Use `list_agent_runtimes` for current capabilities; it does not install or start providers.
+2. Optionally call `list_agent_models`. Codex uses its runtime catalog, Qoder its current-account catalog; Claude and ACP report unsupported discovery. Discovery does not start inference.
+3. Submit one authorized objective via `submit_agent_task`. Include the allowed mutation boundary, stop conditions and required evidence. An optional provider-native `model` applies to this task only; omission preserves native defaults/session behavior. Invalid selections are not silently replaced.
+4. Poll `get_agent_task` and read bounded cursor-paginated `read_agent_task_events`. Respond to actual provider requests using `respond_agent_approval` or `answer_agent_question`. ServerFS does not auto-approve. Use `send_agent_message` only when live steering is advertised.
+5. Retrieve the result, verify the requested outcome independently, or use `cancel_agent_task` when cancellation is authorized.
 
-ServerFS exposes ten structured Agent tools when Agent policy is enabled. They cover runtime/model discovery, task submission, status/events, exact retrieval of spooled final results, approval/question handling, steering where supported, and cancellation.
+On v1-compatible attachment paths, use the same optional `idempotency_key` and semantic submission after a lost submit response; this returns the retained original task, not a duplicate turn. Changed content with the same key fails with `AGENT_IDEMPOTENCY_CONFLICT`. Signed v2 Core grants (Linux named, macOS shared and grant-enabled Windows) currently reject both `idempotency_key` and `continue_from_task_id`, even if a runtime advertises session continuation. Omit them on those paths; an uncertain submit response is not safe to retry blindly. The optional `correlation_id` is for tracing, not deduplication. Tasks record execution manifests and normalized v1 event envelopes.
 
-They are **not** a shell, argv passthrough, or generic command executor.
+Qoder supports native session continuation, approvals, questions and cancellation, but not live steering or reattachment to a pre-restart in-flight process. Check advertised capabilities instead of inferring them from another provider.
 
-Stable v0.23.0 Agent deployments can expose:
+## Limits and recovery
 
-- 21 tools: filesystem + Agent
-- 23 tools: filesystem + binary + Agent
+| Setting | Default |
+| --- | --- |
+| Task lifetime | 2 hours |
+| Approval/question timeout | 30 minutes |
+| Active tasks | 4 |
+| Terminal retention | 7 days |
+| Inline result threshold | 256 KiB |
+| Maximum stored result | 8 MiB |
 
-v0.23.0 also reuses the authenticated host Bridge transport for an independently gated **Deterministic Repo Ops** capability. Repo Ops adds four MCP tools (`inspect_repo`, `run_repo_action`, `commit_repo_changes`, `push_repo`) without creating an Agent task or invoking a provider adapter. A workdir may enable Repo Ops while Agent mode remains disabled. Linux Host Bridge support shipped in v0.23.0, validated native Apple Silicon macOS support followed in v0.23.1, and v0.23.2 adds validated native Windows 11 x64 support.
+These Bridge policies are distinct from the Core RPC and provider event-idle timeouts. Named owners use their platform's private configuration; the Linux compatibility renderer maps the corresponding `SERVERFS_AGENT_*` environment settings.
 
-Repo Ops is not a generic command channel: Git operations have fixed semantics, named actions use operator-owned fixed argv plus SHA-256 integrity pins, and callers cannot supply executable, argv, environment, remote, ref, force, or shell syntax. Repo Ops writes and all named actions share the existing writer lease with filesystem mutations and Agent workspace-write tasks. Linux bootstrap/internal E2E, public ChatGPT MCP E2E, refreshed root/Agent Bridge CI, MCP conformance, Windows/macOS regression, and the post-freeze site build/deploy all passed before v0.23.0 publication. See [Deterministic Repo Ops](../repo-ops/) for the complete configuration, security, tool, and acceptance contract.
+Results are normalized and workdir-path-redacted before storage; they are not raw provider logs. Above the inline threshold, `get_agent_task` provides a bounded preview with byte count and SHA-256. Use `read_agent_task_result` for the exact stored UTF-8 text in bounded chunks (up to 64 KiB). Oversized results fail with `AGENT_RESULT_TOO_LARGE`. Read only the necessary chunks.
 
-## v0.12 Linux egress and interaction contract
+Disconnecting or stopping polling does not cancel a healthy task. An unanswered interaction becomes stale and interrupts it with `AGENT_INTERACTION_TIMED_OUT`. Cancellation (including `cancel_task` in an approval) is persisted before return; the provider interrupt is best-effort and bounded to 10 seconds. A terminal status is not proof the provider or writer has stopped.
 
-v0.12.0 keeps the same ten public Agent tools and adds explicit Linux deployment controls rather than a new orchestration layer. `SERVERFS_AGENT_USE_PROXY` independently selects the shared HTTP proxy for native Agent provider traffic. Claude and Qoder receive a scrubbed deterministic proxy environment; proxied Codex uses a Bridge-owned standalone app-server so ServerFS never restarts or mutates the user's shared managed Codex daemon merely to impose proxy policy. Direct mode preserves the existing native provider paths.
+Workspace-write tasks and Repo Ops coordinate with file mutations through writer leases. After abnormal exit, a persistent guard can refuse writes with `WORKDIR_RECOVERY_REQUIRED`. Reconciliation must prove the provider inactive before clearing the guard; retained nonterminal records then become interrupted with `AGENT_PROVIDER_INACTIVE`. Unknown state fails closed. Never remove guards, restart unrelated providers or blindly resubmit interrupted work.
 
-Agent proxying is intentionally credentialless-only in v0.12. If `SERVERFS_AGENT_USE_PROXY=true` while the shared proxy username/password is configured, deployment rendering fails closed. An authenticated upstream must be represented by a credentialless local broker. Tunnel and Jev have their own independent proxy switches and may use the authenticated shared endpoint.
+## Egress and optional advisors
 
-Provider-native approvals are surfaced through the existing `respond_agent_approval` tool; ServerFS does not auto-approve or weaken provider semantics. The inline/spool boundary is configured by `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES`, with the public default unchanged at 256 KiB and the maximum spooled result unchanged at 8 MiB. Large normalized message events are bounded independently so a valid large final response can still reach spool handling.
+Provider authentication remains in the native runtime. Linux named owners use private Bridge JSON (`proxy` and runtime `use_proxy`); the older singleton renderer uses `SERVERFS_AGENT_USE_PROXY`. Agent proxy endpoints must be credentialless. An authenticated upstream requires a credentialless local broker. Proxied Linux Codex uses a Bridge-owned standalone app-server rather than rewriting the user's managed daemon; Claude and Qoder receive controlled proxy settings. Tunnel and Jev egress are independent.
 
-## v0.9 model discovery and selection
+Optional [Jev advisors](../jev-advisors/) may advise before submission, during native model discovery with explicit task context, or on a real approval request. Advice remains `automatic=false`; it cannot change the runtime, model, policy, writer lease or provider decision. Without a configured key the Agent path does not depend on Jev.
 
-`list_agent_models` is the one new read-only Agent tool. Codex uses App Server `model/list`; Qoder uses the structured Agent SDK current-account catalog; Claude returns `model_discovery=unsupported` because the installed Claude Code/Agent SDK does not expose an equivalent stable native-account enumeration API. Discovery never starts an inference turn.
+## Verify and diagnose
 
-`submit_agent_task` accepts optional `model`. Omitting it preserves the runtime's native default or resumed-session behavior. An explicit provider-native ID applies only to that submission; ServerFS stores it as task/manifest evidence and includes it in idempotency identity, but never writes it as a runtime/workdir/user default. Unknown/unavailable models fail through the provider path; ServerFS never silently falls back.
+First verify the exact owner, attachment, workdir authorization, and runtime discovery. Then use a narrowly scoped task only when authorized. Follow the platform runbook for named instance diagnostics; the generic `serverfs diagnostics snapshot --format json` and `serverfs diagnostics task <task-id> --format json` commands require a compatible local endpoint and are not proof of signed named attachment.
 
-## v0.8 Qoder runtime
+Diagnostics are bounded, private RPC projections, not public tools or persistent distributed traces. Task disposition may be `available`, `unknown_task`, `not_retained` or CLI `bridge_unavailable`. Restart does not reconstruct lost in-memory history. Do not expose private logs or credentials.
 
-v0.8.0 added `qoder` as the third production runtime. It uses the official Qoder Agent SDK with the existing system `qodercli`, supports native session continuation, approval and `AskUserQuestion` brokerage, and cancellation through `interrupt()`.
-
-Qoder restart semantics are conservative: a persisted native session can be resumed by a new task, but ServerFS does not claim that an old in-flight qodercli process can be reattached after Bridge restart. Live steering is also deliberately disabled: a 2026-09-29 real SDK/CLI probe showed that `priority="now"` first ends the current `receive_response()` with an `error_during_execution` Result, while the steered success arrives only from a second response iteration. That does not fit the current one-task/one-terminal-Result Bridge contract.
-
-## v0.7 runtime reliability
-
-v0.7.0 introduced reliability and evidence around the existing Bridge rather than adding orchestration. New tasks carry an immutable execution manifest and optional opaque `correlation_id`; normalized events use envelope schema v1. The original v0.7.0 task deadline default was 24 hours and terminal retention was seven days.
-
-v0.7.1 keeps that contract unchanged and fixes a narrow Codex recovery edge case around a proven pre-provider-start control-socket failure. v0.7.2 adds maintenance-only recovery state hygiene: when lazy reconciliation proves `provider_active=false`, any still non-terminal ServerFS task is first marked `interrupted` with `AGENT_PROVIDER_INACTIVE`, pending interaction state becomes stale through the normal terminal transition, and only then is the recovery guard removed. Unknown provider state remains fail-closed and preserves the guard.
-
-### v0.7.3: lifecycle reliability
-
-The v0.7.3 release adds retry-safe Agent submission for callers that lose the `task.submit` response. `submit_agent_task` accepts an optional opaque `idempotency_key`, distinct from `correlation_id`. Reusing the same key with the same semantic submission returns the retained original task and does not start a second provider turn; conflicting reuse fails with `AGENT_IDEMPOTENCY_CONFLICT`.
-
-Agent lifetime is now administrator policy rather than a hard-coded 24-hour window. Release defaults are a 2-hour task timeout, a 30-minute approval/question timeout, four active tasks, and seven-day terminal retention. An unanswered interaction becomes stale and interrupts the task with `AGENT_INTERACTION_TIMED_OUT`. Explicit cancellation, including an approval decision of `cancel_task`, is persisted as terminal before the RPC returns. Provider interrupt is best-effort and internally bounded to 10 seconds so a stuck provider RPC cannot indefinitely block Bridge-side cancellation. The live writer lease is released only after background cleanup, and the persistent recovery guard is cleared only when provider-aware reconciliation proves the provider has stopped. Client disconnect or stopped polling alone does not cancel a healthy asynchronous task.
-
-These limits are separate from the MCP-to-Bridge RPC timeout and provider event-idle timeout. The deployment `.env` uses `SERVERFS_AGENT_TASK_TIMEOUT_SECONDS`, `SERVERFS_AGENT_INTERACTION_TIMEOUT_SECONDS`, `SERVERFS_AGENT_MAX_ACTIVE_TASKS`, and `SERVERFS_AGENT_TASK_RETENTION_HOURS`.
-
-Workspace-write tasks also publish a persistent per-slot recovery guard alongside the existing `flock`. If the Bridge exits abnormally, mutations fail closed with `WORKDIR_RECOVERY_REQUIRED` until provider-aware reconciliation proves the prior provider is no longer active. ServerFS does not blindly rerun an interrupted task.
-
-Final responses stay inline up to the configured spool threshold. The default remains 256 KiB; v0.12 exposes that boundary as `SERVERFS_AGENT_RESULT_SPOOL_THRESHOLD_BYTES`. Larger responses through 8 MiB are atomically spooled to private Bridge state and exposed by `get_agent_task` as a bounded preview plus size/SHA-256 metadata. `read_agent_task_result` retrieves the exact UTF-8 result in bounded chunks. Results above 8 MiB fail with `AGENT_RESULT_TOO_LARGE`.
-
-## Deployment verification
-
-For current Agent-enabled deployments, run:
-
-```bash
-uv run --frozen --no-sync python deployment/agent-bridge/verify_host.py --require-runtimes
-```
-
-The strict mode first proves the user-scoped Bridge deployment, then performs bounded read-only `runtime.list` retries for every enabled native runtime. It never starts, restarts, bootstraps, updates, kills, or otherwise manages Codex/Claude/Qoder. If a runtime remains unavailable after the retry window, verification fails and provider-native lifecycle diagnostics remain an operator action. For Codex specifically, if `codex app-server daemon update` succeeds with `runningVersion: null` and the managed control socket is absent, first prove there are no active Agent tasks, then run `codex app-server daemon bootstrap` without `--remote-control` and re-run `daemon version` plus this strict verifier.
-
-When recreating an MCP container that uses host-Bridge capabilities, preserve both `-f compose.yml -f compose.agent.yml`; using base Compose alone removes the Bridge socket/lock mounts even if `.env` still contains Agent or Repo Ops policy.
-
-## Optional Jev advisors
-
-The host Bridge can optionally use TypeSafe Jev as an **advisory-only** decision layer. It does not become an Agent runtime or automatic router.
-
-With `SERVERFS_JEV_API_KEY` configured, one task-submission request provides Agent Task Preflight and Runtime Router advice. v0.9.0 also lets `list_agent_models` include a concrete proposed task: after successful native model discovery, Model Advisor may recommend one of the currently exposed candidates before submission. In v0.12, `SERVERFS_JEV_USE_PROXY` independently selects the shared proxy for Jev's explicit HTTP client; this does not affect Agent provider or Tunnel routing. ServerFS returns that advice with `automatic=false` and never copies it into `submit_agent_task.model`. If the native provider later creates a concrete approval request, Approval Advisor may make one additional Jev request; identical approvals within the same task reuse cached advice. With no key, model discovery/submission still work and no Jev requests occur.
-
-Jev never overrides the explicit runtime/model, workdir policy, writer lease, provider approval state, or `respond_agent_approval`. See [Jev Advisors](../jev-advisors/) for the model contract, request flow, data minimization, and failure behavior.
-
-## Delegation hygiene
-
-`submit_agent_task` is intentionally an objective-level interface, not a place to embed an
-entire operational transcript. For normal authorized engineering or operations, keep each
-delegation narrow and explicit:
-
-- state the user-owned workdir or existing deployment being operated on;
-- give one concrete objective;
-- state the allowed mutation scope and stop conditions;
-- ask for the minimum evidence needed to verify completion;
-- prefer existing structured ServerFS/project actions over unrelated shell, network or
-  security-analysis detail;
-- split implementation, validation, deployment and Git publication when they are genuinely
-  separate capability boundaries.
-
-A compact pattern is:
-
-```text
-Objective: <one thing to accomplish>
-Scope: <workdir/path or existing deployment component>
-Allowed changes: <exact mutation boundary>
-Stop if: <failure/ambiguity condition>
-Return: <specific evidence>
-```
-
-This is a clarity and least-authority rule, not a mechanism for evading provider safety
-checks. ServerFS forwards the submitted prompt as written; it does not automatically
-rewrite, encode or sanitize instructions to change provider safety outcomes. Do not encode,
-disguise, fragment or relocate instructions merely to bypass a classifier. If a legitimate
-task is blocked, narrow it at a real capability boundary or use a more structured existing
-ServerFS primitive without weakening authorization, audit, writer-lease or network-isolation
-controls.
-
-For complete ACP setup, validation, task lifecycle, and troubleshooting, see the [ACP Guide](../acp/).
+For a delegated task, state the objective, precise scope, allowed changes, stop conditions and evidence needed. Split tasks only along real capability boundaries. ServerFS forwards the prompt as submitted; do not disguise or fragment instructions to bypass provider safety or weaken authorization and auditing.

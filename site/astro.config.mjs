@@ -14,7 +14,7 @@ export default defineConfig({
         alt: 'ServerFS',
       },
       description:
-        'Secure, standards-first MCP filesystem access on Linux, Windows and macOS — read-only by default, with controlled mutations, binary transfer and Agent delegation; v0.24.0 adds optional Linux Docker Cloudflare Tunnel while preserving independently gated Deterministic Repo Ops across Linux Host Bridge, validated Apple Silicon macOS and native Windows 11 x64, without Agent fallback.',
+        'Controlled MCP filesystem access on Linux, macOS and Windows. Named Core, optional independent Connectors and host Agent Bridge; read-only workdirs by default, with separately authorized binary transfer, Agent and deterministic Repo Ops.',
       defaultLocale: 'root',
       locales: {
         root: {
@@ -110,13 +110,13 @@ export default defineConfig({
           translations: { 'zh-CN': '运维' },
           items: [
             {
-              label: 'Cloudflare Tunnel (Linux v0.24.0)',
-              translations: { 'zh-CN': 'Cloudflare Tunnel（Linux v0.24.0）' },
+              label: 'Cloudflare Connector',
+              translations: { 'zh-CN': 'Cloudflare Connector' },
               slug: 'docs/cloudflare-tunnel',
             },
             {
-              label: 'Tunnel Diagnostics',
-              translations: { 'zh-CN': 'Tunnel 诊断' },
+              label: 'Connector Diagnostics',
+              translations: { 'zh-CN': 'Connector 诊断' },
               slug: 'docs/tunnel-diagnostics',
             },
             {

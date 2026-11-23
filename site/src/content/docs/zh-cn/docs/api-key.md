@@ -1,103 +1,36 @@
 ---
 title: 静态 API Key
-description: 使用一个可选的共享 API Key 保护远程 Streamable HTTP。
+description: 通过独立共享 bearer 凭据保护 HTTP Core。
 ---
 
-ServerFS v0.17.0 为**远程 Streamable HTTP** 增加了可选的静态 API Key 认证。它适合单个操作者或少量可信客户端，在不部署完整 OAuth 2.1 的情况下提供一个简单的应用层认证边界。
+单个操作者或少量可信客户端可选择 API Key。它准入共享密钥持有者，不区分个人身份；Workdir 授权不变。需要身份联合或可独立撤销凭据时，选择 [OAuth](../oauth/)。
 
-API Key 只证明调用方持有该实例的共享密钥。认证通过后，真正决定调用方能够做什么的仍然是现有 ServerFS workdir 权限策略。
+## 配置
 
-## 配置一个 Key
+每个 Core 使用独立高熵随机密钥。Linux 在私有 env 中设置 `SERVERFS_HTTP_API_KEY`；macOS 命名 HTTP 使用私有 staging 输入；Windows 初始配置生成受保护的密钥。按所选平台手册操作。API Key 与 OAuth 互斥，原生 stdio 均不需要。
 
-在 `.env` 中设置一个高熵随机密钥：
+公网访问要求 HTTPS 与精确 Host/Origin 准入。Connector 凭据与调用方凭据分离；命名 OpenAI HTTP Connector 还需要 Core 的 bearer header。
 
-```text
-SERVERFS_HTTP_API_KEY=<long-random-secret>
-```
+## 连接
 
-留空或不设置即表示关闭。
-
-静态 API Key 与内置 OAuth 互斥。如果 `SERVERFS_HTTP_API_KEY` 非空且同时设置 `SERVERFS_OAUTH_ENABLED=true`，ServerFS 会在启动时直接失败，而不是自行选择其中一种模式。
-
-Windows/macOS 原生 stdio 不使用这个 HTTP 凭据。
-
-## 客户端认证
-
-推荐方式：
+优先使用 Header：
 
 ```http
 Authorization: Bearer <key>
 ```
 
-对于只接受一行完整 MCP URL 的产品，也支持兼容形式：
+仅接受一行 URL 的客户端可使用兼容方式：
 
 ```text
 https://mcp.example.com/mcp?key=<key>
 ```
 
-每个请求只允许一种凭据来源。以下情况会被拒绝：重复 Authorization 头、重复 `key` 查询参数、空凭据，以及同时提供 Header 与 Query 凭据。
+每个请求只发送一种凭据。缺失、错误、空值、重复或混用凭据返回 HTTP 401，不触发 OAuth 登录。优先使用 Header：URL 密钥可能泄漏到反向代理日志、监控或浏览器历史。不得公开真实密钥。
 
-API Key 失败会在 HTTP 边界直接拒绝，不会暴露 OAuth discovery，也不会触发 OAuth 登录流程。
+## 验证与维护
 
-## Query 参数风险
+验证无密钥和错误密钥的拒绝，再检查认证后的 MCP initialize、预期工具、安全文件访问及相关拒绝操作。公网入口需要另行远程验证。
 
-`?key=` 很方便，但更容易在运维链路中泄漏。反向代理、WAF、浏览器历史、监控系统等都可能记录完整 URL。
+只有一个有效密钥，不提供新旧并行缓冲。Linux 轮换需重建所选 Core，更新客户端和受影响的 OpenAI bearer 文件/Connector。命名原生 staging 仅用于新建；采用明确的迁移或重新配置计划，而非直接修改私有 manifest。
 
-API Key 模式下，ServerFS 会关闭其自身默认的 Uvicorn access log，因此受支持的 ServerFS HTTP runner 不会打印带密钥的 query URL。但 ServerFS 无法控制请求到达自身之前的上游基础设施日志。
-
-只要客户端支持自定义 Header，就优先使用 `Authorization: Bearer`。如果必须使用 `?key=`，请确保上游 access log 不持久化 query string。
-
-## HTTPS 与部署边界
-
-静态 API Key 是 bearer credential。公网部署仍然必须使用 HTTPS。
-
-ServerFS 不负责域名、DNS 或 TLS 证书管理。推荐公网形态仍然是：
-
-```text
-MCP client
-   |
-   | HTTPS
-   v
-反向代理 / 网关
-   |
-   | loopback / 私网 HTTP
-   v
-ServerFS
-```
-
-`compose.http.yml` 默认只把 MCP 端点发布到 loopback。
-
-## 原有授权规则仍然生效
-
-API Key 不会绕过：
-
-- 已配置的 workdir 边界；
-- 默认只读策略；
-- 隐藏文件/凭据路径拒绝规则；
-- revision-guarded mutation；
-- 二进制传输开关与大小限制；
-- Agent Bridge 开关与 runtime allowlist；
-- 各平台原生文件系统隔离机制。
-
-## 轮换
-
-v0.17.0 刻意只支持一个当前有效 Key，不引入凭据数据库。
-
-轮换方法：
-
-1. 生成新的高熵随机密钥；
-2. 替换 `.env` 中的 `SERVERFS_HTTP_API_KEY`；
-3. 重建/重启 ServerFS；
-4. 更新客户端配置。
-
-新进程启动后，旧 Key 即失效。
-
-## 如何选择认证边界
-
-| 模式 | 配置 | 身份模型 |
-| --- | --- | --- |
-| 无内置认证 | API Key 为空、OAuth 关闭 | 私网、OpenAI Tunnel 或外部认证网关 |
-| 静态 API Key | `SERVERFS_HTTP_API_KEY=<secret>` | 一个共享密钥持有者 |
-| OAuth 2.1 | `SERVERFS_OAUTH_ENABLED=true` | 联邦身份 + ServerFS 资源 Token |
-
-如果需要用户身份、浏览器登录或可独立吊销的凭据，请使用 [OAuth 2.1](../oauth/)。
+平台选择、凭据处理与轮换细节见 [API Key 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/api-key.md)。

@@ -117,6 +117,9 @@ def test_two_offline_connectors_are_lifecycle_independent(tmp_path: Path) -> Non
         path.chmod(0o600)
     standin = tmp_path / "connector_standin.py"
     standin.write_text(_STANDIN, encoding="utf-8")
+    # The synthetic script is bind-mounted read-only into distinct connector UIDs.
+    # Do not depend on the test runner umask; credential files stay mode 0600.
+    standin.chmod(0o444)
     core_overlay = ""
     if USE_SOURCE:
         source = tmp_path / "candidate-src"

@@ -1,168 +1,84 @@
 ---
 title: 架构
-description: ServerFS 的数据路径与信任边界。
+description: ServerFS 的独立组件、实例拓扑、原生平台边界与生命周期。
 ---
 
-## MCP Core 与入口路径
+## 组件模型
+
+ServerFS 通过 MCP 为客户端提供对显式配置的本地目录（Workdir）的受控访问。持久 HTTP 部署由 MCP Core、零个或多个入口 Connector，以及可选宿主机 Agent Bridge 组成。本地 stdio 是独立传输选择，不注册持久 HTTP 实例。
 
 ```text
-MCP 宿主
-   │
-   ├── stdio（Windows/macOS 原生）
-   ├── Streamable HTTP（Linux；默认 loopback/私有）
-   ├── OpenAI Secure MCP Tunnel（可选 ChatGPT 入口）
-   ├── Cloudflare Tunnel（Linux v0.24.0 稳定版）
-   └── Cloudflare Tunnel（macOS 原生 v0.24.1）
-               │
-               ▼
-          ServerFS MCP Core
-               │  限定策略
-               ▼
-          明确配置的 workdir
+MCP 客户端 ── 直接 HTTP ──────────────┐
+           ├─ OpenAI Connector ──────┤
+           └─ Cloudflare Connector ──┤
+                                     ▼
+                                HTTP MCP Core ── 受控 Workdir
+                                     │
+                                认证的本地 IPC
+                                     │
+                              可选 Agent Bridge ── 宿主机 Agent / Repo Ops
 ```
 
-MCP Core 与工具契约不依赖特定宿主。Linux 的通用 HTTP 发布为显式 opt-in，默认只绑定 loopback；对公网开放时必须显式配置 Host 策略，并在明确的入口边界终止 TLS 与认证。OpenAI Tunnel 继续作为可选、经过认证、仅出站的 ChatGPT 适配器。v0.24.0 Linux 正式提供的 Cloudflare Tunnel 增加独立 Connector，共享私有 ServerFS 网络和专用隧道出站网络，不发布主机端口，客户端必须另行通过 API Key/OAuth 认证。macOS 原生 Cloudflare 是独立的 v0.24.1 功能：loopback HTTP origin 与 Connector 复用现有 app-associated SMAppService LaunchAgent 生命周期，并使用私有凭据和精确 Host 准入。隔离 staging 已通过 HTTPS 401/200、11 个工具发现、只读负向用例、65.1 秒 SSE，以及 Connector 重启后 8/8 次新会话恢复；旧会话返回 404。不声称 SSE 重放。已审阅 Login Items 架构等价性，但未执行 logout/login 或 reboot。Windows 原生 Cloudflare 已随 v0.24.2 发布：两个独立、同用户 Task Scheduler owner 已通过公网 ChatGPT 工具与跨入口文件操作验收；真实公网 SSE 超过 60 秒的子门槛已通过（三次分别为 75.0、70.0、65.0 秒，约每 15 秒收到 keepalive；同一 session 的 `tools/list` 返回 200（27 个工具），新 session 返回 200）。Operator 于 2026-11-10 豁免整代恢复测试；该测试未测试、未通过。Windows HTTP origin 与 cloudflared 共用一个 kill-on-close Job generation。这是符合 Windows 架构的等价验收，不是“仅重启 Connector”通过；旧内存 session 不保证存活或重放。两个 owner 共享一个 Agent Bridge/Repo Ops 服务，Cloudflare 依赖期间须保持 Bridge 可用。详见 [Cloudflare Tunnel](../cloudflare-tunnel/)、[Windows 原生部署](../windows-native/)与 [macOS 原生部署](../macos-native/)。基础 Compose 的 MCP 容器还接入第二个 `internal:true` 网络 `serverfs_file_ingress`，cloudflared 不加入该网络；MCP 主容器仍然没有通用互联网出口。
+上图表示逻辑路径，不要求部署全部组件，也不意味着所有组合具有完全相同的平台命令接口。
 
-## 可选 ChatGPT 文件入口路径
+| 组件 | 职责 | 所有权 |
+| --- | --- | --- |
+| MCP Core | MCP 会话、HTTP 调用方准入、Workdir 策略、文件访问与可选工具暴露 | 独立配置和运行时 |
+| Connector | 通过外部 Tunnel 将 MCP 流量转发至指定 HTTP Core | 独立 Provider 凭据、身份和进程 |
+| Agent Bridge | 在宿主机执行已授权的 Agent 任务与确定性 Repo Ops，协调 writer lease | 独立私有运行时、策略、IPC 与任务状态 |
 
-```text
-ChatGPT 文件参数
-   │
-   │ 临时 HTTPS URL
-   ▼
-ServerFS MCP
-   │ 仅专用内部网络
-   ▼
-serverfs-file-ingress
-   │ 仅允许经策略校验的 HTTPS/443 出站
-   ▼
-临时文件主机
-```
+直接 HTTP 是 Core 的暴露选项，不属于 Connector。本地或私有网络可达的 Core 不必使用 Tunnel。公网接入需要独立的调用方准入边界；Tunnel 凭据不是 MCP 调用方凭据。命名 OpenAI HTTP Connector 使用静态 Core bearer header，不支持将 OAuth-only Core 作为这一接入路径。
 
-该 sidecar 为显式可选能力。它不挂载 workdir、不持有 OpenAI/Tunnel 凭据，也不发布端口。MCP 主容器始终不获得互联网出口，只把临时 URL 和字节上限发送给 sidecar。主机授权可以来自管理员配置的精确主机名，也可以来自单独开启、根据真实 ChatGPT 文件参数实测得到的受限 OpenAI Azure Blob 账户家族；通用通配符会被拒绝。随后 Sidecar 继续校验 DNS 结果必须全部可公网路由，将连接固定到已验证 IP 并按原始主机名校验 TLS，对每次重定向重新校验，并执行超时和字节上限后才返回原始字节。
+## 实例身份与 Bridge 模式
 
-## 可选静态 API Key 路径
+持久 Core 使用 `instance_id`；入口通过 Provider、目标 Core 和（在支持时）`connector_id` 选择。Bridge owner 拥有独立状态与 `bridge_id`。ID 是稳定标识，不是凭据，也不能证明授权。原生标识由 1–32 个 ASCII 小写字母、数字及内部连字符组成，首尾必须为字母或数字。兼容身份 `default` 保留既有资源，新命名部署不会隐式迁移它。
 
-```text
-MCP client
-   │ Authorization: Bearer <key>
-   │ 或 /mcp?key=<key>
-   ▼
-ServerFS 静态 API Key ASGI 边界
-   ▼
-Streamable HTTP MCP app
-   ▼
-现有 ServerFS workdir 策略
-```
+| Bridge 模式 | 含义 |
+| --- | --- |
+| `disabled` | 不引用 Bridge，仅提供文件能力，Agent 与 Repo Ops 均关闭；仍可独立启用二进制传输。 |
+| `owned` | 部署拥有专属 Bridge；macOS/Windows 的 owner ID 与 Core ID 相同，Linux 使用独立 Bridge ID。 |
+| `shared` | Core 引用同一宿主机上独立管理的 Bridge，只有 owner 管理 grant 与生命周期。 |
 
-v0.17 的 API Key 路径只是 SDK Streamable HTTP app 外的一层小型 HTTP ingress wrapper，不引入 Authorization Server、数据库、用户身份、scope 模型或 provider egress。API Key 与内置 OAuth 互斥。为了兼容一行 MCP URL 支持 query key，但该模式会关闭 ServerFS 自身默认的 Uvicorn access log，避免由 ServerFS 自己打印带 secret 的 URL。详见[静态 API Key](../api-key/)。
+每个签名接入均需针对 Core 身份和允许的 Workdir/方法范围显式授权。同一 UID、SID、socket 或目录不构成授权。撤销或过期的 grant、重放、未授权任务及结果访问必须失败关闭。独立 Bridge owner 不得占用重叠可写根目录；同用户组件隔离并不是互不信任用户之间的安全沙箱。
 
-## 可选 OAuth 路径
+## 部署拓扑
 
-```text
-MCP client
-   │ OAuth bearer
-   ▼
-ServerFS MCP Resource Server
-   │ 仅私有 introspection
-   ▼
-serverfs-auth
-   │
-   ├── GitHub
-   ├── 钉钉
-   ├── 飞书 / Lark
-   └── 微信开放平台
-```
+| 拓扑 | 适用场景 |
+| --- | --- |
+| A — 多 Connector → 单 Core → 单 Bridge | 多条入口访问同一 Core 策略与会话所有者。 |
+| B — 多 Core → 共享 Bridge | Core 各自拥有策略与调用方准入，同时显式共享宿主机执行边界。 |
+| C — 多套独立 Core/Bridge | 独立任务状态、运行时和生命周期；使用互不重叠的可写根目录。 |
+| D — 一个或多个纯文件 Core | 无需 Agent Bridge、Agent runtime 或 Provider 凭据。 |
 
-`serverfs-auth` 是独立部署的非 root 服务，拥有自己的可写 SQLite state 与 OAuth-only egress network。Provider 凭据不会进入 `serverfs-mcp`；MCP 容器也不会加入 OAuth 出站网络。Resource Server 只接受 ServerFS 自己签发、绑定到配置 MCP resource 的不透明 Token。准入策略精确且默认拒绝，身份准入后仍使用原有 workdir 策略。
+拓扑是产品模型。具体 provision 路径、限制及验收证据以平台指南为准；不能推断所有功能的任意组合都已支持。
 
-OAuth 属于 Linux remote-HTTP 部署形态，不属于 Windows/macOS 原生 stdio。公网 TLS/反向代理形态、provider callback、client 注册与 Tunnel 兼容边界详见 [OAuth 2.1](../oauth/)。
+## 平台实现
 
-## 可选 Deterministic Repo Ops 路径（v0.23+；当前 v0.24.0）
+| 平台 | Core / Connector 生命周期 | Bridge 生命周期与 IPC |
+| --- | --- | --- |
+| Linux | 独立 Compose project；直接 HTTP 发布、内部网络或可选 OpenAI/Cloudflare 服务 | 可选宿主机用户 systemd unit、Unix socket、peer credentials 和签名 grant |
+| macOS | 签名 App 关联 SMAppService / LaunchAgents；纯文件/owned 实例 staging 时预声明同 Provider Connector ID | owned 使用专属 Unix socket 与策略校验；shared 使用签名 v2 grant |
+| Windows | 当前用户 Task Scheduler、独立组件身份与 Job 进程约束 | 独立 owner/worker 环境、Named Pipe、SID、受保护 ACL 与签名 grant |
 
-```text
-ServerFS MCP 容器
-   │  结构化 repo.* RPC
-   ▼
-已认证的宿主机 Bridge transport
-   │
-   ├── 固定语义的 Git inspection / commit / push
-   └── 管理员定义、integrity-pinned 的 named actions
-```
+当前实现限制：
 
-Repo Ops 会复用宿主机 Bridge transport、宿主机 Workdir 路径、当前用户 Git 凭据上下文以及共享 writer lease，但它**不会**进入 Agent 执行路径。不会选择模型/Runtime，不会创建 Agent task/session，也不会调用 Provider adapter。Repo Ops 与 Agent delegation 按 Workdir 独立授权。Linux Host Bridge 支持始于 v0.23.0，已验收的 Apple Silicon 原生 macOS 支持在 v0.23.1 加入，v0.23.2 再加入已验收的 Windows 11 x64 原生支持。详见 [Deterministic Repo Ops](../repo-ops/)。
+- **Linux：** 每个 Compose project 中每种 Tunnel Provider 对应一个服务。签名 Bridge overlay 在 slot 01 绑定一个启用 Agent/Repo Ops 的 Workdir，可另外配置互不重叠的纯文件目录。
+- **macOS：** Shared Core 绑定一个 Agent Workdir，不支持 Repo Ops，也没有 Connector staging 接口。纯文件与 owned 实例支持预声明的额外 Connector ID。
+- **Windows：** 支持命名 Connector ID 和 owned/shared 签名接入。初始共享配置助手最多支持 16 个 Core；运行时和配置助手仅用于新建，不支持在线升级或凭据轮换。
 
-## 可选 Agent 路径
+具体步骤见[快速开始](../getting-started/)、[macOS](../macos-native/)和 [Windows](../windows-native/)。
 
-```text
-ServerFS MCP 容器
-   │
-   │ 只读 Unix socket 挂载
-   ▼
-宿主机 Agent Bridge
-   │
-   ├── Codex
-   ├── Claude Code
-   ├── Qoder
-   └── ACP v1 profiles（运维配置）
-```
+统一的是公开 MCP 契约和安全结果，不要求各操作系统私有 IPC 编码、状态布局和服务实现完全一致。不引入中央服务管理器。
 
-Bridge 以用户级宿主机服务运行，并在仓库 checkout 之外维护自己的 runtime socket、锁、已安装 release、配置与状态。
+## 生命周期与故障边界
 
-### 可选 Jev advisory 路径
+解耦意味着操作 Connector 不会隐式重启 Core、Bridge 或其他 Connector。先准备依赖并验证就绪，再显式启动所需组件。依赖组件仍活跃时，Core/Bridge 停止操作可能被拒绝；按平台规定的退役顺序执行，并先检查活跃任务和 writer lease。共享 Core 不得启停、升级、卸载或重新配置 Bridge owner。Bridge 故障不能扩大权限；文件能力可继续提供，而依赖 Bridge 的请求安全失败。入口重启不保证旧 SSE 会话重放。
 
-```text
-Agent task / 模型建议请求 / provider approval
-   │
-   ▼
-宿主机 Agent Bridge
-   │  最小化结构化 state
-   ▼
-TypeSafe Jev API
-   │  probabilities / confidence / Noul
-   ▼
-仅作为 advisory result
-```
+## 可选能力
 
-Jev 从宿主机 Bridge 发起调用，不运行在 MCP 容器中。Task Preflight 与 Runtime Router 共用一次任务提交请求；Model Advisor 仅在原生模型发现之后、任务提交之前按需运行；Approval Advisor 只在 provider 真正创建 approval request 后运行。这些输出不会获得授权权力，也不会自动选择 runtime 或模型。
+- **二进制传输：** 显式启用的有界整文件传输；可选文件入口采用独立隔离的 HTTPS 下载路径。见[二进制传输](../binary-transfer/)。
+- **Repo Ops：** 四个有界仓库工具，固定 Git 语义与完整性固定的 named action。需要已授权 Bridge，但绝不启动 Agent task。见 [Repo Ops](../repo-ops/)。
+- **Agent 委托：** 原生 Codex、Claude、Qoder 或显式配置的 ACP profile；Provider 原生认证与权限继续有效。见 [Agent Bridge](../agent-bridge/)与 [ACP](../acp/)。
+- **Jev：** 可选建议能力，永远不获得执行或审批权。见 [Jev Advisors](../jev-advisors/)。
 
-## 原生持久生命周期
-
-原生部署把持久化放在 MCP 协议面之外，并严格限定在当前用户的操作系统生命周期中：
-
-```text
-Windows v0.14.0+
-Task Scheduler 2.0（InteractiveToken · LeastPrivilege）
-   │  登录触发 + 1 分钟 TimeTrigger heartbeat
-   ▼
-无窗口 watchdog
-   │  Job Object containment + 有界重启
-   ▼
-managed runner
-   │  有界 Tunnel generation 重启
-   ▼
-tunnel-client -> supervisor -> ServerFS / Agent Bridge
-
-macOS v0.13.2
-SMAppService + 当前用户 LaunchAgent
-   ▼
-持久 Tunnel / Agent Bridge
-```
-
-Windows v0.14 生命周期刻意**不使用** SCM/LocalSystem Windows Service：安装、运行、维护与卸载全过程都保持当前用户、无需提权。全新任务注册后默认 disabled；`service start` 才启用，`service stop` 会先禁用任务再结束当前 Action，因此 heartbeat 不会把主动停止误认为故障并重新拉起。`IgnoreNew` 与原生 ownership mutex 共同保证只有一个受管 Windows Tunnel 生命周期。
-
-## 能力边界
-
-ServerFS 提供窄能力操作，而不是通用执行原语：
-
-- 文件系统读取工具
-- 受保护的文件写入
-- 有界整文件二进制传输
-- 可选且隔离的 ChatGPT 文件入口
-- Linux remote HTTP 可选单一共享密钥静态 API Key 边界
-- Linux remote HTTP 可选 OAuth 2.1 Resource Server + 隔离身份 broker
-- 结构化 Agent task RPC、模型发现与单次任务模型覆盖
-- Deterministic Repo Ops：Linux Host Bridge 自 v0.23.0 起支持，已验收 Apple Silicon 原生 macOS 自 v0.23.1 起支持，已验收 Windows 11 x64 原生部署自 v0.23.2 起支持；提供有界 Git inspection、固定 named action、显式文件 commit、精确当前 upstream push，以及面向已验证 `package.json` 发布形态的固定 npm 发布动作
-- 可选的宿主机 Jev advisory decision
-
-稳定版 **v0.24.0** 保留既有 11 / 13 / 21 / 23 工具组合，并可在 Linux Host Bridge、已验收的 Apple Silicon 原生 macOS 和已验收的 Windows 11 x64 原生部署上独立增加 4 个 Repo Ops 工具，因此 Repo Ops-only 为 15 个、二进制 + Repo Ops 为 17 个、Agent + Repo Ops 为 25 个，三者全部启用为 27 个。Repo Ops 与 Agent delegation 分别门控，且 Repo Ops 不创建 Agent task、不接收通用 shell / argv / env / remote / ref / force。v0.23.0 的 Linux bootstrap / 内部与公共 ChatGPT MCP E2E 继续作为基线；v0.23.1 新增原生 macOS live acceptance；v0.23.2 新增 Windows 进程树 containment、reparse point fail-closed、Git-for-Windows portability 与真实 public MCP acceptance。完整契约与证据见 [Deterministic Repo Ops](../repo-ops/)。Jev 仍是 Agent Bridge 内部 advisor，而不是 MCP capability surface。
+策略详见[配置](../configuration/)、[安全](../security/)与 [HTTP 认证](../api-key/)。发布级源码/构建门禁与真实原生、公网验收均单独记录在[发布清单](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.25.0-release-checklist-2026-11-21.md)中。
