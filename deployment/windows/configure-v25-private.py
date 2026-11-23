@@ -34,6 +34,7 @@ def parser():
     )
     p.add_argument("--bridge-id")
     p.add_argument("--bridge-policy", type=Path)
+    p.add_argument("--agent-proxy-env-file", type=Path)
     return p
 
 
@@ -93,11 +94,9 @@ def render_bridge(request, bridge_id, sid, home, pipe):
         and set(runtimes) <= {"codex", "claude", "qoder"},
         "unsupported Bridge renderer input",
     )
-    require(
-        not any(x.get("use_proxy") for x in runtimes.values())
-        and not any(x.get("use_proxy") for x in request.get("acp_profiles", [])),
-        "proxy-enabled runtimes require separate operator configuration",
-    )
+    from serverfs_mcp.windows_v25.named_agent_proxy import uses_agent_proxy
+
+    uses_agent_proxy(request)
     return {
         "bridge_id": bridge_id,
         "core_grants_enabled": True,
@@ -373,6 +372,8 @@ def provision(args):
         "installed controller required",
     )
     mode = validate_topology(args.core, args.bridge_id, args.bridge_policy)
+    if mode == "disabled":
+        require(args.agent_proxy_env_file is None, "file-only mode cannot configure Agent proxy")
     sid = storage._sid()
     existing = storage.core_inventory()
     occupied = {item.port for item in _windows_ipv4_tcp_listeners()}
@@ -440,6 +441,35 @@ def provision(args):
         owner_policy = prepared[0][2] if mode == "owned" else load_policy(args.bridge_policy)
         roots.extend(owner_policy[3])
         owner_request = render_request_from_config(owner_policy[1], owner_policy[2])
+        from serverfs_mcp.windows_v25.named_agent_proxy import parse_proxy_source, uses_agent_proxy
+
+        wants_proxy = uses_agent_proxy(owner_request)
+        require(
+            wants_proxy == (args.agent_proxy_env_file is not None),
+            "explicit private Agent proxy source required iff a runtime opts in",
+        )
+        proxy_source = None
+        if wants_proxy:
+            source = args.agent_proxy_env_file
+            require(source.is_absolute(), "absolute private Agent proxy source required")
+            from serverfs_mcp.windows_cloudflare_security import _no_reparse_components
+
+            _no_reparse_components(source)
+            storage.check_private(source, directory=False, sid=sid)
+            source_info = source.stat(follow_symlinks=False)
+            require(
+                0 < source_info.st_size <= 4096,
+                "private Agent proxy input is unavailable or oversized",
+            )
+            resolved_source = source.resolve(strict=True)
+            require(
+                all(not resolved_source.is_relative_to(root) for root in roots),
+                "private Agent proxy source must stay outside exposed workdirs",
+            )
+            proxy = parse_proxy_source(source.read_bytes())
+            proxy_source = (
+                f"SERVERFS_AGENT_PROXY_URL={proxy.url}\nSERVERFS_AGENT_NO_PROXY={proxy.no_proxy}\n"
+            ).encode()
         document = render_bridge(
             owner_request, bid, sid, home, WindowsBridgeResources(sid, bid).pipe_name
         )
@@ -463,6 +493,7 @@ def provision(args):
             home / "service.json",
             config,
             home / "state/core-grants.json",
+            home / "agent-proxy.env",
             home / "private-config-attempt",
         ):
             absent(target)
@@ -513,6 +544,8 @@ def provision(args):
         owner, home, worker, document = bridge
         config = home / "bridge.json"
         publish(config, json_bytes(document), sid)
+        if proxy_source is not None:
+            publish(home / "agent-proxy.env", proxy_source, sid)
         revisions = json.loads(worker_call(worker, _DIGEST, config))
         require(
             set(revisions) == {w["alias"] for w in document["workdirs"]}

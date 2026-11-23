@@ -304,6 +304,9 @@ def run_independent_bridge_v2(manifest: Manifest) -> int:
     from .readiness import publish
 
     plan = load_native_bridge_plan(manifest)
+    from .named_agent_proxy import read_owned_named_agent_proxy
+
+    proxy = read_owned_named_agent_proxy(manifest=manifest, config_path=plan.config_path)
     _assert_instance_isolation(manifest)
     assert_legacy_writable_roots_disjoint(manifest)
     lease = LifecycleLease(
@@ -314,7 +317,7 @@ def run_independent_bridge_v2(manifest: Manifest) -> int:
     try:
         with WindowsJob(plan.job_name) as job:
             try:
-                child_env = bridge_child_environment(None)
+                child_env = bridge_child_environment(proxy)
                 child_env.pop("SERVERFS_BRIDGE_PYTHON", None)
                 bridge = spawn_bridge(
                     config_path=plan.config_path,
@@ -333,7 +336,7 @@ def run_independent_bridge_v2(manifest: Manifest) -> int:
                 )
                 if bridge.stdin is None:
                     raise RuntimeErrorV25("independent Bridge bootstrap is unavailable")
-                frame = bootstrap_frame_bytes(None, prior_bridge_execution_stopped=True)
+                frame = bootstrap_frame_bytes(proxy, prior_bridge_execution_stopped=True)
                 if bridge.stdin.write(frame) != len(frame):
                     raise RuntimeErrorV25("independent Bridge bootstrap is incomplete")
                 bridge.stdin.flush()

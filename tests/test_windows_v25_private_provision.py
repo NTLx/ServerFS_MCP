@@ -160,13 +160,14 @@ def test_native_render_uses_named_resources_and_flat_runtime(tmp_path):
     assert "runtimes" not in actual and actual["enable_fake_runtime"] is False
 
 
-def test_unsupported_proxy_refused(tmp_path):
+def test_explicit_proxy_policy_is_preserved_by_named_renderer(tmp_path):
     request = {
         "workdirs": [workdir(runtimes=("claude",))],
-        "runtimes": {"claude": {"use_proxy": True}},
+        "runtimes": {"claude": {"enabled": True, "use_proxy": True}},
     }
-    with pytest.raises(tool.Refusal):
-        tool.render_bridge(request, "owner", "sid", tmp_path, "pipe")
+    actual = tool.render_bridge(request, "owner", "sid", tmp_path, "pipe")
+    assert actual["claude"]["use_proxy"] is True
+    assert "proxy" not in actual  # endpoint arrives only over the private bootstrap
 
 
 def test_private_root_boundary(tmp_path):
