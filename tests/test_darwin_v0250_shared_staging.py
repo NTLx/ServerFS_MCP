@@ -216,9 +216,7 @@ def test_shared_stage_accepts_two_agent_workdirs_with_explicit_v2_owner_grant(ca
     assert result["state"] == "staged-not-registered"
     saved = json.loads((c["root"] / "shared-bridge-binding.json").read_text())
     assert saved["schema_version"] == 2
-    assert {entry["alias"] for entry in saved["workdirs"]} == {
-        "workspace", "other-workspace"
-    }
+    assert {entry["alias"] for entry in saved["workdirs"]} == {"workspace", "other-workspace"}
 
 
 @pytest.mark.parametrize("name", ["wrong-core", "wrong-bridge", "wrong-alias", "bad-secret"])

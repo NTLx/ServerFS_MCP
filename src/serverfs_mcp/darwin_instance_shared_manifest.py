@@ -272,9 +272,11 @@ def _resolve_manifest(
         expected_socket_path=Path(socket_raw),
     )
     grants = binding.grants or (binding.grant,)
-    if len(grants) != len(resolved_workdirs) or {
-        grant.workdir_alias: grant.workdir_path.resolve(strict=True) for grant in grants
-    } != resolved_workdirs:
+    if (
+        len(grants) != len(resolved_workdirs)
+        or {grant.workdir_alias: grant.workdir_path.resolve(strict=True) for grant in grants}
+        != resolved_workdirs
+    ):
         raise _deny()
     env = os.environ if environ is None else environ
     if (

@@ -32,9 +32,7 @@ def clients():
 
 def test_explicit_task_scope_uses_exact_signed_alias() -> None:
     first, second, adapter = clients()
-    result = asyncio.run(
-        adapter.call("task.submit", {"workdir": "secondary", "runtime": "claude"})
-    )
+    result = asyncio.run(adapter.call("task.submit", {"workdir": "secondary", "runtime": "claude"}))
     assert result == {"alias": "secondary", "method": "task.submit"}
     assert first.calls == []
     assert second.calls == [("task.submit", {"runtime": "claude"})]

@@ -143,9 +143,11 @@ def load_shared_core_binding(
         if not isinstance(document, dict) or type(document.get("schema_version")) is not int:
             raise _deny()
         version = document["schema_version"]
-        if (version == 1 and set(document) != _FIELDS) or (
-            version == 2 and set(document) != _FIELDS_MULTI
-        ) or version not in (1, 2):
+        if (
+            (version == 1 and set(document) != _FIELDS)
+            or (version == 2 and set(document) != _FIELDS_MULTI)
+            or version not in (1, 2)
+        ):
             raise _deny()
         bridge_id = valid_id(document["bridge_id"])
         core_id = valid_id(document["core_id"])
@@ -167,11 +169,13 @@ def load_shared_core_binding(
         ):
             raise _deny()
         if version == 1:
-            entries = [{
-                "alias": document["workdir_alias"],
-                "path": document["workdir_path"],
-                "policy_revision": document["policy_revision"],
-            }]
+            entries = [
+                {
+                    "alias": document["workdir_alias"],
+                    "path": document["workdir_path"],
+                    "policy_revision": document["policy_revision"],
+                }
+            ]
         else:
             entries = document["workdirs"]
             if not isinstance(entries, list) or not 2 <= len(entries) <= 16:
@@ -199,15 +203,17 @@ def load_shared_core_binding(
             workdir_path = Path(raw_path)
             if not workdir_path.is_absolute():
                 raise _deny()
-            grants.append(SharedBridgeGrant(
-                bridge_id=bridge_id,
-                core_id=core_id,
-                key_id=key_id,
-                secret=bytes.fromhex(secret_hex),
-                workdir_alias=alias,
-                workdir_path=workdir_path,
-                policy_revision=revision,
-            ))
+            grants.append(
+                SharedBridgeGrant(
+                    bridge_id=bridge_id,
+                    core_id=core_id,
+                    key_id=key_id,
+                    secret=bytes.fromhex(secret_hex),
+                    workdir_alias=alias,
+                    workdir_path=workdir_path,
+                    policy_revision=revision,
+                )
+            )
         return SharedBridgeBinding(
             bridge_config_path=bridge_config_path,
             socket_path=socket_path,
