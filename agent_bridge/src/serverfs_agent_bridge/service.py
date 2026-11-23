@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .adapters.base import AgentAdapter, ReconcileResult, TaskContext
+from .approval_scope import outside_workdir_write
 from .diagnostics import DiagnosticOperation, DiagnosticRecorder
 from .errors import BridgeError
 from .lease_identity import NO_LEGACY_SLOT
@@ -1265,6 +1266,12 @@ class BridgeService:
             raise BridgeError("REQUEST_STALE", "approval request expired")
         if request.kind != RequestKind.APPROVAL.value:
             raise BridgeError("INVALID_APPROVAL_DECISION", "request is not an approval")
+        if request.payload.get("scope_status") == "outside_workdir_write_blocked":
+            if decision not in {"deny", "cancel_task"} or option_id is not None:
+                raise BridgeError(
+                    "PERMISSION_OUTSIDE_POLICY",
+                    "outside-workdir write cannot be approved remotely",
+                )
         if decision is not None and not isinstance(decision, str):
             raise BridgeError("INVALID_APPROVAL_DECISION", "decision must be a string")
         if option_id is not None and not isinstance(option_id, str):
@@ -1911,9 +1918,27 @@ class BridgeService:
         normalized_payload = self._redact_value(task_id, payload)
         if not isinstance(normalized_payload, dict):
             raise BridgeError("AGENT_PROVIDER_ERROR", "provider request payload is invalid")
+        if kind is RequestKind.APPROVAL:
+            task = self.store.get_task(task_id)
+            if outside_workdir_write(
+                payload,
+                self.policies.get(task.workdir_alias).host_path,
+                task.relative_cwd,
+            ):
+                # Preserve the user-visible denial path, but never offer an
+                # authorization that the redacted public view cannot identify.
+                normalized_payload["scope_status"] = "outside_workdir_write_blocked"
+                offered = normalized_payload.get("available_decisions")
+                if isinstance(offered, list):
+                    normalized_payload["available_decisions"] = [
+                        item for item in offered if item in ("deny", "cancel_task")
+                    ]
         self._ensure_interaction_size(normalized_payload)
         if kind is RequestKind.APPROVAL and self.preflight is not None:
-            cache_key = _approval_advice_fingerprint(normalized_payload)
+            # Key advisory cache by the original provider request, not its public
+            # redacted projection: distinct outside-root targets may look identical.
+            # This key is task-local/in-memory; the public payload stays redacted.
+            cache_key = _approval_advice_fingerprint(payload)
             task_cache = self._approval_advice_cache.setdefault(task_id, {})
             cached_advice = task_cache.get(cache_key)
             if cached_advice is not None:
@@ -1947,6 +1972,13 @@ class BridgeService:
         expires_at = (
             interaction_deadline if interaction_deadline_is_authoritative else task.deadline_at
         )
+        # Retain original resource identity only as a private keyed digest.
+        # Public pending requests and task events remain redacted.
+        audit_fingerprint = (
+            self.store.private_approval_fingerprint(task_id, payload)
+            if kind is RequestKind.APPROVAL
+            else None
+        )
         self.store.create_pending_request(
             task_id=task_id,
             request_id=request_id,
@@ -1954,6 +1986,7 @@ class BridgeService:
             payload=normalized_payload,
             waiting_status=waiting_status,
             expires_at=expires_at,
+            private_fingerprint=audit_fingerprint,
         )
         execution_started = self._diagnostic_execution_started.pop(task_id, None)
         boundary = time.perf_counter()

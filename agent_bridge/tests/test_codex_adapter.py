@@ -16,6 +16,7 @@ from serverfs_agent_bridge.adapters.base import ReconcileResult
 from serverfs_agent_bridge.adapters.codex import CodexAdapter
 from serverfs_agent_bridge.adapters.codex_transport import CodexEndpoint
 from serverfs_agent_bridge.config import CodexSettings
+from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.lease_identity import slot_lease_id
 from serverfs_agent_bridge.leases import LeaseManager
 from serverfs_agent_bridge.models import AgentMode, ReconciliationStatus
@@ -402,7 +403,7 @@ async def test_codex_file_approval_inside_workdir_round_trip(
 
 
 @pytest.mark.asyncio
-async def test_codex_file_approval_outside_workdir_is_still_user_decided(
+async def test_codex_file_approval_outside_workdir_cannot_be_remotely_approved(
     tmp_path: Path, codex_home: Path
 ) -> None:
     mock = MockCodexServer(codex_home)
@@ -421,15 +422,25 @@ async def test_codex_file_approval_outside_workdir_is_still_user_decided(
         pending = waiting["pending_request"]
         assert pending["payload"]["category"] == "file_change"
         assert pending["payload"]["file_changes"][0]["path"] == "<outside-workdir>"
-
+        assert pending["payload"]["scope_status"] == "outside_workdir_write_blocked"
+        assert "approve_once" not in pending["payload"]["available_decisions"]
+        with pytest.raises(BridgeError, match="outside-workdir write"):
+            await service.respond_approval(
+                task_id=submitted["task_id"],
+                request_id=pending["request_id"],
+                decision="approve_once",
+            )
+        assert service.get_task(submitted["task_id"])["pending_request"]["request_id"] == (
+            pending["request_id"]
+        )
         await service.respond_approval(
             task_id=submitted["task_id"],
             request_id=pending["request_id"],
-            decision="approve_once",
+            decision="deny",
         )
         done = await wait_for_status(service, submitted["task_id"], "succeeded")
-        assert done["final_response"] == "approval:accept"
-        assert mock.native_responses["native-file-outside"]["result"] == {"decision": "accept"}
+        assert done["final_response"] == "approval:decline"
+        assert mock.native_responses["native-file-outside"]["result"] == {"decision": "decline"}
     finally:
         await service.close()
         await mock.close()
