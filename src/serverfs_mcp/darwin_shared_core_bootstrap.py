@@ -27,7 +27,7 @@ async def prepare_shared_v2_client(
     *,
     home: Path | None = None,
     timeout_seconds: float = 5,
-) -> CoreBridgeClientV2:
+) -> CoreBridgeClientV2 | dict[str, CoreBridgeClientV2]:
     """Load and authenticate an explicitly configured named Shared Bridge.
 
     This performs no service lifecycle or credential provisioning operations.
@@ -56,25 +56,30 @@ async def prepare_shared_v2_client(
             expected_socket_path=expected_socket_path,
         )
         socket_path = preflight_shared_core_binding(identity, trusted_core_config_path, binding)
-        grant = binding.grant
-        client = CoreBridgeClientV2(
-            socket_path,
-            bridge_id=grant.bridge_id,
-            core_id=grant.core_id,
-            key_id=grant.key_id,
-            secret=grant.secret,
-            workdir_alias=grant.workdir_alias,
-            policy_revision=grant.policy_revision,
-            timeout_seconds=timeout_seconds,
-        )
-        if not await probe_shared_v2_bridge(
-            client,
-            expected_socket_path,
-            timeout_seconds=timeout_seconds,
-            require_private_parent=True,
-        ):
-            raise SharedCoreBootstrapError("shared Bridge client could not be verified")
-        return client
+        grants = binding.grants or (binding.grant,)
+        clients = {
+            grant.workdir_alias: CoreBridgeClientV2(
+                socket_path,
+                bridge_id=grant.bridge_id,
+                core_id=grant.core_id,
+                key_id=grant.key_id,
+                secret=grant.secret,
+                workdir_alias=grant.workdir_alias,
+                policy_revision=grant.policy_revision,
+                timeout_seconds=timeout_seconds,
+            )
+            for grant in grants
+        }
+        # Every alias must independently prove live owner authorization.
+        for client in clients.values():
+            if not await probe_shared_v2_bridge(
+                client,
+                expected_socket_path,
+                timeout_seconds=timeout_seconds,
+                require_private_parent=True,
+            ):
+                raise SharedCoreBootstrapError("shared Bridge client could not be verified")
+        return clients if len(clients) > 1 else next(iter(clients.values()))
     except SharedCoreBootstrapError:
         raise
     except (
