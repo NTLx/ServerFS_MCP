@@ -430,8 +430,9 @@ async def test_codex_file_approval_outside_workdir_cannot_be_remotely_approved(
                 request_id=pending["request_id"],
                 decision="approve_once",
             )
-        assert service.get_task(submitted["task_id"])["pending_request"]["request_id"] == (
-            pending["request_id"]
+        assert (
+            service.get_task(submitted["task_id"])["pending_request"]["request_id"]
+            == (pending["request_id"])
         )
         await service.respond_approval(
             task_id=submitted["task_id"],

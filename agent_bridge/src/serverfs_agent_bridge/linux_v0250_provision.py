@@ -225,7 +225,7 @@ def _validate(
             if not isinstance(container_path, str) or not _CONTAINER_SLOT.fullmatch(container_path):
                 raise ValueError("Core container_path must name one Compose workdir slot")
             if "workdirs" not in core and container_path != "/workdirs/01":
-                raise ValueError("legacy single-alias Core binding must use slot 01")
+                raise ValueError("legacy single-alias Core container_path must use slot 01")
         if len({entry["container_path"] for entry in entries}) != len(entries):
             raise ValueError("duplicate Compose slot in one Core grant")
         methods = core["methods"]
@@ -283,6 +283,7 @@ def _validate(
     ):
         raise ValueError("Bridge config paths must use the new instance-private root layout")
     return manifest, config, root, cores
+
 
 def _publish_noreplace(stage: Path, destination: Path) -> None:
     """Atomically publish a complete new tree without replacing a racing destination."""
@@ -377,8 +378,7 @@ def provision(manifest: Any) -> Path:
                     "secret_hex": secret.hex(),
                     "methods": core["methods"],
                     "workdirs": [
-                        {"alias": alias, "policy_sha256": revision}
-                        for alias, revision, _ in scope
+                        {"alias": alias, "policy_sha256": revision} for alias, revision, _ in scope
                     ],
                 }
             )

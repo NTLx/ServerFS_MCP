@@ -1008,14 +1008,18 @@ async def test_v026_acp_opaque_options_remain_human_decided(tmp_path: Path) -> N
     await service.start()
     try:
         submitted = await service.submit_task(
-            runtime="fake", workdir="repo", path="",
-            profile="workspace-write", prompt="complete:acp-options",
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="complete:acp-options",
         )
         task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
         request = task["pending_request"]
         assert "scope_status" not in request["payload"]
         await service.respond_approval(
-            task_id=submitted["task_id"], request_id=request["request_id"],
+            task_id=submitted["task_id"],
+            request_id=request["request_id"],
             option_id="allow-once",
         )
         done = await wait_for_status(service, submitted["task_id"], "succeeded")
@@ -1254,8 +1258,7 @@ async def test_distinct_outside_targets_do_not_share_approval_advice(tmp_path: P
 
     with service.store._connect() as con:
         audit = con.execute(
-            "SELECT fingerprint, action_kind, outcome FROM approval_audit "
-            "WHERE task_id = ?",
+            "SELECT fingerprint, action_kind, outcome FROM approval_audit WHERE task_id = ?",
             (task_id,),
         ).fetchall()
     assert len(audit) == 2

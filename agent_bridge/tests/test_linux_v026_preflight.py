@@ -30,43 +30,55 @@ def candidate(monkeypatch):
         root = home / ".config/serverfs-agent-bridge/instances/bridge-blue"
         root.mkdir(parents=True, mode=0o700)
         root.chmod(0o700)
-        for relative in (
-            "bridge/state", "bridge/locks", "bridge/run", "core-bindings/core-blue"
-        ):
+        for relative in ("bridge/state", "bridge/locks", "bridge/run", "core-bindings/core-blue"):
             item = root / relative
             item.mkdir(parents=True, mode=0o700)
             item.chmod(0o700)
-        repo, docs, disabled = (
-            home / "repo", home / "docs", home / "disabled-placeholder"
-        )
+        repo, docs, disabled = (home / "repo", home / "docs", home / "disabled-placeholder")
         for item in (repo, docs, disabled):
             item.mkdir(mode=0o700)
         (disabled / ".serverfs-disabled").touch()
-        policies = PolicyRegistry([
-            WorkdirAgentPolicy(
-                slot=None, alias="Repo", host_path=repo,
-                mode=AgentMode.WORKSPACE_WRITE, runtimes=frozenset({"claude"}),
-                read_only=False,
-            ),
-            WorkdirAgentPolicy(
-                slot=None, alias="Docs", host_path=docs,
-                mode=AgentMode.DISABLED, runtimes=frozenset(), read_only=True,
-                repo_ops_enabled=True,
-            ),
-        ])
+        policies = PolicyRegistry(
+            [
+                WorkdirAgentPolicy(
+                    slot=None,
+                    alias="Repo",
+                    host_path=repo,
+                    mode=AgentMode.WORKSPACE_WRITE,
+                    runtimes=frozenset({"claude"}),
+                    read_only=False,
+                ),
+                WorkdirAgentPolicy(
+                    slot=None,
+                    alias="Docs",
+                    host_path=docs,
+                    mode=AgentMode.DISABLED,
+                    runtimes=frozenset(),
+                    read_only=True,
+                    repo_ops_enabled=True,
+                ),
+            ]
+        )
         config = SimpleNamespace(
-            protocol_mode="v2", bridge_id="bridge-blue", lease_key="alias",
-            allowed_peer_uid=os.getuid(), allowed_peer_gid=os.getgid(),
+            protocol_mode="v2",
+            bridge_id="bridge-blue",
+            lease_key="alias",
+            allowed_peer_uid=os.getuid(),
+            allowed_peer_gid=os.getgid(),
             socket_path=root / "bridge/run/bridge.sock",
-            lock_dir=root / "bridge/locks", state_dir=root / "bridge/state",
+            lock_dir=root / "bridge/locks",
+            state_dir=root / "bridge/state",
             policies=policies,
         )
         monkeypatch.setattr(preflight, "BridgeConfig", SimpleNamespace(load=lambda _: config))
         rev_repo = core_workdir_policy_digest(policies.get("Repo"))
         rev_docs = core_workdir_policy_digest(policies.get("Docs"))
         binding = {
-            "schema_version": 2, "instance_id": "core-blue", "core_id": "core-blue",
-            "bridge_id": "bridge-blue", "key_id": "key-blue",
+            "schema_version": 2,
+            "instance_id": "core-blue",
+            "core_id": "core-blue",
+            "bridge_id": "bridge-blue",
+            "key_id": "key-blue",
             "secret_hex": "7a" * 32,
             "socket_path": "/run/serverfs-agent-bridge/bridge.sock",
             "workdirs": [
@@ -83,7 +95,9 @@ def candidate(monkeypatch):
             path.write_text(json.dumps(doc), encoding="utf-8")
             path.chmod(0o600)
         grant = SimpleNamespace(
-            core_id="core-blue", key_id="key-blue", secret=bytes.fromhex("7a" * 32),
+            core_id="core-blue",
+            key_id="key-blue",
+            secret=bytes.fromhex("7a" * 32),
             methods=frozenset({"bridge.ping", "runtime.list", "task.submit", "repo.inspect"}),
             workdirs=(("Docs", rev_docs), ("Repo", rev_repo)),
         )
@@ -92,8 +106,9 @@ def candidate(monkeypatch):
         env = {
             "SERVERFS_LINUX_INSTANCE_ID": "core-blue",
             "SERVERFS_LINUX_BRIDGE_ID": "bridge-blue",
-            "SERVERFS_LINUX_V25_BRIDGE_BINDING_FILE":
-                "/run/serverfs-core-bridge-binding/core-bridge-binding.json",
+            "SERVERFS_LINUX_V25_BRIDGE_BINDING_FILE": (
+                "/run/serverfs-core-bridge-binding/core-bridge-binding.json"
+            ),
             "SERVERFS_AGENT_BRIDGE_SOCKET": "/run/serverfs-agent-bridge/bridge.sock",
             "SERVERFS_AGENT_LOCK_DIR": "/run/serverfs-agent-locks",
             "SERVERFS_AGENT_BRIDGE_ENABLED": "true",
@@ -105,43 +120,77 @@ def candidate(monkeypatch):
             target = f"/workdirs/{slot:02d}"
             if slot == 1:
                 alias, source, read_only, mode, runtimes, repoonly = (
-                    "Repo", repo, False, "workspace-write", "claude", False
+                    "Repo",
+                    repo,
+                    False,
+                    "workspace-write",
+                    "claude",
+                    False,
                 )
             elif slot == 3:
                 alias, source, read_only, mode, runtimes, repoonly = (
-                    "Docs", docs, True, "disabled", "", True
+                    "Docs",
+                    docs,
+                    True,
+                    "disabled",
+                    "",
+                    True,
                 )
             else:
                 alias, source, read_only, mode, runtimes, repoonly = (
-                    "", disabled, True, "disabled", "", False
+                    "",
+                    disabled,
+                    True,
+                    "disabled",
+                    "",
+                    False,
                 )
-            env.update({
-                name + "ALIAS": alias, name + "READ_ONLY": str(read_only).lower(),
-                name + "AGENT_MODE": mode, name + "AGENT_RUNTIMES": runtimes,
-                name + "REPO_OPS_ENABLED": str(repoonly).lower(),
-                name + "BINARY_TRANSFER_ENABLED": "false",
-            })
-            volumes.append({
-                "type": "bind", "source": str(source), "target": target,
-                "read_only": read_only, "bind": {"create_host_path": False},
-            })
+            env.update(
+                {
+                    name + "ALIAS": alias,
+                    name + "READ_ONLY": str(read_only).lower(),
+                    name + "AGENT_MODE": mode,
+                    name + "AGENT_RUNTIMES": runtimes,
+                    name + "REPO_OPS_ENABLED": str(repoonly).lower(),
+                    name + "BINARY_TRANSFER_ENABLED": "false",
+                }
+            )
+            volumes.append(
+                {
+                    "type": "bind",
+                    "source": str(source),
+                    "target": target,
+                    "read_only": read_only,
+                    "bind": {"create_host_path": False},
+                }
+            )
         for target, source in (
             ("/run/serverfs-core-bridge-binding", root / "core-bindings/core-blue"),
             ("/run/serverfs-agent-bridge", root / "bridge/run"),
             ("/run/serverfs-agent-locks", root / "bridge/locks"),
         ):
-            volumes.append({
-                "type": "bind", "source": str(source), "target": target,
-                "read_only": True, "bind": {"create_host_path": False},
-            })
+            volumes.append(
+                {
+                    "type": "bind",
+                    "source": str(source),
+                    "target": target,
+                    "read_only": True,
+                    "bind": {"create_host_path": False},
+                }
+            )
         model = {
             "name": "fixture",
-            "services": {"serverfs-mcp": {
-                "environment": env, "volumes": volumes,
-                "user": f"{os.getuid()}:{os.getgid()}",
-                "read_only": True, "tmpfs": ["/tmp"],
-                "cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"],
-            }},
+            "services": {
+                "serverfs-mcp": {
+                    "environment": env,
+                    "volumes": volumes,
+                    "user": f"{os.getuid()}:{os.getgid()}",
+                    "read_only": True,
+                    "tmpfs": ["/tmp"],
+                    "cap_drop": ["ALL"],
+                    "security_opt": ["no-new-privileges:true"],
+                }
+            },
         }
         yield model, binding, root
 

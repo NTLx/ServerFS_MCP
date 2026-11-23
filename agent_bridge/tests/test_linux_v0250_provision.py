@@ -193,12 +193,18 @@ def test_v026_one_core_two_authorized_workdirs_nonfirst_slot(tmp_path, monkeypat
     assert len(grants["grants"][0]["workdirs"]) == 2
     workdirs = [
         Workdir(
-            "Repo", Path("/workdirs/01"), None,
-            agent_mode="review", agent_runtimes=frozenset({"codex"}),
+            "Repo",
+            Path("/workdirs/01"),
+            None,
+            agent_mode="review",
+            agent_runtimes=frozenset({"codex"}),
         ),
         Workdir(
-            "Docs", Path("/workdirs/03"), None,
-            agent_mode="review", agent_runtimes=frozenset({"codex"}),
+            "Docs",
+            Path("/workdirs/03"),
+            None,
+            agent_mode="review",
+            agent_runtimes=frozenset({"codex"}),
         ),
     ]
     clients, alias = load_linux_core_client(
@@ -214,7 +220,9 @@ def test_v026_one_core_two_authorized_workdirs_nonfirst_slot(tmp_path, monkeypat
 
 @pytest.mark.parametrize("invalid_slot", ["/workdirs/00", "/workdirs/17", "/workdirs/01/escape"])
 def test_v026_provision_refuses_unmounted_slots_before_writes(
-    tmp_path, monkeypatch, invalid_slot,
+    tmp_path,
+    monkeypatch,
+    invalid_slot,
 ):
     manifest, root, work, _ = _fixture(tmp_path, monkeypatch)
     manifest["core"] = {
@@ -231,9 +239,7 @@ def test_v026_single_alias_schema_two_may_bind_only_slot_03(tmp_path, monkeypatc
     manifest, root, work, _config_path = _fixture(tmp_path, monkeypatch)
     manifest["core"] = {
         "instance_id": "core-blue",
-        "workdirs": [
-            {"alias": "Repo", "container_path": "/workdirs/03", "host_path": str(work)}
-        ],
+        "workdirs": [{"alias": "Repo", "container_path": "/workdirs/03", "host_path": str(work)}],
         "methods": ["bridge.ping", "runtime.list"],
     }
     assert provision(manifest) == root

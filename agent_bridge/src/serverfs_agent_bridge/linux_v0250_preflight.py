@@ -186,9 +186,16 @@ def validate(model: Any, *, bridge_id: str, core_id: str, project: str) -> None:
         selected = [{"alias": alias, "workdir_path": "/workdirs/01", "policy_revision": revision}]
     elif schema == 2 and type(schema) is int:
         _require(
-            set(binding) == {
-                "schema_version", "instance_id", "core_id", "bridge_id", "key_id",
-                "secret_hex", "socket_path", "workdirs",
+            set(binding)
+            == {
+                "schema_version",
+                "instance_id",
+                "core_id",
+                "bridge_id",
+                "key_id",
+                "secret_hex",
+                "socket_path",
+                "workdirs",
             }
             and binding["instance_id"] == core_id
             and binding["core_id"] == core_id
@@ -206,12 +213,13 @@ def validate(model: Any, *, bridge_id: str, core_id: str, project: str) -> None:
     granted_aliases: set[str] = set()
     for entry in selected:
         _require(
-            isinstance(entry, dict)
-            and set(entry) == {"alias", "workdir_path", "policy_revision"},
+            isinstance(entry, dict) and set(entry) == {"alias", "workdir_path", "policy_revision"},
             "binding-policy",
         )
         alias, container_path, revision = (
-            entry["alias"], entry["workdir_path"], entry["policy_revision"]
+            entry["alias"],
+            entry["workdir_path"],
+            entry["policy_revision"],
         )
         _require(
             isinstance(alias, str)
@@ -301,10 +309,8 @@ def validate(model: Any, *, bridge_id: str, core_id: str, project: str) -> None:
                 mounts[target] == (policy.host_path, policy.read_only)
                 and slot_alias == alias
                 and _bool(env.get(prefix + "READ_ONLY", ""), True) == policy.read_only
-                and env.get(prefix + "AGENT_MODE", "disabled").strip().lower()
-                == policy.mode.value
-                and _bool(env.get(prefix + "REPO_OPS_ENABLED", ""))
-                == policy.repo_ops_enabled,
+                and env.get(prefix + "AGENT_MODE", "disabled").strip().lower() == policy.mode.value
+                and _bool(env.get(prefix + "REPO_OPS_ENABLED", "")) == policy.repo_ops_enabled,
                 "workdir-policy",
             )
             _require(

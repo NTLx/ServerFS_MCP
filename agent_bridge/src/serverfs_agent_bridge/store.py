@@ -735,9 +735,8 @@ class TaskStore:
                 action_kind = (
                     category
                     if isinstance(category, str)
-                    and category in {
-                        "command", "file_change", "file_changes", "provider_permission", "mcp"
-                    }
+                    and category
+                    in {"command", "file_change", "file_changes", "provider_permission", "mcp"}
                     else "other"
                 )
                 con.execute(

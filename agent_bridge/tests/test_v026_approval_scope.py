@@ -19,24 +19,30 @@ def roots(tmp_path: Path):
     return repo, outside
 
 
-@pytest.mark.parametrize("target", [
-    "nested/file.txt",
-    ".",
-    "nested/../file.txt",
-])
+@pytest.mark.parametrize(
+    "target",
+    [
+        "nested/file.txt",
+        ".",
+        "nested/../file.txt",
+    ],
+)
 def test_file_changes_inside_root_remain_human_decided(roots, target):
     repo, _ = roots
     payload = {"category": "file_change", "file_changes": [{"path": target}]}
     assert outside_workdir_write(payload, repo, "") is False
 
 
-@pytest.mark.parametrize("target", [
-    "../secrets/file.txt",
-    "../../other",
-    "/tmp/elsewhere",
-    "",
-    "invalid\x00path",
-])
+@pytest.mark.parametrize(
+    "target",
+    [
+        "../secrets/file.txt",
+        "../../other",
+        "/tmp/elsewhere",
+        "",
+        "invalid\x00path",
+    ],
+)
 def test_file_changes_escape_or_unknown_target_are_blocked(roots, target):
     repo, _ = roots
     payload = {"category": "file_change", "tool_input": {"file_path": target}}
@@ -46,12 +52,16 @@ def test_file_changes_escape_or_unknown_target_are_blocked(roots, target):
 def test_missing_and_malformed_file_target_are_blocked(roots):
     repo, _ = roots
     assert outside_workdir_write({"category": "file_change"}, repo, "") is True
-    assert outside_workdir_write(
-        {"category": "file_changes", "file_changes": [{"other": "x"}]}, repo, ""
-    ) is True
-    assert outside_workdir_write(
-        {"category": "file_changes", "file_changes": "not-a-list"}, repo, ""
-    ) is True
+    assert (
+        outside_workdir_write(
+            {"category": "file_changes", "file_changes": [{"other": "x"}]}, repo, ""
+        )
+        is True
+    )
+    assert (
+        outside_workdir_write({"category": "file_changes", "file_changes": "not-a-list"}, repo, "")
+        is True
+    )
 
 
 def test_file_change_cannot_follow_existing_symlink_outside(roots):
@@ -61,35 +71,46 @@ def test_file_change_cannot_follow_existing_symlink_outside(roots):
         link.symlink_to(outside, target_is_directory=True)
     except (OSError, NotImplementedError):
         pytest.skip("symlink fixtures are unavailable on this host")
-    assert outside_workdir_write(
-        {"category": "file_change", "tool_input": {"file_path": "nested/escape/target"}},
-        repo,
-        "",
-    ) is True
+    assert (
+        outside_workdir_write(
+            {"category": "file_change", "tool_input": {"file_path": "nested/escape/target"}},
+            repo,
+            "",
+        )
+        is True
+    )
 
 
 def test_relative_target_is_resolved_from_task_cwd(roots):
     repo, _ = roots
-    assert outside_workdir_write(
-        {"category": "file_change", "tool_input": {"file_path": "../../secrets/file"}},
-        repo,
-        "nested",
-    ) is True
-    assert outside_workdir_write(
-        {"category": "file_change", "tool_input": {"file_path": "file"}},
-        repo,
-        "nested",
-    ) is False
+    assert (
+        outside_workdir_write(
+            {"category": "file_change", "tool_input": {"file_path": "../../secrets/file"}},
+            repo,
+            "nested",
+        )
+        is True
+    )
+    assert (
+        outside_workdir_write(
+            {"category": "file_change", "tool_input": {"file_path": "file"}},
+            repo,
+            "nested",
+        )
+        is False
+    )
 
 
 def test_permission_writes_outside_blocked_reads_remain_provider_decided(roots):
     repo, outside = roots
     permission = {
         "category": "provider_permission",
-        "requested_permissions": [{
-            "permission_id": "fileSystem",
-            "details": {"read": [str(outside)], "write": ["nested"]},
-        }],
+        "requested_permissions": [
+            {
+                "permission_id": "fileSystem",
+                "details": {"read": [str(outside)], "write": ["nested"]},
+            }
+        ],
     }
     assert outside_workdir_write(permission, repo, "") is False
     permission["requested_permissions"][0]["details"]["writableRoots"] = [str(outside)]
@@ -111,8 +132,11 @@ def test_acp_choice_only_permission_is_not_misclassified_as_file_write(roots):
 
 def test_arbitrary_commands_not_classified_by_free_text(roots):
     repo, outside = roots
-    assert outside_workdir_write(
-        {"category": "command", "command_display": f"touch {outside / 'file'}"},
-        repo,
-        "",
-    ) is False
+    assert (
+        outside_workdir_write(
+            {"category": "command", "command_display": f"touch {outside / 'file'}"},
+            repo,
+            "",
+        )
+        is False
+    )
