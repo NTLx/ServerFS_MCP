@@ -39,12 +39,20 @@ def _fixture(tmp_path: Path):
     file.write_text(json.dumps(document), encoding="utf-8")
     file.chmod(0o600)
     workdirs = [
-        Workdir("Repo", Path("/workdirs/01"), None, policy=EffectiveWorkdirPolicy(
-            agent_mode="workspace-write", agent_runtimes=frozenset({"claude"})
-        )),
-        Workdir("Docs", Path("/workdirs/03"), None, policy=EffectiveWorkdirPolicy(
-            agent_mode="disabled", repo_ops_enabled=True
-        )),
+        Workdir(
+            "Repo",
+            Path("/workdirs/01"),
+            None,
+            policy=EffectiveWorkdirPolicy(
+                agent_mode="workspace-write", agent_runtimes=frozenset({"claude"})
+            ),
+        ),
+        Workdir(
+            "Docs",
+            Path("/workdirs/03"),
+            None,
+            policy=EffectiveWorkdirPolicy(agent_mode="disabled", repo_ops_enabled=True),
+        ),
     ]
     return file, document, workdirs
 
@@ -197,7 +205,9 @@ def test_runtime_models_tries_next_authorized_alias_on_grant_refusal() -> None:
     repo, docs = ModelClient("Repo"), ModelClient("Docs")
     adapter = create_linux_v0250_agent_adapter({"Repo": repo, "Docs": docs}, None)
     assert asyncio.run(adapter.call("runtime.models", {"runtime": "qoder"})) == {
-        "runtime": "qoder", "status": "ok", "models": [],
+        "runtime": "qoder",
+        "status": "ok",
+        "models": [],
     }
     assert repo.calls == docs.calls == [("runtime.models", {"runtime": "qoder"})]
 

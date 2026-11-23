@@ -101,16 +101,17 @@ class LinuxV0250BridgeAdapter:
             raise AgentBridgeClientError("Core Bridge protocol error") from None
 
 
-
-_TASK_OWNED_METHODS = frozenset({
-    "task.get",
-    "task.events",
-    "task.result.read",
-    "task.cancel",
-    "task.message.send",
-    "task.approval.respond",
-    "task.question.answer",
-})
+_TASK_OWNED_METHODS = frozenset(
+    {
+        "task.get",
+        "task.events",
+        "task.result.read",
+        "task.cancel",
+        "task.message.send",
+        "task.approval.respond",
+        "task.question.answer",
+    }
+)
 
 
 class LinuxV026MultiBridgeAdapter:
@@ -198,6 +199,7 @@ class LinuxV026MultiBridgeAdapter:
         if method == "bridge.ping":
             return await next(iter(self._adapters.values())).call(method, params)
         raise AgentBridgeClientError("Agent Bridge workdir is required")
+
 
 def _credentials(client: Any) -> tuple[str, ...]:
     values: list[str] = []

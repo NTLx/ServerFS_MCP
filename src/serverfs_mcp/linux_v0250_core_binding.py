@@ -144,9 +144,11 @@ def load_linux_core_client(
         if not isinstance(doc, dict) or type(doc.get("schema_version")) is not int:
             raise _deny(stage)
         version = doc["schema_version"]
-        if (version == 1 and set(doc) != _FIELDS) or (
-            version == 2 and set(doc) != _MULTI_FIELDS
-        ) or version not in (1, 2):
+        if (
+            (version == 1 and set(doc) != _FIELDS)
+            or (version == 2 and set(doc) != _MULTI_FIELDS)
+            or version not in (1, 2)
+        ):
             raise _deny(stage)
         stage = "grant-identity"
         if (
@@ -162,11 +164,13 @@ def load_linux_core_client(
         if not isinstance(secret_hex, str) or not re.fullmatch(r"[0-9a-f]{64}", secret_hex):
             raise _deny(stage)
         if version == 1:
-            candidates = [{
-                "alias": doc["workdir_alias"],
-                "workdir_path": doc["workdir_path"],
-                "policy_revision": doc["policy_revision"],
-            }]
+            candidates = [
+                {
+                    "alias": doc["workdir_alias"],
+                    "workdir_path": doc["workdir_path"],
+                    "policy_revision": doc["policy_revision"],
+                }
+            ]
         else:
             candidates = doc["workdirs"]
             if not isinstance(candidates, list) or not 1 <= len(candidates) <= 16:
@@ -240,7 +244,7 @@ async def verify_linux_core_client(
     client: CoreBridgeClientV2 | dict[str, CoreBridgeClientV2],
     expected_socket: Path,
     *,
-    timeout_seconds: float = 3.0
+    timeout_seconds: float = 3.0,
 ) -> None:
     """Require signed bridge.ping within a finite startup deadline."""
     clients = tuple(client.values()) if isinstance(client, dict) else (client,)
