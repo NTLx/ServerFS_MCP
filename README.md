@@ -2,9 +2,13 @@
 
 **简体中文** · [English](README_EN.md)
 
-[![Release](https://img.shields.io/github/v/release/NTLx/ServerFS_MCP)](https://github.com/NTLx/ServerFS_MCP/releases/latest) · [官网](https://ntlx.github.io/ServerFS_MCP/zh-cn/) · [文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/) · [Releases](https://github.com/NTLx/ServerFS_MCP/releases)
+[![Release](https://img.shields.io/github/v/release/NTLx/ServerFS_MCP)](https://github.com/NTLx/ServerFS_MCP/releases/latest)
 
-**本文档面向 v0.25.0，正式发布尚未完成。** [最新稳定版本](https://github.com/NTLx/ServerFS_MCP/releases/latest)。
+- [官网](https://ntlx.github.io/ServerFS_MCP/zh-cn/)
+- [文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/)
+- [Releases](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.25.0)
+
+**当前稳定版本：[v0.25.0](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.25.0)。**
 
 ServerFS MCP 是一个跨平台、自托管的 MCP 文件系统服务。它将明确配置的本地目录（Workdir）开放给 AI 客户端，默认只读，写入具有 revision 保护；按需增加二进制传输、确定性仓库操作（Repo Ops）和宿主机 Agent 委托。不提供 Shell 或通用命令执行接口。
 
