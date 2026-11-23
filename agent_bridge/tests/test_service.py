@@ -988,6 +988,47 @@ async def test_approval_round_trip(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_v026_acp_opaque_options_remain_human_decided(tmp_path: Path) -> None:
+    class OpaqueOptionAdapter(FakeAdapter):
+        async def run_task(self, context):
+            choice = await context.request_approval(
+                {
+                    "category": "provider_permission",
+                    "title": "ACP permission choice",
+                    "response_options": [
+                        {"option_id": "allow-once", "label": "Allow once", "kind": "allow_once"},
+                        {"option_id": "reject", "label": "Reject", "kind": "reject_once"},
+                    ],
+                }
+            )
+            return AdapterResult(final_response=choice["option_id"])
+
+    service = make_service(tmp_path)
+    service.adapters["fake"] = OpaqueOptionAdapter()
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="complete:acp-options",
+        )
+        task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request = task["pending_request"]
+        assert "scope_status" not in request["payload"]
+        await service.respond_approval(
+            task_id=submitted["task_id"],
+            request_id=request["request_id"],
+            option_id="allow-once",
+        )
+        done = await wait_for_status(service, submitted["task_id"], "succeeded")
+        assert done["final_response"] == "allow-once"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
 async def test_acp_option_selection_requires_exact_single_offered_option(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     await service.start()
@@ -1151,6 +1192,97 @@ async def test_identical_approval_advice_is_cached_per_task(tmp_path: Path) -> N
     assert sum(op["kind"] == "agent.waiting_external" for op in projection["operations"]) == 2
     assert sum(op["kind"] == "agent.execution" for op in projection["operations"]) == 3
     assert submitted["task_id"] not in service._approval_advice_cache
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_distinct_outside_targets_do_not_share_approval_advice(tmp_path: Path) -> None:
+    class TwoTargetAdapter(FakeAdapter):
+        async def run_task(self, context):
+            for name in ("outside-a", "outside-b"):
+                await context.request_approval(
+                    {
+                        "category": "file_changes",
+                        "title": "Review write target",
+                        "tool_input": {"path": str(tmp_path / name)},
+                        "available_decisions": ["approve_once", "deny", "cancel_task"],
+                    }
+                )
+            return AdapterResult(final_response="two targets")
+
+    service = make_service(tmp_path)
+    service.adapters["fake"] = TwoTargetAdapter()
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="complete:two-targets",
+    )
+    task_id = submitted["task_id"]
+    first = await wait_for_status(service, task_id, "waiting_for_approval")
+    first_request = first["pending_request"]
+    assert first_request["payload"]["tool_input"]["path"] == "<outside-workdir>"
+    assert first_request["payload"]["approval_advice"]["cached"] is False
+    assert first_request["payload"]["scope_status"] == "outside_workdir_write_blocked"
+    with pytest.raises(BridgeError, match="outside-workdir write"):
+        await service.respond_approval(
+            task_id=task_id,
+            request_id=first_request["request_id"],
+            decision="approve_once",
+        )
+    await service.respond_approval(
+        task_id=task_id,
+        request_id=first_request["request_id"],
+        decision="deny",
+    )
+    second = None
+    for _ in range(500):
+        current = service.get_task(task_id)
+        pending = current.get("pending_request")
+        if (
+            current["status"] == "waiting_for_approval"
+            and isinstance(pending, dict)
+            and pending["request_id"] != first_request["request_id"]
+        ):
+            second = pending
+            break
+        await asyncio.sleep(0.01)
+    assert second is not None
+    assert second["payload"]["tool_input"]["path"] == "<outside-workdir>"
+    assert second["payload"]["approval_advice"]["cached"] is False
+    assert len(preflight.approval_calls) == 2
+
+    with service.store._connect() as con:
+        audit = con.execute(
+            "SELECT fingerprint, action_kind, outcome FROM approval_audit WHERE task_id = ?",
+            (task_id,),
+        ).fetchall()
+    assert len(audit) == 2
+    assert len({row["fingerprint"] for row in audit}) == 2
+    assert {row["action_kind"] for row in audit} == {"file_changes"}
+    assert {row["outcome"] for row in audit} == {"deny", None}
+    assert str(tmp_path) not in str(tuple(tuple(row) for row in audit))
+    assert "private" not in second["payload"]
+    original = {
+        "category": "file_changes",
+        "title": "Review write target",
+        "tool_input": {"path": str(tmp_path / "outside-a")},
+        "available_decisions": ["approve_once", "deny", "cancel_task"],
+    }
+    assert service.store.private_approval_fingerprint(task_id, original) == (
+        TaskStore(service.store.state_dir).private_approval_fingerprint(task_id, original)
+    )
+
+    await service.respond_approval(
+        task_id=task_id,
+        request_id=second["request_id"],
+        decision="deny",
+    )
+    await wait_for_status(service, task_id, "succeeded")
     await service.close()
 
 

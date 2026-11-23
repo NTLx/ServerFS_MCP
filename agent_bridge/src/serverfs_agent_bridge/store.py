@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import math
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -185,6 +188,34 @@ class TaskStore:
                 CREATE INDEX IF NOT EXISTS pending_requests_task
                 ON pending_requests(task_id, status);
 
+                -- Private-only keyed identity of approval requests, never
+                -- projected into public MCP payloads or task event streams.
+                CREATE TABLE IF NOT EXISTS approval_audit_key (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                    secret BLOB NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS approval_audit (
+                    request_id TEXT PRIMARY KEY
+                        REFERENCES pending_requests(request_id) ON DELETE CASCADE,
+                    task_id TEXT NOT NULL,
+                    fingerprint TEXT NOT NULL,
+                    action_kind TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    resolved_at TEXT,
+                    outcome TEXT
+                );
+                CREATE INDEX IF NOT EXISTS approval_audit_task
+                ON approval_audit(task_id, created_at);
+
+                CREATE TRIGGER IF NOT EXISTS approval_audit_mark_stale
+                AFTER UPDATE OF status ON pending_requests
+                WHEN NEW.status = 'stale'
+                BEGIN
+                    UPDATE approval_audit
+                    SET resolved_at = NEW.resolved_at, outcome = 'stale'
+                    WHERE request_id = NEW.request_id;
+                END;
+
                 CREATE TABLE IF NOT EXISTS runtime_capabilities (
                     runtime_id TEXT NOT NULL,
                     profile_fingerprint TEXT NOT NULL,
@@ -234,6 +265,43 @@ class TaskStore:
             }
             if "expires_at" not in request_columns:
                 con.execute("ALTER TABLE pending_requests ADD COLUMN expires_at TEXT")
+            con.execute(
+                "INSERT OR IGNORE INTO approval_audit_key(singleton, secret) VALUES (1, ?)",
+                (secrets.token_bytes(32),),
+            )
+            audit_key = con.execute(
+                "SELECT secret FROM approval_audit_key WHERE singleton = 1"
+            ).fetchone()
+            if (
+                audit_key is None
+                or not isinstance(audit_key["secret"], bytes)
+                or len(audit_key["secret"]) != 32
+            ):
+                raise BridgeError("PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid")
+            self._approval_audit_key = audit_key["secret"]
+
+    def private_approval_fingerprint(self, task_id: str, original: dict[str, Any]) -> str:
+        """HMAC original provider attributes, never exposing host path strings.
+
+        The key is stored only in the owner-private 0600 SQLite database and
+        remains stable across Bridge restarts. A fingerprint is *not* approval
+        authority, only a private correlation/audit identity.
+        """
+        if not isinstance(task_id, str) or not task_id or not isinstance(original, dict):
+            raise BridgeError("PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid")
+        try:
+            encoded = json.dumps(
+                original, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
+            ).encode("utf-8")
+        except (ValueError, TypeError, UnicodeError):
+            raise BridgeError(
+                "PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid"
+            ) from None
+        return hmac.new(
+            self._approval_audit_key,
+            task_id.encode("utf-8") + b"\0" + encoded,
+            hashlib.sha256,
+        ).hexdigest()
 
     def load_runtime_capabilities(self, runtime_id: str, fingerprint: str) -> dict[str, Any] | None:
         with self._connect() as con:
@@ -622,9 +690,17 @@ class TaskStore:
         payload: dict[str, Any],
         waiting_status: TaskStatus,
         expires_at: str | None = None,
+        private_fingerprint: str | None = None,
     ) -> PendingRequest:
         now = utc_now()
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        if private_fingerprint is not None and (
+            kind != "approval"
+            or not isinstance(private_fingerprint, str)
+            or len(private_fingerprint) != 64
+            or any(ch not in "0123456789abcdef" for ch in private_fingerprint)
+        ):
+            raise BridgeError("PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid")
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
             task = con.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
@@ -654,6 +730,21 @@ class TaskStore:
                 raise BridgeError(
                     "REQUEST_EXISTS", f"request already exists: {request_id}"
                 ) from exc
+            if private_fingerprint is not None:
+                category = payload.get("category")
+                action_kind = (
+                    category
+                    if isinstance(category, str)
+                    and category
+                    in {"command", "file_change", "file_changes", "provider_permission", "mcp"}
+                    else "other"
+                )
+                con.execute(
+                    """INSERT INTO approval_audit(
+                        request_id, task_id, fingerprint, action_kind, created_at
+                    ) VALUES (?, ?, ?, ?, ?)""",
+                    (request_id, task_id, private_fingerprint, action_kind, now),
+                )
             con.execute(
                 """
                 UPDATE tasks
@@ -719,6 +810,14 @@ class TaskStore:
             )
             if task_update.rowcount != 1:
                 raise BridgeError("REQUEST_STALE", "request is no longer active for the task")
+            outcome = resolution.get("decision")
+            if outcome not in {"approve_once", "approve_session", "deny", "cancel_task"}:
+                outcome = "acp-option" if "option_id" in resolution else "other"
+            con.execute(
+                """UPDATE approval_audit SET resolved_at = ?, outcome = ?
+                WHERE request_id = ?""",
+                (now, outcome, request_id),
+            )
         return self.get_request(request_id)
 
     def count_nonterminal_tasks(self) -> int:

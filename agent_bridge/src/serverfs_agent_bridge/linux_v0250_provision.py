@@ -58,6 +58,9 @@ _MANIFEST_FIELDS = frozenset(
     }
 )
 _CORE_FIELDS = frozenset({"instance_id", "alias", "container_path", "host_path", "methods"})
+_CORE_MULTI_FIELDS = frozenset({"instance_id", "workdirs", "methods"})
+_WORKDIR_FIELDS = frozenset({"alias", "container_path", "host_path"})
+_CONTAINER_SLOT = re.compile(r"/workdirs/(0[1-9]|1[0-6])\Z")
 _MAX_INPUT_BYTES = 1024 * 1024
 
 
@@ -152,8 +155,17 @@ def _validate(
         raise ValueError("bridge_id is invalid")
     core_ids: set[str] = set()
     for core in cores:
-        if not isinstance(core, dict) or set(core) != _CORE_FIELDS:
+        if not isinstance(core, dict) or frozenset(core) not in {_CORE_FIELDS, _CORE_MULTI_FIELDS}:
             raise ValueError("Core entries have invalid fields")
+        if "workdirs" in core and (
+            not isinstance(core["workdirs"], list)
+            or not 1 <= len(core["workdirs"]) <= 16
+            or any(
+                not isinstance(entry, dict) or set(entry) != _WORKDIR_FIELDS
+                for entry in core["workdirs"]
+            )
+        ):
+            raise ValueError("Core workdirs must be a bounded explicit array")
         core_id = core["instance_id"]
         if not isinstance(core_id, str) or not _ID.fullmatch(core_id) or core_id == "default":
             raise ValueError("instance_id is invalid")
@@ -192,19 +204,30 @@ def _validate(
     used_aliases: set[str] = set()
     paths_by_alias: dict[str, Path] = {}
     for core in cores:
-        alias = core["alias"]
-        if not isinstance(alias, str) or alias not in policies:
-            raise ValueError("Core alias does not match a trusted Bridge policy")
-        used_aliases.add(alias)
-        policy = policies[alias]
-        if policy.mode.value == "disabled" and not policy.repo_ops_enabled:
-            raise ValueError("signed Core requires an Agent or Repo Ops-enabled workdir")
-        host_path = _canonical_no_links(Path(core["host_path"]), must_exist=True)
-        if host_path != policy.host_path:
-            raise ValueError("Core host bind source does not match the Bridge policy root")
-        paths_by_alias[alias] = host_path
-        if core["container_path"] != "/workdirs/01":
-            raise ValueError("Core container_path must match the v2 Compose overlay: /workdirs/01")
+        entries = core["workdirs"] if "workdirs" in core else [core]
+        aliases_in_core: set[str] = set()
+        for entry in entries:
+            alias = entry["alias"]
+            if not isinstance(alias, str) or alias not in policies:
+                raise ValueError("Core alias does not match a trusted Bridge policy")
+            if alias in aliases_in_core:
+                raise ValueError("duplicate alias in one Core grant")
+            aliases_in_core.add(alias)
+            used_aliases.add(alias)
+            policy = policies[alias]
+            if policy.mode.value == "disabled" and not policy.repo_ops_enabled:
+                raise ValueError("signed Core requires an Agent or Repo Ops-enabled workdir")
+            host_path = _canonical_no_links(Path(entry["host_path"]), must_exist=True)
+            if host_path != policy.host_path:
+                raise ValueError("Core host bind source does not match the Bridge policy root")
+            paths_by_alias[alias] = host_path
+            container_path = entry["container_path"]
+            if not isinstance(container_path, str) or not _CONTAINER_SLOT.fullmatch(container_path):
+                raise ValueError("Core container_path must name one Compose workdir slot")
+            if "workdirs" not in core and container_path != "/workdirs/01":
+                raise ValueError("legacy single-alias Core container_path must use slot 01")
+        if len({entry["container_path"] for entry in entries}) != len(entries):
+            raise ValueError("duplicate Compose slot in one Core grant")
         methods = core["methods"]
         if (
             not isinstance(methods, list)
@@ -214,13 +237,16 @@ def _validate(
             or len(methods) != len(set(methods))
         ):
             raise ValueError("methods must be an explicit least-privilege method list")
+        selected_policies = [policies[entry["alias"]] for entry in entries]
         if any(method.startswith(("task.", "runtime.")) for method in methods):
-            if policy.mode.value == "disabled" or not policy.runtimes:
+            if not any(p.mode.value != "disabled" and p.runtimes for p in selected_policies):
                 raise ValueError("Agent methods require an enabled Bridge runtime policy")
-        if any(method.startswith("repo.") for method in methods) and not policy.repo_ops_enabled:
-            raise ValueError("Repo methods require repo_ops_enabled in the Bridge policy")
-        if policy.read_only and {"repo.action", "repo.commit", "repo.push"}.intersection(methods):
-            raise ValueError("read-only Bridge policies cannot grant repository mutation methods")
+        if any(method.startswith("repo.") for method in methods):
+            if not any(p.repo_ops_enabled for p in selected_policies):
+                raise ValueError("Repo methods require repo_ops_enabled in the Bridge policy")
+        if {"repo.action", "repo.commit", "repo.push"}.intersection(methods):
+            if not any(p.repo_ops_enabled and not p.read_only for p in selected_policies):
+                raise ValueError("repository mutation requires a writable Repo policy")
     if used_aliases != set(policies):
         raise ValueError("every Bridge policy must be used by at least one Core")
 
@@ -324,26 +350,36 @@ def provision(manifest: Any) -> Path:
         os.chmod(stage / "core-bindings", 0o700)
         store = TaskStore(bridge_dir / "state")
         grants = []
-        credentials: list[tuple[dict[str, Any], str, bytes, str]] = []
+        credentials: list[tuple[dict[str, Any], str, bytes, list[tuple[str, str, str]]]] = []
         seen_key_ids: set[str] = set()
         seen_secrets: set[bytes] = set()
         for core in cores:
             core_id = core["instance_id"]
-            revision = core_workdir_policy_digest(config.policies.get(core["alias"]))
+            entries = core["workdirs"] if "workdirs" in core else [core]
+            scope = [
+                (
+                    entry["alias"],
+                    core_workdir_policy_digest(config.policies.get(entry["alias"])),
+                    entry["container_path"],
+                )
+                for entry in entries
+            ]
             key_id = "k-" + secrets.token_hex(8)
             secret = secrets.token_bytes(32)
             if key_id in identity_ids or key_id in seen_key_ids or secret in seen_secrets:
                 raise ValueError("generated Core credential collision")
             seen_key_ids.add(key_id)
             seen_secrets.add(secret)
-            credentials.append((core, key_id, secret, revision))
+            credentials.append((core, key_id, secret, scope))
             grants.append(
                 {
                     "core_id": core_id,
                     "key_id": key_id,
                     "secret_hex": secret.hex(),
                     "methods": core["methods"],
-                    "workdirs": [{"alias": core["alias"], "policy_sha256": revision}],
+                    "workdirs": [
+                        {"alias": alias, "policy_sha256": revision} for alias, revision, _ in scope
+                    ],
                 }
             )
         grant_document = {"schema_version": 1, "bridge_id": bridge_id, "grants": grants}
@@ -353,23 +389,32 @@ def provision(manifest: Any) -> Path:
             policies=config.policies,
             document=grant_document,
         )
-        for core, key_id, secret, revision in credentials:
+        for core, key_id, secret, scope in credentials:
             core_id = core["instance_id"]
             bindings = stage / "core-bindings" / core_id
             bindings.mkdir(parents=True, mode=0o700)
             os.chmod(bindings, 0o700)
             binding = {
-                "schema_version": 1,
+                "schema_version": 2 if "workdirs" in core else 1,
                 "instance_id": core_id,
                 "core_id": core_id,
                 "bridge_id": bridge_id,
                 "key_id": key_id,
                 "secret_hex": secret.hex(),
-                "workdir_alias": core["alias"],
-                "workdir_path": core["container_path"],
-                "policy_revision": revision,
                 "socket_path": "/run/serverfs-agent-bridge/bridge.sock",
             }
+            if "workdirs" in core:
+                binding["workdirs"] = [
+                    {"alias": alias, "workdir_path": container_path, "policy_revision": revision}
+                    for alias, revision, container_path in scope
+                ]
+            else:
+                alias, revision, container_path = scope[0]
+                binding.update(
+                    workdir_alias=alias,
+                    workdir_path=container_path,
+                    policy_revision=revision,
+                )
             binding_file = bindings / "core-bridge-binding.json"
             with binding_file.open("x", encoding="utf-8") as stream:
                 json.dump(binding, stream, sort_keys=True, separators=(",", ":"))
