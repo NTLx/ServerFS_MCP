@@ -49,9 +49,9 @@ class FakeJob:
         return pid == 99
 
 
-def _patch_owner(tmp_path, monkeypatch, *, fail_ready=False):
+def _patch_owner(tmp_path, monkeypatch, *, fail_ready=False, proxy=None):
     from serverfs_mcp import agent_lifecycle, native_lifecycle, windows_job
-    from serverfs_mcp.windows_v25 import bridge_v2_owner, readiness, storage
+    from serverfs_mcp.windows_v25 import bridge_v2_owner, named_agent_proxy, readiness, storage
     from serverfs_mcp.windows_v25 import cli as native_cli
 
     manifest, _cfg, _grants, home, _worker = _fixture(tmp_path)
@@ -88,6 +88,7 @@ def _patch_owner(tmp_path, monkeypatch, *, fail_ready=False):
             raise BridgeV2OwnerError("synthetic denied health check")
 
     monkeypatch.setattr(bridge_v2_owner, "load_native_bridge_plan", lambda _: plan)
+    monkeypatch.setattr(named_agent_proxy, "read_owned_named_agent_proxy", lambda **_kw: proxy)
     # A read-only Bridge has an explicit WorkdirClaim, but does not need
     # to query or take over the host legacy Bridge writable ownership.
     monkeypatch.setattr(
@@ -103,8 +104,16 @@ def _patch_owner(tmp_path, monkeypatch, *, fail_ready=False):
     monkeypatch.setattr(native_lifecycle, "LifecycleLease", FakeLease)
     monkeypatch.setattr(windows_job, "WindowsJob", lambda name: FakeJob(name, events))
     monkeypatch.setattr(agent_lifecycle, "spawn_bridge", fake_spawn)
-    monkeypatch.setattr(agent_lifecycle, "bridge_child_environment", lambda _proxy: {})
-    monkeypatch.setattr(agent_lifecycle, "bootstrap_frame_bytes", lambda *_a, **_k: b"bootstrap\n")
+    def fake_bridge_env(selected_proxy):
+        events.append(("bridge-env", selected_proxy))
+        return {}
+
+    def fake_bootstrap(selected_proxy, *, prior_bridge_execution_stopped=False):
+        events.append(("bootstrap-proxy", selected_proxy, prior_bridge_execution_stopped))
+        return b"bootstrap\n"
+
+    monkeypatch.setattr(agent_lifecycle, "bridge_child_environment", fake_bridge_env)
+    monkeypatch.setattr(agent_lifecycle, "bootstrap_frame_bytes", fake_bootstrap)
     monkeypatch.setattr(
         agent_lifecycle, "request_graceful_shutdown", lambda child: events.append("graceful-stop")
     )
@@ -131,6 +140,24 @@ def test_independent_bridge_lifecycle_owns_only_its_job_and_lease(tmp_path, monk
     assert events.index(("job-close", plan.job_name)) < events.index("lease-released")
     assert process.stdin.getvalue() == b"bootstrap\n"
     assert all("Native Tunnel" not in str(item) for item in events)
+
+
+def test_named_bridge_passes_private_proxy_only_to_clean_child_and_bootstrap(
+    tmp_path, monkeypatch,
+) -> None:
+    from serverfs_mcp.agent_proxy import AgentProxyConfig
+
+    proxy = AgentProxyConfig(
+        url="http://127.0.0.1:20170",
+        no_proxy="127.0.0.1,localhost,::1",
+    )
+    manifest, _plan_value, process, events = _patch_owner(
+        tmp_path, monkeypatch, proxy=proxy
+    )
+    assert runtime.run_independent_bridge_v2(manifest) == 3
+    assert ("bridge-env", proxy) in events
+    assert ("bootstrap-proxy", proxy, True) in events
+    assert process.stdin.getvalue() == b"bootstrap\n"
 
 
 def test_failed_signed_readiness_cleans_exact_bridge_only(tmp_path, monkeypatch):
