@@ -159,3 +159,59 @@ def test_multi_alias_requires_explicit_submit_target() -> None:
     _, _, adapter = _adapter()
     with pytest.raises(AgentBridgeClientError):
         asyncio.run(adapter.call("task.submit", {"runtime": "claude", "prompt": "test"}))
+
+
+def test_runtime_list_combines_signed_alias_catalogs_without_duplicates() -> None:
+    class CatalogClient(_SignedClient):
+        async def call(self, method, params):
+            self.calls.append((method, dict(params)))
+            assert method == "runtime.list"
+            items = {
+                "Repo": [{"name": "codex", "available": True}],
+                "Docs": [
+                    {"name": "codex", "available": False},
+                    {"name": "qoder", "available": True},
+                ],
+            }
+            return {"runtimes": items[self._workdir_alias]}
+
+    repo, docs = CatalogClient("Repo"), CatalogClient("Docs")
+    adapter = create_linux_v0250_agent_adapter({"Repo": repo, "Docs": docs}, None)
+    assert asyncio.run(adapter.call("runtime.list", {})) == {
+        "runtimes": [
+            {"name": "codex", "available": True},
+            {"name": "qoder", "available": True},
+        ]
+    }
+    assert repo.calls == docs.calls == [("runtime.list", {})]
+
+
+def test_runtime_models_tries_next_authorized_alias_on_grant_refusal() -> None:
+    class ModelClient(_SignedClient):
+        async def call(self, method, params):
+            self.calls.append((method, dict(params)))
+            if self._workdir_alias == "Repo":
+                raise CoreBridgeRemoteError("CORE_NOT_AUTHORIZED", "Core is not authorized")
+            return {"runtime": "qoder", "status": "ok", "models": []}
+
+    repo, docs = ModelClient("Repo"), ModelClient("Docs")
+    adapter = create_linux_v0250_agent_adapter({"Repo": repo, "Docs": docs}, None)
+    assert asyncio.run(adapter.call("runtime.models", {"runtime": "qoder"})) == {
+        "runtime": "qoder", "status": "ok", "models": [],
+    }
+    assert repo.calls == docs.calls == [("runtime.models", {"runtime": "qoder"})]
+
+
+def test_runtime_discovery_refuses_invalid_and_ungranted_results() -> None:
+    class InvalidCatalogClient(_SignedClient):
+        async def call(self, method, params):
+            if method == "runtime.list":
+                return {"runtimes": [{"available": True}]}
+            raise CoreBridgeRemoteError("CORE_NOT_AUTHORIZED", "Core is not authorized")
+
+    repo, docs = InvalidCatalogClient("Repo"), InvalidCatalogClient("Docs")
+    adapter = create_linux_v0250_agent_adapter({"Repo": repo, "Docs": docs}, None)
+    with pytest.raises(AgentBridgeClientError, match="invalid runtime catalog"):
+        asyncio.run(adapter.call("runtime.list", {}))
+    with pytest.raises(AgentBridgeClientError, match="not authorized"):
+        asyncio.run(adapter.call("runtime.models", {"runtime": "qoder"}))

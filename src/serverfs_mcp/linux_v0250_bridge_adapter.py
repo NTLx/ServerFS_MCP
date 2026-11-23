@@ -159,7 +159,43 @@ class LinuxV026MultiBridgeAdapter:
                     return observed
                 return await adapter.call(method, params)
             raise AgentBridgeRemoteError("CORE_TASK_NOT_FOUND", "Core task is not available")
-        if method in {"bridge.ping", "runtime.list"}:
+        if method == "runtime.list":
+            # A Core may expose different runtime policies on its signed
+            # aliases; the public discovery tool has no workdir parameter.
+            runtimes: list[dict[str, Any]] = []
+            names: set[str] = set()
+            successes = 0
+            for adapter in self._adapters.values():
+                try:
+                    response = await adapter.call(method, params)
+                except AgentBridgeRemoteError as exc:
+                    if exc.code == "CORE_NOT_AUTHORIZED":
+                        continue
+                    raise
+                entries = response.get("runtimes")
+                if not isinstance(entries, list) or any(
+                    not isinstance(entry, dict) or not isinstance(entry.get("name"), str)
+                    for entry in entries
+                ):
+                    raise AgentBridgeClientError("Bridge v2 returned an invalid runtime catalog")
+                successes += 1
+                for entry in entries:
+                    if entry["name"] not in names:
+                        names.add(entry["name"])
+                        runtimes.append(entry)
+            if not successes:
+                raise AgentBridgeClientError("Core Bridge runtime discovery is not authorized")
+            return {"runtimes": runtimes}
+        if method == "runtime.models":
+            for adapter in self._adapters.values():
+                try:
+                    return await adapter.call(method, params)
+                except AgentBridgeRemoteError as exc:
+                    if exc.code == "CORE_NOT_AUTHORIZED":
+                        continue
+                    raise
+            raise AgentBridgeClientError("Core Bridge model discovery is not authorized")
+        if method == "bridge.ping":
             return await next(iter(self._adapters.values())).call(method, params)
         raise AgentBridgeClientError("Agent Bridge workdir is required")
 
