@@ -4,7 +4,7 @@
 
 ## Current release target
 
-v0.25.0 is the architecture and documentation baseline; publication is pending. Read [release checklist](../v0.25.0-release-checklist-2026-11-21.md) and [release notes](../releases/v0.25.0.md) for evidence and remaining gates. Core, optional Connector and optional Bridge are independently managed, with explicit per-Core authorization and native lifecycle implementations; macOS owned IPC uses private policy checks rather than shared v2 grants.
+v0.25.0 is the stable architecture baseline; v0.26.0 is the unreleased development target. Read the [v0.26.0 plan](../../dev_plan_v0.26.0.md) for current scope and release gates. Read [release checklist](../v0.25.0-release-checklist-2026-11-21.md) and [release notes](../releases/v0.25.0.md) for evidence and remaining gates. Core, optional Connector and optional Bridge are independently managed, with explicit per-Core authorization and native lifecycle implementations; macOS owned IPC uses private policy checks rather than shared v2 grants.
 
 ## Read order
 

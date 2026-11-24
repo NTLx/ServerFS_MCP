@@ -5,7 +5,7 @@ description: Start with a file-only Core; choose optional ingress and host execu
 
 ServerFS MCP gives AI clients controlled access to explicitly configured local directories (workdirs). Read-only is the default; writes require explicit policy and revision checks. Optional capabilities add bounded binary transfer, deterministic Repo Ops and host Agent delegation without exposing a general shell.
 
-**Documentation target: v0.25.0.** Publication is pending; see the [latest stable release](https://github.com/NTLx/ServerFS_MCP/releases/latest).
+**Stable release: v0.25.0. Development target: v0.26.0 (not released).** Candidate-only capabilities are labeled; use version-matched artifacts and guides; see the [latest stable release](https://github.com/NTLx/ServerFS_MCP/releases/latest).
 
 ## Start here
 

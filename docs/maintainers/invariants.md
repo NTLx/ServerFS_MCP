@@ -176,7 +176,7 @@ Jev Preflight, Runtime Router, Model Advisor and Approval Advisor are opt-in adv
 - Runtime Router may recommend but never switch the requested runtime/tool automatically.
 - Model Advisor ranks only the normalized candidates supplied to it and never populates/overrides `submit_agent_task.model`.
 - Approval Advisor can advise only after the provider creates an approval request; it cannot approve/deny, grant permission IDs or bypass `respond_agent_approval` validation.
-- Jev credentials remain outside the MCP container and must not appear in logs/RPC/task events. Preflight sends the original prompt to the external TypeSafe API; authorize that data transfer explicitly. Model/approval redaction is best-effort, not a comprehensive secret filter.
+- Jev credentials remain outside the MCP container and must not appear in logs/RPC/task events. Preflight sends the original prompt to the external TypeSafe API; authorize that data transfer explicitly. Model/approval redaction is best-effort, not a comprehensive secret filter. The v0.26.0 candidate distinguishes approvals before redaction using a private task-bound keyed fingerprint, retains private request/decision audit state, and refuses remote approval of recognized outside-workdir writes. Never expose the private fingerprint or key through public events; advice remains non-authoritative.
 
 Jev has independent proxy control without increasing its authority. Agent provider proxy is separate and requires a credentialless endpoint; Connector egress and registry pulls are independent.
 
@@ -186,7 +186,7 @@ Platform support is implemented behind explicit platform seams, not by weakening
 
 ### Linux
 
-Use Compose for Core and optional Connectors; direct HTTP and tunnel-only exposure are distinct overlay selections. Host Bridge remains an optional user systemd owner. Verify actual socket peer identity, private signed bindings and grants; do not synthesize identity or replace a denied signed attachment with a legacy transport. Preserve project isolation and non-root ownership. Named signed attachment uses one enabled Agent/Repo Ops alias in slot 01, distinct Core/Bridge IDs even for dedicated owner and up to 32 initial grants; no live grant append/rotation via initial provisioning.
+Use Compose for Core and optional Connectors; direct HTTP and tunnel-only exposure are distinct overlay selections. Host Bridge remains an optional user systemd owner. Verify actual socket peer identity, private signed bindings and grants; do not synthesize identity or replace a denied signed attachment with a legacy transport. Preserve project isolation and non-root ownership. The v0.26.0 candidate supports 1–16 explicitly granted Agent and/or Repo Ops aliases in slots 01–16 (v0.25.0 binds one enabled alias in slot 01), distinct Core/Bridge IDs even for dedicated owner and up to 32 initial grants; no live grant append/rotation via initial provisioning.
 
 ### Windows
 
@@ -194,7 +194,7 @@ Windows 11 x64, local NTFS, current-user least-privilege Task Scheduler, windowl
 
 ### macOS
 
-Apple Silicon, native arm64, macOS 27 and APFS. Preserve Darwin descriptor-relative containment, TCC, signed app/runtime and authenticated Unix IPC. Named components use user SMAppService/LaunchAgents, with explicit Login Items approval. No root service, hand-installed legacy plist or approval bypass. Preserve exact identity and component scope. Owned mode uses private IPC/manifest/policy checks, not shared v2 grant protocol; shared Core requires independent existing owner, one Agent alias, no Repo Ops or named Connector staging. Native staging is create-only. Unsupported platforms fail closed pending measured support.
+Apple Silicon, native arm64, macOS 27 and APFS. Preserve Darwin descriptor-relative containment, TCC, signed app/runtime and authenticated Unix IPC. Named components use user SMAppService/LaunchAgents, with explicit Login Items approval. No root service, hand-installed legacy plist or approval bypass. Preserve exact identity and component scope. Owned mode uses private IPC/manifest/policy checks, not shared v2 grant protocol; shared Core requires an independent existing owner and exact owner-bound Agent aliases (one in v0.25.0; 1–16 in the v0.26.0 candidate), no Repo Ops or named Connector staging. Native staging is create-only. Unsupported platforms fail closed pending measured support.
 
 ### Component identity
 

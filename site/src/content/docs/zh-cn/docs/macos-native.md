@@ -12,7 +12,7 @@ ServerFS 支持 Apple Silicon、原生 arm64、macOS 27.x 与本地 APFS，遵�
 | 本地 stdio | MCP 客户端在本机，无需持久服务 |
 | 纯文件 Core | 需要认证后的 HTTP 文件访问，不需要 Bridge |
 | Owned Bridge | Core 需要专属 Agent 或 Repo Ops 执行边界 |
-| Shared Bridge | 多个 Core 接入已有的 v2 Bridge owner；每个 Core 仅支持一个绑定的 Agent Workdir，不支持 Repo Ops |
+| Shared Bridge | 多个 Core 接入已有的 v2 Bridge owner；每个 Core 在 v0.25.0 支持一个 Agent Workdir，在 v0.26.0 候选版支持 1–16 个 owner 授权的 Agent Workdir；不支持 Repo Ops |
 
 纯文件与 owned Core 可按需接入 OpenAI 和 Cloudflare Connector。Shared Core 目前没有 Connector staging 接口。Owned pair 使用专属本机 socket 和策略校验；共享接入使用独立签名 grant。
 

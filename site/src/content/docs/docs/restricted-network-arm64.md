@@ -3,7 +3,7 @@ title: Restricted-network ARM64 Deployment
 description: Prepare a version-matched Linux ARM64 image set for a restricted or offline host.
 ---
 
-This guide applies to Linux ARM64 Docker deployments. ServerFS release workflows build amd64 and arm64 images. Select the actual target release: a v0.25.0 image is not available as a published stable artifact until the release has completed. Candidate testing uses the verified local candidate image instead.
+This guide applies to Linux ARM64 Docker deployments. ServerFS release workflows build amd64 and arm64 images. Select the actual target release: v0.25.0 is the stable release; do not assume v0.26.0 images are published before candidate release gates pass. Candidate testing uses the verified local candidate image instead.
 
 ## 1. Separate image acquisition from runtime networking
 

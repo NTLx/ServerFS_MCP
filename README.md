@@ -10,6 +10,8 @@
 
 **当前稳定版本：[v0.25.0](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.25.0)。**
 
+**开发目标：v0.26.0（尚未发布）。** 候选源码整改 Linux 命名 Core 多 Workdir、macOS Shared Core 多 Agent Workdir、Windows 命名 Bridge 按 Runtime 代理，以及共享 Bridge 审批脱敏与私有审计。具体范围和发布门禁见 [v0.26.0 开发计划](dev_plan_v0.26.0.md)。候选功能不属于 v0.25.0 安装包，请使用版本匹配的手册与产物。
+
 ServerFS MCP 是一个跨平台、自托管的 MCP 文件系统服务。它将明确配置的本地目录（Workdir）开放给 AI 客户端，默认只读，写入具有 revision 保护；按需增加二进制传输、确定性仓库操作（Repo Ops）和宿主机 Agent 委托。不提供 Shell 或通用命令执行接口。
 
 ## 按需组合，而非整套安装

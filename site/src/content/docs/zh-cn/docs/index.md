@@ -5,7 +5,7 @@ description: 从纯文件 Core 开始，按需选择入口和宿主机执行能�
 
 ServerFS MCP 为 AI 客户端提供对显式配置的本地目录（Workdir）的受控访问。默认只读；写入需要明确策略和 revision 检查。可选能力包括有界二进制传输、确定性 Repo Ops 和宿主机 Agent 委托，不提供通用 Shell。
 
-**文档目标版本：v0.25.0。** 正式发布尚未完成，见[最新稳定版本](https://github.com/NTLx/ServerFS_MCP/releases/latest)。
+**当前稳定版本：v0.25.0；开发目标：v0.26.0（尚未发布）。** 候选功能均须区分版本，请使用版本匹配的安装产物与手册。见[最新稳定版本](https://github.com/NTLx/ServerFS_MCP/releases/latest)。
 
 ## 从这里开始
 

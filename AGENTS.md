@@ -11,7 +11,7 @@ Repository-wide maintainer entry point. Keep this file short; durable rules and 
 
 ## Current baseline
 
-- Source/documentation target v0.25.0; publication pending. Use the [release checklist](docs/v0.25.0-release-checklist-2026-11-21.md) for recorded evidence and remaining gates.
+- Stable release v0.25.0; development target v0.26.0, not release-authorized. See the [v0.26.0 plan](dev_plan_v0.26.0.md) for current scope and gates and the [v0.25.0 checklist](docs/v0.25.0-release-checklist-2026-11-21.md) for historical evidence. Do not present candidate capabilities as released.
 - Named persistent Core, zero or more supported Connectors and optional host Bridge have distinct identities, scoped lifecycles and dependency guards. Local stdio is separate. Direct HTTP needs no Connector. File-only needs no Bridge; owned/shared modes are selected at provisioning. Shared Core cannot operate its owner; same UID/SID is not authorization.
 - Linux: Docker Compose per Core, direct HTTP or optional OpenAI/Cloudflare, user systemd host Bridge; signed v2 attachments. macOS: native arm64 Apple Silicon, macOS 27, APFS, signed SMAppService; owned uses private IPC/policy checks, shared uses owner grants. Windows: native Windows 11 x64/NTFS, current-user Scheduler, Job Objects and Named Pipe. Use the platform's named lifecycle; no forced private IPC parity or central instance manager.
 - Current runbooks, not historical/default-owner recipes, govern current operation. Do not infer platform or provider parity.
@@ -32,7 +32,7 @@ For operational tasks select one matching [Skill](skills/README.md), then its ap
 - Repo Ops has exactly four public tools, operator-owned integrity-pinned actions and writer coordination; never replace deterministic work with Agent delegation.
 - Preserve public schemas, stable errors and protocol-clean stdout; never expose secrets, private paths or raw sensitive data in normal logs.
 - Provider configuration/authentication/default models/sandbox remain provider-owned. `model=None` means no override; no automatic cross-provider fallback, fabricated model catalogs or auto-approval. Jev is optional advisory-only and external transfer requires authorization.
-- Signed v2 Core grants reject continuation/idempotency keys. Do not blindly retry uncertain submission, bypass grants/leases or clear recovery guards.
+- Signed v2 Core grants reject continuation/idempotency keys. Do not blindly retry uncertain submission, bypass grants/leases or clear recovery guards. In the v0.26.0 candidate, preserve private approval identity before public redaction; a recognized outside-workdir write request cannot be approved remotely. Advice never grants authority.
 - **Standard protocol first.** Before adding any provider-specific native runtime, follow the [native runtime admission gate](docs/maintainers/invariants.md#native-runtime-admission-gate). Use ACP when sufficient. An Agent may draft the admission record but cannot self-approve or start native-adapter implementation without explicit maintainer PASS.
 
 ## Working and verification rules

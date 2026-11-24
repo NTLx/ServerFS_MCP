@@ -11,7 +11,7 @@ Use a version-matched checkout and installed runtimes. This runbook covers **new
 | Local MCP client only | Native stdio: `serverfs serve` |
 | Persistent HTTP file service | File-only Core (`disabled`) |
 | Agent delegation and/or Repo Ops with its own Bridge | Owned Core/Bridge pair (`owned`) |
-| Multiple Cores using an existing v2 Bridge owner | Shared Core (`shared`): 1–16 owner-bound Agent workdirs per Core (v2 private binding), no Repo Ops |
+| Multiple Cores using an existing v2 Bridge owner | Shared Core (`shared`): one owner-bound Agent workdir in v0.25.0; 1–16 in the v0.26.0 candidate (versioned private binding); no Repo Ops |
 | Optional OpenAI or Cloudflare ingress | Stage Connectors on a file-only or owned Core |
 
 The named Shared Core has no Connector staging path. It may expose its authenticated loopback HTTP endpoint to an independently managed client or proxy. Do not assume every architecture topology is implemented by the same native commands. In particular, the owned Bridge uses its private native socket and policy checks; the shared path additionally requires owner-issued v2 grants.

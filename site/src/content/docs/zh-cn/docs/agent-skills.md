@@ -34,7 +34,7 @@ Repo Ops 不新增独立 Skill：策略由 `serverfs-configure` 管理，接入�
 
 ## 可移植 Agent Plugin
 
-根目录 `plugin.json` 是 skills-only 的可移植 Agent Plugins manifest。v0.25.0 构建产物为 `serverfs-plugin-v0.25.0.zip`（尚待发布）。使用可信、版本匹配的产物，通过实际 Agent 客户端支持的 Plugin 安装方式导入。
+根目录 `plugin.json` 是 skills-only 的可移植 Agent Plugins manifest。v0.25.0 构建产物为 `serverfs-plugin-v0.25.0.zip`。v0.26.0 候选 Skills 尚未正式发布，须在版本元数据和发布门禁统一后打包发布。使用可信、版本匹配的产物，通过实际 Agent 客户端支持的 Plugin 安装方式导入。
 
 ZIP 包含 `serverfs/plugin.json` 和七个 Skill 目录及 Markdown Reference，不含 Skills 索引、完整 checkout、`mcp.json`、实例端点 URL 或凭据。实际 ServerFS MCP 连接需另外配置；ZIP 不会自动复制 Skills 至 Provider 私有目录。
 

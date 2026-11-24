@@ -25,7 +25,7 @@ ServerFS 支持 Windows 11 x64、本地 NTFS 与匹配的预构建 Rust/ABI3 nat
 3. 使用组件 CLI（`python -I -B -m serverfs_mcp.windows_v25.cli`）注册并启动所需 task。先启动 Bridge，再启动依赖它的 Core；先验证认证后的 MCP，再增加 Connector。
 4. 如需公网入口，为 Connector 准备独立 ID、可信可执行文件和私有 Provider 凭据。OpenAI 需要静态 Core bearer 认证及匹配的 bundled cloudflared。
 
-初始配置助手支持 bearer 认证和显式无代理的 runtime 策略。OAuth 或特殊代理配置使用高级手动路径。不要混用两条配置流程，也不要绕过私有 ACL 和 reparse-point 检查。
+v0.25.0 初始配置助手支持 bearer 认证和显式无代理 runtime 策略。v0.26.0 候选版支持通过 owner 私有、无凭据的 `--agent-proxy-env-file` 配置 runtime/ACP `use_proxy=true`；请使用版本匹配的手册。OAuth 和其他特殊配置仍使用高级手动路径。不要混用两条配置流程，也不要绕过私有 ACL 和 reparse-point 检查。
 
 ## 验证与运维
 

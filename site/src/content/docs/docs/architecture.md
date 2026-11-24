@@ -62,8 +62,8 @@ A topology describes the product model. Follow the platform runbook for its supp
 
 Current implementation limits:
 
-- **Linux:** one service per Tunnel provider per Compose project. The signed Bridge overlay binds one Agent/Repo Ops-enabled workdir in slot 01; additional disjoint file-only slots are possible.
-- **macOS:** a Shared Core binds one Agent workdir, with Repo Ops disabled and no Connector staging interface. File-only and owned instances support predeclared additional Connector IDs.
+- **Linux:** one service per Tunnel provider per Compose project. The v0.25.0 signed overlay binds one Agent/Repo Ops-enabled workdir in slot 01; the v0.26.0 candidate supports 1–16 independently granted Agent and/or Repo Ops workdirs across slots 01–16. Additional disjoint file-only slots remain possible.
+- **macOS:** a Shared Core binds one Agent workdir in v0.25.0 or 1–16 owner-bound Agent workdirs in the v0.26.0 candidate, with Repo Ops disabled and no Connector staging interface. File-only and owned instances support predeclared additional Connector IDs.
 - **Windows:** named Connector IDs and signed owned/shared attachments. The initial shared helper accepts up to 16 Cores; fresh runtime/configuration helpers are create-only, not live upgrades or credential rotation.
 
 See [Getting Started](../getting-started/), [macOS](../macos-native/) and [Windows](../windows-native/) for precise procedures.

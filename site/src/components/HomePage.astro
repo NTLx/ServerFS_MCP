@@ -20,7 +20,7 @@ const copy = {
     languageLabel: '切换到简体中文',
     themeToLight: 'Switch to light theme',
     themeToDark: 'Switch to dark theme',
-    release: 'v0.25.0 · release pending',
+    release: 'v0.25.0 stable · v0.26.0 candidate',
     heroEyebrow: 'SECURE MCP FOR LINUX · WINDOWS · MACOS WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
@@ -105,7 +105,7 @@ const copy = {
         name: 'macOS',
         kicker: 'APPLE-NATIVE USER DEPLOYMENT',
         title: 'Darwin-native semantics, owned by the current user.',
-        body: 'Apple Silicon, native arm64, macOS 27 and local APFS. Signed SMAppService jobs manage named file-only/owned instances and Connectors. Shared Core requires an independently provisioned owner; one Agent workdir, no Repo Ops or named Connector staging.',
+        body: 'Apple Silicon, native arm64, macOS 27 and local APFS. Signed SMAppService jobs manage named file-only/owned instances and Connectors. Shared Core requires an independently provisioned owner; one Agent workdir in v0.25.0; multiple owner-bound Agent workdirs in the v0.26.0 candidate; no Repo Ops or named Connector staging.',
         path: [
           ['01', 'LIFECYCLE', 'SMAppService', 'Current-user persistence · no LaunchDaemon'],
           ['02', 'TRANSPORT', 'Native stdio / HTTP', 'Named HTTP Core or local stdio'],
@@ -216,7 +216,7 @@ const copy = {
     languageLabel: 'Switch to English',
     themeToLight: '切换到浅色主题',
     themeToDark: '切换到深色主题',
-    release: 'v0.25.0 · 待发布',
+    release: 'v0.25.0 稳定版 · v0.26.0 候选版',
     heroEyebrow: '面向 Linux · Windows · macOS Workdir 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
@@ -301,7 +301,7 @@ const copy = {
         name: 'macOS',
         kicker: 'APPLE 原生用户级部署',
         title: '使用原生 Darwin 语义，由当前用户管理。',
-        body: 'Apple Silicon、原生 arm64、macOS 27 和本地 APFS。签名 SMAppService jobs 管理命名纯文件/owned 实例和 Connector。Shared Core 需要独立 provision 的 owner，仅一个 Agent workdir，不支持 Repo Ops 或命名 Connector staging。',
+        body: 'Apple Silicon、原生 arm64、macOS 27 和本地 APFS。签名 SMAppService jobs 管理命名纯文件/owned 实例和 Connector。Shared Core 需要独立 provision 的 owner，v0.25.0 支持单个 Agent workdir，v0.26.0 候选版支持多个 owner 授权的 Agent workdir；不支持 Repo Ops 或命名 Connector staging。',
         path: [
           ['01', '生命周期', 'SMAppService', '当前用户持久化 · 无 LaunchDaemon'],
           ['02', '传输', '原生 stdio / HTTP', '命名 HTTP Core 或本地 stdio'],

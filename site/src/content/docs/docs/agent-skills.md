@@ -34,7 +34,7 @@ File-only needs no Bridge. Agent and Repo Ops are independent; a Shared Core can
 
 ## Portable Agent Plugin
 
-The root `plugin.json` is the skills-only portable Agent Plugins manifest. For release v0.25.0 the build produces `serverfs-plugin-v0.25.0.zip` (publication pending). Use a trusted version-matched artifact and the importing Agent client's own supported Plugin installation procedure.
+The root `plugin.json` is the skills-only portable Agent Plugins manifest. For release v0.25.0 the build produces `serverfs-plugin-v0.25.0.zip`. v0.26.0 candidate Skills are not a published artifact; package them only after the version metadata and release gates are reconciled. Use a trusted version-matched artifact and the importing Agent client's own supported Plugin installation procedure.
 
 The archive contains `serverfs/plugin.json` and the seven Skill directories with Markdown references. It excludes the Skills index, full checkout, `mcp.json`, endpoint URLs and credentials. Configure the actual ServerFS MCP connection separately. The archive does not auto-copy Skills into provider-private directories.
 

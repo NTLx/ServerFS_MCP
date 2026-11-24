@@ -62,8 +62,8 @@ MCP 客户端 ── 直接 HTTP ──────────────┐
 
 当前实现限制：
 
-- **Linux：** 每个 Compose project 中每种 Tunnel Provider 对应一个服务。签名 Bridge overlay 在 slot 01 绑定一个启用 Agent/Repo Ops 的 Workdir，可另外配置互不重叠的纯文件目录。
-- **macOS：** Shared Core 绑定一个 Agent Workdir，不支持 Repo Ops，也没有 Connector staging 接口。纯文件与 owned 实例支持预声明的额外 Connector ID。
+- **Linux：** 每个 Compose project 中每种 Tunnel Provider 对应一个服务。v0.25.0 签名 overlay 在 slot 01 绑定一个启用 Agent/Repo Ops 的 Workdir；v0.26.0 候选版支持在 01–16 任意槽位配置 1–16 个独立授权的 Agent 和/或 Repo Ops Workdir，仍可配置互不重叠的纯文件目录。
+- **macOS：** Shared Core 在 v0.25.0 绑定一个 Agent Workdir，在 v0.26.0 候选版绑定 1–16 个 owner 授权的 Agent Workdir；仍不支持 Repo Ops 或 Connector staging。纯文件与 owned 实例支持预声明的额外 Connector ID。
 - **Windows：** 支持命名 Connector ID 和 owned/shared 签名接入。初始共享配置助手最多支持 16 个 Core；运行时和配置助手仅用于新建，不支持在线升级或凭据轮换。
 
 具体步骤见[快速开始](../getting-started/)、[macOS](../macos-native/)和 [Windows](../windows-native/)。

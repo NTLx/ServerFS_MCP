@@ -21,7 +21,7 @@ Linux 命名实例使用宿主机用户级 systemd 服务及签名 Unix Socket �
 
 Core 默认提供 11 个文件工具。二进制传输增加 2 个，Agent 委派增加 10 个，[Repo Ops](../repo-ops/) 独立增加 4 个。仅启用 Repo Ops 也需要 Bridge，但不需要可用的 Agent Provider，更不会创建 Agent 任务。
 
-Agent 委派不是 Shell 或任意 argv 接口。Codex、Claude、Qoder 及已配置的 [ACP profile](../acp/) 需要授权的可写 workdir 和 `workspace-write` 策略。并非各平台的所有接入方式都支持全部能力，例如 macOS 命名共享 Core 仅允许一个 Agent workdir，不支持 Repo Ops。
+Agent 委派不是 Shell 或任意 argv 接口。Codex、Claude、Qoder 及已配置的 [ACP profile](../acp/) 需要授权的可写 workdir 和 `workspace-write` 策略。并非各平台的所有接入方式都支持全部能力，例如 macOS 命名共享 Core 在 v0.25.0 支持一个 Agent workdir，在 v0.26.0 候选版支持 1–16 个 owner 授权的 Agent workdir；仍不支持 Repo Ops。
 
 ## 提交与跟踪任务
 
@@ -56,7 +56,7 @@ workspace-write 任务、Repo Ops 与文件修改通过 writer lease 协调。�
 
 ## 出站代理与可选顾问
 
-Provider 认证由原生 runtime 管理。Linux 命名 owner 使用私有 Bridge JSON（`proxy` 与 runtime 的 `use_proxy`）；旧单实例渲染器使用 `SERVERFS_AGENT_USE_PROXY`。Agent 代理端点必须无凭据；认证上游需经无凭据本地 broker 转接。Linux Codex 代理模式使用 Bridge 专属的 standalone app-server，不改动用户共享 daemon；Claude 和 Qoder 接收受控代理设置。Tunnel 与 Jev 的出站独立配置。
+Provider 认证由原生 runtime 管理。Linux 命名 owner 使用私有 Bridge JSON（`proxy` 与 runtime 的 `use_proxy`）；旧单实例渲染器使用 `SERVERFS_AGENT_USE_PROXY`。Agent 代理端点必须无凭据；认证上游需经无凭据本地 broker 转接。Linux Codex 代理模式使用 Bridge 专属的 standalone app-server，不改动用户共享 daemon；Claude 和 Qoder 接收受控代理设置。v0.26.0 候选版还支持 Windows 命名 Bridge owner 通过受保护的无凭据 `--agent-proxy-env-file` 对 runtime/ACP 显式启用代理；直连 runtime 不继承环境中的代理变量。Tunnel 与 Jev 的出站独立配置。
 
 可选 [Jev 顾问](../jev-advisors/) 在提交前、带显式任务上下文的原生模型发现阶段或真实 approval 请求出现时提供建议。建议始终为 `automatic=false`，不能改变 runtime、model、策略、writer lease 或 Provider 决策。未配置 Key 时，Agent 流程不依赖 Jev。
 

@@ -12,7 +12,7 @@ ServerFS runs on Apple Silicon, native arm64, macOS 27.x and local APFS, with th
 | Local stdio | The MCP client is local and needs no persistent service |
 | File-only Core | You need authenticated HTTP file access, without a Bridge |
 | Owned Bridge | A Core needs its own Agent or Repo Ops execution boundary |
-| Shared Bridge | Multiple Cores need an existing owner-managed v2 Bridge; each Core supports one bound Agent workdir, with Repo Ops disabled |
+| Shared Bridge | Multiple Cores need an existing owner-managed v2 Bridge; each Core supports one bound Agent workdir in v0.25.0 or 1–16 owner-bound Agent workdirs in the v0.26.0 candidate, with Repo Ops disabled |
 
 File-only and owned Cores support optional OpenAI and Cloudflare Connectors. Shared Cores currently have no Connector staging interface. An owned pair uses a private native socket and policy checks; shared attachment uses individual signed grants.
 

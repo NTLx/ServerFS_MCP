@@ -30,7 +30,7 @@ Start with `inspect_repo(workdir="project", view="status")` and `inspect_repo(wo
 
 ## Per-workdir configuration
 
-Repo Ops defaults off. Linux named deployment enables the Core slot and the matching private owner JSON `workdirs` entry (`repo_ops_enabled: true`); the signed grant must allow the required `repo.*` methods. Follow the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md). Only one Agent/Repo Ops-enabled slot (01) is supported by the signed overlay. The Core-side settings for a writable repository are:
+Repo Ops defaults off. Linux named deployment enables the Core slot and the matching private owner JSON `workdirs` entry (`repo_ops_enabled: true`); the signed grant must allow the required `repo.*` methods. Follow the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md). The v0.25.0 signed overlay binds slot 01 only; the v0.26.0 candidate accepts 1–16 explicitly granted slots, including Repo Ops-only slots with Agent disabled. The Core-side settings for a writable repository are:
 
 ```text
 WORKDIR_01_ALIAS=project

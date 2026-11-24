@@ -10,6 +10,8 @@
 
 **Current stable release: [v0.25.0](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.25.0).**
 
+**Development target: v0.26.0 (not released).** The candidate addresses multiple workdirs on named Linux Cores, multiple Agent workdirs on macOS Shared Cores, per-runtime proxy support for named Windows Bridge owners, and shared Bridge approval redaction/private audit. See the [v0.26.0 development plan](dev_plan_v0.26.0.md) for scope and release gates. Candidate capabilities do not belong to the v0.25.0 artifacts; use version-matched guides and artifacts.
+
 ServerFS MCP is a cross-platform, self-hosted MCP filesystem service. It exposes explicitly configured local directories (workdirs) to AI clients, with read-only defaults and revision-guarded writes. Optional binary transfer, deterministic repository operations (Repo Ops) and host Agent delegation extend its capabilities. There is no shell or general command-execution interface.
 
 ## Compose only what you need

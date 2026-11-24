@@ -25,7 +25,7 @@ Use the [complete Windows runbook](https://github.com/NTLx/ServerFS_MCP/blob/mai
 3. Register and start required tasks with the component CLI (`python -I -B -m serverfs_mcp.windows_v25.cli`). Start the Bridge before dependent Cores, then verify authenticated MCP before adding Connectors.
 4. For public ingress, provision a separate Connector ID, trusted executables and private provider credentials. OpenAI requires static Core bearer admission and the matching bundled cloudflared.
 
-The initial helpers support bearer authentication and explicit nonproxy runtime policy. For OAuth or special proxy configuration, follow the advanced manual path. Do not mix the two configuration routes or bypass private ACL/reparse-point checks.
+The v0.25.0 initial helpers support bearer authentication and explicit nonproxy runtime policy. The v0.26.0 candidate adds per-runtime/ACP `use_proxy=true` with an owner-private credentialless `--agent-proxy-env-file`; use the version-matched runbook. OAuth and other specialized configurations retain the advanced manual path. Do not mix the two configuration routes or bypass private ACL/reparse-point checks.
 
 ## Verify and operate
 

@@ -21,7 +21,7 @@ Shared Core grants restrict methods and aliases. A shared Core cannot start, sto
 
 The base Core has 11 filesystem tools. Binary transfer adds two; Agent delegation adds ten; [Repo Ops](../repo-ops/) adds four independently. Repo Ops-only still needs a Bridge but does not require a provider. It never creates an Agent task.
 
-Agent delegation is not a shell or arbitrary argv interface. Codex, Claude, Qoder and configured [ACP profiles](../acp/) require an authorized writable workdir and `workspace-write` policy. Not every platform attachment supports every capability: for example, named macOS shared Cores expose one Agent workdir and no Repo Ops.
+Agent delegation is not a shell or arbitrary argv interface. Codex, Claude, Qoder and configured [ACP profiles](../acp/) require an authorized writable workdir and `workspace-write` policy. Not every platform attachment supports every capability: for example, named macOS shared Cores expose one Agent workdir in v0.25.0 or 1–16 owner-bound Agent workdirs in the v0.26.0 candidate, and no Repo Ops.
 
 ## Submit and follow an Agent task
 
@@ -56,7 +56,7 @@ Workspace-write tasks and Repo Ops coordinate with file mutations through writer
 
 ## Egress and optional advisors
 
-Provider authentication remains in the native runtime. Linux named owners use private Bridge JSON (`proxy` and runtime `use_proxy`); the older singleton renderer uses `SERVERFS_AGENT_USE_PROXY`. Agent proxy endpoints must be credentialless. An authenticated upstream requires a credentialless local broker. Proxied Linux Codex uses a Bridge-owned standalone app-server rather than rewriting the user's managed daemon; Claude and Qoder receive controlled proxy settings. Tunnel and Jev egress are independent.
+Provider authentication remains in the native runtime. Linux named owners use private Bridge JSON (`proxy` and runtime `use_proxy`); the older singleton renderer uses `SERVERFS_AGENT_USE_PROXY`. Agent proxy endpoints must be credentialless. An authenticated upstream requires a credentialless local broker. Proxied Linux Codex uses a Bridge-owned standalone app-server rather than rewriting the user's managed daemon; Claude and Qoder receive controlled proxy settings. The v0.26.0 candidate also supports explicit per-runtime/ACP proxy opt-in for named Windows Bridge owners via a protected credentialless `--agent-proxy-env-file`; direct runtimes do not inherit ambient proxy variables. Tunnel and Jev egress are independent.
 
 Optional [Jev advisors](../jev-advisors/) may advise before submission, during native model discovery with explicit task context, or on a real approval request. Advice remains `automatic=false`; it cannot change the runtime, model, policy, writer lease or provider decision. Without a configured key the Agent path does not depend on Jev.
 

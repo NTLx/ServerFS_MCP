@@ -48,7 +48,7 @@ Bridge 可选。Linux 签名接入与 Windows 命名接入使用受限 grant；m
 
 [Repo Ops](../repo-ops/) 执行确定性 Git 操作和管理员固定的 named action，不创建 Agent task。调用方不能提供任意 argv、environment、remote、ref、hooks 或 force。Commit 只接受显式路径且拒绝已存在的暂存修改；push 使用当前配置的 upstream。Named action 执行前校验 SHA-256 pin，即使标为不变更也必须获取独占 writer lease。释放 lease 前须证明子进程树已清理；Windows 使用 Job 约束并拒绝不安全 reparse 路径。
 
-[Agent 委托](../agent-bridge/) 通过宿主机 IPC 使用已配置的 runtime 与 Workdir profile，而非通用 MCP 命令接口。Provider 的原生权限、沙箱和审批仍然约束 Agent。Linux Agent 代理只允许无凭据端点；代理模式 Codex 使用 Bridge 独立 app-server。不要为消除故障而直接放行审批或跨实例共享凭据。
+[Agent 委托](../agent-bridge/) 通过宿主机 IPC 使用已配置的 runtime 与 Workdir profile，而非通用 MCP 命令接口。Provider 的原生权限、沙箱和审批仍然约束 Agent。Linux Agent 代理只允许无凭据端点；代理模式 Codex 使用 Bridge 独立 app-server。不要为消除故障而直接放行审批或跨实例共享凭据。v0.26.0 候选版在脱敏前为原始审批请求生成与任务绑定的私有带密钥标识，并保存操作及处理结果元数据；识别出的 Workdir 外写入请求不得远程批准，应拒绝或取消。公开脱敏标签不是资源身份，也不能替代原生权限检查。
 
 [Jev](../jev-advisors/) 仅提供建议，不能授权工具、决定权限或响应原生审批。私有密钥留在 Bridge；审批建议使用最小化、脱敏输入。建议失败不改变权限。
 

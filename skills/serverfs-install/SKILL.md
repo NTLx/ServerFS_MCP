@@ -30,7 +30,7 @@ Identify platform, architecture, storage, actual version, target topology and au
 | Platform | Read this runbook only | Gate |
 | --- | --- | --- |
 | Linux | `deployment/linux/README.md` | Docker, Compose v2.24+, explicit project/env/overlays; file-only uses bridge-disabled; host Bridge is a user systemd service. |
-| macOS | `deployment/macos/README.md` | Native arm64 Apple Silicon, macOS 27.x, APFS; signed SMAppService for persistent jobs. Shared: existing owner, one Agent slot, no Repo Ops or named Connector staging. |
+| macOS | `deployment/macos/README.md` | Native arm64 Apple Silicon, macOS 27.x, APFS; signed SMAppService for persistent jobs. Shared: existing owner, one Agent workdir in v0.25.0 or 1–16 owner-bound Agent workdirs in the v0.26.0 candidate; no Repo Ops or named Connector staging. |
 | Windows | `deployment/windows/v0250-native-operations.md` | Windows 11 x64, NTFS; verified installed wheels, offline dependency cache, current-user Scheduler. Create-only helpers; no WSL, VM or administrator ownership. |
 
 ## Authoritative sources

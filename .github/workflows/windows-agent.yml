@@ -345,6 +345,7 @@ jobs:
             tests/test_windows_job.py `
             tests/test_windows_job_cleanup.py `
             tests/test_windows_v25_bridge_v2_real_worker.py `
+            tests/test_windows_v026_named_proxy_live.py `
             tests/test_windows_mcp_agent_e2e.py -q
         shell: pwsh
 
