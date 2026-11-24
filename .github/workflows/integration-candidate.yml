@@ -1,0 +1,41 @@
+name: Integration candidate gates
+
+# Validate the exact integration push SHA, not a synthetic PR merge commit.
+# Reuse the release gates without creating tags, publishing images or deploying Pages.
+on:
+  push:
+    branches:
+      - integration/v0.26.0
+
+permissions:
+  contents: read
+
+jobs:
+  linux-gate:
+    name: Linux / Container gate
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/container.yml
+
+  windows-native-gate:
+    name: Windows Native gate
+    uses: ./.github/workflows/windows-native.yml
+
+  windows-agent-gate:
+    name: Windows Agent gate
+    uses: ./.github/workflows/windows-agent.yml
+
+  macos-gate:
+    name: macOS Native gate
+    uses: ./.github/workflows/macos-native.yml
+
+  pages-gate:
+    name: Documentation site gate
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
+    with:
+      deploy_pages: false
