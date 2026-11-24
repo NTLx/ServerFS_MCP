@@ -87,6 +87,38 @@ def http_auth(host, port):
     ).encode("ascii")
 
 
+def read_private_proxy_source(source: Path, exposed_roots, sid: str) -> bytes:
+    """Read only a bounded private source outside every known exposed root."""
+    from serverfs_mcp.windows_cloudflare_security import _no_reparse_components
+    from serverfs_mcp.windows_v25 import storage
+    from serverfs_mcp.windows_v25.named_agent_proxy import parse_proxy_source
+
+    require(source.is_absolute(), "absolute private Agent proxy source required")
+    _no_reparse_components(source)
+    resolved_source = source.resolve(strict=True)
+    checkout = Path(__file__).resolve().parents[2]
+    require(
+        all(
+            not resolved_source.is_relative_to(root.resolve(strict=True))
+            for root in [*exposed_roots, checkout]
+        ),
+        "private Agent proxy source must stay outside exposed workdirs and checkout",
+    )
+    storage.check_private(source, directory=False, sid=sid)
+    source_info = source.stat(follow_symlinks=False)
+    require(
+        0 < source_info.st_size <= 4096,
+        "private Agent proxy input is unavailable or oversized",
+    )
+    with source.open("rb") as stream:
+        proxy = parse_proxy_source(stream.read(4097))
+    normalized = (
+        f"SERVERFS_AGENT_PROXY_URL={proxy.url}\nSERVERFS_AGENT_NO_PROXY={proxy.no_proxy}\n"
+    ).encode()
+    require(len(normalized) <= 4096, "normalized Agent proxy input is oversized")
+    return normalized
+
+
 def render_bridge(request, bridge_id, sid, home, pipe):
     runtimes = request.get("runtimes", {})
     require(
@@ -441,7 +473,7 @@ def provision(args):
         owner_policy = prepared[0][2] if mode == "owned" else load_policy(args.bridge_policy)
         roots.extend(owner_policy[3])
         owner_request = render_request_from_config(owner_policy[1], owner_policy[2])
-        from serverfs_mcp.windows_v25.named_agent_proxy import parse_proxy_source, uses_agent_proxy
+        from serverfs_mcp.windows_v25.named_agent_proxy import uses_agent_proxy
 
         wants_proxy = uses_agent_proxy(owner_request)
         require(
@@ -450,26 +482,9 @@ def provision(args):
         )
         proxy_source = None
         if wants_proxy:
-            source = args.agent_proxy_env_file
-            require(source.is_absolute(), "absolute private Agent proxy source required")
-            from serverfs_mcp.windows_cloudflare_security import _no_reparse_components
-
-            _no_reparse_components(source)
-            storage.check_private(source, directory=False, sid=sid)
-            source_info = source.stat(follow_symlinks=False)
-            require(
-                0 < source_info.st_size <= 4096,
-                "private Agent proxy input is unavailable or oversized",
+            proxy_source = read_private_proxy_source(
+                args.agent_proxy_env_file, [*roots, *peer_roots], sid
             )
-            resolved_source = source.resolve(strict=True)
-            require(
-                all(not resolved_source.is_relative_to(root) for root in roots),
-                "private Agent proxy source must stay outside exposed workdirs",
-            )
-            proxy = parse_proxy_source(source.read_bytes())
-            proxy_source = (
-                f"SERVERFS_AGENT_PROXY_URL={proxy.url}\nSERVERFS_AGENT_NO_PROXY={proxy.no_proxy}\n"
-            ).encode()
         document = render_bridge(
             owner_request, bid, sid, home, WindowsBridgeResources(sid, bid).pipe_name
         )

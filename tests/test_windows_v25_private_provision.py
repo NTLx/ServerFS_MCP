@@ -170,6 +170,38 @@ def test_explicit_proxy_policy_is_preserved_by_named_renderer(tmp_path):
     assert "proxy" not in actual  # endpoint arrives only over the private bootstrap
 
 
+def test_private_proxy_source_refuses_new_peer_and_checkout_roots(tmp_path, monkeypatch):
+    from serverfs_mcp import windows_cloudflare_security
+    from serverfs_mcp.windows_v25 import storage
+
+    monkeypatch.setattr(windows_cloudflare_security, "_no_reparse_components", lambda p: None)
+    monkeypatch.setattr(storage, "check_private", lambda *a, **kw: None)
+    checkout = tmp_path / "checkout"
+    script = checkout / "deployment/windows/configure-v25-private.py"
+    script.parent.mkdir(parents=True)
+    script.touch()
+    monkeypatch.setattr(tool, "__file__", str(script))
+    new_root = tmp_path / "new"
+    peer_root = tmp_path / "existing"
+    private = tmp_path / "private"
+    for directory in (new_root, peer_root, private):
+        directory.mkdir()
+    raw = b"SERVERFS_AGENT_PROXY_URL=http://127.0.0.1:20170\n"
+    for root in (new_root, peer_root, checkout, private):
+        (root / "source.env").write_bytes(raw)
+
+    for root in (new_root, peer_root, checkout):
+        with pytest.raises(tool.Refusal, match="outside exposed workdirs and checkout"):
+            tool.read_private_proxy_source(root / "source.env", [new_root, peer_root], "synthetic")
+    normalized = tool.read_private_proxy_source(
+        private / "source.env", [new_root, peer_root], "synthetic"
+    )
+    assert normalized.startswith(raw)
+    (private / "source.env").write_bytes(b"x" * 4097)
+    with pytest.raises(tool.Refusal, match="oversized"):
+        tool.read_private_proxy_source(private / "source.env", [new_root, peer_root], "synthetic")
+
+
 def test_private_root_boundary(tmp_path):
     home = tmp_path / "ServerFS"
     workdir = home / "v25/instances/alpha/workdirs/Repo"
