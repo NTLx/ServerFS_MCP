@@ -447,10 +447,12 @@ fn concurrent_readers_never_observe_partial_replacement() {
 fn required_symlink_cases_are_executed_by_windows_ci() {
     use std::os::windows::fs::{symlink_dir, symlink_file};
 
+    // Own the external directory too, so both successful and failed tests
+    // clean it up. Drop the link-containing sandbox before its target.
+    let external_sandbox = Sandbox::new("reparse_external");
     let sandbox = Sandbox::new("reparse");
     let root = sandbox.open();
-    let external = sandbox.root.with_extension("external");
-    std::fs::create_dir(&external).unwrap();
+    let external = external_sandbox.root.clone();
     std::fs::write(external.join("outside"), b"safe").unwrap();
     let file_link = sandbox.root.join("file-link");
     let dir_link = sandbox.root.join("dir-link");
