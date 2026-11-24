@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -28,17 +29,23 @@ def test_bridge_has_a_separate_worker_environment():
     )
 
 
+def test_installer_version_matches_current_project():
+    root = TOOL.parents[2]
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert installer.VERSION == project["project"]["version"]
+
+
 def test_unknown_component_refused():
     with pytest.raises(installer.InstallRefusal):
         installer.plan("default")
 
 
-def make_wheel(tmp_path, kind, *, version="0.25.0", extra=None, name=None):
+def make_wheel(tmp_path, kind, *, version=installer.VERSION, extra=None, name=None):
     filename, dist, package = installer.WHEELS[kind]
     path = tmp_path / (name or filename)
     with zipfile.ZipFile(path, "w") as wheel:
         wheel.writestr(
-            dist.replace("-", "_") + "-0.25.0.dist-info/METADATA",
+            dist.replace("-", "_") + f"-{installer.VERSION}.dist-info/METADATA",
             f"Metadata-Version: 2.1\nName: {dist}\nVersion: {version}\n",
         )
         wheel.writestr(package + "/__init__.py", "")

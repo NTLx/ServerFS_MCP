@@ -3,7 +3,7 @@
   "name": "io.github.NTLx/serverfs-mcp",
   "title": "ServerFS MCP",
   "description": "Read-only local Docker MCP workspace access; no built-in caller authentication.",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "websiteUrl": "https://ntlx.github.io/ServerFS_MCP/",
   "repository": {
     "url": "https://github.com/NTLx/ServerFS_MCP",
@@ -13,8 +13,8 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/ntlx/serverfs_mcp:0.25.0",
-      "version": "0.25.0",
+      "identifier": "ghcr.io/ntlx/serverfs_mcp:0.26.0",
+      "version": "0.26.0",
       "runtimeHint": "docker",
       "runtimeArguments": [
         { "type": "positional", "value": "run" },

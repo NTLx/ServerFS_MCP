@@ -300,7 +300,11 @@ def test_manifest_version_parity_fails_closed(plugin_source: Path) -> None:
 
 def test_skills_remain_model_invoked(plugin_source: Path) -> None:
     path = plugin_source / "skills/serverfs-install/SKILL.md"
-    path.write_text(path.read_text().replace("name:", "disable-model-invocation: true\nname:", 1))
+    text = path.read_text(encoding="utf-8")
+    path.write_text(
+        text.replace("name:", "disable-model-invocation: true\nname:", 1),
+        encoding="utf-8",
+    )
     with pytest.raises(PACKAGE_API["ValidationError"], match="model-invoked"):
         PACKAGE_API["validate"](plugin_source)
 
