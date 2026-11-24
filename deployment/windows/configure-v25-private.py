@@ -15,7 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "0.25.0"
+VERSION = "0.26.0"
 
 
 class Refusal(ValueError):
@@ -274,7 +274,7 @@ from pathlib import Path
 from serverfs_agent_bridge.config import BridgeConfig
 from serverfs_agent_bridge.core_grants import core_workdir_policy_digest
 import serverfs_agent_bridge
-assert md.version("serverfs-agent-bridge") == "0.25.0"
+assert md.version("serverfs-agent-bridge") == "0.26.0"
 assert Path(serverfs_agent_bridge.__file__).resolve().is_relative_to(
     Path(sys.prefix).resolve() / "Lib/site-packages")
 path = Path(sys.argv[1])

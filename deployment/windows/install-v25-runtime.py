@@ -21,16 +21,16 @@ import zipfile
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
-VERSION = "0.25.0"
+VERSION = "0.26.0"
 WHEELS = {
-    "core": ("serverfs_mcp-0.25.0-py3-none-any.whl", "serverfs-mcp", "serverfs_mcp"),
+    "core": (f"serverfs_mcp-{VERSION}-py3-none-any.whl", "serverfs-mcp", "serverfs_mcp"),
     "native": (
-        "serverfs_windows_native-0.25.0-cp312-abi3-win_amd64.whl",
+        f"serverfs_windows_native-{VERSION}-cp312-abi3-win_amd64.whl",
         "serverfs-windows-native",
         "serverfs_windows_native",
     ),
     "bridge": (
-        "serverfs_agent_bridge-0.25.0-py3-none-any.whl",
+        f"serverfs_agent_bridge-{VERSION}-py3-none-any.whl",
         "serverfs-agent-bridge",
         "serverfs_agent_bridge",
     ),

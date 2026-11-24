@@ -1,6 +1,6 @@
 # Windows native component operations
 
-This runbook covers fresh v0.25.0 named instances on Windows 11 x64 and local NTFS. Use version-matched source and artifacts. Core, Bridge owner and each Connector run through current-user Task Scheduler with windowless launchers. No WSL, VM, SCM service or elevated administrator process is needed.
+This runbook covers fresh named instances (the v0.25.0 architecture) on Windows 11 x64 and local NTFS. Commands in this checkout target the unreleased v0.26.0 candidate. For v0.25.0 installations use the tagged source and matching artifacts. Do not mix versions. Core, Bridge owner and each Connector run through current-user Task Scheduler with windowless launchers. No WSL, VM, SCM service or elevated administrator process is needed.
 
 ## 1. Choose your deployment
 
@@ -18,13 +18,13 @@ The Core listens on loopback and owns caller authentication. A Connector targets
 
 Use an ordinary, non-elevated PowerShell session. Prepare a trusted installed controller virtual environment containing the matching Core and Native Wheels, not an editable checkout. Python must be native x64, 3.12 or later. Use a trusted uv executable on PATH and a prepopulated offline dependency cache. For an alternate cache, set `UV_CACHE_DIR` to its existing absolute path.
 
-Obtain the artifacts and independently trusted lowercase SHA256 pins for the intended version. The v0.25.0 installer expects:
+Obtain the artifacts and independently trusted lowercase SHA256 pins for the intended version. The v0.26.0 candidate installer expects:
 
 | Distribution | Wheel |
 | --- | --- |
-| Core | `serverfs_mcp-0.25.0-py3-none-any.whl` |
-| Windows Native | `serverfs_windows_native-0.25.0-cp312-abi3-win_amd64.whl` |
-| Agent Bridge (only when used) | `serverfs_agent_bridge-0.25.0-py3-none-any.whl` |
+| Core | `serverfs_mcp-0.26.0-py3-none-any.whl` |
+| Windows Native | `serverfs_windows_native-0.26.0-cp312-abi3-win_amd64.whl` |
+| Agent Bridge (only when used) | `serverfs_agent_bridge-0.26.0-py3-none-any.whl` |
 
 Do not assume candidate artifacts are a published stable release. Verify the original trusted digest before installing the controller itself; a digest calculated from an untrusted download is not proof of publisher identity.
 
@@ -48,8 +48,8 @@ The examples use this function to stop on failure. If you already have a verifie
 ```powershell
 $basePython = 'C:\Path\To\Python312\python.exe'
 $controllerDir = 'C:\ServerFS-private\controller'
-$coreWheel = Join-Path $wheelDir 'serverfs_mcp-0.25.0-py3-none-any.whl'
-$nativeWheel = Join-Path $wheelDir 'serverfs_windows_native-0.25.0-cp312-abi3-win_amd64.whl'
+$coreWheel = Join-Path $wheelDir 'serverfs_mcp-0.26.0-py3-none-any.whl'
+$nativeWheel = Join-Path $wheelDir 'serverfs_windows_native-0.26.0-cp312-abi3-win_amd64.whl'
 
 if (Test-Path -LiteralPath $controllerDir) { throw 'Controller target already exists' }
 if ((Get-FileHash -LiteralPath $coreWheel -Algorithm SHA256).Hash.ToLowerInvariant() -ne $coreSha) { throw 'Core Wheel hash mismatch' }
@@ -60,7 +60,7 @@ uv --no-config pip install --offline --python $ctl $coreWheel $nativeWheel
 if ($LASTEXITCODE -ne 0) { throw 'Controller installation failed' }
 ```
 
-Confirm the installed packages report 0.25.0 and load from the private controller environment, not the checkout:
+Confirm the installed packages report 0.26.0 and load from the private controller environment, not the checkout:
 
 ```powershell
 Invoke-SF -c 'import importlib.metadata as m; import serverfs_mcp, serverfs_windows_native; print(m.version("serverfs-mcp"), m.version("serverfs-windows-native")); print(serverfs_mcp.__file__, serverfs_windows_native.__file__)'
