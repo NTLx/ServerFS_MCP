@@ -30,6 +30,7 @@ on:
   pull_request:
     branches:
       - main
+      - integration/v0.26.0
     paths-ignore:
       - "site/**"
       - ".github/workflows/pages.yml"

@@ -141,3 +141,29 @@ def test_stable_container_publish_verifies_tag_points_to_candidate_sha() -> None
     assert "$IMAGE_NAME:$version" in publish
     assert "$IMAGE_NAME:$minor" in publish
     assert "$IMAGE_NAME:latest" in publish
+
+
+def test_integration_pr_triggers_validation_without_expanding_push_publication() -> None:
+    for workflow in (
+        "container.yml",
+        "macos-native.yml",
+        "windows-native.yml",
+        "windows-agent.yml",
+        "pages.yml",
+    ):
+        triggers = on_block(workflow)
+        pr = triggers.split("  pull_request:", 1)[1]
+        assert "    branches:\n      - main\n      - integration/v0.26.0\n" in pr
+        push = triggers.split("  push:", 1)[1].split("  pull_request:", 1)[0]
+        assert "      - main\n" in push
+        assert "integration/v0.26.0" not in push
+    assert "integration/v0.26.0" not in on_block("wheel-release.yml")
+    assert "integration/v0.26.0" not in on_block("container-publish.yml")
+
+
+def test_windows_agent_ci_triggers_and_runs_named_proxy_traffic_regression() -> None:
+    workflow = text("windows-agent.yml")
+    path = "tests/test_windows_v026_named_proxy_live.py"
+    triggers = on_block("windows-agent.yml")
+    assert triggers.count(f'      - "{path}"') == 2
+    assert f"            {path} `" in workflow
