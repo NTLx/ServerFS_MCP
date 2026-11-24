@@ -38,6 +38,7 @@ from serverfs_mcp.core_bridge_client_v2 import (  # noqa: E402
 )
 from serverfs_mcp.darwin_instances import instance_service_home  # noqa: E402
 from serverfs_mcp.darwin_shared_agent_factory import prepare_shared_agent_adapter  # noqa: E402
+from serverfs_mcp.darwin_shared_core_bootstrap import SharedCoreBootstrapError  # noqa: E402
 from serverfs_mcp.instance_identity import InstanceIdentity  # noqa: E402
 
 _SECRET_A = bytes(range(32))
@@ -45,13 +46,17 @@ _SECRET_B = bytes(range(32, 64))
 _BRIDGE_ID = "shared-bridge"
 
 
-def test_shared_agent_factory_submits_and_reads_only_owned_workdir_tasks() -> None:
+@pytest.mark.parametrize("multi", [False, True], ids=["single", "multi"])
+def test_shared_agent_factory_submits_and_reads_only_owned_workdir_tasks(multi: bool) -> None:
     root = Path("/private/tmp") / f"sfsa-{uuid.uuid4().hex[:10]}"
     root.mkdir(mode=0o700)
     home = root / "home"
     home.mkdir(mode=0o700)
     workspace = root / "Workspace"
     workspace.mkdir(mode=0o700)
+    secondary = root / "Secondary"
+    if multi:
+        secondary.mkdir(mode=0o700)
     socket_path = root / "bridge.sock"
     state_dir = root / "state"
     identity_a = InstanceIdentity("core-a", "shared", _BRIDGE_ID)
@@ -65,7 +70,14 @@ def test_shared_agent_factory_submits_and_reads_only_owned_workdir_tasks() -> No
         "[agent]\nenabled = true\n[agent.codex]\nenabled = true\n"
         "[[workdirs]]\nalias = 'Workspace'\n"
         f"path = '{workspace}'\nread_only = false\n"
-        "agent_mode = 'workspace-write'\nagent_runtimes = ['codex']\n",
+        "agent_mode = 'workspace-write'\nagent_runtimes = ['codex']\n"
+        + (
+            "[[workdirs]]\nalias = 'Secondary'\n"
+            f"path = '{secondary}'\nread_only = false\n"
+            "agent_mode = 'workspace-write'\nagent_runtimes = ['codex']\n"
+            if multi
+            else ""
+        ),
         encoding="utf-8",
     )
     config_path.chmod(0o600)
@@ -88,10 +100,23 @@ def test_shared_agent_factory_submits_and_reads_only_owned_workdir_tasks() -> No
             read_only=False,
         )
         digest = core_workdir_policy_digest(policy)
+        policies = [policy]
+        owner_grants = [("Workspace", digest)]
+        if multi:
+            second_policy = WorkdirAgentPolicy(
+                slot=2,
+                alias="Secondary",
+                host_path=secondary,
+                mode=AgentMode.WORKSPACE_WRITE,
+                runtimes=frozenset({"fake"}),
+                read_only=False,
+            )
+            policies.append(second_policy)
+            owner_grants.append(("Secondary", core_workdir_policy_digest(second_policy)))
         store = TaskStore(state_dir)
         service = BridgeService(
             store=store,
-            policies=PolicyRegistry([policy]),
+            policies=PolicyRegistry(policies),
             adapters={"fake": FakeAdapter()},
             lease_manager=LeaseManager(root / "locks"),
         )
@@ -102,7 +127,7 @@ def test_shared_agent_factory_submits_and_reads_only_owned_workdir_tasks() -> No
                     "core-a",
                     "key-a",
                     _SECRET_A,
-                    (("Workspace", digest),),
+                    tuple(owner_grants),
                     frozenset({"bridge.ping", "task.submit", "task.get"}),
                 ),
                 CoreGrant(
@@ -136,6 +161,16 @@ def test_shared_agent_factory_submits_and_reads_only_owned_workdir_tasks() -> No
                 "bridge_config_path": str(bridge_config),
                 "socket_path": str(socket_path),
             }
+            if multi and core_id == "core-a":
+                binding["schema_version"] = 2
+                for field in ("workdir_alias", "workdir_path", "policy_revision"):
+                    del binding[field]
+                binding["workdirs"] = [
+                    {"alias": name, "path": str(target), "policy_revision": revision}
+                    for (name, revision), target in zip(
+                        owner_grants, (workspace, secondary), strict=True
+                    )
+                ]
             path = core_home / "shared-bridge-binding.json"
             path.write_text(json.dumps(binding), encoding="utf-8")
             path.chmod(0o600)
@@ -183,6 +218,44 @@ def test_shared_agent_factory_submits_and_reads_only_owned_workdir_tasks() -> No
             with pytest.raises(CoreBridgeRemoteError) as denied:
                 await client_b.call("task.get", {"task_id": task_id})
             assert denied.value.code == "CORE_TASK_NOT_FOUND"
+            if multi:
+                second = await adapter.call(
+                    "task.submit",
+                    {
+                        "workdir": "Secondary",
+                        "runtime": "fake",
+                        "path": ".",
+                        "profile": "review",
+                        "prompt": "isolated second task",
+                    },
+                )
+                second_id = second["task_id"]
+                assert second_id != task_id
+                store.require_core_task_owner(
+                    second_id, core_id="core-a", workdir_alias="Secondary"
+                )
+                for owned_id in (task_id, second_id):
+                    assert (await adapter.call("task.get", {"task_id": owned_id}))[
+                        "task_id"
+                    ] == owned_id
+                with pytest.raises(CoreBridgeRemoteError) as foreign:
+                    await client_b.call("task.get", {"task_id": second_id})
+                assert foreign.value.code == "CORE_TASK_NOT_FOUND"
+                with pytest.raises(AgentBridgeClientError, match="Repo Ops"):
+                    await adapter.call("repo.inspect", {"workdir": "Secondary", "view": "status"})
+                # A stale second owner grant must refuse the entire new bootstrap,
+                # even though the first alias and the already-running owner are valid.
+                binding_path = core_home_a / "shared-bridge-binding.json"
+                stale = json.loads(binding_path.read_text(encoding="utf-8"))
+                stale["workdirs"][1]["policy_revision"] = "f" * 64
+                binding_path.write_text(json.dumps(stale), encoding="utf-8")
+                with pytest.raises(SharedCoreBootstrapError):
+                    await prepare_shared_agent_adapter(
+                        identity_a, config_path, socket_path, home=home, timeout_seconds=3
+                    )
+                assert (await adapter.call("task.get", {"task_id": second_id}))[
+                    "task_id"
+                ] == second_id
             assert await adapter.call("bridge.ping", {}) == {"status": "ok"}
         finally:
             await server.close()
