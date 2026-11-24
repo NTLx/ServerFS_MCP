@@ -21,7 +21,7 @@ No SSR, database, serverless runtime or third-party hosting service is required.
 
 ## Local development
 
-Requires Node.js 22.22.0 or newer, as declared in `package.json`. Use the locked dependencies (`npm ci`); the website package version is independent of the ServerFS release.
+Requires Node.js 22.23.4 or newer, as declared in `package.json`. Use the locked dependencies (`npm ci`); the website package version is independent of the ServerFS release.
 
 ```bash
 cd site

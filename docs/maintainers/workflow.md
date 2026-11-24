@@ -136,7 +136,7 @@ git diff --check
 
 If dependencies are already present and the task explicitly forbids installation/update, use the existing declared build script without mutating dependencies or lockfiles; otherwise report the missing prerequisite instead of silently changing it.
 
-A static build proves generated routes/syntax, not rendered geometry. Use Node >=22.22.0 per `site/package.json` and locked dependencies; check bilingual route/link parity, base-path assets, both themes, narrow widths, keyboard and reduced motion. Visual CSS/layout changes require browser evidence. If none was executed report visual rendering as `Not verified`.
+A static build proves generated routes/syntax, not rendered geometry. Use Node >=22.23.4 per `site/package.json` and locked dependencies; check bilingual route/link parity, base-path assets, both themes, narrow widths, keyboard and reduced motion. Visual CSS/layout changes require browser evidence. If none was executed report visual rendering as `Not verified`.
 
 ### Cross-boundary changes
 
