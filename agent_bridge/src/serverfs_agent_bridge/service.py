@@ -1126,6 +1126,32 @@ class BridgeService:
             result["pending_request"] = self.store.get_request(pending_id).to_dict()
         return result
 
+    def list_tasks(
+        self,
+        *,
+        workdir: str,
+        core_id: str,
+        status: str = "active",
+        limit: int = 20,
+        cursor: str | None = None,
+        policy_revision: str,
+        grant_key_id: str = "",
+    ) -> dict[str, Any]:
+        """List tasks only for an explicitly Agent-enabled signed Core scope."""
+        policy = self.policies.get(workdir)
+        if policy.mode.value == "disabled" or not policy.runtimes:
+            raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+        page = self.store.list_core_tasks(
+            core_id=core_id,
+            workdir_alias=workdir,
+            status=status,
+            limit=limit,
+            policy_revision=policy_revision,
+            grant_key_id=grant_key_id,
+            cursor=cursor,
+        )
+        return page
+
     def diagnostics_snapshot(self) -> dict[str, Any]:
         """Return the process-local diagnostic recorder's bounded public projection."""
         return self.diagnostic_recorder.snapshot()

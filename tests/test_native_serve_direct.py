@@ -56,6 +56,7 @@ BRIDGE_PYTHON = REPO_ROOT / "agent_bridge" / ".venv" / "Scripts" / "python.exe"
 AGENT_TOOLS = {
     "submit_agent_task",
     "get_agent_task",
+    "list_agent_tasks",
     "list_agent_runtimes",
     "cancel_agent_task",
     "respond_agent_approval",
@@ -314,8 +315,8 @@ class TestDirectServeContract:
         assert client is not None
         names = _tool_names(settings, config)
         assert names & AGENT_TOOLS == AGENT_TOOLS
-        assert len(AGENT_TOOLS) == 10
-        assert len(names) == 21, sorted(names)
+        assert len(AGENT_TOOLS) == 11
+        assert len(names) == 22, sorted(names)
 
     def test_c_agent_call_without_a_live_bridge_fails_closed(
         self, tmp_path: Path, workdir: Path, no_wiring, monkeypatch

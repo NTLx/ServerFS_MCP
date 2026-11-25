@@ -54,6 +54,7 @@ AGENT_TOOLS = {
     "list_agent_models",
     "submit_agent_task",
     "get_agent_task",
+    "list_agent_tasks",
     "read_agent_task_events",
     "read_agent_task_result",
     "respond_agent_approval",
@@ -230,8 +231,8 @@ async def run(report: Report, base: Path) -> None:
             f"{len(default_names)} tools",
         )
         report.check(
-            "global + per-workdir enablement yields 21 tools",
-            len(enabled_names) == 21,
+            "global + per-workdir enablement yields 22 tools",
+            len(enabled_names) == 22,
             f"{len(enabled_names)} tools",
         )
 

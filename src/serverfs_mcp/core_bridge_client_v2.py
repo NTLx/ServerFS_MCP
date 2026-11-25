@@ -29,6 +29,7 @@ _METHODS = frozenset(
         "repo.push",
         "runtime.models",
         "task.submit",
+        "task.list",
         "task.get",
         "task.events",
         "task.result.read",
@@ -104,7 +105,13 @@ class CoreBridgeClientV2:
     async def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(method, str) or method not in _METHODS:
             raise ValueError("Core Bridge method is invalid")
-        if not isinstance(params, dict) or "workdir" in params:
+        if not isinstance(params, dict):
+            raise ValueError("Core Bridge params are invalid")
+        if method == "task.list":
+            if "workdir" in params and params["workdir"] != self._workdir_alias:
+                raise ValueError("task discovery requires the configured workdir alias")
+            params = {key: value for key, value in params.items() if key != "workdir"}
+        elif "workdir" in params:
             raise ValueError("Core Bridge params are invalid")
         request_id = f"core_{secrets.token_hex(16)}"
         unsigned = {

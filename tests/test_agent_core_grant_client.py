@@ -127,6 +127,20 @@ def test_scoped_task_methods_are_signed_with_explicit_workdir(method: str) -> No
     assert body["policy_revision"] == _POLICY
 
 
+def test_task_list_is_an_explicit_alias_scoped_rpc_not_a_task_id_lookup() -> None:
+    result, captured = invoke(
+        client(),
+        "task.list",
+        {"workdir": "Repo", "status": "active", "limit": 20},
+    )
+    assert result == {"accepted": True}
+    body = json.loads(captured[0][0])
+    assert body["method"] == "task.list"
+    assert body["params"] == {"workdir": "Repo", "status": "active", "limit": 20}
+    with pytest.raises(AgentBridgeClientError, match="named workdir"):
+        invoke(client(), "task.list", {"status": "active"})
+
+
 def test_task_submission_refuses_foreign_continuation_and_legacy_idempotency() -> None:
     for key in ("continue_from_task_id", "idempotency_key"):
         with pytest.raises(AgentBridgeClientError, match="continuation"):

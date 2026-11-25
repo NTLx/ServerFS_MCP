@@ -35,6 +35,9 @@ def test_agent_and_repo_calls_pass_through_and_cross_grant_is_denied() -> None:
     async def run() -> None:
         assert await adapter.call("task.get", {"task_id": "t1"}) == {"ok": True}
         assert await adapter.call(
+            "task.list", {"workdir": "Project", "status": "active", "limit": 20}
+        ) == {"ok": True}
+        assert await adapter.call(
             "task.events", {"task_id": "t1", "after_event_id": 0, "limit": 5}
         ) == {"ok": True}
         assert await adapter.call("repo.push", {"workdir": "Project"}) == {"ok": True}
@@ -48,6 +51,7 @@ def test_agent_and_repo_calls_pass_through_and_cross_grant_is_denied() -> None:
     asyncio.run(run())
     assert client.calls == [
         ("task.get", {"task_id": "t1"}),
+        ("task.list", {"status": "active", "limit": 20}),
         ("task.events", {"task_id": "t1", "after_event_id": 0, "limit": 5}),
         ("repo.push", {}),
     ]

@@ -191,6 +191,7 @@ def test_v026_one_core_two_authorized_workdirs_nonfirst_slot(tmp_path, monkeypat
     grants = json.loads((root / "bridge/state/core-grants.json").read_text())
     assert len(grants["grants"]) == 1
     assert len(grants["grants"][0]["workdirs"]) == 2
+    assert "task.list" in grants["grants"][0]["methods"]
     workdirs = [
         Workdir(
             "Repo",

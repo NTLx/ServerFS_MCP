@@ -41,6 +41,7 @@ _METHODS = frozenset(
         "repo.push",
         "runtime.models",
         "task.submit",
+        "task.list",
         "task.get",
         "task.events",
         "task.result.read",
@@ -125,6 +126,8 @@ class CoreGrantBridgeClient(AgentBridgeClient):
             raise AgentBridgeClientError("Bridge v2 method is not authorized")
         if not isinstance(params, dict):
             raise AgentBridgeClientError("Bridge v2 requires valid parameters")
+        if method == "task.list" and not isinstance(params.get("workdir"), str):
+            raise AgentBridgeClientError("Bridge v2 task discovery requires a named workdir")
         if method == "runtime.list" and not params:
             names: set[str] = set()
             runtimes: list[dict[str, Any]] = []

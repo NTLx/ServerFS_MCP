@@ -38,6 +38,7 @@ _WORKDIR_METHODS = frozenset(
         "repo.push",
         "runtime.models",
         "task.submit",
+        "task.list",
         "task.get",
         "task.events",
         "task.result.read",
@@ -129,6 +130,8 @@ class CoreGrant:
             raise ValueError("Core methods must be an explicit nonempty set")
         if not self.methods.issubset(_WORKDIR_METHODS):
             raise ValueError("Core method grants must be workdir-scoped")
+        if "task.list" in self.methods and "task.get" not in self.methods:
+            raise ValueError("task.list requires the existing task.get capability")
         if not isinstance(self.workdirs, tuple) or not self.workdirs:
             raise ValueError("Core grant needs one or more workdir policies")
         names: set[str] = set()
@@ -150,6 +153,7 @@ class CoreAuthorization:
     bridge_id: str
     workdir: str
     method: str
+    key_id: str
 
 
 def canonical_message(envelope: Mapping[str, Any]) -> bytes:
@@ -280,7 +284,7 @@ class CoreGrantVerifier:
                 raise _deny() from exc
             if first_use is not True:
                 raise _deny()
-            return CoreAuthorization(core_id, bridge_id, workdir, method)
+            return CoreAuthorization(core_id, bridge_id, workdir, method, key_id)
         # In-memory replay protection is for pure unit testing only.
         # BridgeProtocolServer.start refuses deployment without durable claims.
         for key, expires in tuple(self._nonces.items()):
@@ -290,4 +294,4 @@ class CoreGrantVerifier:
         if replay_key in self._nonces or len(self._nonces) >= self.max_replay_entries:
             raise _deny()
         self._nonces[replay_key] = issued + self.max_skew_seconds
-        return CoreAuthorization(core_id, bridge_id, workdir, method)
+        return CoreAuthorization(core_id, bridge_id, workdir, method, key_id)

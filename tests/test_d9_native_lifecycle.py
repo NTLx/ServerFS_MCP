@@ -14,7 +14,7 @@ look like a product traceback.
 
 Only the provider adapter at the end is a test double, injected as a ``sitecustomize`` so the
 repository gains no test-only operator surface, and the public runtime name stays ``codex`` so the
-frozen ten Agent tools and the writer lease are the real ones. Nothing is stubbed between the steps.
+frozen Agent tools and the writer lease are the real ones. Nothing is stubbed between the steps.
 
 **Why this is not a unit test pile.** Each case below asserts a link that only exists across a
     process
@@ -102,6 +102,7 @@ AGENT_TOOLS = frozenset(
     {
         "submit_agent_task",
         "get_agent_task",
+        "list_agent_tasks",
         "cancel_agent_task",
         "read_agent_task_events",
         "read_agent_task_result",
@@ -307,11 +308,11 @@ class TestThePublishedSurface:
         _lifecycle, client = chain
         names = set(client.tool_names())
         assert AGENT_TOOLS <= names, sorted(AGENT_TOOLS - names)
-        # Exactly the ten and nothing else: a surface that had grown an eleventh tool, or lost one,
+        # Exactly the eleven and nothing else: a surface that had grown another tool, or lost one,
         # would both pass a subset assertion alone.
         assert names & set(AGENT_TOOLS) == AGENT_TOOLS
-        # The ten are additive: the filesystem surface is untouched by delegation being on.
-        assert len(names) == 21, sorted(names)
+        # The eleven are additive: the filesystem surface is untouched by delegation being on.
+        assert len(names) == 22, sorted(names)
 
     def test_the_agent_disabled_chain_publishes_only_the_filesystem_surface(self, tmp_path) -> None:
         """The upgrade gate, through the real chain rather than a config parse.

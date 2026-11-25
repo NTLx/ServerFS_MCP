@@ -55,6 +55,7 @@ class FakeAgentClient:
             },
             "task.submit": {"task_id": "agt_test", "status": "queued"},
             "task.get": {"task_id": "agt_test", "status": "running"},
+            "task.list": {"tasks": [], "next_cursor": None},
             "task.events": {"events": [], "next_after_event_id": 0},
             "task.result.read": {
                 "text": "chunk",
@@ -140,7 +141,7 @@ def test_enabled_server_requires_explicit_bridge_client(tmp_path: Path) -> None:
         create_server(settings, WorkdirRegistry([wd]))
 
 
-def test_enabled_surface_adds_exactly_ten_agent_tools(tmp_path: Path) -> None:
+def test_enabled_surface_adds_eleven_agent_tools(tmp_path: Path) -> None:
     client = FakeAgentClient()
     names = tool_names(server_with_client(tmp_path, client))
     expected = {
@@ -148,6 +149,7 @@ def test_enabled_surface_adds_exactly_ten_agent_tools(tmp_path: Path) -> None:
         "list_agent_models",
         "submit_agent_task",
         "get_agent_task",
+        "list_agent_tasks",
         "read_agent_task_events",
         "read_agent_task_result",
         "respond_agent_approval",
@@ -156,7 +158,7 @@ def test_enabled_surface_adds_exactly_ten_agent_tools(tmp_path: Path) -> None:
         "cancel_agent_task",
     }
     assert expected <= names
-    assert len(names) == 21
+    assert len(names) == 22
 
 
 def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
@@ -182,6 +184,7 @@ def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
             "idempotency_key",
         },
         "get_agent_task": {"task_id"},
+        "list_agent_tasks": {"workdir", "status", "limit", "cursor"},
         "read_agent_task_events": {"task_id", "after_event_id", "limit"},
         "read_agent_task_result": {"task_id", "offset_bytes", "max_bytes"},
         "respond_agent_approval": {
@@ -199,6 +202,7 @@ def test_agent_tool_schemas_and_annotations_are_frozen(tmp_path: Path) -> None:
         "list_agent_runtimes": (True, None, None, False),
         "list_agent_models": (True, None, None, True),
         "get_agent_task": (True, None, None, False),
+        "list_agent_tasks": (True, None, None, False),
         "read_agent_task_events": (True, None, None, False),
         "read_agent_task_result": (True, None, None, False),
         "submit_agent_task": (False, True, False, True),
@@ -291,6 +295,28 @@ def test_list_agent_runtimes_filters_non_public_or_unallowlisted_runtime(tmp_pat
     result = call_success(server, "list_agent_runtimes", {})
     assert [item["name"] for item in result["runtimes"]] == ["codex", "claude", "qoder"]
     assert client.calls == [("runtime.list", {})]
+
+
+def test_list_agent_tasks_requires_exact_agent_alias_and_forwards_bounded_filter(
+    tmp_path: Path,
+) -> None:
+    client = FakeAgentClient()
+    enabled = agent_workdir(tmp_path)
+    disabled_root = tmp_path / "disabled"
+    disabled_root.mkdir()
+    disabled = dataclasses.replace(agent_workdir(disabled_root, enabled=False), alias="disabled")
+    server = server_with_client(tmp_path, client, workdirs=[enabled, disabled])
+
+    call_error(server, "list_agent_tasks", {"workdir": "repo", "limit": True})
+    assert client.calls == []
+    result = call_success(server, "list_agent_tasks", {"workdir": "repo"})
+    assert result == {"tasks": [], "next_cursor": None}
+    assert client.calls[-1] == (
+        "task.list",
+        {"workdir": "repo", "status": "active", "limit": 20},
+    )
+    error = call_error(server, "list_agent_tasks", {"workdir": "disabled"})
+    assert "Agent-enabled" in str(error)
 
 
 def test_list_agent_models_maps_discovery_and_advice_to_bridge_rpc(tmp_path: Path) -> None:
