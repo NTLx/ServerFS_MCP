@@ -7,7 +7,11 @@ from typing import Any
 import pytest
 
 from helpers import call_error, call_success, registry_for
-from serverfs_mcp.agent_client import AgentBridgeClientError, AgentBridgeRemoteError
+from serverfs_mcp.agent_client import (
+    AgentBridgeClientError,
+    AgentBridgeInvalidRequest,
+    AgentBridgeRemoteError,
+)
 from serverfs_mcp.config import Settings
 from serverfs_mcp.core_bridge_client_v2 import CoreBridgeRemoteError
 from serverfs_mcp.linux_v0250_bridge_adapter import LinuxV0250BridgeAdapter
@@ -56,6 +60,20 @@ def test_agent_and_repo_calls_pass_through_and_cross_grant_is_denied() -> None:
         ("repo.push", {}),
     ]
     assert "s" * 32 not in repr(adapter)
+
+
+@pytest.mark.parametrize("key", ["continue_from_task_id", "idempotency_key"])
+def test_unsupported_signed_submission_never_reaches_bridge(key: str) -> None:
+    client = FakeV2Client()
+    adapter = LinuxV0250BridgeAdapter(client, "Project")
+    with pytest.raises(AgentBridgeInvalidRequest, match="omit both") as caught:
+        asyncio.run(adapter.call("task.submit", {"workdir": "Project", key: "private-value"}))
+    assert client.calls == []
+    assert "private-value" not in str(caught.value)
+    assert asyncio.run(adapter.call("task.submit", {"workdir": "Project", key: None})) == {
+        "ok": True
+    }
+    assert client.calls == [("task.submit", {key: None})]
 
 
 def test_remote_error_is_sanitized() -> None:

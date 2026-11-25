@@ -26,6 +26,7 @@ from .agent_client import (
     AgentBridgeClientError,
     AgentBridgeRemoteError,
     AgentBridgeUnavailable,
+    validate_signed_v2_submission,
 )
 
 _ID = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?\Z")
@@ -177,11 +178,7 @@ class CoreGrantBridgeClient(AgentBridgeClient):
         """One signed request; never sends an unscoped or v1 fallback RPC."""
         if not isinstance(params.get("workdir"), str):
             raise AgentBridgeClientError("Bridge v2 requires a named workdir")
-        if method == "task.submit" and (
-            params.get("continue_from_task_id") is not None
-            or params.get("idempotency_key") is not None
-        ):
-            raise AgentBridgeClientError("Bridge v2 does not support cross-Core continuation")
+        validate_signed_v2_submission(method, params)
         policy_digest = self._policy_revisions.get(params["workdir"])
         if policy_digest is None:
             raise AgentBridgeClientError("Bridge v2 workdir is not authorized")

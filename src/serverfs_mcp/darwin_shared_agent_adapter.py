@@ -9,6 +9,7 @@ from .agent_client import (
     AgentBridgeClientError,
     AgentBridgeRemoteError,
     AgentBridgeUnavailable,
+    validate_signed_v2_submission,
 )
 from .core_bridge_client_v2 import (
     CoreBridgeClientV2Error,
@@ -68,6 +69,7 @@ class DarwinSharedAgentAdapter:
             if forwarded["workdir"] != self._workdir_alias:
                 raise AgentBridgeClientError("workdir is outside the authorized grant")
             del forwarded["workdir"]
+        validate_signed_v2_submission(method, forwarded)
         # Public task lookup / interaction tools take only a task_id; their
         # API does not carry a workdir. The authenticated CoreBridgeClientV2
         # injects this Core's immutable grant alias into EVERY signed v2

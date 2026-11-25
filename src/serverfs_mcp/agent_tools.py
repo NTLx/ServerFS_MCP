@@ -15,6 +15,7 @@ from . import logging as jsonlog
 from .agent_client import (
     AgentBridgeClient,
     AgentBridgeClientError,
+    AgentBridgeInvalidRequest,
     AgentBridgeRemoteError,
     AgentBridgeUnavailable,
 )
@@ -662,6 +663,8 @@ def _agent_tool_error(exc: Exception) -> ToolError:
         return ToolError(f"{exc.code}: {exc.message}")
     if isinstance(exc, AgentBridgeUnavailable):
         return ToolError("AGENT_BRIDGE_UNAVAILABLE: Agent Bridge is unavailable")
+    if isinstance(exc, AgentBridgeInvalidRequest):
+        return ToolError(f"INVALID_REQUEST: {exc}")
     if isinstance(exc, AgentBridgeClientError):
         return ToolError("AGENT_BRIDGE_PROTOCOL_ERROR: Agent Bridge protocol failure")
     return ToolError("AGENT_BRIDGE_ERROR: Agent Bridge request failed")

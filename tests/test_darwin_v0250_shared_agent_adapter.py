@@ -9,6 +9,7 @@ from serverfs_mcp.agent_client import (
     PROTOCOL_VERSION,
     AgentBridgeClient,
     AgentBridgeClientError,
+    AgentBridgeInvalidRequest,
     AgentBridgeRemoteError,
     AgentBridgeUnavailable,
 )
@@ -110,6 +111,20 @@ def test_remote_error_message_is_bounded_and_secret_reflection_is_hidden() -> No
         assert caught.value.message == "remote request failed"
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("key", ["continue_from_task_id", "idempotency_key"])
+def test_unsupported_signed_submission_never_reaches_bridge(key: str) -> None:
+    client = MockV2Client()
+    adapter = DarwinSharedAgentAdapter(client, "Project")
+    with pytest.raises(AgentBridgeInvalidRequest, match="omit both") as caught:
+        asyncio.run(adapter.call("task.submit", {"workdir": "Project", key: "private-value"}))
+    assert client.calls == []
+    assert "private-value" not in str(caught.value)
+    assert asyncio.run(adapter.call("task.submit", {"workdir": "Project", key: None})) == {
+        "ok": True
+    }
+    assert client.calls == [("task.submit", {key: None})]
 
 
 def test_legacy_v1_client_contract_remains_available() -> None:
