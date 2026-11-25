@@ -56,7 +56,7 @@ def test_two_distinct_cores_share_one_v2_pipe_but_cannot_read_each_others_task(t
     beta_secret = b"B" * 32
     scope = (("repo", _POLICY),)
     methods = frozenset(
-        {"bridge.ping", "runtime.list", "runtime.models", "task.submit", "task.get"}
+        {"bridge.ping", "runtime.list", "runtime.models", "task.submit", "task.get", "task.list"}
     )
     verifier = CoreGrantVerifier(
         "bridge-v2-smoke",
@@ -93,7 +93,32 @@ def test_two_distinct_cores_share_one_v2_pipe_but_cannot_read_each_others_task(t
                 },
             )
             assert submit["ok"] is True, submit
-            task_id = submit["result"]["task_id"]
+            # A new pipe client has no submission response or task ID.
+            with PipeClient(bridge.pipe_name) as resumed:
+                discovered = _call(
+                    resumed,
+                    "core-a",
+                    "key-a",
+                    alpha_secret,
+                    "task.list",
+                    {"workdir": "repo", "status": "all"},
+                )
+                assert discovered["ok"], discovered
+                tasks = discovered["result"]["tasks"]
+                assert len(tasks) == 1
+                task_id = tasks[0]["task_id"]
+                assert task_id == submit["result"]["task_id"]
+                assert tasks[0]["correlation_id"] is None
+                foreign_list = _call(
+                    resumed,
+                    "core-b",
+                    "key-b",
+                    beta_secret,
+                    "task.list",
+                    {"workdir": "repo", "status": "all"},
+                )
+                assert foreign_list["ok"], foreign_list
+                assert foreign_list["result"] == {"tasks": [], "next_cursor": None}
             foreign = _call(
                 client,
                 "core-b",
