@@ -251,6 +251,12 @@ def test_submit_agent_task_guides_atomic_authorized_delegation(tmp_path: Path) -
     assert tool.description is not None
     assert "Keep the task atomic" in tool.description
     assert "does not weaken or bypass provider safety checks" in tool.description
+    for field in ("continue_from_task_id", "idempotency_key"):
+        description = tool.input_schema["properties"][field]["description"]
+        assert "supported v1" in description
+        assert "Omit on signed-v2 Core endpoints" in description
+    assert "list_agent_tasks" in tool.description
+    assert "uncertain submission" in tool.description
 
 
 def test_send_agent_message_guides_narrow_follow_up(tmp_path: Path) -> None:
@@ -270,6 +276,7 @@ def test_send_agent_message_guides_narrow_follow_up(tmp_path: Path) -> None:
     assert tool.description is not None
     assert "existing authorized objective" in tool.description
     assert "submit a new atomic task instead" in tool.description
+    assert "never on signed-v2 Core endpoints" in tool.description
 
 
 def test_global_enable_without_agent_workdir_keeps_eleven_tool_surface(

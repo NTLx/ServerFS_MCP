@@ -187,6 +187,7 @@ def test_two_linux_core_http_processes_use_one_signed_v2_bridge() -> None:
                 assert socket_path.is_socket()
                 with ExitStack() as stack:
                     children = []
+                    launch_specs = []
                     for index, (alias, core_id) in enumerate(
                         zip(("Alpha", "Bravo"), core_ids, strict=True)
                     ):
@@ -267,6 +268,7 @@ def test_two_linux_core_http_processes_use_one_signed_v2_bridge() -> None:
 
                         stack.callback(stop)
                         children.append((child, log))
+                        launch_specs.append((runner, env, stream))
 
                     for index, (child, log) in enumerate(children):
                         await _wait_ready(child, ports[index], log)
@@ -284,6 +286,35 @@ def test_two_linux_core_http_processes_use_one_signed_v2_bridge() -> None:
                             {"workdir": ("Alpha", "Bravo")[index], "path": "hello.txt"},
                         )
                         assert not file_result.is_error
+
+                    async def restart_core(index: int) -> None:
+                        old_child, log = children[index]
+                        runner, env, stream = launch_specs[index]
+                        bridge_identity = socket_path.stat()
+                        stop(old_child)
+                        assert old_child.poll() is not None
+                        child = subprocess.Popen(
+                            [sys.executable, "-B", str(runner)],
+                            cwd=root,
+                            env=env,
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=stream,
+                            start_new_session=True,
+                        )
+                        stack.callback(stop, child)
+                        children[index] = (child, log)
+                        await _wait_ready(child, ports[index], log)
+                        current_identity = socket_path.stat()
+                        assert (bridge_identity.st_dev, bridge_identity.st_ino) == (
+                            current_identity.st_dev,
+                            current_identity.st_ino,
+                        )
+                        assert child.pid != old_child.pid
+                        assert (
+                            await asyncio.to_thread(_http_status, ports[index], tokens[1 - index])
+                            == 401
+                        )
 
                     wrong_auth = await asyncio.to_thread(_http_status, ports[0], "not-the-key")
                     assert wrong_auth == 401
@@ -350,6 +381,11 @@ def test_two_linux_core_http_processes_use_one_signed_v2_bridge() -> None:
                     approval_task = await discover(0, "active", "waiting_for_approval")
                     assert approval_task["task_id"] != ""
                     assert approval_task["pending_interaction"] == "approval"
+                    await restart_core(0)
+                    rediscovered = await discover(0, "active", "waiting_for_approval")
+                    assert rediscovered["task_id"] == approval_task["task_id"]
+                    assert rediscovered["pending_interaction"] == "approval"
+                    approval_task = rediscovered
                     # While A's task owns Alpha's writer lease, B recovers it via discovery and
                     # performs only existing read/interaction operations using that discovered ID.
                     approval_id = approval_task["task_id"]
@@ -421,9 +457,14 @@ def test_two_linux_core_http_processes_use_one_signed_v2_bridge() -> None:
                         },
                     )
                     assert not question_submit.is_error, question_submit.content
+                    del question_submit
                     question_task = await discover(0, "active", "waiting_for_question")
                     assert question_task["pending_interaction"] == "question"
-                    question_id = question_task["task_id"]
+                    await restart_core(0)
+                    rediscovered = await discover(0, "active", "waiting_for_question")
+                    assert rediscovered["task_id"] == question_task["task_id"]
+                    assert rediscovered["pending_interaction"] == "question"
+                    question_id = rediscovered["task_id"]
                     question_read = await _tool(
                         ports[0], tokens[0], "get_agent_task", {"task_id": question_id}
                     )

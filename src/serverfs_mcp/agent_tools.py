@@ -255,7 +255,8 @@ def register_agent_tools(
             Field(
                 default=None,
                 description=(
-                    "Prior terminal ServerFS Agent task whose native provider session should resume"
+                    "Prior terminal ServerFS Agent task to resume, only on supported v1 "
+                    "endpoints. Omit on signed-v2 Core endpoints; continuation is not supported."
                 ),
             ),
         ] = None,
@@ -274,8 +275,8 @@ def register_agent_tools(
             Field(
                 default=None,
                 description=(
-                    "Optional retry key for one logical Agent submission. Reuse the same key "
-                    "only when retrying an uncertain submit outcome."
+                    "Optional retry key for one logical submission on supported v1 endpoints. "
+                    "Omit on signed-v2 Core endpoints; discover tasks rather than retry blindly."
                 ),
             ),
         ] = None,
@@ -289,8 +290,11 @@ def register_agent_tools(
         expansion; it does not weaken or bypass provider safety checks.
 
         The call never waits for provider completion. Poll get_agent_task or
-        read_agent_task_events. A follow-up conversation uses a NEW task with
-        continue_from_task_id.
+        read_agent_task_events. On signed-v2 Core endpoints, omit continue_from_task_id
+        and idempotency_key. Use list_agent_tasks on the authorized workdir to rediscover
+        an existing task after an uncertain submission or client restart. Submit a new
+        atomic task for distinct work; native session continuation is available only on
+        supported v1 endpoints.
         """
         t0 = time.monotonic()
         try:
@@ -523,7 +527,8 @@ def register_agent_tools(
 
         Keep steering within the task's existing authorized objective and mutation scope.
         If the requested work is a distinct objective, submit a new atomic task instead.
-        For a terminal task, submit a new task with continue_from_task_id. Runtimes such as
+        For a terminal task, submit a new atomic task. Use continue_from_task_id only on
+        supported v1 endpoints, never on signed-v2 Core endpoints. Runtimes such as
         Claude or Qoder may reject live steering even while active.
         """
         return await _simple_agent_call(
