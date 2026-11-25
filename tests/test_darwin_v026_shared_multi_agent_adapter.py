@@ -38,6 +38,84 @@ def test_explicit_task_scope_uses_exact_signed_alias() -> None:
     assert second.calls == [("task.submit", {"runtime": "claude"})]
 
 
+def test_task_list_uses_only_the_exact_requested_grant() -> None:
+    first, second, adapter = clients()
+    cursor = "c" * 2048
+    response = asyncio.run(
+        adapter.call(
+            "task.list",
+            {"workdir": "secondary", "status": "active", "limit": 7, "cursor": cursor},
+        )
+    )
+    assert response == {"alias": "secondary", "method": "task.list"}
+    assert first.calls == []
+    assert second.calls == [("task.list", {"status": "active", "limit": 7, "cursor": cursor})]
+
+
+def test_task_list_preserves_null_correlation_projection_and_uses_selected_identity() -> None:
+    class ScopedClient(SignedClientFixture):
+        core_id = "core-b"
+        key_id = "key-b"
+        policy_revision = "b" * 64
+
+        async def call(self, method: str, params: dict) -> dict:
+            self.calls.append((method, dict(params)))
+            return {
+                "tasks": [
+                    {
+                        "task_id": "agt_example",
+                        "runtime": "codex",
+                        "workdir": self._workdir_alias,
+                        "status": "running",
+                        "created_at": "2026-11-25T00:00:00Z",
+                        "updated_at": "2026-11-25T00:00:00Z",
+                        "completed_at": None,
+                        "pending_interaction": None,
+                        "correlation_id": None,
+                    }
+                ],
+                "next_cursor": None,
+            }
+
+    first = SignedClientFixture("primary")
+    second = ScopedClient("secondary")
+    adapter = DarwinSharedMultiAgentAdapter({"primary": first, "secondary": second})
+    result = asyncio.run(adapter.call("task.list", {"workdir": "secondary"}))
+    assert result["tasks"][0]["correlation_id"] is None
+    assert (second.core_id, second.key_id, second.policy_revision) == (
+        "core-b",
+        "key-b",
+        "b" * 64,
+    )
+    assert first.calls == []
+    assert second.calls == [("task.list", {})]
+
+
+def test_task_list_old_bridge_method_not_found_fails_without_legacy_retry() -> None:
+    class OldBridgeFixture(SignedClientFixture):
+        async def call(self, method: str, params: dict) -> dict:
+            self.calls.append((method, dict(params)))
+            raise CoreBridgeRemoteError("METHOD_NOT_FOUND", "method is unavailable")
+
+    first = OldBridgeFixture("primary")
+    second = OldBridgeFixture("secondary")
+    adapter = DarwinSharedMultiAgentAdapter({"primary": first, "secondary": second})
+    with pytest.raises(AgentBridgeRemoteError) as error:
+        asyncio.run(adapter.call("task.list", {"workdir": "secondary"}))
+    assert error.value.code == "METHOD_NOT_FOUND"
+    assert first.calls == []
+    assert second.calls == [("task.list", {})]
+
+
+def test_task_list_requires_one_configured_alias_and_never_fans_out() -> None:
+    first, second, adapter = clients()
+    with pytest.raises(AgentBridgeClientError):
+        asyncio.run(adapter.call("task.list", {"status": "all"}))
+    with pytest.raises(AgentBridgeClientError):
+        asyncio.run(adapter.call("task.list", {"workdir": "foreign", "status": "all"}))
+    assert first.calls == second.calls == []
+
+
 def test_task_only_lookup_probes_bounded_aliases_and_resolves_after_restart() -> None:
     first, second, adapter = clients()
     result = asyncio.run(

@@ -60,6 +60,8 @@ class DarwinSharedMultiAgentAdapter:
             return await self._adapters[alias].call(method, params)
         if method == "task.submit":
             raise AgentBridgeClientError("Agent task workdir is required")
+        if method == "task.list":
+            raise AgentBridgeClientError("Agent task workdir is required")
         if method in _TASK_LOOKUPS:
             task_id = params.get("task_id")
             if not isinstance(task_id, str) or not task_id:

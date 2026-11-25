@@ -106,6 +106,25 @@ def _signed(
     return {**unsigned, "signature": sign_core_request(unsigned, secret)}
 
 
+@pytest.mark.asyncio
+async def test_legacy_v1_owned_bridge_rejects_task_list_without_downgrade(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "bridge-state")
+    service, _ = _service(tmp_path, store)
+    server = BridgeProtocolServer(service=service, socket_path=tmp_path / "legacy.sock")
+    response = await server._dispatch_raw(
+        json.dumps(
+            {
+                "protocol_version": 1,
+                "request_id": "legacy-list",
+                "method": "task.list",
+                "params": {"workdir": "Repo", "status": "active"},
+            }
+        ).encode()
+    )
+    assert response["ok"] is False
+    assert response["error"]["code"] == "CORE_NOT_AUTHORIZED"
+
+
 async def _rpc(path: Path, request: dict[str, Any]) -> dict[str, Any]:
     reader, writer = await asyncio.open_unix_connection(str(path))
     writer.write(json.dumps(request, separators=(",", ":")).encode() + b"\n")

@@ -58,6 +58,49 @@ def test_probe_requires_exact_v2_ping_payload_and_verified_local_socket(
     assert calls == [("bridge.ping", {})]
 
 
+def test_owned_v2_probe_requires_task_list_not_just_ping(short_socket_root, monkeypatch):
+    path = _socket(short_socket_root)
+    calls = []
+
+    async def denied(self, method, params):
+        calls.append((method, params))
+        if method == "bridge.ping":
+            return {"status": "ok"}
+        raise CoreBridgeRemoteError("CORE_NOT_AUTHORIZED", "denied")
+
+    monkeypatch.setattr(CoreBridgeClientV2, "call", denied)
+    assert not asyncio.run(probe_shared_v2_bridge(_client(path), path, require_task_list=True))
+    assert calls == [("bridge.ping", {}), ("task.list", {"status": "all", "limit": 1})]
+
+    async def allowed(self, method, params):
+        if method == "bridge.ping":
+            return {"status": "ok"}
+        return {"tasks": [], "next_cursor": None}
+
+    monkeypatch.setattr(CoreBridgeClientV2, "call", allowed)
+    assert asyncio.run(probe_shared_v2_bridge(_client(path), path, require_task_list=True))
+
+
+def test_repo_only_readiness_checks_repo_not_task_list(short_socket_root, monkeypatch):
+    path = _socket(short_socket_root)
+    calls = []
+
+    async def reply(self, method, params):
+        calls.append(method)
+        if method == "bridge.ping":
+            return {"status": "ok"}
+        if method == "repo.inspect":
+            return {"view": "actions", "actions": []}
+        raise CoreBridgeRemoteError("CORE_NOT_AUTHORIZED", "denied")
+
+    monkeypatch.setattr(CoreBridgeClientV2, "call", reply)
+    assert asyncio.run(probe_shared_v2_bridge(_client(path), path, require_repo_ops=True))
+    assert calls == ["bridge.ping", "repo.inspect"]
+    assert not asyncio.run(
+        probe_shared_v2_bridge(_client(path), path, require_repo_ops=True, require_task_list=True)
+    )
+
+
 def test_probe_rejects_untrusted_socket_paths_before_rpc(
     short_socket_root: Path, monkeypatch
 ) -> None:

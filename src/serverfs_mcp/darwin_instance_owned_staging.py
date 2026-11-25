@@ -25,6 +25,7 @@ from .darwin_instance_bridge_identity import (
 from .darwin_instances import instance_service_home
 from .instance_identity import InstanceIdentity
 from .native_config import load_native_config
+from .workdirs import Workdir
 
 
 class DarwinOwnedPolicyError(DarwinBridgeIdentityError):
@@ -157,6 +158,154 @@ def stage_owned_bridge_policy(
         "bridge_mode": "owned",
         "workdirs": len(claims),
         "private_config": "verified",
+    }
+
+
+def stage_owned_v2_grant_binding(
+    identity: InstanceIdentity,
+    config_path: Path,
+    bridge_python: Path,
+    workdirs: list[Workdir] | tuple[Workdir, ...],
+    *,
+    home: Path | None = None,
+    default_bridge_config: Path | None = None,
+) -> dict[str, str | int]:
+    """Stage a self-only v2 grant/binding pair without registering either service.
+
+    This create-only foundation is deliberately separate from the current v1
+    owned runtime until Core tool routing and compatibility gates are integrated.
+    """
+    if sys.platform != "darwin":
+        raise DarwinOwnedPolicyError("owned v2 grant staging requires macOS")
+    if identity.bridge_mode != "owned" or identity.bridge_id != identity.instance_id:
+        raise DarwinOwnedPolicyError("named owned Bridge must be independently owned")
+    if not isinstance(workdirs, (list, tuple)) or not workdirs:
+        raise DarwinOwnedPolicyError("owned v2 Agent workdirs are invalid")
+    agent_workdirs = {
+        item.alias: Path(item.root).resolve(strict=True)
+        for item in workdirs
+        if item.agent_mode != "disabled" or item.policy.repo_ops_enabled
+    }
+    if not 1 <= len(agent_workdirs) <= 16:
+        raise DarwinOwnedPolicyError("owned v2 staging requires Bridge-enabled workdirs")
+
+    from .darwin_instance_bridge_identity import named_owned_bridge_resources
+    from .darwin_owned_v2_binding import (
+        generate_owned_v2_grant_materials,
+        write_owned_v2_binding,
+    )
+
+    resources = named_owned_bridge_resources(identity, home=home)
+    owner_root = instance_service_home(identity, home=home)
+    if (owner_root / "services.json").exists() or (owner_root / "services.json").is_symlink():
+        raise DarwinOwnedPolicyError("owned v2 staging requires a new Core instance")
+    preflight_named_owned_bridge(
+        identity, config_path, home=home, default_bridge_config=default_bridge_config
+    )
+    try:
+        configured_workdirs, settings = load_native_config(Path(config_path))
+        configured_scope = render_request_from_config(configured_workdirs, settings)
+        supplied_scope = render_request_from_config(workdirs, settings)
+        if supplied_scope != configured_scope:
+            raise ValueError("supplied workdirs differ from the native config")
+        materials = generate_owned_v2_grant_materials(identity, tuple(agent_workdirs))
+        request = configured_scope
+    except Exception as exc:
+        raise DarwinOwnedPolicyError("owned v2 grant scope cannot be prepared") from exc
+    bridge_python = Path(bridge_python).expanduser()
+    if (
+        not bridge_python.is_absolute()
+        or not bridge_python.is_file()
+        or not os.access(bridge_python, os.X_OK)
+    ):
+        raise DarwinOwnedPolicyError("owned Bridge executable identity is invalid")
+    envelope = {
+        "policy": request,
+        "grant_materials": [material.bridge_input() for material in materials],
+    }
+    payload = json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
+    if len(payload.encode("utf-8")) > 262_144:
+        raise DarwinOwnedPolicyError("owned v2 grant request exceeds the size budget")
+
+    try:
+        process = subprocess.run(
+            [
+                str(bridge_python),
+                "-B",
+                "-m",
+                "serverfs_agent_bridge.macos_owned_config",
+                "--instance",
+                identity.instance_id,
+                "--bridge-home",
+                str(resources.config_path.parent),
+            ],
+            input=payload,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DarwinOwnedPolicyError("owned v2 grant staging subprocess failed") from exc
+    if process.returncode != 0:
+        raise DarwinOwnedPolicyError("owned v2 grant staging refused")
+
+    try:
+        result = json.loads(process.stdout)
+        if (
+            not isinstance(result, dict)
+            or result.get("instance_id") != identity.instance_id
+            or result.get("state") != "staged-not-registered"
+            or result.get("private_config") != "verified"
+            or result.get("protocol_mode") != "v2"
+            or not isinstance(result.get("grant_scopes"), list)
+        ):
+            raise ValueError("invalid owned v2 grant response")
+        scopes = result["grant_scopes"]
+        if {item.get("alias") for item in scopes if isinstance(item, dict)} != set(agent_workdirs):
+            raise ValueError("owned v2 grant aliases differ from Core policy")
+        bridge_claims = workdir_claims_from_private_bridge_config(resources.config_path)
+        expected = {
+            (item.alias, str(Path(item.root).resolve(strict=True)), item.read_only)
+            for item in workdirs
+            if item.agent_mode != "disabled" or item.policy.repo_ops_enabled
+        }
+        observed = {
+            (item.alias, str(Path(item.root).resolve(strict=True)), item.read_only)
+            for item in bridge_claims
+            if item.alias in agent_workdirs
+        }
+        if observed != expected:
+            raise ValueError("owned v2 Bridge workdir grants differ from Core policy")
+        bridge_document = json.loads(resources.config_path.read_text(encoding="utf-8"))
+        if (
+            bridge_document.get("protocol_mode") != "v2"
+            or bridge_document.get("bridge_id") != identity.instance_id
+            or bridge_document.get("socket_path") != str(resources.socket_path)
+        ):
+            raise ValueError("owned v2 Bridge identity differs from Core")
+        binding_path = write_owned_v2_binding(
+            identity,
+            home=home,
+            bridge_config_path=resources.config_path,
+            socket_path=resources.socket_path,
+            agent_workdirs=agent_workdirs,
+            materials=materials,
+            grant_scopes=scopes,
+        )
+        if not binding_path.is_file():
+            raise ValueError("owned v2 Core binding was not persisted")
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise DarwinOwnedPolicyError(
+            "owned v2 grants were staged but Core binding verification failed; retain state"
+        ) from exc
+    return {
+        "instance_id": identity.instance_id,
+        "state": "staged-not-registered",
+        "bridge_mode": "owned",
+        "protocol_mode": "v2",
+        "agent_workdirs": len(agent_workdirs),
+        "private_binding": "verified",
     }
 
 

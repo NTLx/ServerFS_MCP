@@ -210,4 +210,14 @@ def resolve_owned_core_binding(
         )
     except (OSError, ValueError) as exc:
         raise DarwinOwnedBindingError("owned Bridge policy or writer grants are stale") from exc
+    try:
+        bridge_config = json.loads(resources.config_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise DarwinOwnedBindingError("owned Bridge protocol mode cannot be verified") from exc
+    if (
+        not isinstance(bridge_config, dict)
+        or bridge_config.get("protocol_mode", "v1") != "v1"
+        or bridge_config.get("bridge_id") is not None
+    ):
+        raise DarwinOwnedBindingError("owned v2 Bridge requires its signed Core client route")
     return expected_socket, resources.lock_dir

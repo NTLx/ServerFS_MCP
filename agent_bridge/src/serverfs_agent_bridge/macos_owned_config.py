@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import stat
 import sys
 from pathlib import Path
@@ -191,6 +192,157 @@ def stage_named_owned_config(
     }
 
 
+def stage_named_owned_v2_config(
+    identifier: str,
+    bridge_home: Path,
+    request: dict,
+    grant_materials: list[dict[str, str]],
+    *,
+    allow_test_fake: bool = False,
+) -> dict[str, object]:
+    """Create a new self-owned v2 Bridge and one private CoreGrant per Agent alias.
+
+    This is a staging primitive only. It does not register or start the Bridge,
+    alter an existing v1 owner, or provision authority for another Bridge.
+    """
+    _name(identifier)
+    if sys.platform != "darwin":
+        raise BridgeError("BRIDGE_PLATFORM_UNSUPPORTED", "named Bridge requires macOS")
+    from . import core_grants
+    from .core_grants import core_workdir_policy_digest
+
+    if not isinstance(grant_materials, list) or not 1 <= len(grant_materials) <= 16:
+        raise BridgeError("BRIDGE_CONFIG_INVALID", "owned Core grant material is invalid")
+    materials: dict[str, tuple[str, str]] = {}
+    for item in grant_materials:
+        if not isinstance(item, dict) or set(item) != {"alias", "key_id", "secret_hex"}:
+            raise BridgeError("BRIDGE_CONFIG_INVALID", "owned Core grant material is invalid")
+        alias, key_id, secret_hex = item["alias"], item["key_id"], item["secret_hex"]
+        if (
+            not isinstance(alias, str)
+            or re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,31}", alias) is None
+            or not isinstance(key_id, str)
+            or re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?", key_id) is None
+            or key_id == "default"
+            or not isinstance(secret_hex, str)
+            or re.fullmatch(r"[0-9a-f]{64}", secret_hex) is None
+            or alias in materials
+            or any(
+                key_id == existing[0] or secret_hex == existing[1]
+                for existing in materials.values()
+            )
+        ):
+            raise BridgeError("BRIDGE_CONFIG_INVALID", "owned Core grant material is invalid")
+        materials[alias] = (key_id, secret_hex)
+
+    bridge_home = Path(bridge_home)
+    _owner_home(identifier, bridge_home)
+    config_path = bridge_home / "bridge.json"
+    grants_path = bridge_home / "state" / "core-grants.json"
+    if config_path.exists() or config_path.is_symlink():
+        raise BridgeError("BRIDGE_CONFIG_INVALID", "named Bridge config already exists")
+    if grants_path.exists() or grants_path.is_symlink():
+        raise BridgeError("BRIDGE_CONFIG_INVALID", "named Bridge grants already exist")
+    methods = frozenset(
+        method
+        for method in core_grants._WORKDIR_METHODS
+        if method == "bridge.ping" or method.startswith(("runtime.", "task."))
+    )
+    if "task.list" not in methods:
+        raise BridgeError("BRIDGE_CONFIG_INVALID", "Bridge task.list capability is unavailable")
+    socket = named_socket_path(identifier)
+    if socket.parent.exists() or socket.parent.is_symlink():
+        raise BridgeError("SOCKET_PATH_IN_USE", "named Bridge socket namespace is occupied")
+
+    document = _config_document(identifier, bridge_home, request, allow_test_fake=allow_test_fake)
+    document["protocol_mode"] = "v2"
+    document["bridge_id"] = identifier
+    created: list[Path] = []
+    published = False
+    try:
+        for directory in (bridge_home, bridge_home / "state", bridge_home / "locks"):
+            if directory.exists() or directory.is_symlink():
+                _private_dir(directory)
+            else:
+                ensure_private_directory(directory, mode=0o700, messages=_DIRECTORY_ERRORS)
+                created.append(directory)
+        _publish_private_file(config_path, json.dumps(document, sort_keys=True) + "\n")
+        published = True
+        config = BridgeConfig.load(config_path)
+        scoped_policies = {
+            alias: policy
+            for alias, policy in config.policies._by_alias.items()
+            if policy.mode.value != "disabled" or policy.repo_ops_enabled
+        }
+        if not scoped_policies or set(materials) != set(scoped_policies):
+            raise BridgeError(
+                "BRIDGE_CONFIG_INVALID", "owned Core grants do not match Bridge-enabled aliases"
+            )
+        grant_scopes: list[dict[str, str]] = []
+        grants: list[dict[str, object]] = []
+        for alias, policy in scoped_policies.items():
+            allowed = {"bridge.ping"}
+            if policy.mode.value != "disabled" and policy.runtimes:
+                allowed.update(methods)
+            if policy.repo_ops_enabled:
+                allowed.add("repo.inspect")
+                if not policy.read_only:
+                    allowed.update({"repo.action", "repo.commit", "repo.push"})
+            if not allowed <= core_grants._WORKDIR_METHODS or len(allowed) == 1:
+                raise BridgeError("BRIDGE_CONFIG_INVALID", "owned Core grant scope is invalid")
+            key_id, secret_hex = materials[alias]
+            revision = core_workdir_policy_digest(policy)
+            grant_scopes.append({"alias": alias, "key_id": key_id, "policy_revision": revision})
+            grants.append(
+                {
+                    "core_id": identifier,
+                    "key_id": key_id,
+                    "secret_hex": secret_hex,
+                    "methods": sorted(allowed),
+                    "workdirs": [{"alias": alias, "policy_sha256": revision}],
+                }
+            )
+
+        from .core_grants_private import provision_private_core_grants
+        from .store import TaskStore
+
+        store = TaskStore(config.state_dir)
+        provision_private_core_grants(
+            store=store,
+            bridge_id=identifier,
+            policies=config.policies,
+            document={"schema_version": 1, "bridge_id": identifier, "grants": grants},
+        )
+        verify_private_file(
+            grants_path,
+            not_regular="owned Bridge grants are not regular",
+            not_private="owned Bridge grants are not private",
+        )
+        verify_private_file(
+            config_path,
+            not_regular="named Bridge config is not regular",
+            not_private="named Bridge config is not private",
+        )
+    except Exception:
+        # Preserve any private grant/database state created by the owner helper;
+        # only remove this invocation's newly published config and empty dirs.
+        if published and config_path.is_file() and not config_path.is_symlink():
+            config_path.unlink()
+        for directory in reversed(created):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+        raise
+    return {
+        "instance_id": identifier,
+        "state": "staged-not-registered",
+        "private_config": "verified",
+        "protocol_mode": "v2",
+        "grant_scopes": grant_scopes,
+    }
+
+
 def check_named_owned_config(
     identifier: str,
     bridge_home: Path,
@@ -215,14 +367,22 @@ def check_named_owned_config(
     )
     derived = _config_document(identifier, bridge_home, request, allow_test_fake=allow_test_fake)
     actual = BridgeConfig.load(path)
+    expected_bridge_id = identifier if actual.protocol_mode == "v2" else None
     if (
-        actual.socket_path != Path(derived["socket_path"])
+        actual.protocol_mode not in {"v1", "v2"}
+        or actual.bridge_id != expected_bridge_id
+        or actual.socket_path != Path(derived["socket_path"])
         or actual.state_dir != Path(derived["state_dir"])
         or actual.lock_dir != Path(derived["lock_dir"])
         or actual.allowed_peer_uid != os.getuid()
         or actual.allowed_peer_gid is not None
     ):
         raise BridgeError("BRIDGE_CONFIG_INVALID", "named Bridge runtime identity drift")
+    if actual.protocol_mode == "v2":
+        from .core_grants import _WORKDIR_METHODS
+
+        if "task.list" not in _WORKDIR_METHODS:
+            raise BridgeError("BRIDGE_CONFIG_INVALID", "Bridge task.list capability is unavailable")
     from .sync_config import _policy_matches
 
     # _policy_matches operates on only operator-owned non-secret policy fields.
@@ -237,6 +397,7 @@ def check_named_owned_config(
         "instance_id": identifier,
         "state": "verified-not-registered",
         "policy": "synced",
+        "protocol_mode": actual.protocol_mode,
         "workdirs": len(actual.policies.lease_ids()),
     }
 
@@ -264,6 +425,13 @@ def main(argv: list[str] | None = None) -> int:
             raise BridgeError("BRIDGE_CONFIG_INVALID", "named Bridge request must be an object")
         if args.check:
             result = check_named_owned_config(args.instance, args.bridge_home, request)
+        elif set(request) == {"policy", "grant_materials"}:
+            policy = request["policy"]
+            if not isinstance(policy, dict) or not isinstance(request["grant_materials"], list):
+                raise BridgeError("BRIDGE_CONFIG_INVALID", "owned v2 staging request is invalid")
+            result = stage_named_owned_v2_config(
+                args.instance, args.bridge_home, policy, request["grant_materials"]
+            )
         else:
             result = stage_named_owned_config(args.instance, args.bridge_home, request)
     except (BridgeError, ValueError, OSError, UnicodeDecodeError) as exc:

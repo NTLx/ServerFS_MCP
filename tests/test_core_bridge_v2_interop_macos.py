@@ -67,7 +67,7 @@ def _server(tmp_path: Path, state: Path, socket_path: Path) -> tuple[BridgeProto
             "key-a",
             SECRET_A,
             (("Repo", digest),),
-            frozenset({"bridge.ping", "task.submit", "task.get"}),
+            frozenset({"bridge.ping", "task.submit", "task.get", "task.list"}),
         ),
         CoreGrant("core-b", "key-b", SECRET_B, (("Repo", digest),), frozenset({"task.get"})),
     )
@@ -153,9 +153,21 @@ def test_real_core_clients_interoperate_with_v2_only_darwin_bridge(tmp_path: Pat
             )
             task_id = submitted["task_id"]
             assert (await client_a.call("task.get", {"task_id": task_id}))["task_id"] == task_id
+            from serverfs_mcp.darwin_shared_agent_adapter import DarwinSharedAgentAdapter
+
+            shared_agent = DarwinSharedAgentAdapter(client_a, "Repo")
+            page = await shared_agent.call(
+                "task.list", {"workdir": "Repo", "status": "all", "limit": 20}
+            )
+            assert [task["task_id"] for task in page["tasks"]] == [task_id]
+            assert page["tasks"][0]["correlation_id"] is None
+            assert page["next_cursor"] is None
             with pytest.raises(CoreBridgeRemoteError) as cross_owner:
                 await client_b.call("task.get", {"task_id": task_id})
             assert cross_owner.value.code == "CORE_TASK_NOT_FOUND"
+            with pytest.raises(CoreBridgeRemoteError) as no_discovery_grant:
+                await client_b.call("task.list", {"status": "all"})
+            assert no_discovery_grant.value.code == "CORE_NOT_AUTHORIZED"
 
             with pytest.raises(CoreBridgeRemoteError) as wrong_key:
                 await _client(socket_path, digest, secret=b"x" * 32).call(

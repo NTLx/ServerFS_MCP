@@ -47,17 +47,31 @@ def verified_bridge_command(
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise OwnedBridgeSupervisorError("owned Bridge manifest is not trustworthy") from exc
     try:
-        resolve_owned_core_binding(
-            identity,
-            Path(config),
-            port,
-            home=home,
-            default_bridge_config=default_bridge_config,
-            environ=environ,
-        )
+        from .darwin_owned_v2_bootstrap import load_owned_v2_clients, owned_protocol_marker
+
+        protocol, verified_manifest = owned_protocol_marker(identity, home=home)
+        if verified_manifest != document:
+            raise ValueError("owned Bridge manifest changed during verification")
+        if protocol == "v2":
+            if type(port) is not int:
+                raise ValueError("invalid owned Core port")
+            load_owned_v2_clients(identity, Path(config), home=home)
+        else:
+            resolve_owned_core_binding(
+                identity,
+                Path(config),
+                port,
+                home=home,
+                default_bridge_config=default_bridge_config,
+                environ=environ,
+            )
         bridge_spec = document["services"]["agent-bridge"]
         python = bridge_spec["bridge_python"]
-        if not isinstance(python, str) or not Path(python).is_absolute():
+        if (
+            not isinstance(python, str)
+            or not Path(python).is_absolute()
+            or (protocol == "v2") != (bridge_spec.get("protocol_mode") == "v2")
+        ):
             raise ValueError("invalid Bridge interpreter")
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise OwnedBridgeSupervisorError(
