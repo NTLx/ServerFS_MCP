@@ -32,8 +32,8 @@ BRIDGE_PYTHON = REPO_ROOT / "agent_bridge" / ".venv" / "Scripts" / "python.exe"
 #: The go-ahead matters and is the reason this fixture is not simpler: job membership is inherited
 #: at process-creation time, so a grandchild spawned *before* its parent was assigned never joins
 #: the job and legitimately survives. That is a property of Windows, not a containment defect. The
-#: supervisor assigns the Bridge immediately after spawn and the Bridge creates provider children
-#: afterwards, so the test has to model that order to prove anything.
+#: supervisor starts the launcher suspended, assigns it, then resumes it. The go-ahead additionally
+#: ensures the fixture creates its own descendants only after containment is established.
 _TREE_SCRIPT = """
 import os, subprocess, sys, time
 from pathlib import Path
@@ -73,7 +73,15 @@ asyncio.run(main())
 """
 
 
-def _spawn_tree(pidfile: Path, gofile: Path) -> subprocess.Popen:
+def _spawn_tree(pidfile: Path, gofile: Path, job: WindowsJob | None = None) -> subprocess.Popen:
+    if job is not None:
+        # Use the production suspended-start path, including venv launcher containment.
+        return spawn_bridge(
+            config_path=pidfile.parent / "unused-bridge.json",
+            child_env=os.environ.copy(),
+            job=job,
+            argv=[sys.executable, "-c", _TREE_SCRIPT, str(pidfile), str(gofile)],
+        )
     return subprocess.Popen(
         [sys.executable, "-c", _TREE_SCRIPT, str(pidfile), str(gofile)],
         stdout=subprocess.PIPE,
@@ -302,19 +310,25 @@ class TestContainment:
     def test_closing_the_job_kills_the_assigned_tree(self, tmp_path: Path) -> None:
         """Assigned child and its inherited grandchild must both die with the handle."""
         pidfile, gofile = tmp_path / "tree.pids", tmp_path / "go"
-        child = _spawn_tree(pidfile, gofile)
-
         job = WindowsJob()
-        job.open()
-        job.assign(child)
-        # Only now may the child create descendants, mirroring the supervisor's real order: assign
-        # the Bridge immediately after spawn, and the Bridge creates provider children later.
-        gofile.write_text("go", encoding="utf-8")
-        child_pid, grandchild_pid = _pids(pidfile)
-        job.close()
-
-        assert _wait_gone(child_pid), "the assigned child survived job close"
-        assert _wait_gone(grandchild_pid), "the inherited grandchild survived job close"
+        child = None
+        try:
+            job.open()
+            child = _spawn_tree(pidfile, gofile, job)
+            gofile.write_text("go", encoding="utf-8")
+            child_pid, grandchild_pid = _pids(pidfile)
+            assert job.contains_pid(child.pid), "the launcher was not contained"
+            assert job.contains_pid(child_pid), "the actual interpreter was not contained"
+            assert job.contains_pid(grandchild_pid), "the grandchild was not contained"
+            job.close()
+            assert _wait_gone(child_pid), "the assigned child survived job close"
+            assert _wait_gone(grandchild_pid), "the inherited grandchild survived job close"
+        finally:
+            job.close()
+            if child is not None:
+                if child.poll() is None:
+                    child.kill()
+                child.wait(timeout=15)
 
     def test_acp_child_inherits_the_existing_job(self, tmp_path: Path) -> None:
         """An ACP child launched by the contained Bridge process must inherit its existing Job."""
@@ -345,12 +359,12 @@ class TestContainment:
             stderr=subprocess.PIPE,
         )
         pidfile, gofile = tmp_path / "tree.pids", tmp_path / "go"
-        assigned = _spawn_tree(pidfile, gofile)
+        assigned = None
 
         job = WindowsJob()
         try:
             job.open()
-            job.assign(assigned)
+            assigned = _spawn_tree(pidfile, gofile, job)
             gofile.write_text("go", encoding="utf-8")
             assigned_pid, _ = _pids(pidfile)
             job.close()
@@ -358,20 +372,35 @@ class TestContainment:
             # The bystander was never assigned, so it must still be running.
             assert _alive(bystander.pid), "job close killed an unrelated process"
         finally:
+            job.close()
+            if assigned is not None:
+                if assigned.poll() is None:
+                    assigned.kill()
+                assigned.wait(timeout=15)
             bystander.kill()
             bystander.wait(timeout=15)
 
     def test_a_closed_job_does_not_kill_a_later_process(self, tmp_path: Path) -> None:
         """The handle is spent after close, so containment cannot be re-used by accident."""
         pidfile, gofile = tmp_path / "tree.pids", tmp_path / "go"
-        first = _spawn_tree(pidfile, gofile)
         job = WindowsJob()
-        job.open()
-        job.assign(first)
-        gofile.write_text("go", encoding="utf-8")
-        first_pid, _ = _pids(pidfile)
-        job.close()
-        assert _wait_gone(first_pid)
+        first = None
+        try:
+            job.open()
+            first = _spawn_tree(pidfile, gofile, job)
+            gofile.write_text("go", encoding="utf-8")
+            first_pid, grandchild_pid = _pids(pidfile)
+            assert job.contains_pid(first_pid)
+            assert job.contains_pid(grandchild_pid)
+            job.close()
+            assert _wait_gone(first_pid)
+            assert _wait_gone(grandchild_pid)
+        finally:
+            job.close()
+            if first is not None:
+                if first.poll() is None:
+                    first.kill()
+                first.wait(timeout=15)
 
         second = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(30)"],
