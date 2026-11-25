@@ -564,9 +564,8 @@ def test_owned_v2_agent_adapter_keeps_alias_scope_and_refuses_unsupported_submit
         agent_aliases={"Repo"},
         repo_aliases={"OnlyRepo"},
     )
-    assert asyncio.run(
-        mixed.call("repo.inspect", {"workdir": "OnlyRepo", "view": "actions"})
-    ) == {"method": "repo.inspect", "params": {"view": "actions"}}
+    result = asyncio.run(mixed.call("repo.inspect", {"workdir": "OnlyRepo", "view": "actions"}))
+    assert result == {"method": "repo.inspect", "params": {"view": "actions"}}
     for method, params in (
         ("repo.inspect", {"workdir": "Repo", "view": "actions"}),
         ("repo.inspect", {"view": "actions"}),
