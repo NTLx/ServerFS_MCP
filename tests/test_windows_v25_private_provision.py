@@ -97,7 +97,7 @@ def test_runtime_scope_no_repo_methods():
     one = workdir(runtimes=("claude",))
     aliases, methods = tool.core_scope({"workdirs": [one]}, {"workdirs": [one]})
     assert aliases == ("Repo",)
-    assert "task.submit" in methods and "runtime.models" in methods
+    assert {"task.submit", "task.get", "task.list", "runtime.models"} <= set(methods)
     assert not any(m.startswith("repo.") for m in methods)
 
 
