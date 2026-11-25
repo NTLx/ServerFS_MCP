@@ -36,7 +36,7 @@ def _task(
 
 
 def test_scoped_task_page_projects_only_owned_alias_and_known_fields(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(tmp_path / "state")
     _task(store, "agt_a", owner="core-a", alias="Workspace")
     _task(store, "agt_b", owner="core-b", alias="Workspace")
     _task(store, "agt_c", owner="core-a", alias="Other")
@@ -59,7 +59,7 @@ def test_scoped_task_page_projects_only_owned_alias_and_known_fields(tmp_path):
 
 
 def test_task_pages_are_keyset_bounded_and_cursor_scope_bound(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(tmp_path / "state")
     for index in range(4):
         _task(store, f"agt_{index}", owner="core-a", alias="Workspace")
 
@@ -130,13 +130,13 @@ def test_task_pages_are_keyset_bounded_and_cursor_scope_bound(tmp_path):
 
 @pytest.mark.parametrize("limit", [0, 101, True])
 def test_task_discovery_rejects_invalid_limits(tmp_path, limit):
-    store = TaskStore(tmp_path)
+    store = TaskStore(tmp_path / "state")
     with pytest.raises(BridgeError):
         _list(store, core_id="core-a", workdir_alias="Workspace", status="active", limit=limit)
 
 
 def test_task_discovery_rejects_tampered_cursor(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(tmp_path / "state")
     _task(store, "agt_a", owner="core-a", alias="Workspace")
     first = _list(store, core_id="core-a", workdir_alias="Workspace", status="active", limit=1)
     cursor = first["next_cursor"] or "bad"
@@ -152,7 +152,7 @@ def test_task_discovery_rejects_tampered_cursor(tmp_path):
 
 
 def test_state_filters_and_equal_timestamp_keyset_ordering(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(tmp_path / "state")
     _task(store, "agt_a", owner="core-a", alias="Workspace", status="succeeded")
     for task_id in ("agt_b", "agt_c"):
         _task(store, task_id, owner="core-a", alias="Workspace")
@@ -171,7 +171,7 @@ def test_state_filters_and_equal_timestamp_keyset_ordering(tmp_path):
 
 
 def test_query_plan_uses_alias_order_index_without_owner_global_sort(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(tmp_path / "state")
     with store._connect() as con:
         plan = con.execute(
             """EXPLAIN QUERY PLAN
@@ -202,7 +202,7 @@ def test_query_plan_uses_alias_order_index_without_owner_global_sort(tmp_path):
     [("approval", TaskStatus.WAITING_FOR_APPROVAL), ("question", TaskStatus.WAITING_FOR_QUESTION)],
 )
 def test_projection_exposes_pending_kind_without_private_payload(tmp_path, kind, waiting_status):
-    store = TaskStore(tmp_path)
+    store = TaskStore(tmp_path / "state")
     _task(store, "agt_pending", owner="core-a", alias="Workspace", status="running")
     store.create_pending_request(
         task_id="agt_pending",

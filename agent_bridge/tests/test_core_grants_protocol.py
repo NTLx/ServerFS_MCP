@@ -44,7 +44,7 @@ def _server(tmp_path: Path, *, v2_only: bool = True) -> tuple[BridgeProtocolServ
         store=store,
         policies=policies,
         adapters={"fake": FakeAdapter()},
-        lease_manager=LeaseManager(tmp_path / "locks"),
+        lease_manager=LeaseManager(tmp_path / "locks", lease_ids=[policy.lease_id]),
     )
     claimed: set[tuple[str, str, str]] = set()
 
