@@ -183,7 +183,14 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                     secret,
                     ((alias, digest),),
                     frozenset(
-                        {"bridge.ping", "runtime.list", "task.submit", "task.get", "repo.inspect"}
+                        {
+                            "bridge.ping",
+                            "runtime.list",
+                            "task.submit",
+                            "task.get",
+                            "task.list",
+                            "repo.inspect",
+                        }
                     ),
                 )
             )
@@ -529,7 +536,39 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                         },
                     )
                     assert denied.is_error
-                    extra_task = await submit(first, "AlphaAgent")
+                    submitted_extra_task = await submit(first, "AlphaAgent")
+                    del submitted_extra_task
+                    extra_page = await call(
+                        first,
+                        "list_agent_tasks",
+                        {"workdir": "AlphaAgent", "status": "all"},
+                    )
+                    assert not extra_page.is_error, extra_page.content
+                    extra_tasks = extra_page.structured_content["tasks"]
+                    assert extra_tasks and all(
+                        task["workdir"] == "AlphaAgent" for task in extra_tasks
+                    )
+                    extra_task = extra_tasks[0]["task_id"]
+                    alpha_page = await call(
+                        first,
+                        "list_agent_tasks",
+                        {"workdir": "Alpha", "status": "all"},
+                    )
+                    assert not alpha_page.is_error
+                    assert all(
+                        task["task_id"] != extra_task
+                        for task in alpha_page.structured_content["tasks"]
+                    )
+                    bravo_page = await call(
+                        cores[1],
+                        "list_agent_tasks",
+                        {"workdir": "Bravo", "status": "all"},
+                    )
+                    assert not bravo_page.is_error
+                    assert all(
+                        task["task_id"] != extra_task
+                        for task in bravo_page.structured_content["tasks"]
+                    )
                     await lookup(first, extra_task)
                     denied = await call(cores[1], "get_agent_task", {"task_id": extra_task})
                     assert denied.is_error and "CORE_TASK_NOT_FOUND" in str(denied.content)
@@ -566,8 +605,20 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                     denied_commit.content
                 )
 
-                task_ids = [await submit(core) for core in cores]
-                for core, task_id in zip(cores, task_ids, strict=True):
+                task_ids = []
+                for core in cores:
+                    submitted_task_id = await submit(core)
+                    del submitted_task_id
+                    page = await call(
+                        core,
+                        "list_agent_tasks",
+                        {"workdir": core["alias"], "status": "all"},
+                    )
+                    assert not page.is_error, page.content
+                    listed = page.structured_content["tasks"]
+                    assert listed and all(task["workdir"] == core["alias"] for task in listed)
+                    task_id = listed[0]["task_id"]
+                    task_ids.append(task_id)
                     await lookup(core, task_id)
                 if core_count == 2:
                     for index, core in enumerate(cores):
