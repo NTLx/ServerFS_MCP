@@ -17,6 +17,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tomllib
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
@@ -148,6 +149,59 @@ def offline_env(environ) -> dict[str, str]:
     return env
 
 
+def runtime_constraints(uv: str, project: Path, distribution: str, env: dict[str, str]) -> bytes:
+    """Export version constraints from the trusted matching checkout, never resolve anew."""
+    try:
+        config = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))
+        lock = tomllib.loads((project / "uv.lock").read_text(encoding="utf-8"))
+        require(
+            config["project"]["name"] == distribution
+            and config["project"]["version"] == VERSION
+            and any(
+                item.get("name") == distribution
+                and item.get("version") == VERSION
+                and item.get("source") == {"editable": "."}
+                for item in lock["package"]
+            ),
+            "runtime lock identity differs",
+        )
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise InstallRefusal("matching runtime lock is unavailable") from exc
+    exported = run(
+        [
+            uv,
+            "--no-config",
+            "export",
+            "--frozen",
+            "--no-dev",
+            "--no-emit-project",
+            "--no-hashes",
+            "--format",
+            "requirements-txt",
+        ],
+        env,
+        project,
+        120,
+    )
+    try:
+        lines = [
+            line.strip()
+            for line in exported.decode("utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+    except UnicodeError as exc:
+        raise InstallRefusal("runtime lock export is invalid") from exc
+    require(
+        bool(lines)
+        and all(
+            re.fullmatch(r"[A-Za-z0-9_.-]+==[A-Za-z0-9.!+_-]+(?:\s*;[^\r\n]+)?", line)
+            for line in lines
+        ),
+        "runtime lock export contains a non-pinned requirement",
+    )
+    return exported
+
+
 def ensure_empty(path: Path) -> None:
     require(
         path.is_dir() and not path.is_symlink() and not any(path.iterdir()),
@@ -273,6 +327,15 @@ def provision(args: argparse.Namespace) -> dict:
         cache = cache.resolve(strict=True)
         _no_reparse_components(cache)
         env["UV_CACHE_DIR"] = str(cache)
+    # The installer is distributed with a matching trusted source checkout.
+    checkout = Path(__file__).resolve().parents[2]
+    constraints = {
+        "core": runtime_constraints(uv, checkout, WHEELS["core"][1], env),
+    }
+    if args.component == "bridge":
+        constraints["bridge"] = runtime_constraints(
+            uv, checkout / "agent_bridge", WHEELS["bridge"][1], env
+        )
     root = storage.root(args.instance)
     envs = {role: root / "envs" / role for role, _ in jobs}
     # Validate all existing targets before even preparing missing directories.
@@ -306,6 +369,9 @@ def provision(args: argparse.Namespace) -> dict:
         "component": args.component,
         "instance": args.instance,
         "wheel_sha256": pins,
+        "constraints_sha256": {
+            kind: hashlib.sha256(data).hexdigest() for kind, data in constraints.items()
+        },
         "installed": [],
         "phase": "private-input-staging",
     }
@@ -338,6 +404,19 @@ def provision(args: argparse.Namespace) -> dict:
                 "staged Wheel hash differs",
             )
             staged[kind] = target
+        staged_constraints = {}
+        for kind, data in constraints.items():
+            target = attempt / f"{kind}-constraints.txt"
+            with target.open("xb") as stream:
+                stream.write(data)
+            protect_new_file(target, sid)
+            storage.check_private(target, directory=False, sid=sid)
+            require(
+                hashlib.sha256(target.read_bytes()).hexdigest()
+                == report["constraints_sha256"][kind],
+                "staged runtime constraints differ",
+            )
+            staged_constraints[kind] = target
         for role, kinds in jobs:
             venv = envs[role]
             report["phase"] = role + "-create-venv"
@@ -360,11 +439,20 @@ def provision(args: argparse.Namespace) -> dict:
                     "--offline",
                     "--python",
                     str(py),
+                    "--constraint",
+                    str(staged_constraints["bridge" if kinds == ("bridge",) else "core"]),
                     *[str(staged[k]) for k in kinds],
                 ],
                 env,
                 attempt,
                 240,
+            )
+            report["phase"] = role + "-dependency-check"
+            run(
+                [uv, "--no-config", "pip", "check", "--python", str(py)],
+                env,
+                attempt,
+                45,
             )
             report["phase"] = role + "-private-tree"
             private_tree(venv, sid)

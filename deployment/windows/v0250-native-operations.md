@@ -16,7 +16,7 @@ The Core listens on loopback and owns caller authentication. A Connector targets
 
 ## 2. Prepare verified artifacts and private inputs
 
-Use an ordinary, non-elevated PowerShell session. Prepare a trusted installed controller virtual environment containing the matching Core and Native Wheels, not an editable checkout. Python must be native x64, 3.12 or later. Use a trusted uv executable on PATH and a prepopulated offline dependency cache. For an alternate cache, set `UV_CACHE_DIR` to its existing absolute path.
+Use an ordinary, non-elevated PowerShell session. Prepare a trusted installed controller virtual environment containing the matching Core and Native Wheels, not an editable checkout. Python must be native x64, 3.12 or later. Use a trusted uv executable on PATH and a prepopulated offline dependency cache containing the runtime dependencies from the matching checkout's `uv.lock` and, when using a Bridge, `agent_bridge/uv.lock`. Metadata-only resolution is not proof that the required archives are cached. For an alternate cache, set `UV_CACHE_DIR` to its existing absolute path.
 
 Obtain the artifacts and independently trusted lowercase SHA256 pins for the intended version. The v0.26.0 candidate installer expects:
 
@@ -56,8 +56,13 @@ if ((Get-FileHash -LiteralPath $coreWheel -Algorithm SHA256).Hash.ToLowerInvaria
 if ((Get-FileHash -LiteralPath $nativeWheel -Algorithm SHA256).Hash.ToLowerInvariant() -ne $nativeSha) { throw 'Native Wheel hash mismatch' }
 uv --no-config venv --offline --python $basePython $controllerDir
 if ($LASTEXITCODE -ne 0) { throw 'Controller venv creation failed' }
-uv --no-config pip install --offline --python $ctl $coreWheel $nativeWheel
+$controllerConstraints = Join-Path $controllerDir 'locked-constraints.txt'
+uv --no-config export --offline --frozen --no-dev --no-emit-project --no-hashes --format requirements-txt --output-file $controllerConstraints
+if ($LASTEXITCODE -ne 0) { throw 'Core runtime lock export failed' }
+uv --no-config pip install --offline --python $ctl --constraint $controllerConstraints $coreWheel $nativeWheel
 if ($LASTEXITCODE -ne 0) { throw 'Controller installation failed' }
+uv --no-config pip check --python $ctl
+if ($LASTEXITCODE -ne 0) { throw 'Controller dependency check failed' }
 ```
 
 Confirm the installed packages report 0.26.0 and load from the private controller environment, not the checkout:
@@ -100,7 +105,7 @@ Invoke-SF -m serverfs_mcp.windows_v25.cli core --instance $instance status
 
 Each stage has a distinct purpose:
 
-- **Install runtime:** creates a fresh private venv from pinned Wheels. Dependencies resolve from the trusted offline cache; the product Wheel pins do not independently pin every transitive dependency.
+- **Install runtime:** creates a fresh private venv from pinned Wheels, using version constraints exported offline from the trusted matching checkout's frozen runtime locks. Core, Connector and Bridge owner use `uv.lock`; the separate Agent Bridge worker uses `agent_bridge/uv.lock`. The private installation audit records the constraint file SHA256 values and verifies the installed dependency closure. A missing or incompatible cached archive causes a refusal; prepare the cache separately, then use a fresh instance for a new attempt. Constraints pin dependency versions, not the individual third-party archive hashes; retain a trusted cache and independently verified product Wheel pins.
 - **Configure:** copies the policy into private state, generates a unique HTTP bearer key and publishes the manifest. It does not register a task.
 - **Install/start:** registers then explicitly starts the selected Scheduler task. No Connector or Bridge is started for a file-only Core.
 

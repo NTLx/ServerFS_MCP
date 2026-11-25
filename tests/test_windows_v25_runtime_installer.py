@@ -141,3 +141,83 @@ def test_offline_environment_retains_only_explicit_uv_cache():
 
 def test_default_uv_cache_is_not_overridden():
     assert "UV_CACHE_DIR" not in installer.offline_env({})
+
+
+def make_runtime_lock(tmp_path, *, distribution="serverfs-mcp", version=installer.VERSION):
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "{distribution}"\nversion = "{version}"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "uv.lock").write_text(
+        f'[[package]]\nname = "{distribution}"\nversion = "{version}"\n'
+        'source = { editable = "." }\n',
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize("distribution", ["serverfs-mcp", "serverfs-agent-bridge"])
+def test_runtime_constraints_export_uses_matching_frozen_lock(tmp_path, monkeypatch, distribution):
+    make_runtime_lock(tmp_path, distribution=distribution)
+    exported = b'# generated\nanyio==4.15.1\npydantic-core==2.46.5 ; sys_platform == "win32"\n'
+    env = installer.offline_env({"PATH": "synthetic"})
+
+    def export(argv, passed_env, cwd, timeout):
+        assert argv == [
+            "uv",
+            "--no-config",
+            "export",
+            "--frozen",
+            "--no-dev",
+            "--no-emit-project",
+            "--no-hashes",
+            "--format",
+            "requirements-txt",
+        ]
+        assert passed_env == env
+        assert cwd == tmp_path
+        assert timeout == 120
+        return exported
+
+    monkeypatch.setattr(installer, "run", export)
+    assert installer.runtime_constraints("uv", tmp_path, distribution, env) == exported
+
+
+@pytest.mark.parametrize(
+    "exported",
+    [
+        b"",
+        b"# empty\n",
+        b"anyio>=4\n",
+        b"-e .\n",
+        b"--index-url https://example.invalid/simple\n",
+        b"anyio @ https://example.invalid/a.whl\n",
+        b"\xff",
+    ],
+)
+def test_runtime_constraints_refuse_non_pinned_or_invalid_export(tmp_path, monkeypatch, exported):
+    make_runtime_lock(tmp_path)
+    monkeypatch.setattr(installer, "run", lambda *args: exported)
+    with pytest.raises(installer.InstallRefusal, match="runtime lock export"):
+        installer.runtime_constraints("uv", tmp_path, "serverfs-mcp", {})
+
+
+@pytest.mark.parametrize(
+    "version,distribution",
+    [("0.25.0", "serverfs-mcp"), (installer.VERSION, "serverfs-agent-bridge")],
+)
+def test_runtime_constraints_refuse_mismatched_project(
+    tmp_path, monkeypatch, version, distribution
+):
+    make_runtime_lock(tmp_path, distribution=distribution, version=version)
+
+    def unexpected(*args):
+        pytest.fail("must refuse before invoking uv")
+
+    monkeypatch.setattr(installer, "run", unexpected)
+    with pytest.raises(installer.InstallRefusal, match="lock identity"):
+        installer.runtime_constraints("uv", tmp_path, "serverfs-mcp", {})
+
+
+def test_runtime_constraints_refuse_missing_lock(tmp_path):
+    with pytest.raises(installer.InstallRefusal, match="matching runtime lock"):
+        installer.runtime_constraints("uv", tmp_path, "serverfs-mcp", {})
