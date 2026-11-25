@@ -144,6 +144,21 @@ def test_explicit_workdir_routing_and_foreign_alias_denial() -> None:
         asyncio.run(adapter.call("repo.inspect", {"workdir": "Foreign", "view": "status"}))
 
 
+def test_task_list_requires_and_routes_one_explicit_alias() -> None:
+    repo, docs, adapter = _adapter()
+    result = asyncio.run(
+        adapter.call(
+            "task.list",
+            {"workdir": "Docs", "status": "active", "limit": 10, "cursor": "opaque"},
+        )
+    )
+    assert result["alias"] == "Docs"
+    assert docs.calls == [("task.list", {"status": "active", "limit": 10, "cursor": "opaque"})]
+    assert not repo.calls
+    with pytest.raises(AgentBridgeClientError):
+        asyncio.run(adapter.call("task.list", {"status": "active"}))
+
+
 def test_task_only_lookup_resolves_signed_owner_without_guessing() -> None:
     repo, docs, adapter = _adapter()
     result = asyncio.run(adapter.call("task.message.send", {"task_id": "agt_1", "message": "next"}))

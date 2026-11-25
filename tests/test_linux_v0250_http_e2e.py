@@ -149,7 +149,19 @@ def test_two_linux_core_http_processes_use_one_signed_v2_bridge() -> None:
                 key_id,
                 secret,
                 ((policy.alias, digest),),
-                frozenset({"bridge.ping", "runtime.list", "task.submit", "task.get"}),
+                frozenset(
+                    {
+                        "bridge.ping",
+                        "runtime.list",
+                        "task.submit",
+                        "task.list",
+                        "task.get",
+                        "task.events",
+                        "task.result.read",
+                        "task.approval.respond",
+                        "task.question.answer",
+                    }
+                ),
             )
             for core_id, key_id, secret, policy, digest in zip(
                 core_ids, key_ids, secrets, policies, digests, strict=True
@@ -297,6 +309,155 @@ def test_two_linux_core_http_processes_use_one_signed_v2_bridge() -> None:
                         ports[1], tokens[1], "get_agent_task", {"task_id": task_id}
                     )
                     assert denied.is_error
+
+                    async def discover(core_index: int, status: str, expected: str) -> dict:
+                        deadline = time.monotonic() + 10
+                        while time.monotonic() < deadline:
+                            page = await _tool(
+                                ports[core_index],
+                                tokens[core_index],
+                                "list_agent_tasks",
+                                {"workdir": ("Alpha", "Bravo")[core_index], "status": status},
+                            )
+                            assert not page.is_error, page.content
+                            matches = [
+                                task
+                                for task in page.structured_content["tasks"]
+                                if task["status"] == expected
+                            ]
+                            if matches:
+                                return matches[0]
+                            await asyncio.sleep(0.05)
+                        raise AssertionError(f"task did not appear as {expected} in {status} list")
+
+                    # A is one authenticated MCP client/session; every _tool call below opens a
+                    # fresh authenticated MCP session. B receives no task ID from A and learns
+                    # the handle only from its own list_agent_tasks response.
+                    approval_submit = await _tool(
+                        ports[0],
+                        tokens[0],
+                        "submit_agent_task",
+                        {
+                            "runtime": "codex",
+                            "workdir": "Alpha",
+                            "path": "task-context",
+                            "profile": "workspace-write",
+                            "prompt": "approval: isolated discovery fixture",
+                        },
+                    )
+                    assert not approval_submit.is_error, approval_submit.content
+                    del approval_submit
+                    approval_task = await discover(0, "active", "waiting_for_approval")
+                    assert approval_task["task_id"] != ""
+                    assert approval_task["pending_interaction"] == "approval"
+                    # While A's task owns Alpha's writer lease, B recovers it via discovery and
+                    # performs only existing read/interaction operations using that discovered ID.
+                    approval_id = approval_task["task_id"]
+                    lease_write = await _tool(
+                        ports[0],
+                        tokens[0],
+                        "create_text_file",
+                        {"workdir": "Alpha", "path": "lease-probe.txt", "content": "no"},
+                    )
+                    assert lease_write.is_error and "WORKDIR_BUSY" in str(lease_write.content)
+                    assert not (roots[0] / "lease-probe.txt").exists()
+                    foreign_page = await _tool(
+                        ports[1], tokens[1], "list_agent_tasks", {"workdir": "Bravo"}
+                    )
+                    assert not foreign_page.is_error
+                    assert all(
+                        task["task_id"] != approval_id
+                        for task in foreign_page.structured_content["tasks"]
+                    )
+                    foreign_get = await _tool(
+                        ports[1], tokens[1], "get_agent_task", {"task_id": approval_id}
+                    )
+                    assert foreign_get.is_error
+                    recovered = await _tool(
+                        ports[0], tokens[0], "get_agent_task", {"task_id": approval_id}
+                    )
+                    assert not recovered.is_error and recovered.structured_content["status"] == (
+                        "waiting_for_approval"
+                    )
+                    event_page = await _tool(
+                        ports[0],
+                        tokens[0],
+                        "read_agent_task_events",
+                        {"task_id": approval_id, "limit": 50},
+                    )
+                    assert not event_page.is_error and event_page.structured_content["events"]
+                    request = recovered.structured_content["pending_request"]
+                    resolved = await _tool(
+                        ports[0],
+                        tokens[0],
+                        "respond_agent_approval",
+                        {
+                            "task_id": approval_id,
+                            "request_id": request["request_id"],
+                            "decision": "approve_once",
+                        },
+                    )
+                    assert not resolved.is_error and resolved.structured_content["resolved"]
+                    terminal = await discover(0, "terminal", "succeeded")
+                    assert terminal["task_id"] == approval_id
+                    completed = await _tool(
+                        ports[0], tokens[0], "get_agent_task", {"task_id": terminal["task_id"]}
+                    )
+                    assert not completed.is_error
+                    assert completed.structured_content["final_response"] == "approval=approve_once"
+
+                    # The task ID returned to A was discarded; the independently authenticated
+                    # Bravo Core cannot discover or operate Alpha's task.
+                    question_submit = await _tool(
+                        ports[0],
+                        tokens[0],
+                        "submit_agent_task",
+                        {
+                            "runtime": "codex",
+                            "workdir": "Alpha",
+                            "path": "task-context",
+                            "profile": "workspace-write",
+                            "prompt": "question: deterministic recovery fixture",
+                        },
+                    )
+                    assert not question_submit.is_error, question_submit.content
+                    question_task = await discover(0, "active", "waiting_for_question")
+                    assert question_task["pending_interaction"] == "question"
+                    question_id = question_task["task_id"]
+                    question_read = await _tool(
+                        ports[0], tokens[0], "get_agent_task", {"task_id": question_id}
+                    )
+                    question_request = question_read.structured_content["pending_request"]
+                    answered = await _tool(
+                        ports[0],
+                        tokens[0],
+                        "answer_agent_question",
+                        {
+                            "task_id": question_id,
+                            "request_id": question_request["request_id"],
+                            "answers": [
+                                {
+                                    "question_id": "q1",
+                                    "selected_option_ids": ["b"],
+                                    "text": "option B",
+                                }
+                            ],
+                        },
+                    )
+                    assert not answered.is_error and answered.structured_content["resolved"]
+                    question_terminal = await discover(0, "terminal", "succeeded")
+                    assert question_terminal["task_id"] == question_id
+                    question_result = await _tool(
+                        ports[0],
+                        tokens[0],
+                        "get_agent_task",
+                        {"task_id": question_terminal["task_id"]},
+                    )
+                    assert not question_result.is_error
+                    assert (
+                        '"selected_option_ids": ["b"]'
+                        in question_result.structured_content["final_response"]
+                    )
 
             finally:
                 await bridge.close()

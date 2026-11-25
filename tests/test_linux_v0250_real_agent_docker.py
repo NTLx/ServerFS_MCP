@@ -78,6 +78,9 @@ def test_docker_core_submits_one_real_claude_task_via_host_bridge(
         "allowed_peer_uid": os.getuid(),
         "allowed_peer_gid": os.getgid(),
         "enable_fake_runtime": False,
+        # Force the small synthetic marker into the durable result spool so MCP client B can
+        # verify the separate task.result.read path after discovering the task.
+        "limits": {"result_spool_threshold_bytes": 1},
         "claude": {"enabled": True, "claude_bin": claude, "use_proxy": False},
         "workdirs": [
             {
@@ -109,7 +112,9 @@ def test_docker_core_submits_one_real_claude_task_via_host_bridge(
                     "runtime.list",
                     "task.submit",
                     "task.get",
+                    "task.list",
                     "task.events",
+                    "task.result.read",
                     "task.cancel",
                 ],
                 "workdirs": [{"alias": "fixture", "policy_sha256": policy_digest}],
@@ -301,32 +306,100 @@ def test_docker_core_submits_one_real_claude_task_via_host_bridge(
             },
         )
         assert not submitted.is_error, "Claude Agent task submission was denied by the Bridge"
-        task_id = (submitted.structured_content or {}).get("task_id")
+        submitted_id = (submitted.structured_content or {}).get("task_id")
+        assert isinstance(submitted_id, str) and submitted_id
+        # Client A discards the only returned handle before client B starts. Do not retain it in
+        # cleanup state; B must learn the task ID exclusively from the public scoped list.
+        del submitted, submitted_id
+
+        recovered = None
+        deadline = time.monotonic() + 150
+        while time.monotonic() < deadline:
+            page = call("list_agent_tasks", {"workdir": "fixture", "status": "all"})
+            assert not page.is_error, "fresh MCP client could not list scoped Agent tasks"
+            tasks = (page.structured_content or {}).get("tasks", [])
+            matches = [
+                item
+                for item in tasks
+                if item.get("runtime") == "claude" and item.get("workdir") == "fixture"
+            ]
+            if matches:
+                recovered = matches[0]
+                break
+            time.sleep(1)
+        else:
+            pytest.fail("Claude task did not appear in client B's scoped list within 150 seconds")
+
+        task_id = recovered.get("task_id")
         assert isinstance(task_id, str) and task_id
         deadline = time.monotonic() + 150
         task = {}
         while time.monotonic() < deadline:
-            result = call("get_agent_task", {"task_id": task_id})
-            assert not result.is_error, "MCP Agent task lookup failed"
-            task = result.structured_content or {}
-            status = task.get("status")
-            if status in {"succeeded", "failed", "cancelled", "interrupted"}:
+            task_result = call("get_agent_task", {"task_id": task_id})
+            assert not task_result.is_error, "client B could not get its discovered task"
+            task = task_result.structured_content or {}
+            if task.get("status") in {"succeeded", "failed", "cancelled", "interrupted"}:
                 break
-            if status in {"waiting_for_approval", "waiting_for_question"}:
-                cancel_and_wait()
+            if task.get("status") in {"waiting_for_approval", "waiting_for_question"}:
+                call("cancel_agent_task", {"task_id": task_id})
                 pytest.fail("Claude required human approval/input; task canceled without approval")
             time.sleep(1)
         else:
-            cancel_and_wait()
+            call("cancel_agent_task", {"task_id": task_id})
             pytest.fail("Claude task did not reach a terminal result within 150 seconds")
+
+        events = call("read_agent_task_events", {"task_id": task_id, "limit": 100})
+        assert not events.is_error and (events.structured_content or {}).get("events"), (
+            "client B could not read normalized task events"
+        )
+        result_page = call(
+            "read_agent_task_result", {"task_id": task_id, "offset_bytes": 0, "max_bytes": 256}
+        )
+        assert not result_page.is_error, "client B could not read the spooled task result"
+        result_data = result_page.structured_content or {}
+        result_text = result_data.get("text", result_data.get("content", ""))
 
         assert task.get("status") == "succeeded", (
             "Claude provider task did not succeed; "
             f"terminal_status={task.get('status')} error_code={task.get('error_code')}"
         )
-        assert task.get("final_response", "").strip() == marker
+        assert marker in str(result_text) or marker in task.get("final_response", ""), (
+            "discovered task result did not contain the synthetic fixture marker"
+        )
         assert fixture.read_text(encoding="utf-8") == marker + "\n"
         assert {path.name for path in workdir.iterdir()} == before_files
+        print(
+            "linux_host_bridge_recovery "
+            f"runtime=claude workdir=fixture status={task['status']} "
+            f"marker={marker} events={len((events.structured_content or {}).get('events', []))} "
+            f"result_storage=spool"
+        )
+
+        # The Core is disposable and the Bridge/state remain separate host processes. Restart
+        # only this temporary Core, then prove its fresh MCP session can rediscover the retained
+        # terminal task from the same scoped list.
+        compose("restart", "serverfs-mcp")
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if _http_status(port) == 401:
+                break
+            time.sleep(0.2)
+        else:
+            pytest.fail("temporary Core did not return after isolated restart")
+        after_restart = call("list_agent_tasks", {"workdir": "fixture", "status": "terminal"})
+        assert not after_restart.is_error, "client B could not list tasks after Core restart"
+        retained = [
+            item
+            for item in (after_restart.structured_content or {}).get("tasks", [])
+            if item.get("task_id") == task_id
+        ]
+        assert retained and retained[0].get("status") == "succeeded", (
+            "terminal task was not recoverable from the scoped list after Core restart"
+        )
+        after_restart_get = call("get_agent_task", {"task_id": retained[0]["task_id"]})
+        assert not after_restart_get.is_error
+        assert (after_restart_get.structured_content or {}).get("status") == "succeeded"
+        print("linux_host_bridge_recovery core_restart=PASS retained_status=succeeded")
     finally:
         cancel_and_wait()
         compose("down", "--timeout", "5", "--remove-orphans", check=False)

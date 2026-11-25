@@ -34,6 +34,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows native 
 AGENT_TOOLS = {
     "submit_agent_task",
     "get_agent_task",
+    "list_agent_tasks",
     "list_agent_runtimes",
     "cancel_agent_task",
     "respond_agent_approval",
@@ -213,7 +214,7 @@ class TestAgentEnabledSurface:
         with pytest.raises(SystemExit):
             _native_agent_settings(_settings_for(config))
 
-    def test_exactly_ten_agent_tools_are_registered(
+    def test_exactly_eleven_agent_tools_are_registered(
         self, tmp_path: Path, workdir: Path, monkeypatch
     ):
         _wiring(monkeypatch, tmp_path)
@@ -221,9 +222,9 @@ class TestAgentEnabledSurface:
         settings, _client = _native_agent_settings(_settings_for(config))
         names = _tool_names(settings, config)
         assert names & AGENT_TOOLS == AGENT_TOOLS
-        assert len(AGENT_TOOLS) == 10
-        # The filesystem surface is unchanged: eleven tools plus the ten Agent tools.
-        assert len(names) == 21, sorted(names)
+        assert len(AGENT_TOOLS) == 11
+        # The filesystem surface is unchanged: eleven tools plus the eleven Agent tools.
+        assert len(names) == 22, sorted(names)
 
     def test_agent_calls_fail_closed_when_no_bridge_is_running(
         self, tmp_path: Path, workdir: Path, monkeypatch
@@ -258,7 +259,7 @@ class TestAgentEnabledSurface:
 
         disabled_config = _write(tmp_path, V010_CONFIG, workdir)
         disabled_names = _tool_names(Settings(log_level="INFO"), disabled_config)
-        # Exactly the ten Agent tools are the difference; nothing else moved.
+        # Exactly the eleven Agent tools are the difference; nothing else moved.
         assert enabled_names - disabled_names == AGENT_TOOLS
 
     def test_cmd_serve_is_not_invoked_by_these_tests(self):

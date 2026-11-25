@@ -37,6 +37,7 @@ _PARAMS = {
             "idempotency_key",
         }
     ),
+    "task.list": frozenset({"workdir", "status", "limit", "cursor"}),
     "task.get": frozenset({"task_id", "workdir"}),
     "task.events": frozenset({"task_id", "after_event_id", "limit", "workdir"}),
     "task.result.read": frozenset({"task_id", "offset_bytes", "max_bytes", "workdir"}),

@@ -345,6 +345,42 @@ def register_agent_tools(
         return result
 
     @mcp.tool(annotations=AGENT_READ_ANNOTATIONS)
+    async def list_agent_tasks(
+        workdir: Annotated[
+            str,
+            Field(min_length=1, max_length=32, description="Exact configured Agent workdir alias"),
+        ],
+        status: Annotated[
+            Literal["active", "terminal", "all"], Field(description="Task state filter")
+        ] = "active",
+        limit: Annotated[
+            int, Field(ge=1, le=100, strict=True, description="Maximum tasks to return")
+        ] = 20,
+        cursor: Annotated[
+            str | None,
+            Field(default=None, max_length=2048, description="Opaque continuation cursor"),
+        ] = None,
+    ) -> dict[str, Any]:
+        """List a bounded page of tasks owned by one explicitly named Agent workdir."""
+        selected = registry.get(workdir)
+        if (
+            selected is None
+            or selected.policy.agent_mode == AGENT_MODE_DISABLED
+            or not selected.policy.agent_runtimes
+        ):
+            raise ToolError("INVALID_REQUEST: workdir is not Agent-enabled")
+        params: dict[str, Any] = {"workdir": workdir, "status": status, "limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        return await _simple_agent_call(
+            client,
+            "list_agent_tasks",
+            "task.list",
+            params,
+            workdir=workdir,
+        )
+
+    @mcp.tool(annotations=AGENT_READ_ANNOTATIONS)
     async def get_agent_task(
         task_id: Annotated[str, Field(description="ServerFS Agent task identifier")],
     ) -> dict[str, Any]:

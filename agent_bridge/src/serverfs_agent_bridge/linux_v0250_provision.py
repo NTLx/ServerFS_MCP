@@ -36,6 +36,7 @@ _METHODS = frozenset(
         "repo.commit",
         "repo.push",
         "task.submit",
+        "task.list",
         "task.get",
         "task.events",
         "task.result.read",
@@ -238,6 +239,8 @@ def _validate(
         ):
             raise ValueError("methods must be an explicit least-privilege method list")
         selected_policies = [policies[entry["alias"]] for entry in entries]
+        if "task.list" in methods and "task.get" not in methods:
+            raise ValueError("task.list requires task.get")
         if any(method.startswith(("task.", "runtime.")) for method in methods):
             if not any(p.mode.value != "disabled" and p.runtimes for p in selected_policies):
                 raise ValueError("Agent methods require an enabled Bridge runtime policy")
@@ -356,6 +359,7 @@ def provision(manifest: Any) -> Path:
         for core in cores:
             core_id = core["instance_id"]
             entries = core["workdirs"] if "workdirs" in core else [core]
+            selected_policies = [config.policies.get(entry["alias"]) for entry in entries]
             scope = [
                 (
                     entry["alias"],
@@ -376,7 +380,18 @@ def provision(manifest: Any) -> Path:
                     "core_id": core_id,
                     "key_id": key_id,
                     "secret_hex": secret.hex(),
-                    "methods": core["methods"],
+                    "methods": sorted(
+                        set(core["methods"])
+                        | (
+                            {"task.list"}
+                            if "task.get" in core["methods"]
+                            and any(
+                                policy.mode.value != "disabled" and policy.runtimes
+                                for policy in selected_policies
+                            )
+                            else set()
+                        )
+                    ),
                     "workdirs": [
                         {"alias": alias, "policy_sha256": revision} for alias, revision, _ in scope
                     ],

@@ -162,6 +162,33 @@ def test_timeout_remote_error_and_invalid_calls_fail_closed(
         )
 
 
+def test_task_list_is_signed_on_the_clients_bound_workdir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(client_module.sys, "platform", "linux")
+    client = _client(tmp_path / "bridge.sock")
+    captured: list[dict[str, Any]] = []
+
+    async def exchange(encoded: bytes) -> bytes:
+        request = json.loads(encoded)
+        captured.append(request)
+        return json.dumps(
+            {
+                "request_id": request["request_id"],
+                "ok": True,
+                "result": {"tasks": [], "next_cursor": None},
+            }
+        ).encode()
+
+    client._exchange = exchange  # type: ignore[method-assign]
+    result = asyncio.run(client.call("task.list", {"status": "active", "limit": 20}))
+    assert result == {"tasks": [], "next_cursor": None}
+    assert captured[0]["method"] == "task.list"
+    assert captured[0]["params"] == {"status": "active", "limit": 20, "workdir": "Repo"}
+    with pytest.raises(ValueError, match="configured workdir"):
+        asyncio.run(client.call("task.list", {"workdir": "Other"}))
+
+
 @pytest.mark.parametrize("platform", ["linux", "darwin"])
 def test_v2_client_accepts_supported_posix_platforms(
     platform: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

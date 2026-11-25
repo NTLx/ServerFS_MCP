@@ -63,7 +63,16 @@ def _server(tmp_path: Path, *, v2_only: bool = True) -> tuple[BridgeProtocolServ
             "key-a",
             _SECRET_A,
             (("Repo", digest),),
-            frozenset({"bridge.ping", "repo.inspect", "runtime.list", "task.get", "task.submit"}),
+            frozenset(
+                {
+                    "bridge.ping",
+                    "repo.inspect",
+                    "runtime.list",
+                    "task.get",
+                    "task.list",
+                    "task.submit",
+                }
+            ),
         ),
         CoreGrant("beta", "key-b", _SECRET_B, (("Repo", digest),), frozenset({"task.get"})),
     )
@@ -189,6 +198,117 @@ async def test_v2_task_owner_requires_authenticated_core_and_workdir(tmp_path: P
 
 
 @pytest.mark.asyncio
+async def test_task_list_is_signed_core_and_alias_scoped_projection(tmp_path: Path) -> None:
+    server, store = _server(tmp_path)
+    store.create_task(
+        task_id="agt_alpha",
+        runtime="fake",
+        workdir_alias="Repo",
+        workdir_slot=1,
+        relative_cwd="private/path",
+        profile="review",
+        continue_from_task_id=None,
+        correlation_id=str(server.service.policies.get("Repo").host_path / "private-marker"),
+        owner_core_id="alpha",
+    )
+    store.create_task(
+        task_id="agt_beta",
+        runtime="fake",
+        workdir_alias="Repo",
+        workdir_slot=1,
+        relative_cwd="private/path",
+        profile="review",
+        continue_from_task_id=None,
+        owner_core_id="beta",
+    )
+    policy = server.service.policies.get("Repo")
+    writer_lease = server.service.lease_manager.acquire_exclusive(policy.lease_id)
+    try:
+        result = await _dispatch(
+            server,
+            _signed(
+                server,
+                "task.list",
+                nonce="1" * 32,
+                params={"status": "all", "limit": 1},
+            ),
+        )
+    finally:
+        writer_lease.release()
+    assert result["ok"] is True, result
+    page = result["result"]
+    assert len(page["tasks"]) == 1
+    assert page["tasks"][0]["task_id"] == "agt_alpha"
+    assert page["tasks"][0]["correlation_id"] is None
+    assert str(server.service.policies.get("Repo").host_path) not in repr(page)
+    assert set(page["tasks"][0]) == {
+        "task_id",
+        "runtime",
+        "workdir",
+        "status",
+        "created_at",
+        "updated_at",
+        "completed_at",
+        "pending_interaction",
+        "correlation_id",
+    }
+    assert page["next_cursor"] is None
+
+    foreign = _signed(
+        server,
+        "task.list",
+        core_id="beta",
+        key_id="key-b",
+        secret=_SECRET_B,
+        nonce="2" * 32,
+        params={"status": "all", "limit": 10},
+    )
+    assert (await _dispatch(server, foreign))["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_fresh_signed_client_recovers_active_and_terminal_ids(tmp_path: Path) -> None:
+    server, store = _server(tmp_path)
+    for task_id in ("agt_active", "agt_terminal"):
+        store.create_task(
+            task_id=task_id,
+            runtime="fake",
+            workdir_alias="Repo",
+            workdir_slot=1,
+            relative_cwd=".",
+            profile="review",
+            continue_from_task_id=None,
+            owner_core_id="alpha",
+        )
+    store.transition_task("agt_terminal", "starting")
+    store.transition_task("agt_terminal", "running")
+    store.transition_task("agt_terminal", "succeeded")
+
+    # The successor request carries no prior task ID; it learns each ID only from task.list.
+    active_page = await _dispatch(
+        server,
+        _signed(server, "task.list", nonce="3" * 32, params={"status": "active"}),
+    )
+    terminal_page = await _dispatch(
+        server,
+        _signed(server, "task.list", nonce="4" * 32, params={"status": "terminal"}),
+    )
+    assert active_page["ok"] and terminal_page["ok"]
+    discovered = [
+        active_page["result"]["tasks"][0]["task_id"],
+        terminal_page["result"]["tasks"][0]["task_id"],
+    ]
+    assert discovered == ["agt_active", "agt_terminal"]
+    for index, task_id in enumerate(discovered, start=5):
+        recovered = await _dispatch(
+            server,
+            _signed(server, "task.get", nonce=str(index) * 32, params={"task_id": task_id}),
+        )
+        assert recovered["ok"] is True
+        assert recovered["result"]["task_id"] == task_id
+
+
+@pytest.mark.asyncio
 async def test_v2_submit_rejects_unsigned_or_spoofed_identity(tmp_path: Path) -> None:
     server, _ = _server(tmp_path)
     request = _signed(
@@ -223,3 +343,14 @@ async def test_default_v1_dispatch_remains_compatible(tmp_path: Path) -> None:
     )
     assert response["ok"] is True
     assert response["request_id"] == "legacy-1"
+    discovery = await _dispatch(
+        server,
+        {
+            "protocol_version": 1,
+            "request_id": "legacy-list",
+            "method": "task.list",
+            "params": {"workdir": "Repo", "status": "all", "limit": 100},
+        },
+    )
+    assert discovery["ok"] is False
+    assert discovery["error"]["code"] == "CORE_NOT_AUTHORIZED"
