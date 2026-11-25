@@ -361,13 +361,13 @@ async def probe_repo_ops(port: int, key: str, base: Path) -> None:
         raise RuntimeError("Repo Ops unrelated file was not preserved")
 
 
-async def submit_text_task(port: int, key: str, marker: str) -> None:
+async def submit_text_task(port: int, key: str, marker: str, runtime: str) -> None:
     submitted = await recovery_call(
         port,
         key,
         "submit_agent_task",
         {
-            "runtime": "claude",
+            "runtime": runtime,
             "workdir": "synthetic",
             "profile": "workspace-write",
             "prompt": (
@@ -381,7 +381,75 @@ async def submit_text_task(port: int, key: str, marker: str) -> None:
     # Deliberately discard the submission response and task ID.
 
 
-async def discover_text_task(port: int, key: str, marker: str) -> tuple[str, str, str]:
+def task_diagnostic(row: dict, marker: str, events: list[dict] | None = None) -> dict:
+    """Build a provider-text-free summary from the public task/event interface."""
+    response = row.get("final_response") or row.get("error_message")
+    response = response if isinstance(response, str) else ""
+    encoded = response.encode("utf-8")
+    match = (
+        "exact" if response.strip() == marker else "contains" if marker in response else "absent"
+    )
+    subtype = row.get("provider_completion_subtype")
+    if subtype not in (
+        "success",
+        "error_max_turns",
+        "error_during_execution",
+        "error_max_budget_usd",
+    ):
+        subtype = None
+    error_code = row.get("error_code")
+    if error_code not in (
+        None,
+        "AGENT_PROVIDER_ERROR",
+        "AGENT_RUNTIME_UNAVAILABLE",
+        "AGENT_RUNTIME_NOT_READY",
+        "AGENT_PROVIDER_DISCONNECTED",
+        "AGENT_TASK_TIMEOUT",
+    ):
+        error_code = "OTHER"
+    return {
+        "status": row.get("status")
+        if row.get("status")
+        in {
+            "queued",
+            "running",
+            "waiting_for_approval",
+            "waiting_for_question",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "interrupted",
+        }
+        else "unknown",
+        "error_code": error_code,
+        "provider_completion_subtype": subtype,
+        "result_bytes": len(encoded),
+        "result_sha256": hashlib.sha256(encoded).hexdigest(),
+        "marker_match": match,
+        "event_types": sorted(
+            {
+                event.get("event_type")
+                for event in (events or [])
+                if isinstance(event.get("event_type"), str)
+                and event.get("event_type")
+                in {
+                    "task.started",
+                    "task.completed",
+                    "task.failed",
+                    "task.cancelled",
+                    "task.interrupted",
+                    "task.result_spooled",
+                    "agent.message",
+                    "task.interaction.requested",
+                }
+            }
+        ),
+    }
+
+
+async def discover_text_task(
+    port: int, key: str, marker: str, diagnostics: list[dict] | None = None
+) -> tuple[str, str, str]:
     page = await recovery_call(
         port, key, "list_agent_tasks", {"workdir": "synthetic", "status": "all", "limit": 2}
     )
@@ -395,6 +463,13 @@ async def discover_text_task(port: int, key: str, marker: str) -> tuple[str, str
     while time.monotonic() < deadline:
         row = await recovery_call(port, key, "get_agent_task", {"task_id": task_id})
         status = row["status"]
+        events = None
+        if status in {"succeeded", "failed", "cancelled", "interrupted"}:
+            events = await recovery_call(
+                port, key, "read_agent_task_events", {"task_id": task_id, "limit": 100}
+            )
+            if diagnostics is not None:
+                diagnostics.append(task_diagnostic(row, marker, events.get("events", [])))
         if status == "succeeded":
             response = row.get("final_response")
             metadata = row.get("result", {})
@@ -409,9 +484,6 @@ async def discover_text_task(port: int, key: str, marker: str) -> tuple[str, str
                 or row.get("final_response_truncated") is not False
             ):
                 raise RuntimeError("real task result integrity mismatch")
-            events = await recovery_call(
-                port, key, "read_agent_task_events", {"task_id": task_id, "limit": 100}
-            )
             if not any(e.get("event_type") == "task.completed" for e in events.get("events", [])):
                 raise RuntimeError("real task durable completion event missing")
             # Distinguish provider formatting from a missing sentinel without
@@ -424,11 +496,31 @@ async def discover_text_task(port: int, key: str, marker: str) -> tuple[str, str
                 match = "absent"
             return task_id, digest, match
         if status in {"failed", "cancelled", "interrupted"}:
-            raise RuntimeError(f"real task terminal state: {status}")
+            error_code = row.get("error_code")
+            raise RuntimeError(
+                "real task terminal state: "
+                + status
+                + ", error_code="
+                + (error_code if isinstance(error_code, str) else "none")
+            )
         if status in {"waiting_for_approval", "waiting_for_question"}:
             break
         await asyncio.sleep(1)
     await recovery_call(port, key, "cancel_agent_task", {"task_id": task_id})
+    cancel_deadline = time.monotonic() + 15
+    while time.monotonic() < cancel_deadline:
+        row = await recovery_call(port, key, "get_agent_task", {"task_id": task_id})
+        if row.get("status") in {"succeeded", "failed", "cancelled", "interrupted"}:
+            events = await recovery_call(
+                port, key, "read_agent_task_events", {"task_id": task_id, "limit": 100}
+            )
+            if diagnostics is not None:
+                diagnostics.append(task_diagnostic(row, marker, events.get("events", [])))
+            break
+        await asyncio.sleep(1)
+    else:
+        if diagnostics is not None:
+            diagnostics.append({"status": "nonterminal_after_cancel_timeout"})
     raise RuntimeError("real task did not complete without interaction")
 
 
@@ -442,6 +534,7 @@ def main() -> int:
     )
     parser.add_argument("--agent-protocol", choices=("v1", "v2"), default="v1")
     parser.add_argument("--real-agent", action="store_true")
+    parser.add_argument("--runtime", choices=("claude", "qoder"), default="claude")
     parser.add_argument("--repo-ops", action="store_true")
     args = parser.parse_args()
     if args.repo_ops and (args.agent_protocol != "v2" or args.real_agent):
@@ -465,6 +558,7 @@ def main() -> int:
     repo_verified = False
     restarted = False
     sentinel_match = None
+    task_diagnostics: list[dict] = []
     removed = False
     socket_removed = False
     errors: list[str] = []
@@ -480,7 +574,7 @@ def main() -> int:
                 port = int(sock.getsockname()[1])
             key = "synthetic-" + secrets.token_hex(16)
             config = base / "serverfs.toml"
-            runtime = "claude" if args.real_agent else "codex"
+            runtime = args.runtime if args.real_agent else "codex"
             config.write_text(
                 f"[agent]\nenabled=true\n[agent.{runtime}]\nenabled=true\n"
                 "[[workdirs]]\nalias='synthetic'\n"
@@ -543,8 +637,8 @@ def main() -> int:
                 repo_verified = True
             if args.real_agent:
                 marker = "SERVERFS_RECOVERY_" + secrets.token_hex(12)
-                asyncio.run(submit_text_task(port, key, marker))
-                task = asyncio.run(discover_text_task(port, key, marker))
+                asyncio.run(submit_text_task(port, key, marker, runtime))
+                task = asyncio.run(discover_text_task(port, key, marker, task_diagnostics))
                 recovered = True
                 sentinel_match = task[2]
                 bridge_pid = bridge.pid
@@ -560,7 +654,7 @@ def main() -> int:
                 )
                 wait_core(core, port)
                 restarted = (
-                    asyncio.run(discover_text_task(port, key, marker)) == task
+                    asyncio.run(discover_text_task(port, key, marker, task_diagnostics)) == task
                     and bridge.pid == bridge_pid
                     and bridge.poll() is None
                 )
@@ -605,6 +699,7 @@ def main() -> int:
         "repo_ops_verified": repo_verified if args.repo_ops else None,
         "core_restart_recovered": restarted if args.real_agent else None,
         "real_agent_sentinel_match": sentinel_match,
+        "real_agent_task_diagnostics": task_diagnostics,
         "processes_stopped": all(p is None or p.poll() is not None for p in (core, bridge)),
         "private_owner_removed": removed,
         "socket_namespace_removed": socket_removed,

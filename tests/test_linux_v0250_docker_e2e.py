@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import secrets
@@ -73,8 +74,14 @@ print("signed ping accepted", flush=True)
 """
 
 
-@pytest.mark.parametrize("core_count", [1, 2], ids=["owned", "shared-multi-workdir"])
-def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
+@pytest.mark.parametrize(
+    ("core_count", "repo_full"),
+    [(1, False), (2, False), (2, True)],
+    ids=["owned", "shared-multi-workdir", "repo-only-four-tools"],
+)
+def test_docker_core_with_host_v2_bridge(core_count: int, repo_full: bool, monkeypatch) -> None:
+    from serverfs_agent_bridge.policy import RepoActionPolicy
+
     assert os.getuid() != 0
     docker = shutil.which("docker")
     git = shutil.which("git")
@@ -129,6 +136,10 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": "/dev/null",
         }
+        if repo_full:
+            # Repo Ops uses the Bridge process HOME; isolate it from user Git configuration.
+            monkeypatch.setenv("HOME", str(root))
+            monkeypatch.setenv("XDG_CONFIG_HOME", str(root / "git-config"))
         for alias in aliases:
             core_id = "core-" + alias.lower()
             key_id = "key-" + alias.lower()
@@ -246,6 +257,42 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                                 check=True,
                                 timeout=10,
                             )
+                    actions = ()
+                    if repo and repo_full:
+                        remote = root / "docs-fixture-remote.git"
+                        for cwd, argv in (
+                            (root, ["init", "--bare", "-q", str(remote)]),
+                            (target, ["config", "user.name", "Fixture"]),
+                            (target, ["config", "user.email", "fixture@example.invalid"]),
+                            (target, ["remote", "add", "fixture", str(remote)]),
+                            (target, ["config", "branch.docs-fixture.remote", "fixture"]),
+                            (
+                                target,
+                                ["config", "branch.docs-fixture.merge", "refs/heads/docs-fixture"],
+                            ),
+                        ):
+                            subprocess.run(
+                                [git, *argv],
+                                cwd=cwd,
+                                env=git_env,
+                                capture_output=True,
+                                check=True,
+                                timeout=10,
+                            )
+                        actions = (
+                            RepoActionPolicy(
+                                name="fixture_check",
+                                argv=(git, "rev-parse", "--is-inside-work-tree"),
+                                integrity=(
+                                    (
+                                        "hello.txt",
+                                        hashlib.sha256(
+                                            (target / "hello.txt").read_bytes()
+                                        ).hexdigest(),
+                                    ),
+                                ),
+                            ),
+                        )
                     extra_policy = WorkdirAgentPolicy(
                         slot=None,
                         alias=name,
@@ -254,6 +301,7 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                         runtimes=frozenset({"codex"}) if agent else frozenset(),
                         read_only=False,
                         repo_ops_enabled=repo,
+                        repo_actions=actions,
                     )
                     policies.append(extra_policy)
                     entries.append(
@@ -269,7 +317,12 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                     key_id,
                     secret,
                     tuple((e["alias"], e["policy_revision"]) for e in entries),
-                    grants[-1].methods,
+                    grants[-1].methods
+                    | (
+                        frozenset({"repo.action", "repo.commit", "repo.push"})
+                        if repo_full
+                        else frozenset()
+                    ),
                 )
                 _private_json(
                     binding / "core-bridge-binding.json",
@@ -520,6 +573,60 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                         first, "inspect_repo", {"workdir": "AlphaDocs", "view": "status"}
                     )
                     assert not docs.is_error and "docs-fixture" in str(docs.content)
+                    if repo_full:
+                        target = root / "AlphaDocs"
+                        remote = root / "docs-fixture-remote.git"
+                        # Verify the effective push URL in the same isolated HOME; never push
+                        # to a configured user/project remote.
+                        effective = subprocess.check_output(
+                            [git, "remote", "get-url", "--push", "--all", "fixture"],
+                            cwd=target,
+                            env={**path_env, "XDG_CONFIG_HOME": str(root / "git-config")},
+                            text=True,
+                            timeout=10,
+                        ).splitlines()
+                        assert effective == [str(remote)] and remote.is_dir()
+                        listing = await call(
+                            first, "inspect_repo", {"workdir": "AlphaDocs", "view": "actions"}
+                        )
+                        assert not listing.is_error
+                        assert "fixture_check" in str(listing.structured_content)
+                        action = await call(
+                            first,
+                            "run_repo_action",
+                            {"workdir": "AlphaDocs", "action": "fixture_check"},
+                        )
+                        assert not action.is_error
+                        assert action.structured_content["returncode"] == 0
+                        assert action.structured_content["stdout"].strip() == "true"
+                        changed = await call(
+                            first,
+                            "create_text_file",
+                            {"workdir": "AlphaDocs", "path": "new.txt", "content": "repo-only"},
+                        )
+                        assert not changed.is_error
+                        committed = await call(
+                            first,
+                            "commit_repo_changes",
+                            {"workdir": "AlphaDocs", "paths": ["new.txt"], "message": "fixture"},
+                        )
+                        assert not committed.is_error
+                        commit = committed.structured_content["commit"]
+                        pushed = await call(first, "push_repo", {"workdir": "AlphaDocs"})
+                        assert not pushed.is_error and pushed.structured_content["pushed"] is True
+                        assert pushed.structured_content["commit"] == commit
+                        observed = subprocess.check_output(
+                            [git, "--git-dir", str(remote), "rev-parse", "refs/heads/docs-fixture"],
+                            env=git_env,
+                            text=True,
+                            timeout=10,
+                        ).strip()
+                        assert observed == commit
+                        denied_repo = await call(
+                            cores[1], "inspect_repo", {"workdir": "AlphaDocs", "view": "status"}
+                        )
+                        assert denied_repo.is_error
+                        print("linux_repo_only_four_tools=PASS local_bare_remote=VERIFIED")
                     denied = await call(
                         first, "inspect_repo", {"workdir": "AlphaAgent", "view": "status"}
                     )
@@ -596,10 +703,15 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                 )
                 assert not written.is_error, written.content
                 assert (first["work"] / "written.txt").read_text() == "ok"
+                restricted = cores[1] if repo_full else first
                 denied_commit = await call(
-                    first,
+                    restricted,
                     "commit_repo_changes",
-                    {"workdir": first["alias"], "paths": ["written.txt"], "message": "denied"},
+                    {
+                        "workdir": restricted["alias"],
+                        "paths": ["hello.txt" if repo_full else "written.txt"],
+                        "message": "denied",
+                    },
                 )
                 assert denied_commit.is_error and "CORE_NOT_AUTHORIZED" in str(
                     denied_commit.content

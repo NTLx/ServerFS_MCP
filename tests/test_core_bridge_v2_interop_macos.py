@@ -196,3 +196,49 @@ def test_real_core_clients_interoperate_with_v2_only_darwin_bridge(tmp_path: Pat
         socket_path = socket_dir / "b.sock"
         assert len(os.fsencode(str(socket_path))) < 104
         asyncio.run(exercise(socket_path))
+
+
+def test_scoped_task_discovery_survives_darwin_bridge_restart(tmp_path: Path) -> None:
+    async def exercise(socket_path: Path) -> None:
+        server, digest = _server(tmp_path, tmp_path / "state", socket_path)
+        await server.start()
+        try:
+            client_a = _client(socket_path, digest)
+            submitted = await client_a.call(
+                "task.submit",
+                {
+                    "runtime": "fake",
+                    "path": ".",
+                    "profile": "review",
+                    "prompt": "synthetic restart recovery",
+                },
+            )
+            task_id = submitted["task_id"]
+        finally:
+            await server.close()
+
+        restarted, restarted_digest = _server(tmp_path, tmp_path / "state", socket_path)
+        assert restarted_digest == digest
+        await restarted.start()
+        try:
+            recovered = await _client(socket_path, digest).call(
+                "task.list", {"status": "all", "limit": 20}
+            )
+            assert [task["task_id"] for task in recovered["tasks"]] == [task_id]
+            with pytest.raises(CoreBridgeRemoteError) as cross_owner:
+                await _client(
+                    socket_path,
+                    digest,
+                    core="core-b",
+                    key="key-b",
+                    secret=SECRET_B,
+                ).call("task.get", {"task_id": task_id})
+            assert cross_owner.value.code == "CORE_TASK_NOT_FOUND"
+        finally:
+            await restarted.close()
+
+    with tempfile.TemporaryDirectory(prefix="sfs-restart-", dir="/tmp") as socket_root:
+        socket_dir = Path(socket_root)
+        os.chmod(socket_dir, 0o700)
+        socket_path = socket_dir / "b.sock"
+        asyncio.run(exercise(socket_path))

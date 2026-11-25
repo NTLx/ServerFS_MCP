@@ -145,17 +145,6 @@ def test_docker_core_submits_one_real_claude_task_via_host_bridge(
 
     empty_env = root / "empty.env"
     empty_env.touch(mode=0o600)
-    source = root / "candidate-src"
-    shutil.copytree(ROOT / "src", source, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    source_overlay = root / "source-overlay.yml"
-    source_overlay.write_text(
-        "services:\n  serverfs-mcp:\n    environment:\n"
-        "      PYTHONPATH: /run/serverfs-candidate-src\n    volumes:\n"
-        '      - type: bind\n        source: "' + str(source) + '"\n'
-        "        target: /run/serverfs-candidate-src\n        read_only: true\n"
-        "        bind:\n          create_host_path: false\n",
-        encoding="utf-8",
-    )
     env = {
         "PATH": os.environ.get("PATH", os.defpath),
         "HOME": str(Path.home()),
@@ -189,7 +178,6 @@ def test_docker_core_submits_one_real_claude_task_via_host_bridge(
         ROOT / "compose.http.yml",
         ROOT / "deployment/linux/compose.publish-http.yml",
         ROOT / "deployment/linux/compose.bridge-v2.yml",
-        source_overlay,
     ]
     base = [*daemon, "compose", "--env-file", str(empty_env), "-p", project]
     for path in files:
@@ -400,6 +388,45 @@ def test_docker_core_submits_one_real_claude_task_via_host_bridge(
         assert not after_restart_get.is_error
         assert (after_restart_get.structured_content or {}).get("status") == "succeeded"
         print("linux_host_bridge_recovery core_restart=PASS retained_status=succeeded")
+
+        # Restart only this disposable Bridge owner, preserving its private state, then use a
+        # fresh HTTP MCP request to rediscover and read the same retained terminal task.
+        bridge.terminate()
+        bridge.wait(timeout=10)
+        bridge = subprocess.Popen(
+            bridge_command,
+            cwd=ROOT,
+            env=bridge_env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            if bridge.poll() is not None:
+                pytest.fail("temporary host Bridge owner exited after restart")
+            if socket_path.is_socket():
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail("temporary host Bridge socket did not return after owner restart")
+        bridge_restart_page = call("list_agent_tasks", {"workdir": "fixture", "status": "terminal"})
+        assert not bridge_restart_page.is_error, (
+            "fresh MCP client could not list tasks after Bridge owner restart"
+        )
+        bridge_retained = [
+            item
+            for item in (bridge_restart_page.structured_content or {}).get("tasks", [])
+            if item.get("task_id") == task_id
+        ]
+        assert bridge_retained and bridge_retained[0].get("status") == "succeeded", (
+            "terminal task was not rediscoverable after Bridge owner restart"
+        )
+        bridge_restart_get = call("get_agent_task", {"task_id": task_id})
+        assert not bridge_restart_get.is_error
+        assert (bridge_restart_get.structured_content or {}).get("status") == "succeeded"
+        print("linux_host_bridge_recovery bridge_owner_restart=PASS retained_status=succeeded")
     finally:
         cancel_and_wait()
         compose("down", "--timeout", "5", "--remove-orphans", check=False)
