@@ -30,4 +30,5 @@ agent-bridge.config.json
 # 本地 AI Agent / 调试辅助文件
 .claude/
 .workbuddy/memory/
+.remember/
 debug.log
