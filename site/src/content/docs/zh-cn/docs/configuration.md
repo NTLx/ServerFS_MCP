@@ -69,9 +69,9 @@ Linux 两者默认关闭，但不得发布未认证的 Core。原生 HTTP 必须
 | [Agent 委托](../agent-bridge/) / [ACP](../acp/) | 需授权 Bridge 与 runtime 白名单；运行要求 workspace-write 和可写 Workdir |
 | [Jev](../jev-advisors/) | Bridge 侧可选建议，不授予权限 |
 
-v0.25.0 的 Linux 命名签名接入绑定一个 Agent/Repo Ops 槽位（01），macOS Shared Core 绑定一个 Agent Workdir。v0.26.0 候选版支持 1–16 个显式授权的 Linux Agent 和/或 Repo Ops 槽位及 1–16 个 owner 授权的 macOS Shared Agent Workdir；macOS Shared Core 仍不支持 Repo Ops。Windows 初始共享配置需要精确策略子集与独立 grant。按照平台手册配置；开启能力的开关不能替代有效绑定。
+v0.26.0 支持 1–16 个显式授权的 Linux Agent 和/或 Repo Ops 槽位及 1–16 个 owner 授权的 macOS Shared Agent Workdir。macOS Shared Core 不支持 Repo Ops；新建 Owned Core 可显式选择签名 v2，逐别名配置 Agent/Repo Ops grant。Windows 初始共享配置需要精确策略子集与独立 grant。按照平台手册配置；开启能力的开关不能替代有效绑定。
 
-Provider 可执行文件与凭据保留在宿主机。各组件的出站代理独立配置。Linux 兼容渲染器为 Tunnel、Agent 与 Jev 复用代理端点，但分别启用；Agent 代理必须无凭据。命名 Bridge owner 有自己的显式策略，不能假定修改 Core env 就会改变 owner。
+Provider 可执行文件与凭据保留在宿主机。各组件的出站代理独立配置。Linux 兼容渲染器为 Tunnel、Agent 与 Jev 复用代理端点，但分别启用；Agent 代理必须无凭据。命名 Bridge owner 有自己的显式策略。Windows 命名配置支持通过受保护、无凭据的 `--agent-proxy-env-file` 按 Runtime/ACP 设置 `use_proxy=true`；不能假定修改 Core env 就会改变 owner。
 
 ## 6. 验证生效策略
 

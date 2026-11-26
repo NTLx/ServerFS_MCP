@@ -1,13 +1,13 @@
 # Host Agent Bridge deployment
 
-For ServerFS v0.25.0 use the [Linux independent component runbook](../linux/README.md), [macOS named native runbook](../macos/README.md) or [Windows named native runbook](../windows/v0250-native-operations.md). Bridge stays on the host so installed native runtimes remain accessible.
+For ServerFS v0.26.0 use the [Linux independent component runbook](../linux/README.md), [macOS named native runbook](../macos/README.md) or [Windows named native runbook](../../docs/deployment/windows/v0250-native-operations.md). Bridge stays on the host so installed native runtimes remain accessible.
 
 ## Choose the mode
 
 | Mode | Meaning |
 | --- | --- |
 | `disabled` | File-only Core; no Bridge installation or state. |
-| `owned` | Dedicated owner with private runtime/state. Use the platform's attachment mechanism (macOS owned uses private native IPC and manifest checks rather than shared v2 grants). |
+| `owned` | Dedicated owner with private runtime/state. Use the platform's attachment mechanism (macOS Owned defaults to v1 private native IPC and manifest checks; new instances may explicitly select signed v2). |
 | `shared` | Explicit same-host grants per authorized Core. A shared Core does not manage the owner. |
 
 On Linux use the named provisioning/install modules, the per-owner user systemd unit and signed Compose attachment. Verify actual host/container socket peer identity; matching UID/GID alone is not authorization. On macOS and Windows use the native runbook, not these singleton scripts.

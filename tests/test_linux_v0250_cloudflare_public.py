@@ -330,7 +330,7 @@ def _assert_compose_model(
             raise AssertionError("disabled workdir placeholder is not read-only")
     if cloudflared["user"] != f"{uid}:{gid}":
         raise AssertionError("Cloudflare user differs from token file owner")
-    if cloudflared["image"] != "cloudflare/cloudflared:2026.11.0":
+    if cloudflared["image"] != CLOUDFLARED_IMAGE:
         raise AssertionError("Cloudflare image differs from the explicit local selection")
     token_mount = next(
         (
@@ -431,7 +431,8 @@ async def _mcp_read(url: str, api_key: str, expected_marker: str) -> None:
                 result = await client.call_tool(
                     "read_text_file", {"workdir": "fixture", "path": "marker.txt"}
                 )
-                if result.is_error or expected_marker not in str(result.content):
+                data = result.structured_content or {}
+                if result.is_error or data.get("content") != expected_marker:
                     raise AssertionError("MCP marker read did not match the synthetic fixture")
     except Exception:
         raise AssertionError("MCP initialize/list/read failed") from None
@@ -581,7 +582,7 @@ def test_cloudflare_only_public_candidate_acceptance(tmp_path: Path) -> None:
     if not all((hostname, approved_hostname, image, cloudflared_image, token_value)):
         raise AssertionError("required explicit Cloudflare acceptance inputs are missing")
     _check_explicit_identity(hostname, approved_hostname, image)
-    if cloudflared_image != "cloudflare/cloudflared:2026.11.0":
+    if cloudflared_image != CLOUDFLARED_IMAGE:
         raise AssertionError("Cloudflare image must be explicitly pinned to the tested local image")
     if os.getuid() == 0:
         raise AssertionError("public acceptance must run as a nonroot file/workdir owner")
@@ -630,6 +631,9 @@ def test_cloudflare_only_public_candidate_acceptance(tmp_path: Path) -> None:
         core_id = _service_container_id(base, "serverfs-mcp", temp_root)
         if not core_id:
             raise AssertionError("Core container was not created")
+        core_image = _docker("inspect", "--format", "{{.Image}}", core_id, env=compose_env)
+        if core_image.returncode or core_image.stdout.strip() != CANDIDATE_IMAGE_ID:
+            raise AssertionError("public Core container image differs from the pinned candidate")
         core_before = _inspect(core_id, temp_root)
         local_url = f"http://127.0.0.1:{prepared.port}/mcp"
         local_deadline = time.monotonic() + 30
@@ -658,6 +662,11 @@ def test_cloudflare_only_public_candidate_acceptance(tmp_path: Path) -> None:
         cloudflared_id = _service_container_id(base, "cloudflared", temp_root)
         if not cloudflared_id:
             raise AssertionError("Cloudflare connector container was not created")
+        connector_image = _docker(
+            "inspect", "--format", "{{.Image}}", cloudflared_id, env=compose_env
+        )
+        if connector_image.returncode or connector_image.stdout.strip() != CLOUDFLARED_IMAGE_ID:
+            raise AssertionError("public connector image differs from the pinned image")
         connector_before = _inspect(cloudflared_id, temp_root)
         _run_compose(base, ["stop", "cloudflared"], temp_root, stage="connector-stop")
         if _container_state(cloudflared_id, temp_root) != "exited":
@@ -708,6 +717,11 @@ def test_cloudflare_only_public_candidate_acceptance(tmp_path: Path) -> None:
         )
         if not recreated_id or recreated_id == cloudflared_id:
             raise AssertionError("Cloudflare connector was not force-recreated")
+        recreated_image = _docker(
+            "inspect", "--format", "{{.Image}}", recreated_id, env=compose_env
+        )
+        if recreated_image.returncode or recreated_image.stdout.strip() != CLOUDFLARED_IMAGE_ID:
+            raise AssertionError("recreated connector image differs from the pinned image")
         recreated_connector = _inspect(recreated_id, temp_root)
         if recreated_connector[1] == previous_connector[1]:
             raise AssertionError("force-recreated connector StartedAt did not change")

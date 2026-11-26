@@ -3,7 +3,7 @@ title: Agent Skills
 description: Choose a ServerFS operational Skill and install the portable skills-only Agent Plugin.
 ---
 
-ServerFS maintains seven operational [Agent Skills](https://github.com/NTLx/ServerFS_MCP/tree/main/skills). They guide safe use of existing product interfaces; they do not install a ServerFS service by themselves, add MCP tools or grant permissions.
+ServerFS maintains seven operational [Agent Skills](https://github.com/NTLx/ServerFS_MCP/tree/v0.26.0/skills). They guide safe use of existing product interfaces; they do not install a ServerFS service by themselves, add MCP tools or grant permissions.
 
 ## Select one Skill
 
@@ -34,7 +34,7 @@ File-only needs no Bridge. Agent and Repo Ops are independent; a Shared Core can
 
 ## Portable Agent Plugin
 
-The root `plugin.json` is the skills-only portable Agent Plugins manifest. For release v0.25.0 the build produces `serverfs-plugin-v0.25.0.zip`. v0.26.0 candidate Skills can be validated and built locally as `serverfs-plugin-v0.26.0.zip`; they are not a published artifact. Publication requires the release gates. Use a trusted version-matched artifact and the importing Agent client's own supported Plugin installation procedure.
+The root `plugin.json` is the skills-only portable Agent Plugins manifest. The v0.26.0 release artifact is `serverfs-plugin-v0.26.0.zip`. Use a trusted version-matched artifact and the importing Agent client's own supported Plugin installation procedure.
 
 The archive contains `serverfs/plugin.json` and the seven Skill directories with Markdown references. It excludes the Skills index, full checkout, `mcp.json`, endpoint URLs and credentials. Configure the actual ServerFS MCP connection separately. The archive does not auto-copy Skills into provider-private directories.
 

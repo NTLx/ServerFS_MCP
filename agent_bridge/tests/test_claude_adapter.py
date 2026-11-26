@@ -523,6 +523,58 @@ async def test_claude_normal_result_after_cancel_proves_local_stop(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("disconnect_fails", [False, True])
+async def test_failed_turn_retains_guard_without_disconnect_proof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, disconnect_fails: bool
+) -> None:
+    async def fail_query(self, *args, **kwargs):
+        raise RuntimeError("synthetic query failure")
+
+    async def fail_disconnect(self):
+        raise RuntimeError("synthetic disconnect failure")
+
+    monkeypatch.setattr(FakeClaudeClient, "query", fail_query)
+    if disconnect_fails:
+        monkeypatch.setattr(FakeClaudeClient, "disconnect", fail_disconnect)
+    service, factory = make_service(tmp_path, monkeypatch)
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="claude",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="synthetic failure",
+        )
+        task_id = submitted["task_id"]
+        failed = await wait_for_status(service, task_id, "failed")
+        assert failed["error_code"] == "AGENT_PROVIDER_ERROR"
+        for _ in range(200):
+            if task_id not in service._background:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            pytest.fail("provider task cleanup did not finish")
+
+        assert factory.clients[0].connected is disconnect_fails
+        guard = service.guard_manager.read(service.policies.get("repo").lease_id)
+        assert (guard is not None) is disconnect_fails
+        if disconnect_fails:
+            with pytest.raises(BridgeError) as blocked:
+                await service.submit_task(
+                    runtime="claude",
+                    workdir="repo",
+                    path="",
+                    profile="workspace-write",
+                    prompt="second writer",
+                )
+            assert blocked.value.code == "WORKDIR_RECOVERY_REQUIRED"
+            assert len(factory.clients) == 1
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
 async def test_claude_native_mode_rejects_review_and_live_steer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

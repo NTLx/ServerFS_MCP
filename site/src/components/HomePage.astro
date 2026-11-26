@@ -20,7 +20,7 @@ const copy = {
     languageLabel: '切换到简体中文',
     themeToLight: 'Switch to light theme',
     themeToDark: 'Switch to dark theme',
-    release: 'v0.25.0 stable · v0.26.0 candidate',
+    release: 'v0.26.0',
     heroEyebrow: 'SECURE MCP FOR LINUX · WINDOWS · MACOS WORKDIRS',
     headline: ['Give AI access.', 'Keep the boundary explicit.'],
     lede:
@@ -67,8 +67,8 @@ const copy = {
       { count: '11', label: 'Filesystem', detail: 'safe read + guarded mutation surface' },
       { count: '13', label: 'Base + Binary', detail: 'bounded whole-file transfer' },
       { count: '15', label: 'Base + Repo Ops', detail: 'independently gated' },
-      { count: '21', label: 'Base + Agent', detail: 'native delegation + runtime discovery' },
-      { count: '27', label: 'Combined', detail: 'where all three groups are supported' },
+      { count: '22', label: 'Base + Agent', detail: 'native delegation + scoped task discovery on signed v2' },
+      { count: '28', label: 'Combined', detail: 'where all three groups are supported' },
     ],
     platformEyebrow: 'THREE DEPLOYMENT SHAPES',
     platformTitle: 'One contract. Native boundaries on every platform.',
@@ -83,7 +83,7 @@ const copy = {
         name: 'Linux',
         kicker: 'DOCKER-NATIVE SERVER DEPLOYMENT',
         title: 'Containers define the outer boundary.',
-        body: 'Use a separate Compose project for each Core. Choose direct HTTP or independent OpenAI / Cloudflare Connectors. Optional Agent Bridge remains a user-scoped host service.',
+        body: 'Use a separate Compose project for each Core. Choose direct HTTP or independent OpenAI / Cloudflare Connectors. Optional Agent Bridge remains a user-scoped host service, with up to 16 explicitly granted workdirs per Core.',
         path: [
           ['01', 'INGRESS', 'Streamable HTTP', 'Direct HTTP · optional OpenAI / Cloudflare'],
           ['02', 'RUNTIME', 'ServerFS container', 'Policy-bound MCP · no generic shell'],
@@ -105,7 +105,7 @@ const copy = {
         name: 'macOS',
         kicker: 'APPLE-NATIVE USER DEPLOYMENT',
         title: 'Darwin-native semantics, owned by the current user.',
-        body: 'Apple Silicon, native arm64, macOS 27 and local APFS. Signed SMAppService jobs manage named file-only/owned instances and Connectors. Shared Core requires an independently provisioned owner; one Agent workdir in v0.25.0; multiple owner-bound Agent workdirs in the v0.26.0 candidate; no Repo Ops or named Connector staging.',
+        body: 'Apple Silicon, native arm64, macOS 27 and local APFS. Signed SMAppService jobs manage named file-only/owned instances and Connectors. Shared Core uses an independently provisioned owner with 1–16 authorized Agent workdirs; no Shared Repo Ops or Connector staging. New Owned instances may opt into signed v2.',
         path: [
           ['01', 'LIFECYCLE', 'SMAppService', 'Current-user persistence · no LaunchDaemon'],
           ['02', 'TRANSPORT', 'Native stdio / HTTP', 'Named HTTP Core or local stdio'],
@@ -127,7 +127,7 @@ const copy = {
         name: 'Windows',
         kicker: 'WINDOWS-NATIVE USER DEPLOYMENT',
         title: 'NTFS-native semantics without administrator privileges.',
-        body: 'Windows 11 x64 and local NTFS, with a HANDLE-relative Rust kernel. Current-user Task Scheduler and Job Objects isolate individual Core, Connector and Bridge lifecycles.',
+        body: 'Windows 11 x64 and local NTFS, with a HANDLE-relative Rust kernel. Current-user Task Scheduler and Job Objects isolate component lifecycles. Named Bridge owners support explicit per-runtime proxy policy.',
         path: [
           ['01', 'LIFECYCLE', 'Task Scheduler', 'Independent component owners · least privilege'],
           ['02', 'TRANSPORT', 'Native stdio / HTTP', 'Named HTTP Core or local stdio'],
@@ -178,7 +178,7 @@ const copy = {
     agentEyebrow: 'OPTIONAL AGENT BRIDGE',
     agentTitle: 'Native agents stay on the host.',
     agentBody:
-      'Agent Bridge runs Codex, Claude, Qoder or configured ACP profiles on the host. Shared attachments require per-Core grants; a shared Core cannot operate its owner. Repo Ops is independent of Agent delegation, and Jev remains optional advice with external task-context transfer.',
+      'Agent Bridge runs Codex, Claude, Qoder or configured ACP profiles on the host. Signed-v2 attachments support scoped task rediscovery; shared attachments require per-Core grants, and a shared Core cannot operate its owner. Recognized outside-workdir write approvals are blocked. Repo Ops is independent of Agent delegation, and Jev remains optional advice with external task-context transfer.',
     exploreAgent: 'Explore Agent Bridge',
     exploreAcp: 'ACP Guide',
     exploreJev: 'Explore Jev Advisors',
@@ -216,7 +216,7 @@ const copy = {
     languageLabel: 'Switch to English',
     themeToLight: '切换到浅色主题',
     themeToDark: '切换到深色主题',
-    release: 'v0.25.0 稳定版 · v0.26.0 候选版',
+    release: 'v0.26.0',
     heroEyebrow: '面向 Linux · Windows · macOS Workdir 的安全 MCP',
     headline: ['让 AI 访问服务器。', '让边界始终明确。'],
     lede:
@@ -263,8 +263,8 @@ const copy = {
       { count: '11', label: '文件系统', detail: '安全读取 + 受控写入能力面' },
       { count: '13', label: '基础 + 二进制', detail: '有界的整文件传输' },
       { count: '15', label: '基础 + Repo Ops', detail: '独立门控' },
-      { count: '21', label: '基础 + Agent', detail: '原生 Agent 委派 + runtime 发现' },
-      { count: '27', label: '组合能力', detail: '支持全部三个可选工具组时' },
+      { count: '22', label: '基础 + Agent', detail: '原生委派 + 签名 v2 范围内任务发现' },
+      { count: '28', label: '组合能力', detail: '支持全部三个可选工具组时' },
     ],
     platformEyebrow: '三种部署形态',
     platformTitle: '同一套能力契约，各自遵循平台原生边界。',
@@ -279,7 +279,7 @@ const copy = {
         name: 'Linux',
         kicker: 'DOCKER 原生服务器部署',
         title: '用容器定义外层边界。',
-        body: '每个 Core 使用独立 Compose project。选择直接 HTTP 或独立 OpenAI / Cloudflare Connector。可选 Agent Bridge 仍由宿主机当前用户管理。',
+        body: '每个 Core 使用独立 Compose project。选择直接 HTTP 或独立 OpenAI / Cloudflare Connector。可选 Agent Bridge 仍由宿主机当前用户管理，每个 Core 最多支持 16 个显式授权 Workdir。',
         path: [
           ['01', '入口', 'Streamable HTTP', '直接 HTTP · 可选 OpenAI / Cloudflare'],
           ['02', '运行时', 'ServerFS 容器', '策略约束的 MCP · 无通用 Shell'],
@@ -301,7 +301,7 @@ const copy = {
         name: 'macOS',
         kicker: 'APPLE 原生用户级部署',
         title: '使用原生 Darwin 语义，由当前用户管理。',
-        body: 'Apple Silicon、原生 arm64、macOS 27 和本地 APFS。签名 SMAppService jobs 管理命名纯文件/owned 实例和 Connector。Shared Core 需要独立 provision 的 owner，v0.25.0 支持单个 Agent workdir，v0.26.0 候选版支持多个 owner 授权的 Agent workdir；不支持 Repo Ops 或命名 Connector staging。',
+        body: 'Apple Silicon、原生 arm64、macOS 27 和本地 APFS。签名 SMAppService jobs 管理命名纯文件/owned 实例和 Connector。Shared Core 需要独立配置的 owner，支持 1–16 个授权 Agent Workdir，不支持 Shared Repo Ops 或 Connector staging。新建 Owned 实例可显式选择签名 v2。',
         path: [
           ['01', '生命周期', 'SMAppService', '当前用户持久化 · 无 LaunchDaemon'],
           ['02', '传输', '原生 stdio / HTTP', '命名 HTTP Core 或本地 stdio'],
@@ -323,7 +323,7 @@ const copy = {
         name: 'Windows',
         kicker: 'WINDOWS 原生用户级部署',
         title: '使用原生 NTFS 语义，无需管理员权限。',
-        body: 'Windows 11 x64 与本地 NTFS、HANDLE-relative Rust 内核。当前用户 Task Scheduler 与 Job Object 隔离 Core、Connector 和 Bridge 的生命周期。',
+        body: 'Windows 11 x64 与本地 NTFS、HANDLE-relative Rust 内核。当前用户 Task Scheduler 与 Job Object 隔离组件生命周期。命名 Bridge 支持按 Runtime 显式配置代理。',
         path: [
           ['01', '生命周期', 'Task Scheduler', '独立组件 owner · 最小权限'],
           ['02', '传输', '原生 stdio / HTTP', '命名 HTTP Core 或本地 stdio'],
@@ -373,7 +373,7 @@ const copy = {
     agentEyebrow: '可选 AGENT BRIDGE',
     agentTitle: '原生 Agent 留在宿主机。',
     agentBody:
-      'Agent Bridge 在宿主机运行 Codex、Claude、Qoder 或配置的 ACP profile。共享接入需要逐 Core grant，Shared Core 不能管理 owner。Repo Ops 独立于 Agent 委派；Jev 仅提供可选建议，涉及任务上下文外部传输。',
+      'Agent Bridge 在宿主机运行 Codex、Claude、Qoder 或配置的 ACP profile。签名 v2 支持按授权别名找回任务；共享接入需要逐 Core grant，Shared Core 不能管理 owner。识别出的 Workdir 外写入审批会被阻止。Repo Ops 独立于 Agent 委派；Jev 仅提供可选建议，涉及任务上下文外部传输。',
     exploreAgent: '了解 Agent Bridge',
     exploreAcp: 'ACP 指南',
     exploreJev: '了解 Jev Advisors',

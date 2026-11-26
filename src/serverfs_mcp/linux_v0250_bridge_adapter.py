@@ -10,6 +10,7 @@ from .agent_client import (
     AgentBridgeClientError,
     AgentBridgeRemoteError,
     AgentBridgeUnavailable,
+    validate_signed_v2_submission,
 )
 from .core_bridge_client_v2 import (
     CoreBridgeClientV2Error,
@@ -82,6 +83,7 @@ class LinuxV0250BridgeAdapter:
             if forwarded["workdir"] != self._workdir_alias:
                 raise AgentBridgeClientError("workdir is outside the authorized grant")
             del forwarded["workdir"]
+        validate_signed_v2_submission(method, forwarded)
         try:
             return await self._client.call(method, forwarded)
         except CoreBridgeRemoteError as exc:

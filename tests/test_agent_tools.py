@@ -13,6 +13,7 @@ from mcp.server import MCPServer
 from helpers import call_error, call_success, error_code, registry_for
 from serverfs_mcp.agent_client import AgentBridgeRemoteError
 from serverfs_mcp.config import Settings
+from serverfs_mcp.darwin_shared_agent_adapter import DarwinSharedAgentAdapter
 from serverfs_mcp.main import create_server
 from serverfs_mcp.workdirs import (
     AGENT_MODE_DISABLED,
@@ -251,6 +252,12 @@ def test_submit_agent_task_guides_atomic_authorized_delegation(tmp_path: Path) -
     assert tool.description is not None
     assert "Keep the task atomic" in tool.description
     assert "does not weaken or bypass provider safety checks" in tool.description
+    for field in ("continue_from_task_id", "idempotency_key"):
+        description = tool.input_schema["properties"][field]["description"]
+        assert "supported v1" in description
+        assert "Omit on signed-v2 Core endpoints" in description
+    assert "list_agent_tasks" in tool.description
+    assert "uncertain submission" in tool.description
 
 
 def test_send_agent_message_guides_narrow_follow_up(tmp_path: Path) -> None:
@@ -270,6 +277,7 @@ def test_send_agent_message_guides_narrow_follow_up(tmp_path: Path) -> None:
     assert tool.description is not None
     assert "existing authorized objective" in tool.description
     assert "submit a new atomic task instead" in tool.description
+    assert "never on signed-v2 Core endpoints" in tool.description
 
 
 def test_global_enable_without_agent_workdir_keeps_eleven_tool_surface(
@@ -784,6 +792,22 @@ def test_read_and_interaction_tools_map_to_expected_rpc_methods(tmp_path: Path) 
     }
     assert client.calls[3][1]["decision"] == "approve_once"
     assert client.calls[4][1]["option_id"] == "opaque-option"
+
+
+@pytest.mark.parametrize("key", ["continue_from_task_id", "idempotency_key"])
+def test_signed_v2_unsupported_option_returns_actionable_tool_error(
+    tmp_path: Path, key: str
+) -> None:
+    client = FakeAgentClient()
+    adapter = DarwinSharedAgentAdapter(client, "repo")
+    server = server_with_client(tmp_path, adapter)
+    args = {"runtime": "codex", "workdir": "repo", "prompt": "test", key: "private-value"}
+    message = call_error(server, "submit_agent_task", args)
+    assert error_code(message) == "INVALID_REQUEST"
+    assert "omit both" in message and "list_agent_tasks" in message
+    assert "private-value" not in message
+    assert client.calls == []
+    assert call_success(server, "submit_agent_task", {**args, key: None})["status"] == "queued"
 
 
 def test_bridge_remote_error_is_preserved_as_coded_tool_error(tmp_path: Path) -> None:

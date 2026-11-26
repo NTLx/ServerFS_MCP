@@ -57,14 +57,14 @@ A topology describes the product model. Follow the platform runbook for its supp
 | Platform | Core / Connector lifecycle | Bridge lifecycle and IPC |
 | --- | --- | --- |
 | Linux | Named Compose project; direct HTTP publication, internal-only or optional OpenAI/Cloudflare services | Optional host user systemd unit, Unix socket, peer credentials and signed grants |
-| macOS | Signed app-associated SMAppService / LaunchAgents; same-provider Connector IDs predeclared when staging file-only/owned instances | Private Unix socket and policy checks for owned; signed v2 grants for shared |
+| macOS | Signed app-associated SMAppService / LaunchAgents; same-provider Connector IDs predeclared when staging file-only/owned instances | Private Unix socket and policy checks for default Owned v1; signed v2 for Shared and explicitly provisioned Owned v2 |
 | Windows | Current-user Task Scheduler, component identities and Job containment | Separate owner/worker environments, Named Pipe, SID, protected ACLs and signed grants |
 
 Current implementation limits:
 
-- **Linux:** one service per Tunnel provider per Compose project. The v0.25.0 signed overlay binds one Agent/Repo Ops-enabled workdir in slot 01; the v0.26.0 candidate supports 1–16 independently granted Agent and/or Repo Ops workdirs across slots 01–16. Additional disjoint file-only slots remain possible.
-- **macOS:** a Shared Core binds one Agent workdir in v0.25.0 or 1–16 owner-bound Agent workdirs in the v0.26.0 candidate, with Repo Ops disabled and no Connector staging interface. File-only and owned instances support predeclared additional Connector IDs.
-- **Windows:** named Connector IDs and signed owned/shared attachments. The initial shared helper accepts up to 16 Cores; fresh runtime/configuration helpers are create-only, not live upgrades or credential rotation.
+- **Linux:** one service per Tunnel provider per Compose project. The v0.26.0 signed overlay supports 1–16 independently granted Agent and/or Repo Ops workdirs across slots 01–16. Additional disjoint file-only slots remain possible.
+- **macOS:** a Shared Core binds 1–16 owner-bound Agent workdirs, with Repo Ops disabled and no Connector staging interface. New Owned instances may explicitly select signed v2 for per-alias Agent/Repo Ops grants; v1 remains the default. File-only and Owned instances support predeclared additional Connector IDs.
+- **Windows:** named Connector IDs and signed owned/shared attachments. The initial shared helper accepts up to 16 Cores; fresh runtime/configuration helpers are create-only, not live upgrades or credential rotation. Named Bridge owners support explicit per-runtime/ACP proxy opt-in via a protected credentialless input.
 
 See [Getting Started](../getting-started/), [macOS](../macos-native/) and [Windows](../windows-native/) for precise procedures.
 
@@ -81,4 +81,4 @@ Independence means operating a Connector does not implicitly restart Core, Bridg
 - **Agent delegation:** native Codex, Claude, Qoder or explicitly configured ACP profiles; provider-native authentication and permissions remain in effect. See [Agent Bridge](../agent-bridge/) and [ACP](../acp/).
 - **Jev:** optional advisory-only decisions, never execution or approval authority. See [Jev Advisors](../jev-advisors/).
 
-See [Configuration](../configuration/), [Security](../security/) and [HTTP authentication](../api-key/) for policy details. Release-level source/build gates and real native/public acceptance are recorded separately in the [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.25.0-release-checklist-2026-11-21.md).
+See [Configuration](../configuration/), [Security](../security/) and [HTTP authentication](../api-key/) for policy details. Release-level source/build gates and real native/public acceptance are recorded separately in the [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.26.0-release-checklist.md).

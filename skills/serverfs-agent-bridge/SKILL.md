@@ -19,7 +19,7 @@ Identify platform/version, exact Core and Bridge IDs, disabled/owned/shared mode
 
 ## Platform branches
 
-Load only the applicable packaged reference: [Linux](references/linux.md), [macOS](references/macos.md), [Windows](references/windows.md). Named Linux and shared macOS use signed v2 grants; macOS owned uses private manifest/policy/IPC checks. Windows named grants use protected Named Pipe/ACL checks. A Shared Core cannot operate its owner.
+Load only the applicable packaged reference: [Linux](references/linux.md), [macOS](references/macos.md), [Windows](references/windows.md). Named Linux and shared macOS use signed v2 grants; macOS owned defaults to v1 private manifest/policy/IPC checks, with explicit signed v2 available for newly provisioned Owned Cores. Windows named grants use protected Named Pipe/ACL checks. A Shared Core cannot operate its owner.
 
 ## Authoritative sources
 
@@ -31,7 +31,7 @@ References resolve against the version-matched checkout. Read the selected runbo
 2. Authorize an exact runtime on an explicitly writable workdir with workspace-write. Native provider login remains provider-owned. ACP profiles use operator-installed absolute executable and fixed argv; no registry installation or caller command/env override. Jev is optional advice only; preflight sends original prompt to external TypeSafe API. Enable only with data-transfer authorization.
 3. Verify actual attachment and permitted alias/methods, then list workdirs and runtimes. Model discovery: Codex runtime catalog, Qoder account catalog, Claude/ACP unsupported. Only use model override, live steering and interaction tools when supported. Do not infer attachment capability from the runtime alone.
 4. Submit one authorized objective with scope, stop conditions and verification evidence. Signed v2 grants reject both `continue_from_task_id` and `idempotency_key`. Omit them; never blindly retry uncertain submission. On compatible v1 paths, retained idempotent submissions and session continuation are conditional on actual policy/runtime. Correlation ID is not deduplication.
-5. Poll task state, read bounded cursor events and result chunks (up to 64 KiB), respond explicitly to genuine approval/question requests where supported. No automatic approval or Jev-driven routing/model/permission changes. Verify outcome independently, not only terminal status.
+5. On supporting signed-v2 attachments, discover retained task IDs via `list_agent_tasks` for an exact authorized Agent alias; use active/terminal/all status and opaque pagination. Rediscovery is not native session continuation. Poll task state, read bounded cursor events and result chunks (up to 64 KiB), respond explicitly to genuine approval/question requests where supported. Public approval labels are redacted, not private resource identities; recognized outside-workdir writes cannot be approved remotely. No automatic approval or Jev-driven routing/model/permission changes. Verify outcome independently, not only terminal status.
 
 ## Safety / stop conditions
 

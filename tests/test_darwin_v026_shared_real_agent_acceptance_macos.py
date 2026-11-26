@@ -1,7 +1,8 @@
 """Opt-in macOS Shared Core SDK-boundary acceptance.
 
 SERVERFS_SHARED_CLAUDE_SYNTHETIC=1 exercises two workdirs without a provider.
-SERVERFS_ENABLE_SHARED_CLAUDE_E2E=1 permits a single real diagnostic.
+SERVERFS_ENABLE_SHARED_CLAUDE_E2E=1 permits a single real Claude diagnostic.
+SERVERFS_ENABLE_SHARED_QODER_E2E=1 permits a single real Qoder diagnostic.
 The owner uses a separate Bridge venv and native v2 IPC; the Core is disposable.
 No Login Item or provider credential material is inspected.
 """
@@ -25,10 +26,18 @@ from pathlib import Path
 
 import pytest
 
+from e2e.macos_shared_qoder_diagnostics import SDK_ERROR_CLASSES, StageEvidence
+
 SYNTHETIC = os.environ.get("SERVERFS_SHARED_CLAUDE_SYNTHETIC") == "1"
-if sys.platform != "darwin" or (
-    not SYNTHETIC and os.environ.get("SERVERFS_ENABLE_SHARED_CLAUDE_E2E") != "1"
-):
+QODER_SYNTHETIC = os.environ.get("SERVERFS_SHARED_QODER_SYNTHETIC") == "1"
+QODER_REAL = os.environ.get("SERVERFS_ENABLE_SHARED_QODER_E2E") == "1"
+CLAUDE_REAL = os.environ.get("SERVERFS_ENABLE_SHARED_CLAUDE_E2E") == "1"
+QODER_MODE = QODER_SYNTHETIC or QODER_REAL
+RUNTIME = "qoder" if QODER_MODE else "claude"
+SYNTHETIC_MODE = SYNTHETIC or QODER_SYNTHETIC
+if sum((SYNTHETIC, QODER_SYNTHETIC, QODER_REAL, CLAUDE_REAL)) > 1:
+    raise RuntimeError("choose exactly one Shared acceptance mode")
+if sys.platform != "darwin" or not (SYNTHETIC_MODE or QODER_REAL or CLAUDE_REAL):
     pytest.skip(
         "requires explicit disposable macOS Shared Core SDK opt-in",
         allow_module_level=True,
@@ -86,14 +95,26 @@ def _start_owner(root: Path) -> subprocess.Popen[bytes]:
     assert python.is_file(), "Bridge venv is required"
     env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
     env["PYTHONPATH"] = str(BRIDGE_SRC)
+    if QODER_SYNTHETIC:
+        env["SERVERFS_SHARED_QODER_SYNTHETIC"] = "1"
     with (root / "owner.stderr").open("wb") as log:
         owner = subprocess.Popen(
             [
                 str(python),
                 "-B",
-                str(ROOT / "tests/e2e/macos_shared_claude_owner.py"),
-                "--serve-synthetic" if SYNTHETIC else "--serve",
-                str(root),
+                str(
+                    ROOT
+                    / (
+                        "tests/e2e/macos_shared_qoder_owner.py"
+                        if QODER_MODE
+                        else "tests/e2e/macos_shared_claude_owner.py"
+                    )
+                ),
+                *(
+                    [str(root)]
+                    if QODER_MODE
+                    else ["--serve-synthetic" if SYNTHETIC else "--serve", str(root)]
+                ),
             ],
             env=env,
             cwd=root,
@@ -104,13 +125,15 @@ def _start_owner(root: Path) -> subprocess.Popen[bytes]:
     try:
         deadline = time.monotonic() + 20
         while not (root / "owner-ready").is_file():
-            assert owner.poll() is None, "disposable owner exited during startup"
+            if owner.poll() is not None:
+                raise AssertionError("disposable owner exited during startup")
             assert time.monotonic() < deadline, "disposable owner readiness timed out"
             time.sleep(0.1)
         assert (root / "bridge.sock").is_socket()
         return owner
     except BaseException:
-        _stop_owner(owner)
+        if owner.poll() is None:
+            _stop_owner(owner)
         raise
 
 
@@ -157,6 +180,52 @@ def _read_terminal_metadata(path: Path) -> list[dict]:
     return value
 
 
+def _read_qoder_sdk_evidence(path: Path) -> dict:
+    if not path.is_file():
+        return {}
+    value = json.loads(path.read_text(encoding="utf-8"))
+    allowed = {
+        "client_constructing",
+        "client_constructed",
+        "client_construction_failed",
+        "connecting",
+        "connected",
+        "connect_failed",
+        "querying",
+        "query_sent",
+        "query_failed",
+        "receiving",
+        "result_received",
+        "receive_failed",
+        "disconnecting",
+        "disconnected",
+        "disconnect_failed",
+    }
+    assert set(value) == {"timeline", "terminal"}
+    assert isinstance(value["timeline"], list)
+    previous_ms = -1
+    for row in value["timeline"]:
+        assert isinstance(row, dict) and set(row) in (
+            {"stage", "monotonic_ms"},
+            {"stage", "monotonic_ms", "error_class"},
+        )
+        assert row["stage"] in allowed
+        assert type(row["monotonic_ms"]) is int and row["monotonic_ms"] >= previous_ms
+        previous_ms = row["monotonic_ms"]
+        if "error_class" in row:
+            assert row["error_class"] in SDK_ERROR_CLASSES | {"OTHER"}
+    terminal = value["terminal"]
+    assert isinstance(terminal, dict)
+    if terminal:
+        assert set(terminal) == {"is_error", "selected_bytes", "selected_sha256"}
+        assert type(terminal["is_error"]) is bool
+        assert type(terminal["selected_bytes"]) is int and terminal["selected_bytes"] >= 0
+        assert isinstance(terminal["selected_sha256"], str) and re.fullmatch(
+            r"[0-9a-f]{64}", terminal["selected_sha256"]
+        )
+    return value
+
+
 def _launchd_baseline() -> dict[str, str]:
     result = subprocess.run(
         ["launchctl", "list"], capture_output=True, text=True, timeout=10, check=True
@@ -194,18 +263,40 @@ async def _await_task(
     diagnostics: list[dict],
     metadata_path: Path,
 ) -> dict:
-    deadline = time.monotonic() + 120
+    # Qoder SDK 1.0.15 has a 120s initialize timeout, plus transport teardown.
+    # Do not let the acceptance poller cancel first and obscure its terminal error.
+    wait_seconds = 170 if QODER_REAL else 120
+    deadline = time.monotonic() + wait_seconds
+    observations = []
+    last_state = "unknown"
     while time.monotonic() < deadline:
         row = await _call(port, token, "get_agent_task", {"task_id": task_id})
         state = row.get("status")
+        if state not in {
+            "queued",
+            "running",
+            "waiting_for_approval",
+            "waiting_for_question",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "interrupted",
+        }:
+            state = "unknown"
+        if not observations or state != last_state:
+            observations.append({"status": state, "monotonic_ms": time.monotonic_ns() // 1_000_000})
+            last_state = state
         if state in {"succeeded", "failed", "cancelled", "interrupted"}:
             events = await _call(
                 port, token, "read_agent_task_events", {"task_id": task_id, "limit": 100}
             )
-            response = row.get("final_response") or row.get("error_message") or ""
+            response = row.get("final_response")
+            if not isinstance(response, str):
+                response = ""
             encoded = response.encode("utf-8") if isinstance(response, str) else b""
             safe = {
                 "status": state,
+                "observations": observations,
                 "error_code": row.get("error_code"),
                 "classification": (
                     "PROVIDER_AUTH_OR_RUNTIME_FAILURE"
@@ -239,6 +330,10 @@ async def _await_task(
                 ),
             }
             metadata = safe["sdk_terminal"]
+            if QODER_REAL:
+                safe["qoder_sdk"] = _read_qoder_sdk_evidence(
+                    metadata_path.with_name("qoder-sdk.json")
+                )
             if state == "succeeded":
                 persisted = row.get("result") or {}
                 inline_verified = (
@@ -249,6 +344,15 @@ async def _await_task(
                 )
                 safe["inline_integrity"] = inline_verified
                 safe["sdk_to_public"] = "UNVERIFIED"
+                if inline_verified and QODER_REAL:
+                    terminal = safe["qoder_sdk"].get("terminal", {})
+                    if terminal:
+                        safe["sdk_to_public"] = (
+                            "MATCH"
+                            if terminal["selected_bytes"] == safe["result_bytes"]
+                            and terminal["selected_sha256"] == safe["result_sha256"]
+                            else "DIFFERENT_POSSIBLE_REDACTION"
+                        )
                 if inline_verified and metadata:
                     selected = metadata[1]["selected"]
                     safe["sdk_to_public"] = (
@@ -263,20 +367,37 @@ async def _await_task(
             diagnostics.append(
                 {
                     "status": state,
+                    "observations": observations,
                     "classification": "HUMAN_APPROVAL_REQUIRED"
                     if state == "waiting_for_approval"
                     else "HUMAN_INPUT_REQUIRED",
                 }
             )
-            pytest.fail("Claude requested a real interaction/approval; acceptance stopped")
+            pytest.fail("Provider requested a real interaction/approval; acceptance stopped")
         await asyncio.sleep(1)
-    pytest.fail("Claude task did not reach a terminal state within 120 seconds")
+    timeout_record = {
+        "status": last_state,
+        "classification": "TASK_TERMINAL_NOT_OBSERVED",
+        "observations": observations,
+        "timeout_monotonic_ms": time.monotonic_ns() // 1_000_000,
+    }
+    if QODER_REAL:
+        try:
+            timeout_record["qoder_sdk_before_teardown"] = _read_qoder_sdk_evidence(
+                metadata_path.with_name("qoder-sdk.json")
+            )
+        except Exception:
+            timeout_record["qoder_sdk_before_teardown_invalid"] = True
+    diagnostics.append(timeout_record)
+    pytest.fail(f"Provider task did not reach a terminal state within {wait_seconds} seconds")
 
 
 def _evidence_path(tmp_path: Path) -> Path:
     # Ordinary repeatable fixture runs use pytest-owned scratch. A maintainer
     # may explicitly select a fresh report name under the diagnostic directory.
-    name = os.environ.get("SERVERFS_SHARED_CLAUDE_EVIDENCE")
+    name = os.environ.get("SERVERFS_SHARED_QODER_EVIDENCE") or os.environ.get(
+        "SERVERFS_SHARED_CLAUDE_EVIDENCE"
+    )
     if name is None:
         return tmp_path / "shared-claude-evidence.json"
     assert re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*[.]json", name)
@@ -307,6 +428,16 @@ def _prompt(marker: str) -> str:
 
 def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
     evidence_path = _evidence_path(tmp_path)
+    stage_path = evidence_path.with_name(evidence_path.stem + "-stages.json")
+    stages = StageEvidence(
+        stage_path,
+        runtime=RUNTIME,
+        test_file=Path(__file__),
+        synthetic=SYNTHETIC_MODE,
+        expected_tasks=2 if SYNTHETIC_MODE or QODER_REAL else 1,
+    )
+    current_stage = "fixture_started"
+    stages.record(current_stage)
     _save_evidence(evidence_path, {"phase": "started", "result": "UNVERIFIED"}, initial=True)
     baseline = _launchd_baseline()
     suffix = secrets.token_hex(5)
@@ -321,8 +452,13 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
     diagnostics: list[dict] = []
     outcome = "NOT_ACCEPTED"
     owner_survived_core_restart = False
-    temporary = tempfile.TemporaryDirectory(prefix="sf-v026-shared-claude-", dir="/private/tmp")
-    root = Path(temporary.name).resolve(strict=True)
+    if QODER_REAL:
+        root = Path(tempfile.mkdtemp(prefix="sf-v026-shared-qoder-", dir="/private/tmp")).resolve(
+            strict=True
+        )
+    else:
+        temporary = tempfile.TemporaryDirectory(prefix="sf-v026-shared-claude-", dir="/private/tmp")
+        root = Path(temporary.name).resolve(strict=True)
     try:
         root.chmod(0o700)
         home = root / "home"
@@ -339,7 +475,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
         aliases = ("First", "Second")
         markers = {alias: "SF_SHARED_" + secrets.token_hex(12) for alias in aliases}
         expected = {}
-        if SYNTHETIC:
+        if SYNTHETIC_MODE:
             for alias, marker in markers.items():
                 encoded = _prompt(marker).encode("utf-8")
                 expected[alias] = {
@@ -350,8 +486,13 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                     },
                 }
         paths = {alias: root / alias for alias in aliases}
-        for path in paths.values():
+        fixture_hashes = {}
+        for alias, path in paths.items():
             path.mkdir(mode=0o700)
+            if QODER_MODE:
+                fixture_file = path / "fixture-marker.txt"
+                fixture_file.write_text(markers[alias] + "\n", encoding="utf-8")
+                fixture_hashes[alias] = hashlib.sha256(fixture_file.read_bytes()).hexdigest()
         socket_path = root / "bridge.sock"
         bridge_config = root / "bridge.json"
         _private_json(
@@ -364,7 +505,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                 alias=alias,
                 host_path=paths[alias],
                 mode=AgentMode.WORKSPACE_WRITE,
-                runtimes=frozenset({"claude"}),
+                runtimes=frozenset({RUNTIME}),
                 read_only=False,
             )
             for alias in aliases
@@ -376,7 +517,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
             root / "owner-input.json",
             {
                 "aliases": aliases,
-                "synthetic": SYNTHETIC,
+                "synthetic": SYNTHETIC_MODE,
                 "expected": expected,
                 "digests": digests,
                 "bridge_id": bridge_id,
@@ -388,18 +529,22 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                 "foreign_secret_hex": foreign_secret.hex(),
             },
         )
+        current_stage = "owner_starting"
+        stages.record(current_stage)
         owner = _start_owner(root)
+        current_stage = "owner_started"
+        stages.record(current_stage)
         owner_loop = _OwnerLoop()
 
         port = _port()
         config = root / "core.toml"
         config.write_text(
-            "[agent]\nenabled=true\n[agent.claude]\nenabled=true\n"
+            f"[agent]\nenabled=true\n[agent.{RUNTIME}]\nenabled=true\n"
             + "".join(
                 "[[workdirs]]\n"
                 + f"alias='{alias}'\npath='{paths[alias]}'\n"
                 + "read_only=false\nagent_mode='workspace-write'\n"
-                + "agent_runtimes=['claude']\n"
+                + f"agent_runtimes=['{RUNTIME}']\n"
                 for alias in aliases
             ),
             encoding="utf-8",
@@ -449,6 +594,8 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
             runtime,
             home=home,
         )
+        current_stage = "core_staged"
+        stages.record(current_stage)
         service_home = instance_service_home(identity, home=home)
         launch_env = {
             k: v
@@ -496,6 +643,8 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                 start_new_session=True,
             )
             owner_loop.call(_wait_for_core(child, port, log_path))
+            current_stage = "core_ready"
+            stages.record(current_stage)
 
             names = owner_loop.call(_mcp_call(port, core_token, "list-tools", {}))
             assert {"submit_agent_task", "list_agent_tasks", "get_agent_task"} <= names
@@ -516,7 +665,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
             assert denied.is_error
 
             observed = {}
-            for alias in aliases if SYNTHETIC else aliases[:1]:
+            for alias in aliases if SYNTHETIC_MODE or QODER_REAL else aliases[:1]:
                 marker = markers[alias]
                 metadata_path = root / "metadata.json"
                 metadata_path.unlink(missing_ok=True)
@@ -526,13 +675,15 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                         core_token,
                         "submit_agent_task",
                         {
-                            "runtime": "claude",
+                            "runtime": RUNTIME,
                             "workdir": alias,
                             "profile": "workspace-write",
                             "prompt": _prompt(marker),
                         },
                     )
                 )
+                current_stage = "task_submitted"
+                stages.record(current_stage)
                 task_id = submitted["task_id"]
                 page = owner_loop.call(
                     _call(
@@ -544,36 +695,55 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                 )
                 assert [t["task_id"] for t in page["tasks"]] == [task_id]
                 assert all(t["workdir"] == alias for t in page["tasks"])
+                current_stage = "task_discovered"
+                stages.record(current_stage)
                 task_id = page["tasks"][0]["task_id"]
                 terminal = owner_loop.call(
                     _await_task(port, core_token, task_id, marker, diagnostics, metadata_path),
-                    timeout=140,
+                    timeout=190 if QODER_REAL else 140,
                 )
+                current_stage = "task_terminal"
+                stages.record(current_stage)
                 terminal["workdir"] = alias
                 _save_evidence(
                     evidence_path,
-                    {
-                        "phase": "terminal",
-                        "result": "UNVERIFIED",
-                        "tasks": diagnostics,
-                    },
+                    {"phase": "terminal", "result": "UNVERIFIED", "tasks": diagnostics},
                 )
                 metadata = terminal.get("sdk_terminal") or []
                 successful = (
                     terminal.get("status") == "succeeded"
                     and terminal.get("marker_match") == "exact"
                     and terminal.get("inline_integrity") is True
-                    and terminal.get("sdk_to_public") == "MATCH"
-                    and len(metadata) == 2
-                    and metadata[0]["assistant_error"] is False
-                    and metadata[1]["result_is_error"] is False
-                    and metadata[1]["result_subtype"] == "success"
+                    and (
+                        QODER_SYNTHETIC
+                        or (
+                            QODER_REAL
+                            and terminal.get("sdk_to_public") == "MATCH"
+                            and terminal.get("qoder_sdk", {}).get("terminal", {}).get("is_error")
+                            is False
+                        )
+                        or (
+                            not QODER_MODE
+                            and terminal.get("sdk_to_public") == "MATCH"
+                            and len(metadata) == 2
+                            and metadata[0]["assistant_error"] is False
+                            and metadata[1]["result_is_error"] is False
+                            and metadata[1]["result_subtype"] == "success"
+                        )
+                    )
                 )
                 if successful:
                     observed[alias] = (task_id, terminal["result_sha256"])
-                if SYNTHETIC:
-                    assert successful, "Synthetic SDK task did not satisfy the contract"
-            successful_diagnostic = len(observed) == (2 if SYNTHETIC else 1)
+                if SYNTHETIC_MODE or QODER_REAL:
+                    assert successful, "SDK task did not satisfy the contract"
+                if QODER_REAL:
+                    for name, path in paths.items():
+                        assert path.is_dir() and not path.is_symlink()
+                        assert {entry.name for entry in path.iterdir()} == {"fixture-marker.txt"}
+                        f = path / "fixture-marker.txt"
+                        assert f.is_file() and not f.is_symlink()
+                        assert hashlib.sha256(f.read_bytes()).hexdigest() == fixture_hashes[name]
+            successful_diagnostic = len(observed) == (2 if SYNTHETIC_MODE or QODER_REAL else 1)
             foreign_client = CoreBridgeClientV2(
                 socket_path,
                 bridge_id=bridge_id,
@@ -591,6 +761,26 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                 assert exc.code == "CORE_TASK_NOT_FOUND"
             else:
                 pytest.fail("foreign Core read a Shared Core task")
+            current_stage = "foreign_core_denied"
+            stages.record(current_stage)
+            foreign_alias_client = CoreBridgeClientV2(
+                socket_path,
+                bridge_id=bridge_id,
+                core_id=identity.instance_id,
+                key_id="key-" + suffix,
+                secret=secret,
+                workdir_alias="Unlisted",
+                policy_revision="0" * 64,
+                timeout_seconds=5,
+            )
+            try:
+                owner_loop.call(foreign_alias_client.call("task.get", {"task_id": foreign_target}))
+            except CoreBridgeRemoteError as exc:
+                assert exc.code == "CORE_NOT_AUTHORIZED"
+            else:
+                pytest.fail("unlisted alias read a Shared Core task")
+            current_stage = "foreign_alias_denied"
+            stages.record(current_stage)
             assert owner is not None and owner.poll() is None and socket_path.is_socket()
             _stop(child)
             child = subprocess.Popen(
@@ -605,6 +795,8 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
             owner_loop.call(_wait_for_core(child, port, log_path))
             assert socket_path.is_socket() and owner is not None and owner.poll() is None
             owner_survived_core_restart = True
+            current_stage = "core_restarted"
+            stages.record(current_stage)
             if successful_diagnostic:
                 for alias, (task_id, digest) in observed.items():
                     page = owner_loop.call(
@@ -625,7 +817,28 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                         recovered["final_response"].encode("utf-8")
                     ).hexdigest()
                     assert recovered_hash == digest
-                outcome = "SYNTHETIC_SDK_PASS" if SYNTHETIC else "DIAGNOSTIC_ONLY"
+                if QODER_MODE:
+                    for alias, path in paths.items():
+                        assert {entry.name for entry in path.iterdir()} == {"fixture-marker.txt"}
+                        fixture_file = path / "fixture-marker.txt"
+                        assert not fixture_file.is_symlink() and fixture_file.is_file()
+                        assert (
+                            hashlib.sha256(fixture_file.read_bytes()).hexdigest()
+                            == (fixture_hashes[alias])
+                        )
+                current_stage = "content_hash_verified"
+                stages.record(current_stage)
+                outcome = (
+                    "QODER_LABEL_FAKE_ADAPTER_PASS"
+                    if QODER_SYNTHETIC
+                    else (
+                        "SYNTHETIC_SDK_PASS"
+                        if SYNTHETIC
+                        else "REAL_QODER_DUAL_PASS"
+                        if QODER_REAL
+                        else "DIAGNOSTIC_ONLY"
+                    )
+                )
             _stop(child)
             child = None
         _stop_owner(owner)
@@ -633,6 +846,10 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
         owner_loop.stop()
         owner_loop = None
         assert not socket_path.exists()
+    except BaseException as exc:
+        stages.record("exception", error_class=type(exc).__name__)
+        stages.record(current_stage, error_class=type(exc).__name__)
+        raise
     finally:
         if sys.exc_info()[0] is not None:
             outcome = "NOT_ACCEPTED"
@@ -648,27 +865,79 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
         if not baseline_unchanged:
             outcome = "NOT_ACCEPTED"
             diagnostics.append({"classification": "PRODUCTION_BASELINE_CHANGED"})
-        if temporary is not None:
+        qoder_sdk_evidence = {}
+        if QODER_REAL:
+            try:
+                qoder_sdk_evidence = _read_qoder_sdk_evidence(root / "qoder-sdk.json")
+            except Exception:
+                outcome = "NOT_ACCEPTED"
+                diagnostics.append({"classification": "QODER_SDK_EVIDENCE_INVALID"})
+        if QODER_REAL and outcome == "REAL_QODER_DUAL_PASS" and owner is None and child is None:
+            # All real aliases and marker hashes were checked before teardown.
+            # Recheck after the owner has stopped; retain on any discrepancy.
+            try:
+                for alias, path in paths.items():
+                    assert path.is_dir() and not path.is_symlink()
+                    assert {entry.name for entry in path.iterdir()} == {"fixture-marker.txt"}
+                    f = path / "fixture-marker.txt"
+                    assert f.is_file() and not f.is_symlink()
+                    assert hashlib.sha256(f.read_bytes()).hexdigest() == fixture_hashes[alias]
+                import shutil
+
+                assert shutil.rmtree.avoids_symlink_attacks
+                shutil.rmtree(root)
+            except Exception:
+                outcome = "NOT_ACCEPTED"
+                diagnostics.append(
+                    {"classification": "FINAL_FIXTURE_INTEGRITY_OR_CLEANUP_UNVERIFIED"}
+                )
+        elif temporary is not None:
             temporary.cleanup()
         cleaned = not root.exists()
+        if cleaned:
+            stages.record("teardown_verified")
         if not cleaned:
             outcome = "NOT_ACCEPTED"
+        stages.record("finished")
         report = {
             "phase": "finished",
             "result": outcome,
-            "runtime": "claude",
+            "runtime": RUNTIME,
+            "adapter_under_test": (
+                "FakeAdapter"
+                if QODER_SYNTHETIC
+                else "QoderAdapter"
+                if QODER_REAL
+                else "ClaudeAdapter"
+            ),
+            "qoder_sdk_evidence": qoder_sdk_evidence,
+            "workdir_content_verified": outcome
+            in {"QODER_LABEL_FAKE_ADAPTER_PASS", "REAL_QODER_DUAL_PASS"},
             "workdirs": 2,
             "tasks": diagnostics,
             "verified_workdirs": (
-                2 if outcome == "SYNTHETIC_SDK_PASS" else int(outcome == "DIAGNOSTIC_ONLY")
+                2
+                if outcome
+                in {"SYNTHETIC_SDK_PASS", "QODER_LABEL_FAKE_ADAPTER_PASS", "REAL_QODER_DUAL_PASS"}
+                else int(outcome == "DIAGNOSTIC_ONLY")
             ),
-            "real_provider": not SYNTHETIC,
+            "real_provider": not (SYNTHETIC or QODER_SYNTHETIC),
             "login_items_registered": False,
             "repo_ops_enabled": False,
             "owner_survived_core_restart": owner_survived_core_restart,
             "production_baseline_unchanged": baseline_unchanged,
             "temporary_directory_cleaned": cleaned,
+            "retained_fixture_id": root.name if QODER_REAL and not cleaned else None,
+            "stage_diagnosis": stages.diagnose(),
         }
         _save_evidence(evidence_path, report)
         print(json.dumps(report, sort_keys=True), flush=True)
-    assert outcome == ("SYNTHETIC_SDK_PASS" if SYNTHETIC else "DIAGNOSTIC_ONLY")
+    assert outcome == (
+        "QODER_LABEL_FAKE_ADAPTER_PASS"
+        if QODER_SYNTHETIC
+        else "SYNTHETIC_SDK_PASS"
+        if SYNTHETIC
+        else "REAL_QODER_DUAL_PASS"
+        if QODER_REAL
+        else "DIAGNOSTIC_ONLY"
+    )

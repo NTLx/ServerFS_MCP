@@ -6,11 +6,11 @@
 
 - [Website](https://ntlx.github.io/ServerFS_MCP/)
 - [Documentation](https://ntlx.github.io/ServerFS_MCP/docs/)
-- [Releases](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.25.0)
+- [Releases](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.26.0)
 
-**Current stable release: [v0.25.0](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.25.0).**
+**Current stable release: [v0.26.0](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.26.0).**
 
-**Development target: v0.26.0 (not released).** The candidate addresses multiple workdirs on named Linux Cores, multiple Agent workdirs on macOS Shared Cores, per-runtime proxy support for named Windows Bridge owners, and shared Bridge approval redaction/private audit. See the [v0.26.0 development plan](dev_plan_v0.26.0.md), [candidate release notes](docs/releases/v0.26.0.md) and [release checklist](docs/v0.26.0-release-checklist.md). Candidate capabilities do not belong to the v0.25.0 artifacts; use version-matched guides and artifacts.
+v0.26.0 restores multi-workdir Agent/Repo Ops on named Linux Cores, extends macOS Shared Cores to multiple Agent workdirs, supports explicit signed v2 on newly provisioned macOS Owned Cores, and adds per-runtime/ACP proxy configuration for named Windows Bridge owners. Signed v2 adds paginated task discovery scoped to an authorized alias; shared Bridge approvals retain private audit identity before public redaction and cannot remotely approve recognized outside-workdir writes. See the [release notes](docs/releases/v0.26.0.md) and [release checklist](docs/v0.26.0-release-checklist.md).
 
 ServerFS MCP is a cross-platform, self-hosted MCP filesystem service. It exposes explicitly configured local directories (workdirs) to AI clients, with read-only defaults and revision-guarded writes. Optional binary transfer, deterministic repository operations (Repo Ops) and host Agent delegation extend its capabilities. There is no shell or general command-execution interface.
 
@@ -44,13 +44,13 @@ A Shared Core does not own the Bridge lifecycle or gain extra authority from a s
 | --- | --- | --- |
 | Linux | Docker Compose for named Cores and optional Connectors; direct HTTP or internal networking; optional host user systemd Bridge | [Linux deployment](deployment/linux/README.md) |
 | macOS | Apple Silicon, native arm64, macOS 27, APFS; signed SMAppService / LaunchAgents and authenticated Unix IPC | [macOS deployment](deployment/macos/README.md) |
-| Windows | Windows 11 x64, local NTFS, matching Native Wheel; current-user Task Scheduler, Job Objects and Named Pipe, without WSL/VM | [Windows deployment](deployment/windows/v0250-native-operations.md) |
+| Windows | Windows 11 x64, local NTFS, matching Native Wheel; current-user Task Scheduler, Job Objects and Named Pipe, without WSL/VM | [Windows deployment](docs/deployment/windows/v0250-native-operations.md) |
 
 The public MCP contract and security outcomes are shared, not necessarily the internal implementation. Follow the platform guides for actual component combinations, named Connector support, installation and upgrade limits. No central service manager is introduced.
 
 ## Capabilities and security
 
-The filesystem surface has 11 tools. Binary transfer adds 2, Agent delegation adds 10, and Repo Ops adds 4. Capabilities are independently enabled; the full surface has 27 tools. Repo Ops does not launch an Agent. Agent delegation uses host-native Codex, Claude, Qoder or explicit ACP profiles; Jev is advisory only.
+The filesystem surface has 11 tools. Binary transfer adds 2, Agent delegation adds 11, including `list_agent_tasks` (usable on supporting signed-v2 attachments), and Repo Ops adds 4. Capabilities are independently enabled; the full registered surface has 28 tools. Actual operations depend on attachment protocol, grants and runtime support. Repo Ops does not launch an Agent. Agent delegation uses host-native Codex, Claude, Qoder or explicit ACP profiles; Jev is advisory only.
 
 Workdir containment, deny/reserved-path policy, revision checks and write authorization do not expand with ingress choice. Configure exact HTTP Host/Origin admission; public ingress requires caller authentication. Tunnel credentials are separate from HTTP caller credentials. Bridge attachment requires explicit per-Core authorization rather than trusting a shared UID/SID.
 
@@ -61,6 +61,6 @@ Begin with a minimal file-only instance; verify MCP file access, then add Connec
 - [Architecture and deployment choices](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) · [Getting Started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/)
 - [HTTP API Key](docs/api-key.md) · [OAuth](docs/oauth.md) · [Cloudflare Connector](docs/cloudflare-tunnel.md)
 - [Agent Bridge](agent_bridge/README.md) · [Agent Skills](skills/README.md) (seven Skills and a skills-only Plugin)
-- [Maintainer guide](docs/maintainers/README.md)
+- [Repository documentation index](docs/README.md) · [Maintainer guide](docs/maintainers/README.md)
 
-Use documentation, source and installation artifacts matching the target version; do not implicitly migrate existing instances. [Release notes](docs/releases/v0.25.0.md) and the [release checklist](docs/v0.25.0-release-checklist-2026-11-21.md) record actual acceptance and remaining gates. Historical evidence remains in `docs/releases/`, `docs/diagnostics/` and architecture decision records.
+Use documentation, source and installation artifacts matching the target version; do not implicitly migrate existing instances. [Release notes](docs/releases/v0.26.0.md) and the [release checklist](docs/v0.26.0-release-checklist.md) record actual acceptance and remaining gates. Historical evidence remains in `docs/releases/`, `docs/diagnostics/` and architecture decision records.

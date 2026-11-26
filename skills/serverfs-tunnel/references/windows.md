@@ -1,6 +1,6 @@
 # Windows OpenAI Connector
 
-Use `deployment/windows/v0250-native-operations.md` and primary Skill gates. For Cloudflare use [Cloudflare Windows](cloudflare-windows.md).
+Use `docs/deployment/windows/v0250-native-operations.md` and primary Skill gates. For Cloudflare use [Cloudflare Windows](cloudflare-windows.md).
 
 Install the requested provider runtime once per Core using verified installed controller and offline wheels. Additional same-provider named IDs share its environment but have independent manifests/credentials/tasks.
 

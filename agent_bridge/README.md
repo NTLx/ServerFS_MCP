@@ -1,16 +1,16 @@
 # ServerFS Agent Bridge
 
-The optional host-side Bridge owns Agent execution, task state, writer coordination and deterministic Repo Ops. Core and Connector lifecycles are separate. Choose `disabled` for file-only service, `owned` for a dedicated Bridge, or `shared` for attachment to an explicitly authorized owner. Named shared attachments have per-Core grants and method/alias scope; macOS owned uses private native IPC and manifest/policy checks instead. Shared Cores cannot manage the owner. Keep owner state and credentials private.
+The optional host-side Bridge owns Agent execution, task state, writer coordination and deterministic Repo Ops. Core and Connector lifecycles are separate. Choose `disabled` for file-only service, `owned` for a dedicated Bridge, or `shared` for attachment to an explicitly authorized owner. Named shared attachments have per-Core grants and method/alias scope; macOS Owned defaults to v1 private native IPC and manifest/policy checks; new Owned instances can explicitly select signed v2. Shared Cores cannot manage the owner. Keep owner state and credentials private.
 
 ## Deployment
 
 - [Linux named user systemd Bridge](../deployment/linux/README.md)
 - [macOS native SMAppService](../deployment/macos/README.md)
-- [Windows native Task Scheduler and Named Pipe](../deployment/windows/v0250-native-operations.md)
+- [Windows native Task Scheduler and Named Pipe](../docs/deployment/windows/v0250-native-operations.md)
 
 Repo Ops and Agent delegation are independently gated per workdir. Repo Ops never submits a provider task. Native Codex, Claude and Qoder plus fixed operator-configured ACP profiles are supported as documented; ACP needs workspace-write and must not infer unsupported capabilities. Provider authorization is provider-owned. Jev is advisory only. See the [Agent Bridge guide](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/) for task lifecycle, model discovery, recovery, diagnostics and limits.
 
-## v0.26.0 candidate: approval boundary and private audit
+## Approval boundary and private audit
 
 Public pending approvals and task events continue to redact absolute host paths outside
 the selected workdir to `<outside-workdir>`. That placeholder is **not** an
@@ -42,6 +42,12 @@ raw prompts and credentials are not persisted in this audit table. Deleting
 retained tasks cascades through their audit rows. These records are not
 exposed by public MCP APIs. A complete on-host security review must still
 verify owner ACL/mode, task expiry and live provider behavior.
+
+## Task discovery and runtime compatibility
+
+On signed-v2 attachments with explicit `task.list` and `task.get` grants, `list_agent_tasks(workdir, status="active", limit=20, cursor=None)` discovers retained tasks for one authorized Agent alias. Use `active`, `terminal` or `all` and opaque pagination. Signed v2 does not support continuation or idempotency keys; rediscover rather than blindly retrying an uncertain submission. Legacy v1 retains its documented task-by-ID and continuation semantics.
+
+Keep the native provider runtime and its SDK compatible. On macOS, Qoder SDK 1.0.15 with bundled CLI 1.1.61 passed real dual-workdir acceptance; the independently installed CLI 1.1.98 failed initialization with this SDK and with 1.0.17. Select a verified executable explicitly with `qoder_bin` when necessary. Do not overwrite the operator's CLI, configuration or local memory.
 
 ## Development
 

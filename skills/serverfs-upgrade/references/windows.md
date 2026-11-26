@@ -1,6 +1,6 @@
 # Windows upgrade
 
-Use the matching `deployment/windows/v0250-native-operations.md` and primary Skill gates.
+Use the matching `docs/deployment/windows/v0250-native-operations.md` and primary Skill gates.
 
 Named runtime install, initial private configuration and Connector helpers are create-only. They are not in-place upgrades; failed attempt markers and partial state must remain for diagnosis. Do not rerun, overwrite, delete or re-ACL to bypass checks. Stage trusted matching native x64 wheel artifacts and offline cache privately; plan explicit fresh-instance migration/cutover unless a documented supported alternative exists.
 

@@ -3,7 +3,7 @@ title: 受限网络 ARM64 部署
 description: 为网络受限或离线的 Linux ARM64 主机准备版本匹配的镜像组合。
 ---
 
-本指南适用于 Linux ARM64 Docker 部署。ServerFS 的发布工作流构建 amd64 和 arm64 镜像。选择实际目标版本：v0.25.0 是稳定版；在候选版通过发布门禁之前，不应假定 v0.26.0 镜像已经发布。候选版本测试使用经过验证的本地候选镜像。
+本指南适用于 Linux ARM64 Docker 部署。ServerFS 的发布工作流构建 amd64 和 arm64 镜像。选择精确目标版本，当前发行版为 v0.26.0。使用经过验证的正式 ARM64 镜像与匹配源码；独立构建的本地镜像属于另一构建产物。
 
 ## 1. 区分镜像获取与运行时网络
 
@@ -22,7 +22,7 @@ description: 为网络受限或离线的 Linux ARM64 主机准备版本匹配的
 
 ## 2. 选择精确镜像
 
-从目标 release 或候选构建获取版本匹配的 checkout 及可信精确镜像引用。避免使用 `latest` 或语义不明确的开发标签。示例使用 shell 变量；将占位值替换为实际经过验证、带版本标签的镜像引用，两台机器使用相同引用。
+从目标 release 或已验证的本地构建获取版本匹配的 checkout 及可信精确镜像引用。避免使用 `latest` 或语义不明确的开发标签。示例使用 shell 变量；将占位值替换为实际经过验证、带版本标签的镜像引用，两台机器使用相同引用。
 
 ```bash
 IMAGE='<exact-version-tagged-image-reference>'
@@ -31,7 +31,7 @@ docker pull --platform "$ARCH" "$IMAGE"
 docker image inspect --format '{{.Os}}/{{.Architecture}} {{.Id}}' "$IMAGE"
 ```
 
-若使用已经构建且可信的本地 ARM64 候选镜像，跳过上述 pull，直接检查该精确本地镜像。确认 `linux/arm64`，记录预期镜像 ID。依据可信发布 manifest/digest 或经过验证的候选构建核对来源；架构正确并不能证明镜像真实性。
+若使用已经构建且可信的本地 ARM64 镜像，跳过上述 pull，直接检查该精确本地镜像。确认 `linux/arm64`，记录预期镜像 ID。依据可信发布 manifest/digest 或经过验证的本地构建核对来源；架构正确并不能证明镜像真实性。
 
 如果目标机可以通过代理访问 GHCR，按 [Docker 官方 daemon proxy 指南](https://docs.docker.com/engine/daemon/proxy/)配置 Docker daemon，并直接在目标机拉取。Docker daemon 的代理属于宿主机配置，不由 ServerFS 管理。否则在联网机器获取镜像，再按下一节转运。
 
