@@ -147,7 +147,11 @@ async def serve(root: Path, *, synthetic: bool) -> None:
         adapter = SyntheticQoderAdapter(root, data["expected"])
     else:
         adapter = QoderAdapter(
-            QoderSettings(enabled=True, event_idle_timeout_seconds=45.0),
+            QoderSettings(
+                enabled=True,
+                event_idle_timeout_seconds=45.0,
+                qoder_bin=os.environ.get("SERVERFS_TEST_QODER_BUNDLED_BIN", "qodercli"),
+            ),
             client_factory=lambda options: ObservedQoderClient(options, root / "qoder-sdk.json"),
         )
     policies = [

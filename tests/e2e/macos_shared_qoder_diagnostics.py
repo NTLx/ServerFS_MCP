@@ -50,11 +50,36 @@ SDK_ERROR_CLASSES = frozenset(
         "ConnectionError",
         "FileNotFoundError",
         "PermissionError",
+        "Exception",
+        "ValueError",
+        "TypeError",
+        "AttributeError",
+        "JSONDecodeError",
+        "CLIConnectionError",
+        "CLINotFoundError",
+        "ProcessError",
+        "ModelPolicyTimeoutError",
+        "TimeoutErrorCause",
+        "CLIConnectionErrorCause",
+        "ProcessErrorCause",
     }
 )
 
 
 def safe_sdk_error_class(exc: BaseException) -> str:
+    current = exc
+    seen = set()
+    for _ in range(4):
+        if id(current) in seen:
+            break
+        seen.add(id(current))
+        if current is not exc:
+            candidate = type(current).__name__ + "Cause"
+            if candidate in SDK_ERROR_CLASSES:
+                return candidate
+        if current.__cause__ is None:
+            break
+        current = current.__cause__
     name = type(exc).__name__
     return name if name in SDK_ERROR_CLASSES else "OTHER"
 

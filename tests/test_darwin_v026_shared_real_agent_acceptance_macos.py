@@ -263,7 +263,10 @@ async def _await_task(
     diagnostics: list[dict],
     metadata_path: Path,
 ) -> dict:
-    deadline = time.monotonic() + 120
+    # Qoder SDK 1.0.15 has a 120s initialize timeout, plus transport teardown.
+    # Do not let the acceptance poller cancel first and obscure its terminal error.
+    wait_seconds = 170 if QODER_REAL else 120
+    deadline = time.monotonic() + wait_seconds
     observations = []
     last_state = "unknown"
     while time.monotonic() < deadline:
@@ -386,7 +389,7 @@ async def _await_task(
         except Exception:
             timeout_record["qoder_sdk_before_teardown_invalid"] = True
     diagnostics.append(timeout_record)
-    pytest.fail("Provider task did not reach a terminal state within 120 seconds")
+    pytest.fail(f"Provider task did not reach a terminal state within {wait_seconds} seconds")
 
 
 def _evidence_path(tmp_path: Path) -> Path:
@@ -431,7 +434,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
         runtime=RUNTIME,
         test_file=Path(__file__),
         synthetic=SYNTHETIC_MODE,
-        expected_tasks=2 if SYNTHETIC_MODE else 1,
+        expected_tasks=2 if SYNTHETIC_MODE or QODER_REAL else 1,
     )
     current_stage = "fixture_started"
     stages.record(current_stage)
@@ -449,8 +452,13 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
     diagnostics: list[dict] = []
     outcome = "NOT_ACCEPTED"
     owner_survived_core_restart = False
-    temporary = tempfile.TemporaryDirectory(prefix="sf-v026-shared-claude-", dir="/private/tmp")
-    root = Path(temporary.name).resolve(strict=True)
+    if QODER_REAL:
+        root = Path(tempfile.mkdtemp(prefix="sf-v026-shared-qoder-", dir="/private/tmp")).resolve(
+            strict=True
+        )
+    else:
+        temporary = tempfile.TemporaryDirectory(prefix="sf-v026-shared-claude-", dir="/private/tmp")
+        root = Path(temporary.name).resolve(strict=True)
     try:
         root.chmod(0o700)
         home = root / "home"
@@ -481,7 +489,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
         fixture_hashes = {}
         for alias, path in paths.items():
             path.mkdir(mode=0o700)
-            if QODER_SYNTHETIC:
+            if QODER_MODE:
                 fixture_file = path / "fixture-marker.txt"
                 fixture_file.write_text(markers[alias] + "\n", encoding="utf-8")
                 fixture_hashes[alias] = hashlib.sha256(fixture_file.read_bytes()).hexdigest()
@@ -657,7 +665,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
             assert denied.is_error
 
             observed = {}
-            for alias in aliases if SYNTHETIC_MODE else aliases[:1]:
+            for alias in aliases if SYNTHETIC_MODE or QODER_REAL else aliases[:1]:
                 marker = markers[alias]
                 metadata_path = root / "metadata.json"
                 metadata_path.unlink(missing_ok=True)
@@ -692,7 +700,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                 task_id = page["tasks"][0]["task_id"]
                 terminal = owner_loop.call(
                     _await_task(port, core_token, task_id, marker, diagnostics, metadata_path),
-                    timeout=140,
+                    timeout=190 if QODER_REAL else 140,
                 )
                 current_stage = "task_terminal"
                 stages.record(current_stage)
@@ -726,9 +734,16 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                 )
                 if successful:
                     observed[alias] = (task_id, terminal["result_sha256"])
-                if SYNTHETIC_MODE:
-                    assert successful, "Synthetic SDK task did not satisfy the contract"
-            successful_diagnostic = len(observed) == (2 if SYNTHETIC_MODE else 1)
+                if SYNTHETIC_MODE or QODER_REAL:
+                    assert successful, "SDK task did not satisfy the contract"
+                if QODER_REAL:
+                    for name, path in paths.items():
+                        assert path.is_dir() and not path.is_symlink()
+                        assert {entry.name for entry in path.iterdir()} == {"fixture-marker.txt"}
+                        f = path / "fixture-marker.txt"
+                        assert f.is_file() and not f.is_symlink()
+                        assert hashlib.sha256(f.read_bytes()).hexdigest() == fixture_hashes[name]
+            successful_diagnostic = len(observed) == (2 if SYNTHETIC_MODE or QODER_REAL else 1)
             foreign_client = CoreBridgeClientV2(
                 socket_path,
                 bridge_id=bridge_id,
@@ -802,7 +817,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                         recovered["final_response"].encode("utf-8")
                     ).hexdigest()
                     assert recovered_hash == digest
-                if QODER_SYNTHETIC:
+                if QODER_MODE:
                     for alias, path in paths.items():
                         assert {entry.name for entry in path.iterdir()} == {"fixture-marker.txt"}
                         fixture_file = path / "fixture-marker.txt"
@@ -816,7 +831,13 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                 outcome = (
                     "QODER_LABEL_FAKE_ADAPTER_PASS"
                     if QODER_SYNTHETIC
-                    else ("SYNTHETIC_SDK_PASS" if SYNTHETIC else "DIAGNOSTIC_ONLY")
+                    else (
+                        "SYNTHETIC_SDK_PASS"
+                        if SYNTHETIC
+                        else "REAL_QODER_DUAL_PASS"
+                        if QODER_REAL
+                        else "DIAGNOSTIC_ONLY"
+                    )
                 )
             _stop(child)
             child = None
@@ -851,7 +872,26 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
             except Exception:
                 outcome = "NOT_ACCEPTED"
                 diagnostics.append({"classification": "QODER_SDK_EVIDENCE_INVALID"})
-        if temporary is not None:
+        if QODER_REAL and outcome == "REAL_QODER_DUAL_PASS" and owner is None and child is None:
+            # All real aliases and marker hashes were checked before teardown.
+            # Recheck after the owner has stopped; retain on any discrepancy.
+            try:
+                for alias, path in paths.items():
+                    assert path.is_dir() and not path.is_symlink()
+                    assert {entry.name for entry in path.iterdir()} == {"fixture-marker.txt"}
+                    f = path / "fixture-marker.txt"
+                    assert f.is_file() and not f.is_symlink()
+                    assert hashlib.sha256(f.read_bytes()).hexdigest() == fixture_hashes[alias]
+                import shutil
+
+                assert shutil.rmtree.avoids_symlink_attacks
+                shutil.rmtree(root)
+            except Exception:
+                outcome = "NOT_ACCEPTED"
+                diagnostics.append(
+                    {"classification": "FINAL_FIXTURE_INTEGRITY_OR_CLEANUP_UNVERIFIED"}
+                )
+        elif temporary is not None:
             temporary.cleanup()
         cleaned = not root.exists()
         if cleaned:
@@ -871,13 +911,14 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
                 else "ClaudeAdapter"
             ),
             "qoder_sdk_evidence": qoder_sdk_evidence,
-            "workdir_content_verified": QODER_SYNTHETIC
-            and outcome == "QODER_LABEL_FAKE_ADAPTER_PASS",
+            "workdir_content_verified": outcome
+            in {"QODER_LABEL_FAKE_ADAPTER_PASS", "REAL_QODER_DUAL_PASS"},
             "workdirs": 2,
             "tasks": diagnostics,
             "verified_workdirs": (
                 2
-                if outcome in {"SYNTHETIC_SDK_PASS", "QODER_LABEL_FAKE_ADAPTER_PASS"}
+                if outcome
+                in {"SYNTHETIC_SDK_PASS", "QODER_LABEL_FAKE_ADAPTER_PASS", "REAL_QODER_DUAL_PASS"}
                 else int(outcome == "DIAGNOSTIC_ONLY")
             ),
             "real_provider": not (SYNTHETIC or QODER_SYNTHETIC),
@@ -886,6 +927,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
             "owner_survived_core_restart": owner_survived_core_restart,
             "production_baseline_unchanged": baseline_unchanged,
             "temporary_directory_cleaned": cleaned,
+            "retained_fixture_id": root.name if QODER_REAL and not cleaned else None,
             "stage_diagnosis": stages.diagnose(),
         }
         _save_evidence(evidence_path, report)
@@ -895,5 +937,7 @@ def test_shared_core_real_claude_single_task_diagnostic(tmp_path: Path) -> None:
         if QODER_SYNTHETIC
         else "SYNTHETIC_SDK_PASS"
         if SYNTHETIC
+        else "REAL_QODER_DUAL_PASS"
+        if QODER_REAL
         else "DIAGNOSTIC_ONLY"
     )

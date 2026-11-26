@@ -100,3 +100,16 @@ def test_shared_qoder_stage_evidence_diagnoses_failure_without_terminal(tmp_path
         "last_completed_stage": "task_discovered",
         "next_expected_stage": "task_terminal",
     }
+
+
+def test_sdk_exception_allowlisted_cause_is_bounded():
+    class ProcessError(Exception):
+        pass
+
+    outer = Exception("private message")
+    outer.__cause__ = ProcessError("private provider detail")
+    assert safe_sdk_error_class(outer) == "ProcessErrorCause"
+    outer.__cause__ = TimeoutError("private path")
+    assert safe_sdk_error_class(outer) == "TimeoutErrorCause"
+    outer.__cause__ = outer
+    assert safe_sdk_error_class(outer) == "Exception"
