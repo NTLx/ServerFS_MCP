@@ -33,9 +33,9 @@ Do not widen permissions without authorization, reveal credentials, expose priva
 
 | Platform | Read only the applicable source | Key constraint |
 | --- | --- | --- |
-| Linux | `.env.example`, `deployment/linux/README.md` | Slot overrides; v0.25.0 signed Bridge binds slot 01; v0.26.0 candidate supports 1–16 explicitly granted Agent/Repo Ops slots. |
-| macOS | `serverfs.toml.example`, `deployment/macos/README.md` | Shared Core: one Agent workdir in v0.25.0, 1–16 owner-bound Agent workdirs in the v0.26.0 candidate; no Repo Ops; native staging is create-only. |
-| Windows | `serverfs.toml.example`, `deployment/windows/v0250-native-operations.md` | Initial helper is create-only; shared grant policy must match owner. v0.26.0 candidate adds explicit named runtime proxy opt-in; use the matching runbook. |
+| Linux | `.env.example`, `deployment/linux/README.md` | Slot overrides; v0.26.0 supports 1–16 explicitly granted Agent/Repo Ops slots. |
+| macOS | `serverfs.toml.example`, `deployment/macos/README.md` | Shared Core: 1–16 owner-bound Agent workdirs; no Shared Repo Ops. New Owned v2 supports per-alias Agent/Repo Ops grants; native staging is create-only. |
+| Windows | `serverfs.toml.example`, `docs/deployment/windows/v0250-native-operations.md` | Initial helper is create-only; shared grant policy must match owner. v0.26.0 supports explicit named runtime/ACP proxy opt-in; use the matching runbook. |
 
 Native TOML uses shared `[defaults]` for file/binary limits; it does not accept Linux slot overrides.
 

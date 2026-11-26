@@ -11,14 +11,14 @@ Repository-wide maintainer entry point. Keep this file short; durable rules and 
 
 ## Current baseline
 
-- Stable release v0.25.0; development target v0.26.0, not release-authorized. See the [v0.26.0 plan](dev_plan_v0.26.0.md) for current scope and gates and the [v0.25.0 checklist](docs/v0.25.0-release-checklist-2026-11-21.md) for historical evidence. Do not present candidate capabilities as released.
+- Current release: v0.26.0. See the [release notes](docs/releases/v0.26.0.md) for supported capabilities, the [release checklist](docs/v0.26.0-release-checklist.md) and [evidence ledger](docs/releases/v0.26.0-evidence.md) for measured acceptance, and the [versioned plan](docs/plans/dev_plan_v0.26.0.md) for design history. Release-facing copy describes v0.26.0; publication and deployment still require their own authorization.
 - Named persistent Core, zero or more supported Connectors and optional host Bridge have distinct identities, scoped lifecycles and dependency guards. Local stdio is separate. Direct HTTP needs no Connector. File-only needs no Bridge; owned/shared modes are selected at provisioning. Shared Core cannot operate its owner; same UID/SID is not authorization.
-- Linux: Docker Compose per Core, direct HTTP or optional OpenAI/Cloudflare, user systemd host Bridge; signed v2 attachments. macOS: native arm64 Apple Silicon, macOS 27, APFS, signed SMAppService; owned uses private IPC/policy checks, shared uses owner grants. Windows: native Windows 11 x64/NTFS, current-user Scheduler, Job Objects and Named Pipe. Use the platform's named lifecycle; no forced private IPC parity or central instance manager.
+- Linux: Docker Compose per Core, direct HTTP or optional OpenAI/Cloudflare, user systemd host Bridge; signed v2 attachments. macOS: native arm64 Apple Silicon, macOS 27, APFS, signed SMAppService; owned defaults to v1 private IPC/policy checks or explicitly selected signed v2; shared uses v2 owner grants. Windows: native Windows 11 x64/NTFS, current-user Scheduler, Job Objects and Named Pipe. Use the platform's named lifecycle; no forced private IPC parity or central instance manager.
 - Current runbooks, not historical/default-owner recipes, govern current operation. Do not infer platform or provider parity.
 
 ## Read the smallest relevant source set
 
-- [Maintainer index](docs/maintainers/README.md): sources, current release and navigation.
+- [Repository documentation index](docs/README.md) and [maintainer index](docs/maintainers/README.md): current guides, versioned plans and evidence.
 - [Invariants](docs/maintainers/invariants.md): required filesystem, protocol, authorization, Agent, Repo Ops and platform contracts.
 - [Workflow](docs/maintainers/workflow.md): exact validation gates, documentation, release and deployment discipline.
 - Current product docs, applicable platform runbook, actual implementation/schema and tests. Resolve conflicts using executable evidence. Historical plans and diagnostics describe their own pinned version, not automatic current acceptance.
@@ -32,14 +32,14 @@ For operational tasks select one matching [Skill](skills/README.md), then its ap
 - Repo Ops has exactly four public tools, operator-owned integrity-pinned actions and writer coordination; never replace deterministic work with Agent delegation.
 - Preserve public schemas, stable errors and protocol-clean stdout; never expose secrets, private paths or raw sensitive data in normal logs.
 - Provider configuration/authentication/default models/sandbox remain provider-owned. `model=None` means no override; no automatic cross-provider fallback, fabricated model catalogs or auto-approval. Jev is optional advisory-only and external transfer requires authorization.
-- Signed v2 Core grants reject continuation/idempotency keys. Do not blindly retry uncertain submission, bypass grants/leases or clear recovery guards. In the v0.26.0 candidate, preserve private approval identity before public redaction; a recognized outside-workdir write request cannot be approved remotely. Advice never grants authority.
+- Signed v2 Core grants support scoped task discovery (`list_agent_tasks`) but reject continuation/idempotency keys. Do not blindly retry uncertain submission, bypass grants/leases or clear recovery guards. Preserve private approval identity before public redaction; a recognized outside-workdir write request cannot be approved remotely. Advice never grants authority.
 - **Standard protocol first.** Before adding any provider-specific native runtime, follow the [native runtime admission gate](docs/maintainers/invariants.md#native-runtime-admission-gate). Use ACP when sufficient. An Agent may draft the admission record but cannot self-approve or start native-adapter implementation without explicit maintainer PASS.
 
 ## Working and verification rules
 
 1. Inspect affected code, policy, ownership and actual baseline before editing.
 2. Keep evidence of requested outcome, changed files, checks and unverified gates. Run relevant tests/builds; an unexecuted check is Not verified.
-3. Keep current bilingual docs semantically aligned. Follow the workflow's site and stale-current-state scan gates; preserve historical evidence and immutable release pins.
+3. Read complete affected current documents before revision; keep bilingual docs semantically aligned. Follow the workflow's site and stale-current-state scan gates; use searches as supplemental checks, not a substitute for review. Preserve historical evidence and immutable release pins. Local Agent memory (`.remember/`) is not project source or a Git artifact.
 4. Delegated verification-only/Git-only/deployment-only work does not gain authority to edit source on discovering a failure. Prefer direct deterministic operations; no provider safety bypass.
 5. Platform-specific compatibility proofs and Windows PowerShell 5.1 subprocess rules live in [workflow](docs/maintainers/workflow.md); use those before native maintenance.
 

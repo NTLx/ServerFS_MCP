@@ -69,9 +69,9 @@ Linux defaults both off, but do not publish an unauthenticated Core. Native HTTP
 | [Agent delegation](../agent-bridge/) / [ACP](../acp/) | Authorized Bridge and configured runtime allowlist; runtime execution requires workspace-write and a writable workdir |
 | [Jev](../jev-advisors/) | Optional Bridge-side advice, never authorization |
 
-In v0.25.0, named Linux signed Bridge attachment binds one Agent/Repo Ops slot (01), and macOS Shared Core binds one Agent workdir. The v0.26.0 candidate supports 1–16 explicitly granted Linux Agent and/or Repo Ops slots and 1–16 owner-bound macOS Shared Agent workdirs. macOS Shared Core still does not support Repo Ops. Windows initial shared provisioning requires exact policy subsets and individual grants. Use the platform runbooks; a capability switch is not a substitute for a valid binding.
+v0.26.0 supports 1–16 explicitly granted Linux Agent and/or Repo Ops slots and 1–16 owner-bound macOS Shared Agent workdirs. macOS Shared Core does not support Repo Ops; new Owned Cores may explicitly select signed v2 for per-alias Agent/Repo Ops grants. Windows initial shared provisioning requires exact policy subsets and individual grants. Use the platform runbooks; a capability switch is not a substitute for a valid binding.
 
-Keep provider executables and credentials on the host. Configure each component's outbound proxy independently. The Linux compatibility renderer shares endpoint fields for Tunnel, Agent and Jev but has separate switches; Agent proxying requires a credentialless endpoint. Named Bridge owners have their own explicit policy. Do not assume changing a Core env changes the owner.
+Keep provider executables and credentials on the host. Configure each component's outbound proxy independently. The Linux compatibility renderer shares endpoint fields for Tunnel, Agent and Jev but has separate switches; Agent proxying requires a credentialless endpoint. Named Bridge owners have their own explicit policy. Windows named provisioning accepts per-runtime/ACP `use_proxy=true` with a protected credentialless `--agent-proxy-env-file`. Do not assume changing a Core env changes the owner.
 
 ## 6. Verify effective policy
 

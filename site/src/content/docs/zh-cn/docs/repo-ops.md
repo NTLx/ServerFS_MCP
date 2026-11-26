@@ -5,7 +5,7 @@ description: 通过显式授权的宿主机 Bridge 执行确定性仓库操作�
 
 Deterministic Repo Ops 是可选的非 Agent 仓库能力，仅通过显式授权的宿主机 Bridge 提供有界仓库操作，不提供 Shell，也不回退到 Agent。
 
-Repo Ops 按 workdir 启用，并须通过所选 Bridge 接入方式的授权。命名共享 Core grant 相互独立；macOS owned 使用私有原生授权。macOS 命名共享 Core 不支持 Repo Ops。
+Repo Ops 按 workdir 启用，并须通过所选 Bridge 接入方式的授权。命名共享 Core grant 相互独立；macOS Owned v1 使用私有原生授权，显式配置的 Owned v2 使用逐别名 grant。macOS 命名共享 Core 不支持 Repo Ops。
 
 ## 产品边界
 
@@ -30,7 +30,7 @@ Repo Ops 按 workdir 启用，并须通过所选 Bridge 接入方式的授权。
 
 ## 按 Workdir 配置
 
-Repo Ops 默认关闭。Linux 命名部署需在 Core slot 和对应的 owner 私有 JSON `workdirs` 条目（`repo_ops_enabled: true`）中同时启用，签名 grant 允许所需 `repo.*` 方法。详见 [Linux 指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)。v0.25.0 签名 overlay 仅绑定 slot 01；v0.26.0 候选版支持 1–16 个显式授权槽位，包括 Agent 禁用的 Repo Ops-only 槽位。可写仓库的 Core 侧设置如下：
+Repo Ops 默认关闭。Linux 命名部署需在 Core slot 和对应的 owner 私有 JSON `workdirs` 条目（`repo_ops_enabled: true`）中同时启用，签名 grant 允许所需 `repo.*` 方法。详见 [Linux 指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)。v0.26.0 签名 overlay 支持 1–16 个显式授权槽位，包括 Agent 禁用的 Repo Ops-only 槽位。可写仓库的 Core 侧设置如下：
 
 ```text
 WORKDIR_01_ALIAS=project
@@ -161,9 +161,11 @@ Repo Ops 独立增加 4 个工具；组合如下：
 | 文件系统 + 二进制 | 13 |
 | 文件系统 + Repo Ops | 15 |
 | 文件系统 + 二进制 + Repo Ops | 17 |
-| 文件系统 + Agent | 21 |
-| 文件系统 + 二进制 + Agent | 23 |
-| 文件系统 + Agent + Repo Ops | 25 |
-| 文件系统 + 二进制 + Agent + Repo Ops | 27 |
+| 文件系统 + Agent | 22 |
+| 文件系统 + 二进制 + Agent | 24 |
+| 文件系统 + Agent + Repo Ops | 26 |
+| 文件系统 + 二进制 + Agent + Repo Ops | 28 |
+
+11 个 Agent 工具包含 `list_agent_tasks`，有效调用需要支持该方法的签名 v2 接入。
 
 实际验收以目标版本发布清单和所选平台独立组件的验证记录为准。

@@ -12,9 +12,9 @@ ServerFS runs on Apple Silicon, native arm64, macOS 27.x and local APFS, with th
 | Local stdio | The MCP client is local and needs no persistent service |
 | File-only Core | You need authenticated HTTP file access, without a Bridge |
 | Owned Bridge | A Core needs its own Agent or Repo Ops execution boundary |
-| Shared Bridge | Multiple Cores need an existing owner-managed v2 Bridge; each Core supports one bound Agent workdir in v0.25.0 or 1–16 owner-bound Agent workdirs in the v0.26.0 candidate, with Repo Ops disabled |
+| Shared Bridge | Multiple Cores need an existing owner-managed v2 Bridge; each Core supports 1–16 owner-bound Agent workdirs, with Repo Ops disabled |
 
-File-only and owned Cores support optional OpenAI and Cloudflare Connectors. Shared Cores currently have no Connector staging interface. An owned pair uses a private native socket and policy checks; shared attachment uses individual signed grants.
+File-only and owned Cores support optional OpenAI and Cloudflare Connectors. Shared Cores currently have no Connector staging interface. An Owned pair defaults to v1 private native socket and policy checks. New Owned instances may explicitly use `owned-stage --agent-protocol v2` for signed per-alias Agent/Repo Ops grants; do not switch an existing instance in place. Shared attachment uses individual signed v2 grants.
 
 ## Deploy
 
@@ -31,4 +31,4 @@ For same-provider additional Connector IDs, predeclare them at file-only/owned s
 
 Check anonymous denial, authenticated MCP initialization, safe workdir access and any explicitly enabled Agent/Repo Ops tools. A registered job does not prove public reachability. Operate each Connector by its exact identity; check that unrelated components remain running and reinitialize the session after restart.
 
-Stop Connectors before stopping their Core or owned pair. Shared Core operations never manage the owner Bridge. The named staging commands create new instances; use an explicit migration or rollback plan for existing deployments. Release-level acceptance and current limitations are tracked in the [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.25.0-release-checklist-2026-11-21.md).
+Stop Connectors before stopping their Core or owned pair. Shared Core operations never manage the owner Bridge. The named staging commands create new instances; use an explicit migration or rollback plan for existing deployments. Release-level acceptance and current limitations are tracked in the [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.26.0-release-checklist.md).

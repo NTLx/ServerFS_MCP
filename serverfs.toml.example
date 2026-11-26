@@ -3,7 +3,7 @@
 # Local stdio: serverfs serve --config /absolute/path/serverfs.toml
 # Read-only diagnosis: serverfs doctor --config /absolute/path/serverfs.toml
 # For named persistent HTTP, follow deployment/macos/README.md or
-# deployment/windows/v0250-native-operations.md. TOML is Core policy, not a
+# docs/deployment/windows/v0250-native-operations.md. TOML is Core policy, not a
 # service manifest, Connector credential or signed Bridge grant.
 # Keep all credentials, private service state and provider tokens outside
 # exposed workdirs. Never put secrets in TOML.

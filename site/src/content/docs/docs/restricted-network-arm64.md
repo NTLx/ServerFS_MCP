@@ -3,7 +3,7 @@ title: Restricted-network ARM64 Deployment
 description: Prepare a version-matched Linux ARM64 image set for a restricted or offline host.
 ---
 
-This guide applies to Linux ARM64 Docker deployments. ServerFS release workflows build amd64 and arm64 images. Select the actual target release: v0.25.0 is the stable release; do not assume v0.26.0 images are published before candidate release gates pass. Candidate testing uses the verified local candidate image instead.
+This guide applies to Linux ARM64 Docker deployments. ServerFS release workflows build amd64 and arm64 images. Select the exact target release, v0.26.0 for the current distribution. Use the verified published ARM64 image and matching checkout; an independently built local image is a separate artifact.
 
 ## 1. Separate image acquisition from runtime networking
 
@@ -22,7 +22,7 @@ Check the target using `uname -m`; a native ARM64 deployment expects `aarch64` o
 
 ## 2. Choose the exact image
 
-Get the version-matched checkout and a trusted exact image reference from the intended release or candidate build. Avoid `latest` and ambiguous development tags. The examples use shell variables; replace the placeholder with the actual verified, version-tagged image reference and use the same reference on both machines.
+Get the version-matched checkout and a trusted exact image reference from the intended release or a verified local build. Avoid `latest` and ambiguous development tags. The examples use shell variables; replace the placeholder with the actual verified, version-tagged image reference and use the same reference on both machines.
 
 ```bash
 IMAGE='<exact-version-tagged-image-reference>'
@@ -31,7 +31,7 @@ docker pull --platform "$ARCH" "$IMAGE"
 docker image inspect --format '{{.Os}}/{{.Architecture}} {{.Id}}' "$IMAGE"
 ```
 
-For an already built, trusted local ARM64 candidate image, skip the pull above and inspect that exact local image instead. Require `linux/arm64`; record the expected image ID. Validate the source against the trusted release manifest/digest or your verified candidate build. Image architecture alone is not authenticity.
+For an already built, trusted local ARM64 image, skip the pull above and inspect that exact local image instead. Require `linux/arm64`; record the expected image ID. Validate the source against the trusted release manifest/digest or your verified local build. Image architecture alone is not authenticity.
 
 If the target can access GHCR through a proxy, configure the Docker daemon using the [official Docker daemon proxy guide](https://docs.docker.com/engine/daemon/proxy/) and execute the pull on the target. Docker daemon proxy configuration is host-level and outside ServerFS ownership. Otherwise acquire the image on a connected machine and transfer it using the next section.
 

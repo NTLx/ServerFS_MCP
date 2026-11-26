@@ -3,7 +3,7 @@ title: Agent Skills
 description: 按任务选择 ServerFS 运维 Skill，并使用仅包含 Skills 的可移植 Agent Plugin。
 ---
 
-ServerFS 维护七个运维 [Agent Skills](https://github.com/NTLx/ServerFS_MCP/tree/main/skills)，用于指导 Agent 安全使用已有产品接口。Skills 自身不安装 ServerFS 服务、不增加 MCP 工具、不授予权限。
+ServerFS 维护七个运维 [Agent Skills](https://github.com/NTLx/ServerFS_MCP/tree/v0.26.0/skills)，用于指导 Agent 安全使用已有产品接口。Skills 自身不安装 ServerFS 服务、不增加 MCP 工具、不授予权限。
 
 ## 选择一个 Skill
 
@@ -34,7 +34,7 @@ Repo Ops 不新增独立 Skill：策略由 `serverfs-configure` 管理，接入�
 
 ## 可移植 Agent Plugin
 
-根目录 `plugin.json` 是 skills-only 的可移植 Agent Plugins manifest。v0.25.0 构建产物为 `serverfs-plugin-v0.25.0.zip`。v0.26.0 候选 Skills 可在本地验证并构建为 `serverfs-plugin-v0.26.0.zip`，但尚未正式发布；发布须通过发布门禁。使用可信、版本匹配的产物，通过实际 Agent 客户端支持的 Plugin 安装方式导入。
+根目录 `plugin.json` 是 skills-only 的可移植 Agent Plugins manifest。v0.26.0 发布产物为 `serverfs-plugin-v0.26.0.zip`。使用可信、版本匹配的产物，通过实际 Agent 客户端支持的 Plugin 安装方式导入。
 
 ZIP 包含 `serverfs/plugin.json` 和七个 Skill 目录及 Markdown Reference，不含 Skills 索引、完整 checkout、`mcp.json`、实例端点 URL 或凭据。实际 ServerFS MCP 连接需另外配置；ZIP 不会自动复制 Skills 至 Provider 私有目录。
 

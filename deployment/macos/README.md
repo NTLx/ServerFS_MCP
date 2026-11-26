@@ -2,7 +2,7 @@
 
 Use Apple Silicon, native arm64, macOS 27.x and local APFS. ServerFS runs as the current user and respects macOS filesystem permissions and privacy controls. Persistent services use signed SMAppService / LaunchAgents, without Docker, Rosetta or a root LaunchDaemon.
 
-Use a version-matched checkout and installed runtimes. This runbook covers **new named instances**, not migration of an existing default installation.
+Use the v0.26.0 checkout and matching installed runtimes. This runbook covers **new named instances**, not migration of an existing default installation.
 
 ## 1. Choose your deployment
 
@@ -11,10 +11,10 @@ Use a version-matched checkout and installed runtimes. This runbook covers **new
 | Local MCP client only | Native stdio: `serverfs serve` |
 | Persistent HTTP file service | File-only Core (`disabled`) |
 | Agent delegation and/or Repo Ops with its own Bridge | Owned Core/Bridge pair (`owned`) |
-| Multiple Cores using an existing v2 Bridge owner | Shared Core (`shared`): one owner-bound Agent workdir in v0.25.0; 1–16 in the v0.26.0 candidate (versioned private binding); no Repo Ops |
+| Multiple Cores using an existing v2 Bridge owner | Shared Core (`shared`): 1–16 owner-bound Agent workdirs (versioned private binding); no Repo Ops |
 | Optional OpenAI or Cloudflare ingress | Stage Connectors on a file-only or owned Core |
 
-The named Shared Core has no Connector staging path. It may expose its authenticated loopback HTTP endpoint to an independently managed client or proxy. Do not assume every architecture topology is implemented by the same native commands. In particular, the owned Bridge uses its private native socket and policy checks; the shared path additionally requires owner-issued v2 grants.
+The named Shared Core has no Connector staging path. It may expose its authenticated loopback HTTP endpoint to an independently managed client or proxy. Do not assume every architecture topology is implemented by the same native commands. In particular, the Owned Bridge defaults to private native v1 socket and policy checks; a newly staged Owned v2 Core and the Shared path use signed grants.
 
 ## 2. Prepare a minimal Core
 
@@ -94,7 +94,7 @@ read_only = true
 repo_ops_enabled = true
 ```
 
-For Agent delegation, also configure `[agent]`, provider executables and the matching runtime allowlist using the native TOML schema in [Agent Bridge](../../agent_bridge/README.md). Keep provider credentials outside workdirs and in provider-native configuration. Do not copy fake-runtime test configurations.
+For Agent delegation, also configure `[agent]`, provider executables and the matching runtime allowlist using the native TOML schema in [Agent Bridge](../../agent_bridge/README.md). Keep provider credentials outside workdirs and in provider-native configuration. Do not copy fake-runtime test configurations. For Qoder, select a CLI compatible with the pinned SDK; the tested combination is SDK 1.0.15 with its bundled CLI 1.1.61. Set `qoder_bin` in `[agent.qoder]` to the verified absolute executable path when needed; do not overwrite or downgrade the user's installed CLI.
 
 Prepare a separate `owned.env` with a fresh key and exact hosts `mcp-owned.example.invalid,127.0.0.1:18782`.
 
@@ -111,13 +111,15 @@ owned=("$PY" -m serverfs_mcp.darwin_instance_cli --instance blue-owned)
 "${owned[@]}" owned-status
 ```
 
+The example uses the default v1 protocol. To provision a **new** signed-v2 Owned Core, add `--agent-protocol v2` to `owned-stage`. Staging generates private per-alias bindings and grants from the selected policy; Repo-only aliases receive no task methods, and read-only Repo aliases receive inspection only. Do not switch the protocol of an existing instance in place. For signed-v2 Agent aliases, use `list_agent_tasks` with the exact alias when recovering retained task IDs; v2 submission does not accept continuation or idempotency keys.
+
 The preflight checks owner/writable-root isolation; staging derives the private Bridge policy from the TOML. Start registers Bridge then Core, not Connectors. Verify Core MCP and only the configured Agent/Repo Ops capabilities. The named Bridge uses a short, derived Unix socket in the user's native runtime directory; do not hardcode another instance's socket or modify its private state.
 
 ## 5. Optional: shared Bridge
 
 Use this advanced path only when an independent same-user v2 Bridge owner is already configured. The shared CLI does not provision or supervise that owner. Each Core needs a distinct owner-issued grant and private binding; owning a socket or running under the same UID is not sufficient.
 
-v0.26.0 candidate scope: one to sixteen Agent-enabled workdirs per Shared Core (additional file-only workdirs are possible), **Repo Ops disabled**, no named Connector staging. The owner must independently maintain the matching per-alias workdir policies, task ownership and signed grants. The owner's private grant writer is `serverfs_agent_bridge.core_grants_private.provision_private_core_grants`; compute each `core_workdir_policy_digest` from the actual Bridge owner policy (never a TOML file hash). Existing `schema_version: 1` mode-0600 bindings containing `workdir_alias`, `workdir_path` and `policy_revision` remain supported for a single alias. For multiple Agent-enabled roots the owner provides a mode-0600 `schema_version: 2` binding with `bridge_id`, `core_id`, `key_id`, `secret_hex`, `bridge_config_path`, `socket_path`, and a `workdirs` list of 2–16 `{alias, path, policy_revision}` entries. Each path is a canonical host path, each policy revision matches its independent owner-side grant, and the shared Core accepts *exactly* the aliases in its native Agent-enabled workdir TOML. At startup the Core authenticates every alias against the running Bridge, and task-only follow-ups route by signed task ownership rather than untrusted task IDs. Do not generate a pretend binding, reuse another Core's credential, or modify an existing private binding in place. No general-purpose shared-owner installer is provided by this CLI; create new disposable instances for acceptance.
+Supported scope: one to sixteen Agent-enabled workdirs per Shared Core (additional file-only workdirs are possible), **Repo Ops disabled**, no named Connector staging. The owner must independently maintain the matching per-alias workdir policies, task ownership and signed grants. The owner's private grant writer is `serverfs_agent_bridge.core_grants_private.provision_private_core_grants`; compute each `core_workdir_policy_digest` from the actual Bridge owner policy (never a TOML file hash). Existing `schema_version: 1` mode-0600 bindings containing `workdir_alias`, `workdir_path` and `policy_revision` remain supported for a single alias. For multiple Agent-enabled roots the owner provides a mode-0600 `schema_version: 2` binding with `bridge_id`, `core_id`, `key_id`, `secret_hex`, `bridge_config_path`, `socket_path`, and a `workdirs` list of 2–16 `{alias, path, policy_revision}` entries. Each path is a canonical host path, each policy revision matches its independent owner-side grant, and the shared Core accepts *exactly* the aliases in its native Agent-enabled workdir TOML. At startup the Core authenticates every alias against the running Bridge, and task-only follow-ups route by signed task ownership rather than untrusted task IDs. Do not generate a pretend binding, reuse another Core's credential, or modify an existing private binding in place. No general-purpose shared-owner installer is provided by this CLI; create new disposable instances for acceptance.
 
 Prepare a private runtime parent (0700) outside the checkout and workdirs and a nonexistent target. Install the pinned Core runtime from the matching source with the required offline dependency cache:
 
@@ -192,4 +194,4 @@ To retire a named instance, stop ingress first, unstage the selected Connector i
 
 For existing default installations use the version-matched scoped `serverfs service` compatibility commands; do not apply the named workflow to them. The [integration baseline](https://github.com/NTLx/ServerFS_MCP/blob/fffc0adb8341edb30ac7b03e72a017ca95b8c83d/deployment/macos/README.md) retains their commands and historical native acceptance recipes.
 
-Current acceptance and remaining release gates are recorded in the [release checklist](../../docs/v0.25.0-release-checklist-2026-11-21.md). Historical signed native, public SSE and recovery tests do not establish that the final release artifact has passed every live combination.
+Current acceptance and remaining release gates are recorded in the [release checklist](../../docs/v0.26.0-release-checklist.md). Historical signed native, public SSE and recovery tests do not establish that the final release artifact has passed every live combination.
