@@ -1,6 +1,6 @@
 # Linux Docker deployment
 
-This is the v0.25.0 operator runbook for Linux amd64/arm64. Use one version-matched checkout and image set. It describes fresh named deployments; it is not an instruction to migrate an existing installation or to change its live Tunnel resources.
+This is the v0.26.0 operator runbook for Linux amd64/arm64. Use one version-matched checkout and image set. It describes fresh named deployments; it is not an instruction to migrate an existing installation or to change its live Tunnel resources.
 
 ## 1. Choose the topology
 
@@ -24,7 +24,7 @@ The publication defaults to host loopback. It adds a non-internal ingress networ
 
 Prerequisites: Docker, Compose v2.24+ (for the internal overlay's reset tag), an actual version-matched ServerFS image or trusted locally built image, and an existing directory the configured nonroot container UID/GID can read. The checkout's `.empty/.serverfs-disabled` placeholder must be present for unused workdir slots. Do not publish the default example's `/srv/projects` automatically.
 
-Create a private environment file (mode 0600) outside exposed workdirs and Git, using `.env.example` only as a starting reference. Do not overwrite an existing configuration. For a fresh read-only local example, the relevant settings are below. Replace example paths/UID/GID and the image tag with real verified values; a candidate build must use its actual scratch tag, not an assumed published v0.25.0 image. The example placeholder for the API key must be replaced locally with a unique high-entropy secret before use.
+Create a private environment file (mode 0600) outside exposed workdirs and Git, using `.env.example` only as a starting reference. Do not overwrite an existing configuration. For a fresh read-only local example, the relevant settings are below. Replace example paths/UID/GID and the image tag with real verified values; a local build must use its own scratch tag, not overwrite the published v0.26.0 image. The example placeholder for the API key must be replaced locally with a unique high-entropy secret before use.
 
 ```dotenv
 SERVERFS_IMAGE=<verified-version-matched-image>
@@ -120,7 +120,7 @@ Check external registration, DNS/TLS and exact route, then authenticated MCP ini
 
 A file-only Core needs no host Bridge or provider credentials. A dedicated owner or a shared owner uses the same signed attachment mechanism. Linux provisioning requires distinct non-default Core and Bridge IDs, including a dedicated owner; this differs from native macOS/Windows owned naming. Ownership is established by the deployment and explicit grants, not a magic Compose project name. A shared Core never operates its owner.
 
-Only one Agent/Repo Ops-enabled workdir may attach through the supplied signed overlay, mapped to slot 01. Additional disjoint file-only roots are possible. Each Core receives its own grant and binding; independent Bridge owners must not claim overlapping writable roots. The provisioner is create-only, not live grant append or rotation.
+The signed-v2 overlay can attach 1–16 explicitly granted Agent and/or Repo Ops-enabled workdirs per Core, in any selected slots `/workdirs/01`–`/workdirs/16`. A bounded `schema_version: 2` Core binding maps each alias to its independent policy revision and Compose slot; the earlier `schema_version: 1` single-alias binding remains supported. Unselected slots are disabled or file-only by explicit policy, never implicitly Agent-enabled. Each Core receives one independent signing credential/grant for exactly its authorized alias set; separate Bridge owners must not claim overlapping writable roots. The provisioner remains create-only, not live grant append, migration or rotation.
 
 ### Prepare the owner policy
 
@@ -192,13 +192,19 @@ destination is fixed to
 current-user-owned mode 0700 first. The manifest is a nonsecret JSON file and
 contains exactly: `bridge_id`, `root`, `bridge_config`, `expected_uid`,
 `expected_gid`, exactly one of legacy `core` or `cores`, and
-`existing_writable_roots`. Each Core entry has `instance_id`, `alias`,
-`container_path`, `host_path`, and explicit `methods`. The trusted Bridge config
+`existing_writable_roots`. Each Core entry uses either the legacy single-alias form (`instance_id`,
+`alias`, `container_path`, `host_path`, `methods`), restricted to slot 01, or
+`instance_id`, `workdirs`, `methods`, where `workdirs` contains 1–16 explicit
+`{alias, container_path, host_path}` mappings. For the array form, select unique
+aliases and unique slots `/workdirs/01`–`/workdirs/16`. `methods` is a least-privilege
+list for that Core, with `bridge.ping` required; the Bridge additionally enforces
+each alias's policy. Include both `task.list` and `task.get` for task discovery. The trusted Bridge config
 must already name the new root's `bridge/state`, `bridge/locks`, and
 `bridge/run/bridge.sock`, use v2 and the requested Bridge ID, and define only
 alias-keyed policies. Every policy must be assigned to at least one Core; each
-canonical host bind source must exactly match its policy. Core mapping is fixed
-to `/workdirs/01`, the mapping used by `compose.bridge-v2.yml`.
+canonical host bind source must exactly match its policy. The Compose slot and
+slot-local settings must agree with the issued binding and grant; the signed
+attachment preflight validates every mapping.
 
 The command reads bounded regular manifest/config files (1 MiB maximum),
 validates all policies and Core mappings, derives each digest from the parsed
@@ -229,9 +235,9 @@ each installed release, ideally including its version and commit). For example:
 repo="$(pwd)"
 uv_bin="$(command -v uv)"
 uv run --project agent_bridge --no-sync python -m serverfs_agent_bridge.linux_v0250_install \
-  stage bridge-blue v0.25.0-blue --source "$repo/agent_bridge" --uv "$uv_bin"
+  stage bridge-blue v0.26.0-blue --source "$repo/agent_bridge" --uv "$uv_bin"
 uv run --project agent_bridge --no-sync python -m serverfs_agent_bridge.linux_v0250_install \
-  select bridge-blue v0.25.0-blue
+  select bridge-blue v0.26.0-blue
 uv run --project agent_bridge --no-sync python -m serverfs_agent_bridge.linux_v0250_install \
   install-template --source "$repo/deployment/linux/serverfs-agent-bridge@.service"
 ```
@@ -314,16 +320,19 @@ a pass marker or fixed refusal stage; it does not write files or open the task
 database. Use matching explicit IDs and the same project, env file and overlays
 for the subsequent deployment.
 
-The check compares the actual bind sources and modes, owner UID/GID, exact
-Bridge/Core IDs and socket/lock/binding mounts, private grant and policy
-digest, slot-01 alias, read-only policy, runtime set and Repo Ops flag. It rejects
-privileged/container-namespace overrides, unexpected mounts, additional Agent/
-Repo-enabled slots, writable disabled placeholders, overlapping active roots
-and mounts exposing the local Bridge's private directories. Extra disjoint
-file-only workdirs are permitted. Global Agent defaults must stay disabled;
-specify the granted policy in slot 01. This is a deliberately static check of
-the supported overlay layout, not an assertion of daemon UID mapping, socket
-liveness, other projects' mounts, or protection against concurrent edits.
+The signed-v2 preflight compares the actual bind sources and modes, owner
+UID/GID, exact Bridge/Core identities, private socket/lock/binding mounts and
+**every** alias/policy revision against the signed owner grant. It checks the
+runtime set, read-only flag and Repo Ops policy separately for each authorized
+slot, including valid non-01 slots, and requires all ungranted slots to remain
+file-only or disabled. It rejects privileged/namespace overrides, unexpected
+mounts, ungranted Agent/Repo flags, writable disabled placeholders, overlapping
+active roots and exposure of the owner's private directories. Global Agent
+defaults remain disabled. This is a static Compose-model check, not proof of
+daemon UID mapping, socket liveness, cross-project isolation or protection
+against concurrent changes. Verify the selected authenticated Bridge aliases
+after Core startup; changing a schema-1 single-alias installed binding in place is
+not a supported migration.
 Keep independent writable roots disjoint across all deployments and run the
 signed Ping/runtime checks after startup. Verify the actual bind sources exist.
 
@@ -341,6 +350,6 @@ For retirement, stop the selected ingress first, then its Core. Remove only the 
 
 ## Compatibility and evidence
 
-The previous single-owner `compose.agent.yml` / `deployment/agent-bridge/install.sh` path remains a compatibility option for existing deployments; it is not the named signed-Bridge installation path. Do not switch an existing deployment implicitly. Historical Linux acceptance, detailed test recipes and earlier source milestones are preserved in the [integration baseline runbook](https://github.com/NTLx/ServerFS_MCP/blob/fffc0adb8341edb30ac7b03e72a017ca95b8c83d/deployment/linux/README.md). The [release checklist](../../docs/v0.25.0-release-checklist-2026-11-21.md) records outstanding exact-artifact and public acceptance.
+The previous single-owner `compose.agent.yml` / `deployment/agent-bridge/install.sh` path remains a compatibility option for existing deployments; it is not the named signed-Bridge installation path. Do not switch an existing deployment implicitly. Historical Linux acceptance, detailed test recipes and earlier source milestones are preserved in the [integration baseline runbook](https://github.com/NTLx/ServerFS_MCP/blob/fffc0adb8341edb30ac7b03e72a017ca95b8c83d/deployment/linux/README.md). The [release checklist](../../docs/v0.26.0-release-checklist.md) and [evidence ledger](../../docs/releases/v0.26.0-evidence.md) record tested scopes and remaining limitations.
 
-For live multi-Core acceptance evidence and its limits, consult the preserved integration-baseline record above and the current release checklist. Revalidate the actual Linux v2 deployment attachment, host/container identity and selected artifacts before making a release claim.
+For live multi-Core acceptance evidence and its limits, consult the preserved integration-baseline record above and the current release checklist. Revalidate the actual Linux v2 deployment attachment, host/container identity and selected artifacts before activating a deployment.

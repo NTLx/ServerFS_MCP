@@ -97,7 +97,7 @@ def test_runtime_scope_no_repo_methods():
     one = workdir(runtimes=("claude",))
     aliases, methods = tool.core_scope({"workdirs": [one]}, {"workdirs": [one]})
     assert aliases == ("Repo",)
-    assert "task.submit" in methods and "runtime.models" in methods
+    assert {"task.submit", "task.get", "task.list", "runtime.models"} <= set(methods)
     assert not any(m.startswith("repo.") for m in methods)
 
 
@@ -160,13 +160,46 @@ def test_native_render_uses_named_resources_and_flat_runtime(tmp_path):
     assert "runtimes" not in actual and actual["enable_fake_runtime"] is False
 
 
-def test_unsupported_proxy_refused(tmp_path):
+def test_explicit_proxy_policy_is_preserved_by_named_renderer(tmp_path):
     request = {
         "workdirs": [workdir(runtimes=("claude",))],
-        "runtimes": {"claude": {"use_proxy": True}},
+        "runtimes": {"claude": {"enabled": True, "use_proxy": True}},
     }
-    with pytest.raises(tool.Refusal):
-        tool.render_bridge(request, "owner", "sid", tmp_path, "pipe")
+    actual = tool.render_bridge(request, "owner", "sid", tmp_path, "pipe")
+    assert actual["claude"]["use_proxy"] is True
+    assert "proxy" not in actual  # endpoint arrives only over the private bootstrap
+
+
+def test_private_proxy_source_refuses_new_peer_and_checkout_roots(tmp_path, monkeypatch):
+    from serverfs_mcp import windows_cloudflare_security
+    from serverfs_mcp.windows_v25 import storage
+
+    monkeypatch.setattr(windows_cloudflare_security, "_no_reparse_components", lambda p: None)
+    monkeypatch.setattr(storage, "check_private", lambda *a, **kw: None)
+    checkout = tmp_path / "checkout"
+    script = checkout / "deployment/windows/configure-v25-private.py"
+    script.parent.mkdir(parents=True)
+    script.touch()
+    monkeypatch.setattr(tool, "__file__", str(script))
+    new_root = tmp_path / "new"
+    peer_root = tmp_path / "existing"
+    private = tmp_path / "private"
+    for directory in (new_root, peer_root, private):
+        directory.mkdir()
+    raw = b"SERVERFS_AGENT_PROXY_URL=http://127.0.0.1:20170\n"
+    for root in (new_root, peer_root, checkout, private):
+        (root / "source.env").write_bytes(raw)
+
+    for root in (new_root, peer_root, checkout):
+        with pytest.raises(tool.Refusal, match="outside exposed workdirs and checkout"):
+            tool.read_private_proxy_source(root / "source.env", [new_root, peer_root], "synthetic")
+    normalized = tool.read_private_proxy_source(
+        private / "source.env", [new_root, peer_root], "synthetic"
+    )
+    assert normalized.startswith(raw)
+    (private / "source.env").write_bytes(b"x" * 4097)
+    with pytest.raises(tool.Refusal, match="oversized"):
+        tool.read_private_proxy_source(private / "source.env", [new_root, peer_root], "synthetic")
 
 
 def test_private_root_boundary(tmp_path):

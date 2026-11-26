@@ -430,7 +430,9 @@ class QoderAdapter(AgentAdapter):
             async with self._active_lock:
                 self._active.pop(context.task_id, None)
             self._cancel_requested.discard(context.task_id)
-            if record_local_stop or (cancel_requested and disconnect_succeeded):
+            # A failed or cancelled coroutine is not proof that the provider process
+            # stopped. Only a successful SDK disconnect can establish local stop.
+            if (record_local_stop or cancel_requested) and disconnect_succeeded:
                 self._locally_stopped.add(context.task_id)
 
     async def _receive_result(self, active: _ActiveQoderTask) -> ResultMessage:

@@ -329,13 +329,21 @@ def _connector_core_details(
         or not hostname
     ):
         raise DarwinInstanceRuntimeError("named owned Core metadata is incomplete")
-    resolve_owned_core_binding(
-        identity,
-        Path(config),
-        port,
-        home=home,
-        default_bridge_config=default_bridge_config,
-    )
+    from .darwin_owned_v2_bootstrap import load_owned_v2_clients, owned_protocol_marker
+
+    protocol, verified = owned_protocol_marker(identity, home=home)
+    if verified != document:
+        raise DarwinInstanceRuntimeError("named owned Connector manifest changed")
+    if protocol == "v2":
+        load_owned_v2_clients(identity, Path(config), home=home)
+    else:
+        resolve_owned_core_binding(
+            identity,
+            Path(config),
+            port,
+            home=home,
+            default_bridge_config=default_bridge_config,
+        )
     return Path(config), port, hostname
 
 

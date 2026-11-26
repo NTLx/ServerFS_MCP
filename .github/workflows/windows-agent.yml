@@ -31,6 +31,7 @@ on:
       - "src/serverfs_mcp/agent_core_grant_client.py"
       - "src/serverfs_mcp/windows_v25/**"
       - "tests/test_windows_v25_bridge_v2_real_worker.py"
+      - "tests/test_windows_v026_named_proxy_live.py"
       - "src/serverfs_mcp/agent_doctor.py"
       - "src/serverfs_mcp/agent_leases.py"
       - "src/serverfs_mcp/agent_lifecycle.py"
@@ -75,6 +76,7 @@ on:
   pull_request:
     branches:
       - main
+      - integration/v0.26.0
     paths:
       - "agent_bridge/**"
       - "native/windows/**"
@@ -82,6 +84,7 @@ on:
       - "src/serverfs_mcp/agent_core_grant_client.py"
       - "src/serverfs_mcp/windows_v25/**"
       - "tests/test_windows_v25_bridge_v2_real_worker.py"
+      - "tests/test_windows_v026_named_proxy_live.py"
       - "src/serverfs_mcp/agent_doctor.py"
       - "src/serverfs_mcp/agent_leases.py"
       - "src/serverfs_mcp/agent_lifecycle.py"
@@ -345,6 +348,7 @@ jobs:
             tests/test_windows_job.py `
             tests/test_windows_job_cleanup.py `
             tests/test_windows_v25_bridge_v2_real_worker.py `
+            tests/test_windows_v026_named_proxy_live.py `
             tests/test_windows_mcp_agent_e2e.py -q
         shell: pwsh
 

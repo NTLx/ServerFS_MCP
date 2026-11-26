@@ -11,7 +11,7 @@ Use one shared secret per HTTP Core when the callers are a single operator or a 
 | Windows named HTTP | Initial private configuration helper generates the key; the manual path accepts a protected auth file |
 | Local stdio | No HTTP key required |
 
-Follow the [Linux](../deployment/linux/README.md), [macOS](../deployment/macos/README.md) or [Windows](../deployment/windows/v0250-native-operations.md) runbook. Generate a unique high-entropy ASCII secret locally (for example, a random hex string). Keep it outside Git and all exposed workdirs. Set OAuth disabled; a nonempty API key and enabled OAuth are rejected together. Native HTTP requires one authentication mode; Linux defaults to neither, so explicitly configure admission before exposure.
+Follow the [Linux](../deployment/linux/README.md), [macOS](../deployment/macos/README.md) or [Windows](deployment/windows/v0250-native-operations.md) runbook. Generate a unique high-entropy ASCII secret locally (for example, a random hex string). Keep it outside Git and all exposed workdirs. Set OAuth disabled; a nonempty API key and enabled OAuth are rejected together. Native HTTP requires one authentication mode; Linux defaults to neither, so explicitly configure admission before exposure.
 
 The Core's Host/Origin policy is independent of the key. For public use, configure HTTPS at the selected Connector or an operator-managed reverse proxy, and admit the exact Host authority. Tunnel credentials authenticate Connectors, not MCP callers.
 

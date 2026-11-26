@@ -40,6 +40,12 @@ def build_parser() -> argparse.ArgumentParser:
     owned_stage.add_argument("--hostname", required=True)
     owned_stage.add_argument("--template-app", required=True, type=Path)
     owned_stage.add_argument("--bridge-python", required=True, type=Path)
+    owned_stage.add_argument(
+        "--agent-protocol",
+        choices=("v1", "v2"),
+        default="v1",
+        help="owned Bridge protocol for this new candidate (default: legacy v1)",
+    )
     for command in (stage, owned_stage):
         command.add_argument("--cloudflare-connector-id", action="append")
         command.add_argument("--openai-connector-id", action="append")
@@ -264,6 +270,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.template_app,
                 args.bridge_python,
                 **({"connector_ids": connector_ids} if connector_ids else {}),
+                **({"agent_protocol": "v2"} if args.agent_protocol == "v2" else {}),
             )
         elif args.operation == "owned-preflight":
             pass  # read-only result was derived above; never address ServiceManagement.

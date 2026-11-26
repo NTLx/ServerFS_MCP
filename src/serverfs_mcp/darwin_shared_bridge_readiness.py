@@ -17,12 +17,15 @@ async def probe_shared_v2_bridge(
     *,
     timeout_seconds: float = 5.0,
     require_private_parent: bool = False,
+    require_task_list: bool = False,
+    require_repo_ops: bool = False,
 ) -> bool:
     """Return true only when the expected private socket answers authenticated v2 ping.
 
     A successful ping proves only that the Bridge accepted this signature key
     for ``bridge.ping``. It does not establish authorization for other methods
-    or Core ownership/policy for the caller's Unix UID.
+    or Core ownership/policy for the caller's Unix UID. Explicit Owned v2
+    readiness additionally requires a successful bounded task.list page.
     """
     if (
         not isinstance(expected_socket_path, Path)
@@ -57,7 +60,27 @@ async def probe_shared_v2_bridge(
         if client._socket_path != path:
             return False
         async with asyncio.timeout(float(timeout_seconds)):
-            return await client.call("bridge.ping", {}) == {"status": "ok"}
+            if await client.call("bridge.ping", {}) != {"status": "ok"}:
+                return False
+            if require_task_list:
+                page = await client.call("task.list", {"status": "all", "limit": 1})
+                if not (
+                    isinstance(page, dict)
+                    and set(page) == {"tasks", "next_cursor"}
+                    and isinstance(page["tasks"], list)
+                    and len(page["tasks"]) <= 1
+                    and (
+                        page["next_cursor"] is None
+                        or isinstance(page["next_cursor"], str)
+                        and 1 <= len(page["next_cursor"]) <= 2048
+                    )
+                ):
+                    return False
+            if require_repo_ops:
+                repo = await client.call("repo.inspect", {"view": "actions", "paths": []})
+                if repo.get("view") != "actions" or not isinstance(repo.get("actions"), list):
+                    return False
+            return True
     except (OSError, CoreBridgeClientV2Error, TimeoutError, ValueError, TypeError):
         # Keep path details, remote errors, and credential-bearing exceptions private.
         return False

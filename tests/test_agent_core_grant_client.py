@@ -11,7 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from serverfs_mcp.agent_client import AgentBridgeClient, AgentBridgeClientError
+from serverfs_mcp.agent_client import (
+    AgentBridgeClient,
+    AgentBridgeClientError,
+    AgentBridgeInvalidRequest,
+)
 from serverfs_mcp.agent_core_grant_client import CoreGrantBridgeClient
 
 _SECRET = b"R" * 32
@@ -127,10 +131,39 @@ def test_scoped_task_methods_are_signed_with_explicit_workdir(method: str) -> No
     assert body["policy_revision"] == _POLICY
 
 
-def test_task_submission_refuses_foreign_continuation_and_legacy_idempotency() -> None:
-    for key in ("continue_from_task_id", "idempotency_key"):
-        with pytest.raises(AgentBridgeClientError, match="continuation"):
-            invoke(client(), "task.submit", {"workdir": "Repo", key: "foreign"})
+def test_task_list_is_an_explicit_alias_scoped_rpc_not_a_task_id_lookup() -> None:
+    result, captured = invoke(
+        client(),
+        "task.list",
+        {"workdir": "Repo", "status": "active", "limit": 20},
+    )
+    assert result == {"accepted": True}
+    body = json.loads(captured[0][0])
+    assert body["method"] == "task.list"
+    assert body["params"] == {"workdir": "Repo", "status": "active", "limit": 20}
+    with pytest.raises(AgentBridgeClientError, match="named workdir"):
+        invoke(client(), "task.list", {"status": "active"})
+
+
+@pytest.mark.parametrize("key", ["continue_from_task_id", "idempotency_key"])
+@pytest.mark.parametrize("value", ["private-value", ""])
+def test_task_submission_rejects_unsupported_options_before_transport(key, value) -> None:
+    instance = client()
+
+    async def unexpected_exchange(raw, request_id):
+        pytest.fail("unsupported submission must not reach transport")
+
+    instance._exchange = unexpected_exchange
+    with pytest.raises(AgentBridgeInvalidRequest, match="omit both") as caught:
+        asyncio.run(instance.call("task.submit", {"workdir": "Repo", key: value}))
+    assert "private-value" not in str(caught.value)
+
+
+def test_task_submission_accepts_null_optional_fields() -> None:
+    params = {"workdir": "Repo", "continue_from_task_id": None, "idempotency_key": None}
+    result, sent = invoke(client(), "task.submit", params)
+    assert result == {"accepted": True}
+    assert json.loads(sent[0][0])["params"] == params
 
 
 def test_unlisted_workdir_or_invalid_params_never_connect() -> None:

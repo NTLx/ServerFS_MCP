@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import math
+import re
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -150,6 +155,9 @@ class TaskStore:
                 CREATE INDEX IF NOT EXISTS events_task_cursor
                 ON events(task_id, event_id);
 
+                CREATE INDEX IF NOT EXISTS tasks_alias_cursor_projection
+                ON tasks(workdir_alias, created_at DESC, task_id DESC, status);
+
                 -- Protocol v2 ownership is separate from historical v1 tasks.
                 -- No existing task is silently adopted by any Core.
                 CREATE TABLE IF NOT EXISTS core_task_owners (
@@ -184,6 +192,34 @@ class TaskStore:
 
                 CREATE INDEX IF NOT EXISTS pending_requests_task
                 ON pending_requests(task_id, status);
+
+                -- Private-only keyed identity of approval requests, never
+                -- projected into public MCP payloads or task event streams.
+                CREATE TABLE IF NOT EXISTS approval_audit_key (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                    secret BLOB NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS approval_audit (
+                    request_id TEXT PRIMARY KEY
+                        REFERENCES pending_requests(request_id) ON DELETE CASCADE,
+                    task_id TEXT NOT NULL,
+                    fingerprint TEXT NOT NULL,
+                    action_kind TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    resolved_at TEXT,
+                    outcome TEXT
+                );
+                CREATE INDEX IF NOT EXISTS approval_audit_task
+                ON approval_audit(task_id, created_at);
+
+                CREATE TRIGGER IF NOT EXISTS approval_audit_mark_stale
+                AFTER UPDATE OF status ON pending_requests
+                WHEN NEW.status = 'stale'
+                BEGIN
+                    UPDATE approval_audit
+                    SET resolved_at = NEW.resolved_at, outcome = 'stale'
+                    WHERE request_id = NEW.request_id;
+                END;
 
                 CREATE TABLE IF NOT EXISTS runtime_capabilities (
                     runtime_id TEXT NOT NULL,
@@ -234,6 +270,229 @@ class TaskStore:
             }
             if "expires_at" not in request_columns:
                 con.execute("ALTER TABLE pending_requests ADD COLUMN expires_at TEXT")
+            con.execute(
+                "INSERT OR IGNORE INTO approval_audit_key(singleton, secret) VALUES (1, ?)",
+                (secrets.token_bytes(32),),
+            )
+            audit_key = con.execute(
+                "SELECT secret FROM approval_audit_key WHERE singleton = 1"
+            ).fetchone()
+            if (
+                audit_key is None
+                or not isinstance(audit_key["secret"], bytes)
+                or len(audit_key["secret"]) != 32
+            ):
+                raise BridgeError("PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid")
+            self._approval_audit_key = audit_key["secret"]
+
+    def private_approval_fingerprint(self, task_id: str, original: dict[str, Any]) -> str:
+        """HMAC original provider attributes, never exposing host path strings.
+
+        The key is stored only in the owner-private 0600 SQLite database and
+        remains stable across Bridge restarts. A fingerprint is *not* approval
+        authority, only a private correlation/audit identity.
+        """
+        if not isinstance(task_id, str) or not task_id or not isinstance(original, dict):
+            raise BridgeError("PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid")
+        try:
+            encoded = json.dumps(
+                original, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
+            ).encode("utf-8")
+        except (ValueError, TypeError, UnicodeError):
+            raise BridgeError(
+                "PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid"
+            ) from None
+        return hmac.new(
+            self._approval_audit_key,
+            task_id.encode("utf-8") + b"\0" + encoded,
+            hashlib.sha256,
+        ).hexdigest()
+
+    def list_core_tasks(
+        self,
+        *,
+        core_id: str,
+        workdir_alias: str,
+        status: str,
+        limit: int,
+        policy_revision: str,
+        grant_key_id: str = "",
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """Return a bounded, redacted keyset page for one signed Core scope."""
+        from .core_grants import _id
+
+        _id(core_id)
+        if not isinstance(workdir_alias, str) or not re.fullmatch(
+            r"[A-Za-z][A-Za-z0-9_-]{0,31}", workdir_alias
+        ):
+            raise BridgeError("INVALID_REQUEST", "workdir is invalid")
+        if not isinstance(status, str) or status not in {"active", "terminal", "all"}:
+            raise BridgeError("INVALID_REQUEST", "task status filter is invalid")
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise BridgeError("INVALID_LIMIT", "task limit must be between 1 and 100")
+        if not isinstance(policy_revision, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", policy_revision
+        ):
+            raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+
+        after: tuple[str, str] | None = None
+        if cursor is not None:
+            after = self._decode_task_cursor(
+                cursor,
+                core_id=core_id,
+                workdir_alias=workdir_alias,
+                status=status,
+                policy_revision=policy_revision,
+                grant_key_id=grant_key_id,
+            )
+
+        active = tuple(
+            item.value
+            for item in (
+                TaskStatus.QUEUED,
+                TaskStatus.STARTING,
+                TaskStatus.RUNNING,
+                TaskStatus.WAITING_FOR_APPROVAL,
+                TaskStatus.WAITING_FOR_QUESTION,
+            )
+        )
+        terminal = tuple(item.value for item in TERMINAL_STATUSES)
+        selected = (
+            active
+            if status == "active"
+            else terminal
+            if status == "terminal"
+            else tuple(item.value for item in TaskStatus)
+        )
+        clauses = ["owner.core_id = ?", "tasks.workdir_alias = ?"]
+        values: list[Any] = [core_id, workdir_alias]
+        clauses.append("tasks.status IN (" + ",".join("?" for _ in selected) + ")")
+        values.extend(selected)
+        if after is not None:
+            clauses.append("(tasks.created_at, tasks.task_id) < (?, ?)")
+            values.extend(after)
+        values.append(limit + 1)
+        with self._connect() as con:
+            rows = con.execute(
+                """
+                SELECT tasks.task_id, tasks.runtime, tasks.workdir_alias, tasks.status,
+                       tasks.created_at, tasks.updated_at, tasks.completed_at,
+                       tasks.correlation_id,
+                       (SELECT pending_requests.kind FROM pending_requests
+                        WHERE pending_requests.task_id = tasks.task_id
+                          AND pending_requests.status = 'pending'
+                        ORDER BY pending_requests.created_at DESC,
+                                 pending_requests.request_id DESC LIMIT 1) AS pending_kind
+                FROM tasks INDEXED BY tasks_alias_cursor_projection
+                JOIN core_task_owners AS owner ON owner.task_id = tasks.task_id
+                WHERE """
+                + " AND ".join(clauses)
+                + "\n"
+                "ORDER BY tasks.created_at DESC, tasks.task_id DESC LIMIT ?",
+                values,
+            ).fetchall()
+        more = len(rows) > limit
+        rows = rows[:limit]
+        tasks = [
+            {
+                "task_id": row["task_id"],
+                "runtime": row["runtime"],
+                "workdir": row["workdir_alias"],
+                "status": row["status"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "completed_at": row["completed_at"],
+                "pending_interaction": row["pending_kind"]
+                if row["pending_kind"] in {"approval", "question"}
+                else None,
+                # Opaque caller text has no general secret-safety guarantee.
+                "correlation_id": None,
+            }
+            for row in rows
+        ]
+        next_cursor = None
+        if more and rows:
+            last = rows[-1]
+            next_cursor = self._encode_task_cursor(
+                {
+                    "core_id": core_id,
+                    "workdir": workdir_alias,
+                    "status": status,
+                    "policy_revision": policy_revision,
+                    "grant_key_id": grant_key_id,
+                    "created_at": last["created_at"],
+                    "task_id": last["task_id"],
+                }
+            )
+        return {"tasks": tasks, "next_cursor": next_cursor}
+
+    def _encode_task_cursor(self, payload: dict[str, str]) -> str:
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        signature = hmac.new(
+            self._approval_audit_key, b"task-list\0" + raw, hashlib.sha256
+        ).digest()
+        return base64.urlsafe_b64encode(raw + signature).rstrip(b"=").decode("ascii")
+
+    def _decode_task_cursor(
+        self,
+        cursor: str,
+        *,
+        core_id: str,
+        workdir_alias: str,
+        status: str,
+        policy_revision: str,
+        grant_key_id: str = "",
+    ) -> tuple[str, str]:
+        try:
+            if not isinstance(cursor, str) or not 1 <= len(cursor) <= 2048:
+                raise ValueError
+            if re.fullmatch(r"[A-Za-z0-9_-]+", cursor) is None:
+                raise ValueError
+            encoded = cursor.encode("ascii")
+            raw_and_mac = base64.urlsafe_b64decode(encoded + b"=" * (-len(encoded) % 4))
+            if len(raw_and_mac) <= 32:
+                raise ValueError
+            raw, signature = raw_and_mac[:-32], raw_and_mac[-32:]
+            expected = hmac.new(
+                self._approval_audit_key, b"task-list\0" + raw, hashlib.sha256
+            ).digest()
+            if not hmac.compare_digest(signature, expected):
+                raise ValueError
+            payload = json.loads(raw)
+            expected_fields = {
+                "core_id",
+                "workdir",
+                "status",
+                "policy_revision",
+                "grant_key_id",
+                "created_at",
+                "task_id",
+            }
+            if not isinstance(payload, dict) or set(payload) != expected_fields:
+                raise ValueError
+            if (
+                payload["core_id"],
+                payload["workdir"],
+                payload["status"],
+                payload["policy_revision"],
+                payload["grant_key_id"],
+            ) != (core_id, workdir_alias, status, policy_revision, grant_key_id):
+                raise ValueError
+            if not all(
+                isinstance(payload[key], str) and payload[key] for key in ("created_at", "task_id")
+            ):
+                raise ValueError
+            return payload["created_at"], payload["task_id"]
+        except (
+            UnicodeError,
+            ValueError,
+            TypeError,
+            json.JSONDecodeError,
+            KeyError,
+            AttributeError,
+        ):
+            raise BridgeError("INVALID_CURSOR", "task cursor is invalid or out of scope") from None
 
     def load_runtime_capabilities(self, runtime_id: str, fingerprint: str) -> dict[str, Any] | None:
         with self._connect() as con:
@@ -622,9 +881,17 @@ class TaskStore:
         payload: dict[str, Any],
         waiting_status: TaskStatus,
         expires_at: str | None = None,
+        private_fingerprint: str | None = None,
     ) -> PendingRequest:
         now = utc_now()
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        if private_fingerprint is not None and (
+            kind != "approval"
+            or not isinstance(private_fingerprint, str)
+            or len(private_fingerprint) != 64
+            or any(ch not in "0123456789abcdef" for ch in private_fingerprint)
+        ):
+            raise BridgeError("PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid")
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
             task = con.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
@@ -654,6 +921,21 @@ class TaskStore:
                 raise BridgeError(
                     "REQUEST_EXISTS", f"request already exists: {request_id}"
                 ) from exc
+            if private_fingerprint is not None:
+                category = payload.get("category")
+                action_kind = (
+                    category
+                    if isinstance(category, str)
+                    and category
+                    in {"command", "file_change", "file_changes", "provider_permission", "mcp"}
+                    else "other"
+                )
+                con.execute(
+                    """INSERT INTO approval_audit(
+                        request_id, task_id, fingerprint, action_kind, created_at
+                    ) VALUES (?, ?, ?, ?, ?)""",
+                    (request_id, task_id, private_fingerprint, action_kind, now),
+                )
             con.execute(
                 """
                 UPDATE tasks
@@ -719,6 +1001,14 @@ class TaskStore:
             )
             if task_update.rowcount != 1:
                 raise BridgeError("REQUEST_STALE", "request is no longer active for the task")
+            outcome = resolution.get("decision")
+            if outcome not in {"approve_once", "approve_session", "deny", "cancel_task"}:
+                outcome = "acp-option" if "option_id" in resolution else "other"
+            con.execute(
+                """UPDATE approval_audit SET resolved_at = ?, outcome = ?
+                WHERE request_id = ?""",
+                (now, outcome, request_id),
+            )
         return self.get_request(request_id)
 
     def count_nonterminal_tasks(self) -> int:

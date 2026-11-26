@@ -57,6 +57,7 @@ _V2_DISPATCH_METHODS = frozenset(
         "runtime.list",
         "runtime.models",
         "task.submit",
+        "task.list",
         *_V2_TASK_METHODS,
     }
 )
@@ -456,10 +457,16 @@ class BridgeProtocolServer:
         elif method == "task.submit":
             if params.get("workdir") != authorization.workdir:
                 raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+        elif method == "task.list":
+            params.pop("workdir")
         result = await self._dispatch(
             method,
             params,
             owner_core_id=authorization.core_id if method == "task.submit" else None,
+            task_list_core_id=authorization.core_id if method == "task.list" else None,
+            task_list_workdir=authorization.workdir if method == "task.list" else None,
+            policy_revision=request["policy_revision"] if method == "task.list" else None,
+            task_list_grant_key_id=authorization.key_id if method == "task.list" else None,
         )
         return {"request_id": request_id, "ok": True, "result": result}
 
@@ -469,6 +476,10 @@ class BridgeProtocolServer:
         params: dict[str, Any],
         *,
         owner_core_id: str | None = None,
+        task_list_core_id: str | None = None,
+        task_list_workdir: str | None = None,
+        policy_revision: str | None = None,
+        task_list_grant_key_id: str | None = None,
     ) -> dict[str, Any]:
         if method == "diagnostics.snapshot":
             _require_keys(params, set())
@@ -569,6 +580,26 @@ class BridgeProtocolServer:
             if owner_core_id is not None:
                 return await self.service.submit_task(**params, owner_core_id=owner_core_id)
             return await self.service.submit_task(**params)
+        if method == "task.list":
+            if task_list_core_id is None or policy_revision is None:
+                raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+            _require_keys(params, set(), optional={"status", "limit", "cursor"})
+            _require_types(
+                params,
+                {},
+                optional={"status": str, "limit": int, "cursor": str},
+            )
+            if task_list_workdir is None:
+                raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+            return self.service.list_tasks(
+                workdir=task_list_workdir,
+                core_id=task_list_core_id,
+                status=params.get("status", "active"),
+                limit=params.get("limit", 20),
+                cursor=params.get("cursor"),
+                policy_revision=policy_revision,
+                grant_key_id=task_list_grant_key_id or "",
+            )
         if method == "task.get":
             _require_keys(params, {"task_id"})
             _require_types(params, {"task_id": str})

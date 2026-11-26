@@ -6,9 +6,11 @@
 
 - [官网](https://ntlx.github.io/ServerFS_MCP/zh-cn/)
 - [文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/)
-- [Releases](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.25.0)
+- [Releases](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.26.0)
 
-**当前稳定版本：[v0.25.0](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.25.0)。**
+**当前稳定版本：[v0.26.0](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.26.0)。**
+
+v0.26.0 恢复 Linux 命名 Core 的多 Workdir Agent/Repo Ops 能力，扩展 macOS Shared Core 多 Agent Workdir，并支持新建 macOS Owned Core 显式选择签名 v2、Windows 命名 Bridge 按 Runtime/ACP 配置代理。签名 v2 增加按授权别名分页发现任务；共享 Bridge 在公开审批脱敏之前保留私有审计身份，禁止远程批准识别出的 Workdir 外写入。详见[发布说明](docs/releases/v0.26.0.md)与[发布验收清单](docs/v0.26.0-release-checklist.md)。
 
 ServerFS MCP 是一个跨平台、自托管的 MCP 文件系统服务。它将明确配置的本地目录（Workdir）开放给 AI 客户端，默认只读，写入具有 revision 保护；按需增加二进制传输、确定性仓库操作（Repo Ops）和宿主机 Agent 委托。不提供 Shell 或通用命令执行接口。
 
@@ -42,13 +44,13 @@ Shared Core 不拥有 Bridge owner 的生命周期，也不能通过共享用户
 | --- | --- | --- |
 | Linux | Docker Compose 管理命名 Core 和可选 Connector；可用直接 HTTP 或内部网络；可选 Bridge 为宿主机用户级 systemd 服务 | [Linux 部署](deployment/linux/README.md) |
 | macOS | Apple Silicon、原生 arm64、macOS 27、APFS；签名 SMAppService / LaunchAgents 与认证 Unix IPC | [macOS 部署](deployment/macos/README.md) |
-| Windows | Windows 11 x64、本地 NTFS、匹配 Native Wheel；当前用户 Task Scheduler、Job Object 和 Named Pipe，无需 WSL/VM | [Windows 部署](deployment/windows/v0250-native-operations.md) |
+| Windows | Windows 11 x64、本地 NTFS、匹配 Native Wheel；当前用户 Task Scheduler、Job Object 和 Named Pipe，无需 WSL/VM | [Windows 部署](docs/deployment/windows/v0250-native-operations.md) |
 
 统一的是公开 MCP 契约与安全结果，不强求三个平台共用内部实现。具体组件组合、命名 Connector 支持范围、安装与升级限制以平台指南为准。不引入中央服务管理器。
 
 ## 能力与安全
 
-基础文件系统提供 11 个工具。启用二进制传输增加 2 个；Agent 委托增加 10 个；Repo Ops 增加 4 个。这些能力独立启用，完整组合共 27 个工具。Repo Ops 不启动 Agent；Agent 使用宿主机的原生 Codex、Claude、Qoder 或显式配置的 ACP profile，Jev 仅提供建议。
+基础文件系统提供 11 个工具。启用二进制传输增加 2 个；Agent 委托增加 11 个（含 `list_agent_tasks`，有效调用需要支持该方法的签名 v2 接入）；Repo Ops 增加 4 个。这些能力独立启用，完整组合共 28 个工具，实际可执行能力以接入协议、授权与 runtime 为准。Repo Ops 不启动 Agent；Agent 使用宿主机的原生 Codex、Claude、Qoder 或显式配置的 ACP profile，Jev 仅提供建议。
 
 Workdir 限制、deny/reserved 路径策略、revision 检查与写入授权不因入口变化而扩大。HTTP Core 配置精确 Host/Origin 准入；公网接入须有调用方认证。Tunnel 凭据与 HTTP 调用方凭据分离。Bridge 接入需要逐 Core 的显式授权，不将同 UID/SID 视为可信身份。
 
@@ -59,6 +61,6 @@ Workdir 限制、deny/reserved 路径策略、revision 检查与写入授权不�
 - [架构与部署选择](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/architecture/) · [快速开始](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/getting-started/)
 - [HTTP API Key](docs/api-key.md) · [OAuth](docs/oauth.md) · [Cloudflare Connector](docs/cloudflare-tunnel.md)
 - [Agent Bridge](agent_bridge/README.md) · [Agent Skills](skills/README.md)（七个 Skills 与仅包含 Skills 的 Plugin）
-- [维护者指南](docs/maintainers/README.md)
+- [仓库文档索引](docs/README.md) · [维护者指南](docs/maintainers/README.md)
 
-使用与目标版本匹配的源码、文档及安装产物，避免隐式迁移现有实例。[发布说明](docs/releases/v0.25.0.md)与[发布清单](docs/v0.25.0-release-checklist-2026-11-21.md)记录实际验收及未完成门禁，历史证据保留于 `docs/releases/`、`docs/diagnostics/` 和架构决策记录。
+使用与目标版本匹配的源码、文档及安装产物，避免隐式迁移现有实例。[发布说明](docs/releases/v0.26.0.md)与[发布清单](docs/v0.26.0-release-checklist.md)记录实际验收及未完成门禁，历史证据保留于 `docs/releases/`、`docs/diagnostics/` 和架构决策记录。

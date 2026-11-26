@@ -67,7 +67,7 @@ def _server(tmp_path: Path, state: Path, socket_path: Path) -> tuple[BridgeProto
             "key-a",
             SECRET_A,
             (("Repo", digest),),
-            frozenset({"bridge.ping", "task.submit", "task.get"}),
+            frozenset({"bridge.ping", "task.submit", "task.get", "task.list"}),
         ),
         CoreGrant("core-b", "key-b", SECRET_B, (("Repo", digest),), frozenset({"task.get"})),
     )
@@ -153,9 +153,21 @@ def test_real_core_clients_interoperate_with_v2_only_darwin_bridge(tmp_path: Pat
             )
             task_id = submitted["task_id"]
             assert (await client_a.call("task.get", {"task_id": task_id}))["task_id"] == task_id
+            from serverfs_mcp.darwin_shared_agent_adapter import DarwinSharedAgentAdapter
+
+            shared_agent = DarwinSharedAgentAdapter(client_a, "Repo")
+            page = await shared_agent.call(
+                "task.list", {"workdir": "Repo", "status": "all", "limit": 20}
+            )
+            assert [task["task_id"] for task in page["tasks"]] == [task_id]
+            assert page["tasks"][0]["correlation_id"] is None
+            assert page["next_cursor"] is None
             with pytest.raises(CoreBridgeRemoteError) as cross_owner:
                 await client_b.call("task.get", {"task_id": task_id})
             assert cross_owner.value.code == "CORE_TASK_NOT_FOUND"
+            with pytest.raises(CoreBridgeRemoteError) as no_discovery_grant:
+                await client_b.call("task.list", {"status": "all"})
+            assert no_discovery_grant.value.code == "CORE_NOT_AUTHORIZED"
 
             with pytest.raises(CoreBridgeRemoteError) as wrong_key:
                 await _client(socket_path, digest, secret=b"x" * 32).call(
@@ -183,4 +195,50 @@ def test_real_core_clients_interoperate_with_v2_only_darwin_bridge(tmp_path: Pat
         os.chmod(socket_dir, 0o700)
         socket_path = socket_dir / "b.sock"
         assert len(os.fsencode(str(socket_path))) < 104
+        asyncio.run(exercise(socket_path))
+
+
+def test_scoped_task_discovery_survives_darwin_bridge_restart(tmp_path: Path) -> None:
+    async def exercise(socket_path: Path) -> None:
+        server, digest = _server(tmp_path, tmp_path / "state", socket_path)
+        await server.start()
+        try:
+            client_a = _client(socket_path, digest)
+            submitted = await client_a.call(
+                "task.submit",
+                {
+                    "runtime": "fake",
+                    "path": ".",
+                    "profile": "review",
+                    "prompt": "synthetic restart recovery",
+                },
+            )
+            task_id = submitted["task_id"]
+        finally:
+            await server.close()
+
+        restarted, restarted_digest = _server(tmp_path, tmp_path / "state", socket_path)
+        assert restarted_digest == digest
+        await restarted.start()
+        try:
+            recovered = await _client(socket_path, digest).call(
+                "task.list", {"status": "all", "limit": 20}
+            )
+            assert [task["task_id"] for task in recovered["tasks"]] == [task_id]
+            with pytest.raises(CoreBridgeRemoteError) as cross_owner:
+                await _client(
+                    socket_path,
+                    digest,
+                    core="core-b",
+                    key="key-b",
+                    secret=SECRET_B,
+                ).call("task.get", {"task_id": task_id})
+            assert cross_owner.value.code == "CORE_TASK_NOT_FOUND"
+        finally:
+            await restarted.close()
+
+    with tempfile.TemporaryDirectory(prefix="sfs-restart-", dir="/tmp") as socket_root:
+        socket_dir = Path(socket_root)
+        os.chmod(socket_dir, 0o700)
+        socket_path = socket_dir / "b.sock"
         asyncio.run(exercise(socket_path))

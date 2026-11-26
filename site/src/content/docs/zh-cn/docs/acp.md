@@ -42,11 +42,11 @@ agent_mode = "workspace-write"
 agent_runtimes = ["acp-opencode"]
 ```
 
-Linux 命名部署在 owner JSON 和 Core slot 01 中配置匹配的策略（`WORKDIR_01_READ_ONLY=false`、`WORKDIR_01_AGENT_MODE=workspace-write`、`WORKDIR_01_AGENT_RUNTIMES=acp-opencode`），grant 必须允许所需 runtime/task 方法和别名。macOS/Windows 使用实际平台路径及对应原生接入策略。ACP 不会自行获得授权或扩大 workdir 策略。
+Linux 命名部署在 owner JSON 和所选授权 Core 槽位中配置匹配的策略（v0.26.0 为 slot 01–16）。以下以 slot 01 为例（`WORKDIR_01_READ_ONLY=false`、`WORKDIR_01_AGENT_MODE=workspace-write`、`WORKDIR_01_AGENT_RUNTIMES=acp-opencode`），grant 必须允许所需 runtime/task 方法和别名。macOS/Windows 使用实际平台路径及对应原生接入策略。ACP 不会自行获得授权或扩大 workdir 策略。
 
 ## 兼容性证据
 
-[v0.19.0 历史验收记录](https://github.com/NTLx/ServerFS_MCP/blob/main/dev_plan_v0.19.md) 记录了 OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 在 Linux、macOS、Windows 的验收。所用 argv 为 `acp`，模型由 OpenCode 选择。这是历史证据，不代表 v0.25.0 签名接入验收，也不保证其他 Agent 版本兼容。
+[v0.19.0 历史验收记录](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/plans/dev_plan_v0.19.md) 记录了 OpenCode 2.1.2 与 `opencode/glm-5.3-flash-free` 在 Linux、macOS、Windows 的验收。所用 argv 为 `acp`，模型由 OpenCode 选择。这是历史证据，不代表当前签名接入验收，也不保证其他 Agent 版本兼容。
 
 ## 验证 Bridge 与 runtime
 
@@ -56,7 +56,7 @@ Linux 命名部署在 owner JSON 和 Core slot 01 中配置匹配的策略（`WO
 
 使用结构化 MCP Agent 工具：`list_agent_runtimes` 列出已配置的标准化 runtime 与能力；`submit_agent_task` 启动异步任务；`get_agent_task` 返回标准化任务状态/结果或待处理交互；`read_agent_task_events` 使用 cursor 读取标准化事件；`read_agent_task_result` 分块读取较大的 spool 结果。轮询与结果读取遵循 [Agent Bridge 任务流程](../agent-bridge/)。
 
-在接入路径允许且 runtime 声明支持持久会话时，可通过 `continue_from_task_id` 续接同 runtime、同 workdir 的保留期内终态任务。适配器使用稳定 ACP `session/load`，调用方不直接传原始 session ID。但 v0.25.0 签名 v2 Core grant（Linux 命名、macOS shared、启用 grant 的 Windows）拒绝 `continue_from_task_id` 与 `idempotency_key`，即使适配器声明可续接也不例外。在这些路径省略两字段，提交结果不确定时不可盲目重试。兼容 v1 路径可按策略及实测能力使用幂等提交和续接。Session 可恢复不代表先前进程已停止。`cancel_agent_task` 会先记录终态取消，再发出有界的尽力 Provider/进程停止请求。Bridge 会保留 writer lease/recovery guard，直到清理完成且确认停止；无法确认停止时保持 fail-closed。客户端断开或停止轮询不会取消任务。完成、取消或失败后，应先确认终态以及清理/lease 释放，再在同一 workdir 启动另一个写任务。
+在接入路径允许且 runtime 声明支持持久会话时，可通过 `continue_from_task_id` 续接同 runtime、同 workdir 的保留期内终态任务。适配器使用稳定 ACP `session/load`，调用方不直接传原始 session ID。但签名 v2 Core grant（Linux 命名、macOS Shared 与显式 Owned v2、启用 grant 的 Windows）拒绝 `continue_from_task_id` 与 `idempotency_key`，即使适配器声明可续接也不例外。在这些路径省略两字段；提交结果不确定时，通过 `list_agent_tasks` 在授权别名下找回保留任务 ID，不可盲目重试。兼容 v1 路径可按策略及实测能力使用幂等提交和续接。Session 可恢复不代表先前进程已停止。`cancel_agent_task` 会先记录终态取消，再发出有界的尽力 Provider/进程停止请求。Bridge 会保留 writer lease/recovery guard，直到清理完成且确认停止；无法确认停止时保持 fail-closed。客户端断开或停止轮询不会取消任务。完成、取消或失败后，应先确认终态以及清理/lease 释放，再在同一 workdir 启动另一个写任务。
 
 ## 安全边界与能力限制
 

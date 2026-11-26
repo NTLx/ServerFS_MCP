@@ -22,7 +22,7 @@ Identify affected endpoint, exact component IDs, installed versions, effective d
 1. Core: verify actual listener/transport, exact Host and caller admission, then authenticated initialize/tools/list and one safe read. Direct HTTP has no Connector. Registration/TCP health alone is insufficient.
 2. Missing/denied tool: inspect effective workdir and capability policy. Binary, Agent and Repo Ops are independent; don't widen policy to make a probe pass. Do not submit an Agent task as a fallback for a missing or denied Repo Ops action.
 3. Ingress: after local Core succeeds, check selected Connector, provider route/DNS/TLS, remote authenticated MCP, then response delivery/SSE. Cloudflare origin is Linux service DNS or native loopback; OpenAI control-plane poll is not response delivery.
-4. Bridge: verify exact owner, IPC/grant and workdir mapping, runtime discovery, then the specific task/interaction/lease. File tools can survive Bridge outage. Terminal status is not proof of writer stop; unresolved recovery guard fails closed. Do not retry an uncertain v2 submission: signed grants reject continuation and idempotency keys.
+4. Bridge: verify exact owner, IPC/grant and workdir mapping, runtime discovery, then the specific task/interaction/lease. Use scoped `list_agent_tasks` on supporting signed-v2 attachments to recover authorized task IDs; do not confuse discovery with continuation. File tools can survive Bridge outage. Terminal status is not proof of writer stop; unresolved recovery guard fails closed. Do not retry an uncertain v2 submission: signed grants reject continuation and idempotency keys.
 5. Use bounded, redacted evidence; stop at the first failing boundary. Compare unaffected components. Repair only the proven cause with authorization, then repeat the original check.
 
 ## Platform branches
@@ -31,7 +31,7 @@ Identify affected endpoint, exact component IDs, installed versions, effective d
 | --- | --- | --- |
 | Linux | `deployment/linux/README.md` | Exact Compose project/env/overlay array; selected service ps/logs, exact user systemd Bridge unit. |
 | macOS | `deployment/macos/README.md` | Mode-specific status/preflight, signed app/SMAppService; exact Connector ID. |
-| Windows | `deployment/windows/v0250-native-operations.md` | Component CLI status with instance/owner and Connector ID; installed worker, ACL/pipe checks. |
+| Windows | `docs/deployment/windows/v0250-native-operations.md` | Component CLI status with instance/owner and Connector ID; installed worker, ACL/pipe checks. |
 
 ## Authoritative sources
 

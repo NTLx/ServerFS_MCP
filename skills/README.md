@@ -14,7 +14,7 @@ Select **one Skill for the current objective**. Load another only when the task 
 
 ## Agent loading contract
 
-1. Read the selected SKILL.md. Resolve platform, installed version, exact component and instance identity.
+1. Read the selected SKILL.md. Resolve platform, installed version, exact component and instance identity. v0.26.0 is the current release; use matching source and artifacts. For an existing v0.25.0 installation, use its tagged guides and do not assume v0.26.0 capabilities.
 2. Load only the matching platform reference and relevant authoritative config/schema or runbook section. Repository paths refer to the version-matched checkout, not the Plugin ZIP.
 3. Prefer bounded inspection: status and effective policy first, exact tool schemas and relevant file ranges next. Follow pagination when necessary for correctness; never substitute a search hit for a required full review.
 4. Retain a compact working state: target IDs, scope, desired change, observations, failed checks and next action. Do not repeatedly load historical reports, dump credentials, large logs, raw binary/base64 or unrelated platform procedures.

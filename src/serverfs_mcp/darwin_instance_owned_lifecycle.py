@@ -58,17 +58,54 @@ def _verify(
     default_bridge_config: Path | None = None,
 ) -> Path:
     _owned(identity)
-    resolve_owned_core_binding(
-        identity,
-        config,
-        port,
-        home=home,
-        default_bridge_config=default_bridge_config,
+    from .darwin_owned_v2_bootstrap import (
+        DarwinOwnedV2BootstrapError,
+        load_owned_v2_clients,
+        owned_protocol_marker,
     )
+
+    try:
+        protocol, manifest = owned_protocol_marker(identity, home=home)
+        if protocol == "v2":
+            if not isinstance(manifest.get("core"), dict) or manifest["core"].get("port") != port:
+                raise DarwinOwnedV2BootstrapError("owned Core port differs from its manifest")
+            load_owned_v2_clients(identity, config, home=home)
+        else:
+            resolve_owned_core_binding(
+                identity,
+                config,
+                port,
+                home=home,
+                default_bridge_config=default_bridge_config,
+            )
+    except (DarwinOwnedV2BootstrapError, OSError, ValueError) as exc:
+        raise DarwinOwnedLifecycleError("named owned Core/Bridge binding is invalid") from exc
     return named_owned_bridge_resources(identity, home=home).socket_path
 
 
-async def _probe_bridge_ipc(path: Path) -> bool:
+def _v2_clients(identity: InstanceIdentity, config: Path, home: Path | None):
+    from .darwin_owned_v2_bootstrap import load_owned_v2_clients, owned_protocol_marker
+
+    protocol, _manifest = owned_protocol_marker(identity, home=home)
+    return load_owned_v2_clients(identity, config, home=home) if protocol == "v2" else None
+
+
+async def _probe_bridge_ipc(path: Path, clients: dict | None = None) -> bool:
+    if clients is not None:
+        from .darwin_shared_bridge_readiness import probe_shared_v2_bridge
+
+        return bool(clients) and all(
+            [
+                await probe_shared_v2_bridge(
+                    client,
+                    path,
+                    require_private_parent=True,
+                    require_task_list=client.agent_enabled,
+                    require_repo_ops=client.repo_ops_enabled,
+                )
+                for client in clients.values()
+            ]
+        )
     client = AgentBridgeClient(path, timeout_seconds=1.0)
     try:
         await client.call("task.get", {"task_id": "agt_" + secrets.token_hex(12)})
@@ -79,7 +116,13 @@ async def _probe_bridge_ipc(path: Path) -> bool:
     return False
 
 
-def _bridge_ready(identity: InstanceIdentity, path: Path, *, timeout: float = 12.0) -> int:
+def _bridge_ready(
+    identity: InstanceIdentity,
+    path: Path,
+    *,
+    timeout: float = 12.0,
+    clients: dict | None = None,
+) -> int:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         pid = darwin_service._launchd_job_pid(identity.macos_label("bridge"))
@@ -90,7 +133,9 @@ def _bridge_ready(identity: InstanceIdentity, path: Path, *, timeout: float = 12
                 and stat.S_ISSOCK(info.st_mode)
                 and info.st_uid == os.getuid()
                 and stat.S_IMODE(info.st_mode) == 0o600
-                and asyncio.run(_probe_bridge_ipc(path))
+                and asyncio.run(
+                    _probe_bridge_ipc(path) if clients is None else _probe_bridge_ipc(path, clients)
+                )
             )
             if valid:
                 return pid
@@ -120,6 +165,18 @@ def _status(identity: InstanceIdentity, component: str, home: Path | None) -> st
 
 
 def _load_owned_manifest(identity: InstanceIdentity, home: Path | None) -> dict:
+    from .darwin_owned_v2_bootstrap import load_owned_v2_clients, owned_protocol_marker
+
+    try:
+        protocol, document = owned_protocol_marker(identity, home=home)
+        if protocol == "v2":
+            core = document.get("core")
+            if not isinstance(core, dict) or not isinstance(core.get("config"), str):
+                raise ValueError("owned v2 Core manifest is invalid")
+            load_owned_v2_clients(identity, Path(core["config"]), home=home)
+            return document
+    except (OSError, ValueError) as exc:
+        raise DarwinOwnedLifecycleError("named owned manifest is untrusted") from exc
     try:
         _, document = _load_connector_owner(identity, home=home)
     except (DarwinInstanceRuntimeError, OSError, ValueError) as exc:
@@ -216,6 +273,7 @@ def start_owned_bridge(
         home=home,
         default_bridge_config=default_bridge_config,
     )
+    clients = _v2_clients(identity, config, home)
     if _status(identity, "bridge", home) not in {"not-registered", "not-found"}:
         raise DarwinOwnedLifecycleError("named Bridge already registered; no replacement")
     if path.exists() or path.is_symlink():
@@ -226,7 +284,7 @@ def start_owned_bridge(
     try:
         if state != "enabled":
             raise DarwinOwnedLifecycleError("named Bridge needs explicit macOS approval")
-        pid = _bridge_ready(identity, path)
+        pid = _bridge_ready(identity, path, clients=clients)
     except Exception as exc:
         try:
             _rollback_one(identity, "bridge", home=home)
@@ -258,11 +316,12 @@ def start_owned_core(
         home=home,
         default_bridge_config=default_bridge_config,
     )
+    clients = _v2_clients(identity, config, home)
     if _status(identity, "core", home) not in {"not-registered", "not-found"}:
         raise DarwinOwnedLifecycleError("named Core already registered; no replacement")
     if _status(identity, "bridge", home) != "enabled":
         raise DarwinOwnedLifecycleError("named Core requires enabled owned Bridge")
-    _bridge_ready(identity, path, timeout=3.0)
+    _bridge_ready(identity, path, timeout=3.0, clients=clients)
     root = instance_service_home(identity, home=home)
     _assert_available_port(root.parents[2], identity.instance_id, port, allow_candidate=True)
     state = _manager(identity, "register", "http-origin", home=home)

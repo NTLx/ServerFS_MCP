@@ -38,6 +38,8 @@ _FIELDS = frozenset(
         "socket_path",
     }
 )
+_FIELDS_MULTI = _FIELDS - {"workdir_alias", "workdir_path", "policy_revision"} | {"workdirs"}
+_WORKDIR_FIELDS = frozenset({"alias", "path", "policy_revision"})
 _ALIAS = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,31}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -138,51 +140,86 @@ def load_shared_core_binding(
         if len(chunks) != opened.st_size or len(chunks) > _MAX_BYTES:
             raise _deny()
         document = json.loads(bytes(chunks).decode("utf-8"), object_pairs_hook=_pairs)
-        if not isinstance(document, dict) or set(document) != _FIELDS:
+        if not isinstance(document, dict) or type(document.get("schema_version")) is not int:
             raise _deny()
-        if type(document["schema_version"]) is not int or document["schema_version"] != 1:
+        version = document["schema_version"]
+        if (
+            (version == 1 and set(document) != _FIELDS)
+            or (version == 2 and set(document) != _FIELDS_MULTI)
+            or version not in (1, 2)
+        ):
             raise _deny()
         bridge_id = valid_id(document["bridge_id"])
         core_id = valid_id(document["core_id"])
         key_id = valid_id(document["key_id"])
         secret_hex = document["secret_hex"]
-        alias = document["workdir_alias"]
-        revision = document["policy_revision"]
         if (
             bridge_id != identity.bridge_id
             or core_id != identity.instance_id
             or not isinstance(secret_hex, str)
             or not re.fullmatch(r"[0-9a-f]{64}", secret_hex)
-            or not isinstance(alias, str)
-            or not _ALIAS.fullmatch(alias)
-            or not isinstance(revision, str)
-            or not _DIGEST.fullmatch(revision)
         ):
             raise _deny()
-        workdir_path = Path(document["workdir_path"])
         bridge_config_path = Path(document["bridge_config_path"])
         socket_path = Path(document["socket_path"])
         if (
-            not workdir_path.is_absolute()
-            or not bridge_config_path.is_absolute()
+            not bridge_config_path.is_absolute()
             or not socket_path.is_absolute()
             or socket_path != expected_socket_path
         ):
             raise _deny()
-        grant = SharedBridgeGrant(
-            bridge_id=bridge_id,
-            core_id=core_id,
-            key_id=key_id,
-            secret=bytes.fromhex(secret_hex),
-            workdir_alias=alias,
-            workdir_path=workdir_path,
-            policy_revision=revision,
-        )
+        if version == 1:
+            entries = [
+                {
+                    "alias": document["workdir_alias"],
+                    "path": document["workdir_path"],
+                    "policy_revision": document["policy_revision"],
+                }
+            ]
+        else:
+            entries = document["workdirs"]
+            if not isinstance(entries, list) or not 2 <= len(entries) <= 16:
+                raise _deny()
+        grants: list[SharedBridgeGrant] = []
+        seen_aliases: set[str] = set()
+        for entry in entries:
+            if not isinstance(entry, dict) or set(entry) != _WORKDIR_FIELDS:
+                raise _deny()
+            alias, raw_path, revision = (
+                entry["alias"],
+                entry["path"],
+                entry["policy_revision"],
+            )
+            if (
+                not isinstance(alias, str)
+                or not _ALIAS.fullmatch(alias)
+                or alias in seen_aliases
+                or not isinstance(raw_path, str)
+                or not isinstance(revision, str)
+                or not _DIGEST.fullmatch(revision)
+            ):
+                raise _deny()
+            seen_aliases.add(alias)
+            workdir_path = Path(raw_path)
+            if not workdir_path.is_absolute():
+                raise _deny()
+            grants.append(
+                SharedBridgeGrant(
+                    bridge_id=bridge_id,
+                    core_id=core_id,
+                    key_id=key_id,
+                    secret=bytes.fromhex(secret_hex),
+                    workdir_alias=alias,
+                    workdir_path=workdir_path,
+                    policy_revision=revision,
+                )
+            )
         return SharedBridgeBinding(
             bridge_config_path=bridge_config_path,
             socket_path=socket_path,
-            grant=grant,
-            core_policy_revision=revision,
+            grant=grants[0],
+            core_policy_revision=grants[0].policy_revision,
+            grants=tuple(grants) if version == 2 else (),
         )
     except DarwinSharedBindingError:
         raise

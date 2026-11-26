@@ -30,6 +30,21 @@ class AgentBridgeClientError(Exception):
     """Base class for agent-bridge client failures."""
 
 
+class AgentBridgeInvalidRequest(AgentBridgeClientError):
+    """A locally rejected caller argument; messages must be fixed and public-safe."""
+
+
+def validate_signed_v2_submission(method: str, params: dict[str, Any]) -> None:
+    """Reject unsupported v2 submission options before any IPC or provider call."""
+    if method == "task.submit" and (
+        params.get("continue_from_task_id") is not None or params.get("idempotency_key") is not None
+    ):
+        raise AgentBridgeInvalidRequest(
+            "signed-v2 does not support continue_from_task_id or idempotency_key; "
+            "omit both and use list_agent_tasks to rediscover an existing task"
+        )
+
+
 class AgentBridgeUnavailable(AgentBridgeClientError):
     """The local bridge socket could not be reached safely."""
 

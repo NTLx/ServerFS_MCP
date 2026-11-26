@@ -87,7 +87,7 @@ def test_release_gates_are_reusable_without_tag_push_side_effects() -> None:
     pages = text("pages.yml")
     assert "deploy_pages:" in on_block("pages.yml")
     side_effect_condition = (
-        "github.event_name == 'push' || "
+        "(github.event_name == 'push' && github.ref == 'refs/heads/main') || "
         "(github.event_name == 'workflow_dispatch' && inputs.deploy_pages)"
     )
     assert pages.count(side_effect_condition) == 3
@@ -115,7 +115,7 @@ def test_pages_pr_preview_is_not_a_publication_step() -> None:
     assert "deploy-pages" not in preview
 
 
-def test_pages_pr_preview_manifest_is_machine_readable_and_pr_only() -> None:
+def test_pages_preview_manifest_is_machine_readable_and_validation_only() -> None:
     pages = text("pages.yml")
     manifest = pages.split("      - name: Write PR preview provenance", 1)[1].split(
         "      - name: Retain PR preview", 1
@@ -141,3 +141,68 @@ def test_stable_container_publish_verifies_tag_points_to_candidate_sha() -> None
     assert "$IMAGE_NAME:$version" in publish
     assert "$IMAGE_NAME:$minor" in publish
     assert "$IMAGE_NAME:latest" in publish
+
+
+def test_integration_pr_triggers_validation_without_expanding_push_publication() -> None:
+    for workflow in (
+        "container.yml",
+        "macos-native.yml",
+        "windows-native.yml",
+        "windows-agent.yml",
+        "pages.yml",
+    ):
+        triggers = on_block(workflow)
+        pr = triggers.split("  pull_request:", 1)[1]
+        assert "    branches:\n      - main\n      - integration/v0.26.0\n" in pr
+        push = triggers.split("  push:", 1)[1].split("  pull_request:", 1)[0]
+        assert "      - main\n" in push
+        assert "integration/v0.26.0" not in push
+    assert "integration/v0.26.0" not in on_block("wheel-release.yml")
+    assert "integration/v0.26.0" not in on_block("container-publish.yml")
+
+
+def test_windows_agent_ci_triggers_and_runs_named_proxy_traffic_regression() -> None:
+    workflow = text("windows-agent.yml")
+    path = "tests/test_windows_v026_named_proxy_live.py"
+    triggers = on_block("windows-agent.yml")
+    assert triggers.count(f'      - "{path}"') == 2
+    assert f"            {path} `" in workflow
+
+
+def test_exact_integration_sha_gate_is_validation_only() -> None:
+    gate = text("integration-candidate.yml")
+    assert "  push:\n    branches:\n      - integration/v0.26.0\n" in gate
+    assert "workflow_dispatch:" not in gate
+    assert "paths:" not in gate and "paths-ignore:" not in gate
+    for workflow in (
+        "container.yml",
+        "windows-native.yml",
+        "windows-agent.yml",
+        "macos-native.yml",
+        "pages.yml",
+    ):
+        assert gate.count(f"uses: ./.github/workflows/{workflow}") == 1
+    assert "deploy_pages: false" in gate
+    assert "container-publish.yml" not in gate and "wheel-release.yml" not in gate
+    container = text("container.yml")
+    publish = container.split("  publish:", 1)[1]
+    assert "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" in publish
+    check = container.split("  container-check:", 1)[1].split("  publish:", 1)[0]
+    assert (
+        "(github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.26.0')"
+    ) in check
+    pages = text("pages.yml")
+    assert (
+        pages.count(
+            "(github.event_name == 'push' && github.ref == 'refs/heads/main') || "
+            "(github.event_name == 'workflow_dispatch' && inputs.deploy_pages)"
+        )
+        == 3
+    )
+    assert (
+        pages.count(
+            "if: github.event_name == 'pull_request' || "
+            "(github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.26.0')"
+        )
+        == 2
+    )

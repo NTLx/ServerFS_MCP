@@ -66,6 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="macOS only: explicitly bind a named Core to an authenticated shared Bridge",
     )
+    serve.add_argument(
+        "--macos-agent-protocol",
+        choices=("v2",),
+        default=None,
+        help="macOS only: explicitly use signed-v2 Agent IPC for a staged owned Core",
+    )
 
     doctor = sub.add_parser("doctor", help="Report configuration/platform diagnostics (read-only)")
     doctor.add_argument("--config", required=True, type=Path, help="Path to serverfs.toml")
@@ -521,12 +527,16 @@ def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
         return _fail("native Bridge v2 Core owner wiring is invalid")
     named_instance = getattr(args, "macos_instance", None)
     shared_bridge = getattr(args, "macos_shared_bridge", None)
+    owned_agent_protocol = getattr(args, "macos_agent_protocol", None)
     if shared_bridge is not None and not named_instance:
         return _fail("--macos-shared-bridge requires explicit --macos-instance")
     if shared_bridge == "":
         return _fail("--macos-shared-bridge must be non-empty")
+    if owned_agent_protocol is not None and (not named_instance or shared_bridge is not None):
+        return _fail("--macos-agent-protocol v2 requires an explicitly named owned Core")
     shared_wiring: tuple[object, Path] | None = None
     owned_wiring: tuple[str, Path] | None = None
+    owned_v2_wiring: tuple[object, Path, Path] | None = None
     if named_instance and shared_bridge:
         if sys.platform != "darwin" or args.transport != "streamable-http":
             return _fail("named shared Bridge requires macOS Streamable HTTP")
@@ -554,7 +564,13 @@ def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
             client = asyncio.run(
                 prepare_shared_agent_adapter(identity, Path(args.config), trusted_socket)
             )
-            if getattr(client, "_workdir_alias", None) != workdir_alias:
+            bound = (
+                set(getattr(client, "_adapters", {}))
+                if isinstance(workdir_alias, tuple)
+                else {getattr(client, "_workdir_alias", None)}
+            )
+            expected = set(workdir_alias) if isinstance(workdir_alias, tuple) else {workdir_alias}
+            if bound != expected:
                 raise SharedCoreBootstrapError("shared Bridge grant mismatch")
             lock_dir = instance_service_home(identity) / "data" / "agent-bridge" / "locks"
             shared_wiring = (client, lock_dir)
@@ -566,6 +582,34 @@ def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
             ValueError,
         ):
             return _fail("named shared Bridge verification failed")
+    elif named_instance and owned_agent_protocol == "v2":
+        if sys.platform != "darwin" or args.transport != "streamable-http":
+            return _fail("named owned Bridge v2 requires macOS Streamable HTTP")
+        if not native_settings.bridge_required:
+            return _fail("named owned Bridge v2 requires an enabled Agent policy")
+        from .darwin_instance_bridge_identity import named_owned_bridge_resources
+        from .darwin_instances import instance_service_home
+        from .darwin_owned_v2_agent_factory import (
+            DarwinOwnedV2AgentFactoryError,
+            prepare_owned_v2_agent_adapter,
+        )
+        from .instance_identity import InstanceIdentity, InstanceIdentityError
+
+        try:
+            identity = InstanceIdentity(
+                instance_id=named_instance,
+                bridge_mode="owned",
+                bridge_id=named_instance,
+            )
+            adapter = asyncio.run(prepare_owned_v2_agent_adapter(identity, args.config))
+            resources = named_owned_bridge_resources(identity)
+            owned_v2_wiring = (
+                adapter,
+                resources.socket_path,
+                instance_service_home(identity) / "data" / "agent-bridge" / "locks",
+            )
+        except (DarwinOwnedV2AgentFactoryError, InstanceIdentityError, OSError, ValueError):
+            return _fail("named owned signed-v2 Bridge verification failed")
     elif named_instance:
         if sys.platform != "darwin" or args.transport != "streamable-http":
             return _fail("named owned Core requires macOS Streamable HTTP")
@@ -611,6 +655,14 @@ def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
             log_level=native_settings.log_level,
             agent_bridge_enabled=True,
             agent_bridge_socket=str(trusted_socket),
+            agent_lock_dir=str(lock_dir),
+        )
+    elif owned_v2_wiring is not None:
+        client, socket_path, lock_dir = owned_v2_wiring
+        settings = Settings(
+            log_level=native_settings.log_level,
+            agent_bridge_enabled=True,
+            agent_bridge_socket=str(socket_path),
             agent_lock_dir=str(lock_dir),
         )
     else:
@@ -663,10 +715,15 @@ def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
             )
         except ValueError as exc:
             return _fail(f"Streamable HTTP configuration error: {exc}")
-    if shared_wiring is None:
+    if shared_wiring is None and owned_v2_wiring is None:
         settings = _overlay_ingress_env(settings)
     file_ingress_client = None
-    if shared_wiring is None and settings.file_ingress_enabled and sys.platform == "darwin":
+    if (
+        shared_wiring is None
+        and owned_v2_wiring is None
+        and settings.file_ingress_enabled
+        and sys.platform == "darwin"
+    ):
         helper = _darwin_ingress_helper(settings)
         if helper is not None:
             file_ingress_client = helper

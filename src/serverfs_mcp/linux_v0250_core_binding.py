@@ -17,7 +17,7 @@ from .core_bridge_client_v2 import (
     CoreBridgeUnavailable,
 )
 from .instance_identity import DEFAULT_INSTANCE_ID, valid_id
-from .linux_v0250_bridge_adapter import LinuxV0250BridgeAdapter
+from .linux_v0250_bridge_adapter import LinuxV0250BridgeAdapter, LinuxV026MultiBridgeAdapter
 
 _MAX_BYTES = 16 * 1024
 _FILENAME = "core-bridge-binding.json"
@@ -37,6 +37,9 @@ _FIELDS = frozenset(
 )
 _ALIAS = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,31}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+_MULTI_FIELDS = _FIELDS - {"workdir_alias", "workdir_path", "policy_revision"} | {"workdirs"}
+_WORKDIR_FIELDS = frozenset({"alias", "workdir_path", "policy_revision"})
+_CONTAINER_SLOT = re.compile(r"/workdirs/(0[1-9]|1[0-6])\Z")
 
 
 class LinuxCoreBindingError(ValueError):
@@ -90,8 +93,8 @@ def _open_private_parent(path: Path) -> int:
 
 def load_linux_core_client(
     binding_file: str, *, instance_id: str, bridge_id: str, socket_path: str, workdirs: list[Any]
-) -> tuple[CoreBridgeClientV2, str]:
-    """Open one existing private grant and bind it to one enabled workdir."""
+) -> tuple[CoreBridgeClientV2 | dict[str, CoreBridgeClientV2], str | None]:
+    """Open a private v1 single-alias or v2 multi-alias Core grant, fail closed."""
     fd: int | None = None
     parent_fd: int | None = None
     stage = "binding-path"
@@ -138,11 +141,13 @@ def load_linux_core_client(
             raise _deny(stage)
         stage = "binding-document"
         doc = json.loads(bytes(raw).decode("utf-8"), object_pairs_hook=_pairs)
+        if not isinstance(doc, dict) or type(doc.get("schema_version")) is not int:
+            raise _deny(stage)
+        version = doc["schema_version"]
         if (
-            not isinstance(doc, dict)
-            or set(doc) != _FIELDS
-            or type(doc["schema_version"]) is not int
-            or doc["schema_version"] != 1
+            (version == 1 and set(doc) != _FIELDS)
+            or (version == 2 and set(doc) != _MULTI_FIELDS)
+            or version not in (1, 2)
         ):
             raise _deny(stage)
         stage = "grant-identity"
@@ -155,43 +160,75 @@ def load_linux_core_client(
         ):
             raise _deny(stage)
         stage = "grant-fields"
-        alias, secret_hex, revision = (
-            doc["workdir_alias"],
-            doc["secret_hex"],
-            doc["policy_revision"],
-        )
-        if (
-            not isinstance(alias, str)
-            or not _ALIAS.fullmatch(alias)
-            or not isinstance(secret_hex, str)
-            or not re.fullmatch(r"[0-9a-f]{64}", secret_hex)
-            or not isinstance(revision, str)
-            or not _DIGEST.fullmatch(revision)
-        ):
+        secret_hex = doc["secret_hex"]
+        if not isinstance(secret_hex, str) or not re.fullmatch(r"[0-9a-f]{64}", secret_hex):
             raise _deny(stage)
+        if version == 1:
+            candidates = [
+                {
+                    "alias": doc["workdir_alias"],
+                    "workdir_path": doc["workdir_path"],
+                    "policy_revision": doc["policy_revision"],
+                }
+            ]
+        else:
+            candidates = doc["workdirs"]
+            if not isinstance(candidates, list) or not 1 <= len(candidates) <= 16:
+                raise _deny(stage)
+        validated: dict[str, tuple[Path, str]] = {}
+        slots: set[str] = set()
+        for entry in candidates:
+            if not isinstance(entry, dict) or set(entry) != _WORKDIR_FIELDS:
+                raise _deny(stage)
+            alias, path_value, revision = (
+                entry["alias"],
+                entry["workdir_path"],
+                entry["policy_revision"],
+            )
+            if (
+                not isinstance(alias, str)
+                or not _ALIAS.fullmatch(alias)
+                or alias in validated
+                or not isinstance(path_value, str)
+                or not isinstance(revision, str)
+                or not _DIGEST.fullmatch(revision)
+            ):
+                raise _deny(stage)
+            grant_path = Path(path_value)
+            if not grant_path.is_absolute():
+                raise _deny(stage)
+            if version == 2:
+                if not _CONTAINER_SLOT.fullmatch(path_value) or path_value in slots:
+                    raise _deny(stage)
+                slots.add(path_value)
+            validated[alias] = (grant_path, revision)
         stage = "socket-binding"
-        grant_socket = Path(doc["socket_path"])
-        if grant_socket != expected_socket:
+        if Path(doc["socket_path"]) != expected_socket:
             raise _deny(stage)
         stage = "workdir-binding"
-        grant_path = Path(doc["workdir_path"])
-        if not grant_path.is_absolute():
+        enabled = [w for w in workdirs if w.agent_mode != "disabled" or w.policy.repo_ops_enabled]
+        if len(enabled) != len(validated) or {w.alias for w in enabled} != set(validated):
             raise _deny(stage)
-        matches = [w for w in workdirs if (w.agent_mode != "disabled" or w.policy.repo_ops_enabled)]
-        if len(matches) != 1 or matches[0].alias != alias or Path(matches[0].root) != grant_path:
+        if any(Path(w.root) != validated[w.alias][0] for w in enabled):
             raise _deny(stage)
         stage = "client-construction"
-        client = CoreBridgeClientV2(
-            expected_socket,
-            bridge_id=bridge_id,
-            core_id=instance_id,
-            key_id=doc["key_id"],
-            secret=bytes.fromhex(secret_hex),
-            workdir_alias=alias,
-            policy_revision=revision,
-            timeout_seconds=5,
-        )
-        return client, alias
+        clients = {
+            alias: CoreBridgeClientV2(
+                expected_socket,
+                bridge_id=bridge_id,
+                core_id=instance_id,
+                key_id=doc["key_id"],
+                secret=bytes.fromhex(secret_hex),
+                workdir_alias=alias,
+                policy_revision=revision,
+                timeout_seconds=5,
+            )
+            for alias, (_, revision) in validated.items()
+        }
+        if len(clients) == 1:
+            alias, client = next(iter(clients.items()))
+            return client, alias
+        return clients, None
     except LinuxCoreBindingError:
         raise
     except (OSError, ValueError, TypeError, KeyError, UnicodeError, json.JSONDecodeError):
@@ -204,15 +241,20 @@ def load_linux_core_client(
 
 
 async def verify_linux_core_client(
-    client: CoreBridgeClientV2, expected_socket: Path, *, timeout_seconds: float = 3.0
+    client: CoreBridgeClientV2 | dict[str, CoreBridgeClientV2],
+    expected_socket: Path,
+    *,
+    timeout_seconds: float = 3.0,
 ) -> None:
     """Require signed bridge.ping within a finite startup deadline."""
-    if client._socket_path != expected_socket:
+    clients = tuple(client.values()) if isinstance(client, dict) else (client,)
+    if not clients or any(c._socket_path != expected_socket for c in clients):
         raise _deny("socket-binding")
     try:
         async with asyncio.timeout(timeout_seconds):
-            if await client.call("bridge.ping", {}) != {"status": "ok"}:
-                raise _deny("ping-response")
+            for signed_client in clients:
+                if await signed_client.call("bridge.ping", {}) != {"status": "ok"}:
+                    raise _deny("ping-response")
     except CoreBridgeRemoteError:
         raise _deny("ping-rejected") from None
     except (CoreBridgeUnavailable, OSError, TimeoutError):
@@ -226,6 +268,12 @@ async def verify_linux_core_client(
 
 
 def create_linux_v0250_agent_adapter(
-    client: CoreBridgeClientV2, alias: str
-) -> LinuxV0250BridgeAdapter:
+    client: CoreBridgeClientV2 | dict[str, CoreBridgeClientV2], alias: str | None
+) -> LinuxV0250BridgeAdapter | LinuxV026MultiBridgeAdapter:
+    if isinstance(client, dict):
+        if alias is not None:
+            raise _deny("client-construction")
+        return LinuxV026MultiBridgeAdapter(client)
+    if alias is None:
+        raise _deny("client-construction")
     return LinuxV0250BridgeAdapter(client, alias)

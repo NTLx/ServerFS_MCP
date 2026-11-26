@@ -74,7 +74,7 @@ def test_authorized_workdir_capability_and_nonce_replay_refused() -> None:
     verifier = CoreGrantVerifier("bridge-x", (grant,))
     request = _request(grant)
     actual = verifier.authorize(request, now=1_800_000_000)
-    assert actual == CoreAuthorization("alpha", "bridge-x", "Repo", "repo.inspect")
+    assert actual == CoreAuthorization("alpha", "bridge-x", "Repo", "repo.inspect", "key-a")
     _deny(verifier, request)
     # Fresh nonce with a valid MAC remains authorized.
     second = _request(grant, nonce="d" * 32)

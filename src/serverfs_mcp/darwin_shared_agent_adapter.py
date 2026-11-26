@@ -9,6 +9,7 @@ from .agent_client import (
     AgentBridgeClientError,
     AgentBridgeRemoteError,
     AgentBridgeUnavailable,
+    validate_signed_v2_submission,
 )
 from .core_bridge_client_v2 import (
     CoreBridgeClientV2Error,
@@ -24,6 +25,7 @@ _AGENT_METHODS = frozenset(
     {
         "task.submit",
         "task.get",
+        "task.list",
         "task.events",
         "task.result.read",
         "task.cancel",
@@ -37,13 +39,14 @@ _AGENT_METHODS = frozenset(
 class DarwinSharedAgentAdapter:
     """Expose one grant-scoped Shared Core as the existing Agent client interface."""
 
-    def __init__(self, client: Any, workdir_alias: str) -> None:
+    def __init__(self, client: Any, workdir_alias: str, *, allow_repo_ops: bool = False) -> None:
         if not callable(getattr(client, "call", None)):
             raise ValueError("Shared Bridge client is invalid")
         if not isinstance(workdir_alias, str) or not _ALIAS.fullmatch(workdir_alias):
             raise ValueError("Shared Bridge workdir grant is invalid")
         self._client = client
         self._workdir_alias = workdir_alias
+        self._allow_repo_ops = allow_repo_ops
 
     def __repr__(self) -> str:
         return "DarwinSharedAgentAdapter(<grant credentials hidden>)"
@@ -51,9 +54,11 @@ class DarwinSharedAgentAdapter:
     async def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(method, str) or not method:
             raise AgentBridgeClientError("invalid Agent Bridge method")
-        if method.startswith("repo."):
-            raise AgentBridgeClientError("Repo Ops is unavailable through Agent tools")
         supported = _GLOBAL_METHODS | _AGENT_METHODS | {"runtime.models"}
+        if method.startswith("repo."):
+            if not self._allow_repo_ops:
+                raise AgentBridgeClientError("Repo Ops is unavailable through Agent tools")
+            supported |= {"repo.inspect", "repo.action", "repo.commit", "repo.push"}
         if method not in supported:
             raise AgentBridgeClientError("unsupported Agent Bridge method")
         if not isinstance(params, dict):
@@ -64,6 +69,7 @@ class DarwinSharedAgentAdapter:
             if forwarded["workdir"] != self._workdir_alias:
                 raise AgentBridgeClientError("workdir is outside the authorized grant")
             del forwarded["workdir"]
+        validate_signed_v2_submission(method, forwarded)
         # Public task lookup / interaction tools take only a task_id; their
         # API does not carry a workdir. The authenticated CoreBridgeClientV2
         # injects this Core's immutable grant alias into EVERY signed v2

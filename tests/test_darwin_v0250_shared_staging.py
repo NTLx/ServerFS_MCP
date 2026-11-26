@@ -185,6 +185,40 @@ def test_shared_stage_creates_signed_candidate_without_provisioning_owner(candid
     assert c["calls"] == [("sign", IDENTITY.instance_id)]
 
 
+def test_shared_stage_accepts_two_agent_workdirs_with_explicit_v2_owner_grant(candidate) -> None:
+    c = candidate
+    second = c["workdir"].parent / "other-workspace"
+    second.mkdir(mode=0o700)
+    c["config"].write_text(
+        c["config"].read_text(encoding="utf-8")
+        + "[[workdirs]]\nalias = 'other-workspace'\n"
+        + f"path = '{second}'\nread_only = false\n"
+        + "agent_mode = 'workspace-write'\nagent_runtimes = ['codex']\n",
+        encoding="utf-8",
+    )
+    owner = dict(c["binding"])
+    owner["schema_version"] = 2
+    owner["workdirs"] = [
+        {
+            "alias": owner.pop("workdir_alias"),
+            "path": owner.pop("workdir_path"),
+            "policy_revision": owner.pop("policy_revision"),
+        },
+        {
+            "alias": "other-workspace",
+            "path": str(second),
+            "policy_revision": "e" * 64,
+        },
+    ]
+    c["binding_file"].write_text(json.dumps(owner), encoding="utf-8")
+    c["binding_file"].chmod(0o600)
+    result = _stage(c)
+    assert result["state"] == "staged-not-registered"
+    saved = json.loads((c["root"] / "shared-bridge-binding.json").read_text())
+    assert saved["schema_version"] == 2
+    assert {entry["alias"] for entry in saved["workdirs"]} == {"workspace", "other-workspace"}
+
+
 @pytest.mark.parametrize("name", ["wrong-core", "wrong-bridge", "wrong-alias", "bad-secret"])
 def test_shared_stage_rejects_invalid_grant_and_removes_new_candidate(candidate, name: str) -> None:
     c = candidate

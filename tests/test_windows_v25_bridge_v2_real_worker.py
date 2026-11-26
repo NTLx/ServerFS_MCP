@@ -28,6 +28,7 @@ from serverfs_mcp.agent_lifecycle import (
 )
 from serverfs_mcp.native_endpoint import current_user_sid
 from serverfs_mcp.windows_job import WindowsJob
+from serverfs_mcp.windows_private_artifacts import protect_new_file
 from serverfs_mcp.windows_v25.bridge_resources import WindowsBridgeResources
 from serverfs_mcp.windows_v25.bridge_v2_owner import (
     NativeBridgeV2Plan,
@@ -99,6 +100,21 @@ def _test_installation(tmp_path: Path):
         ),
         encoding="utf-8",
     )
+    # Match the native private-file contract even when an elevated CI token
+    # creates files with the Administrators group as their default owner.
+    from serverfs_mcp.windows_v25 import storage
+
+    protect_new_file(config_file, sid)
+    owner_result = subprocess.run(
+        ["icacls.exe", str(config_file), "/setowner", f"*{sid}"],
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert owner_result.returncode == 0, "temporary Bridge config owner setup failed"
+    # Fail in fixture setup with the specific ACL check, before the owner
+    # intentionally redacts its startup refusal.
+    storage.check_private(config_file, directory=False, sid=sid)
     secrets_by_core = {
         "core-a": secrets.token_bytes(32),
         "core-b": secrets.token_bytes(32),

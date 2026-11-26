@@ -17,20 +17,21 @@ import shutil
 import stat
 import subprocess
 import sys
+import tomllib
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
-VERSION = "0.25.0"
+VERSION = "0.26.0"
 WHEELS = {
-    "core": ("serverfs_mcp-0.25.0-py3-none-any.whl", "serverfs-mcp", "serverfs_mcp"),
+    "core": (f"serverfs_mcp-{VERSION}-py3-none-any.whl", "serverfs-mcp", "serverfs_mcp"),
     "native": (
-        "serverfs_windows_native-0.25.0-cp312-abi3-win_amd64.whl",
+        f"serverfs_windows_native-{VERSION}-cp312-abi3-win_amd64.whl",
         "serverfs-windows-native",
         "serverfs_windows_native",
     ),
     "bridge": (
-        "serverfs_agent_bridge-0.25.0-py3-none-any.whl",
+        f"serverfs_agent_bridge-{VERSION}-py3-none-any.whl",
         "serverfs-agent-bridge",
         "serverfs_agent_bridge",
     ),
@@ -146,6 +147,147 @@ def offline_env(environ) -> dict[str, str]:
     env = {k.upper(): v for k, v in environ.items() if k.upper() in allowed}
     env.update(UV_OFFLINE="1", UV_LINK_MODE="copy", UV_NO_PROGRESS="1")
     return env
+
+
+def runtime_constraints(uv: str, project: Path, distribution: str, env: dict[str, str]) -> bytes:
+    """Export the exact dependency closure from the trusted matching checkout."""
+    try:
+        config = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))
+        lock = tomllib.loads((project / "uv.lock").read_text(encoding="utf-8"))
+        require(
+            config["project"]["name"] == distribution
+            and config["project"]["version"] == VERSION
+            and any(
+                item.get("name") == distribution
+                and item.get("version") == VERSION
+                and item.get("source") == {"editable": "."}
+                for item in lock["package"]
+            ),
+            "runtime lock identity differs",
+        )
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise InstallRefusal("matching runtime lock is unavailable") from exc
+    exported = run(
+        [
+            uv,
+            "--no-config",
+            "export",
+            "--frozen",
+            "--no-dev",
+            "--no-emit-project",
+            "--no-hashes",
+            "--format",
+            "requirements-txt",
+        ],
+        env,
+        project,
+        120,
+    )
+    try:
+        lines = [
+            line.strip()
+            for line in exported.decode("utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+    except UnicodeError as exc:
+        raise InstallRefusal("runtime lock export is invalid") from exc
+    require(
+        bool(lines)
+        and all(
+            re.fullmatch(r"[A-Za-z0-9_.-]+==[A-Za-z0-9.!+_-]+(?:\s*;[^\r\n]+)?", line)
+            for line in lines
+        ),
+        "runtime lock export contains a non-pinned requirement",
+    )
+    return exported
+
+
+def install_locked_runtime(
+    uv: str,
+    py: Path,
+    requirements: Path,
+    wheels: list[Path],
+    env: dict[str, str],
+    cwd: Path,
+) -> None:
+    """Materialize the frozen closure, then pinned local Wheels, without re-solving it."""
+    base = [uv, "--no-config", "pip", "install", "--offline", "--python", str(py)]
+    run(
+        [*base, "--no-deps", "--only-binary", ":all:", "-r", str(requirements)],
+        env,
+        cwd,
+        240,
+    )
+    run([*base, "--no-deps", *map(str, wheels)], env, cwd, 240)
+
+
+def locked_inventory(
+    requirements: bytes, kinds: tuple[str, ...], installed: list[list[str]]
+) -> int:
+    """Check installed versions against the export; uv evaluates PEP 508 markers."""
+
+    def canonical(name: str) -> str:
+        return re.sub(r"[-_.]+", "-", name).lower()
+
+    allowed: dict[str, set[str]] = {}
+    required: dict[str, str] = {}
+    for line in requirements.decode("utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        requirement, _, marker = line.partition(";")
+        name, version = requirement.strip().split("==", 1)
+        key = canonical(name)
+        allowed.setdefault(key, set()).add(version)
+        if not marker:
+            require(
+                key not in required or required[key] == version,
+                "conflicting unconditional locked versions",
+            )
+            required[key] = version
+    require(bool(allowed), "empty locked dependency inventory")
+    for kind in kinds:
+        key = canonical(WHEELS[kind][1])
+        require(key not in allowed, "project Wheel overlaps dependency export")
+        allowed[key] = {VERSION}
+        required[key] = VERSION
+    seen: dict[str, str] = {}
+    for row in installed:
+        require(
+            isinstance(row, list) and len(row) == 2 and all(isinstance(x, str) for x in row),
+            "invalid installed distribution inventory",
+        )
+        name, version = row
+        key = canonical(name)
+        require(key not in seen and version in allowed.get(key, ()), "unlocked distribution")
+        seen[key] = version
+    require(
+        all(seen.get(name) == version for name, version in required.items()),
+        "required locked distribution missing or differs",
+    )
+    return len(seen) - len(kinds)
+
+
+def verify_locked_inventory(
+    venv: Path, requirements: bytes, kinds: tuple[str, ...], env: dict[str, str]
+) -> int:
+    probe = (
+        "import importlib.metadata as m,json,sys;from pathlib import Path;"
+        "assert Path(sys.prefix).resolve()==Path(sys.argv[1]).resolve();"
+        "print(json.dumps([[d.metadata['Name'],d.version] for d in m.distributions()]))"
+    )
+    raw = run(
+        [str(venv / "Scripts/python.exe"), "-I", "-B", "-c", probe, str(venv)],
+        env,
+        venv,
+        45,
+    )
+    try:
+        installed = json.loads(raw)
+        require(isinstance(installed, list), "invalid installed distribution inventory")
+        return locked_inventory(requirements, kinds, installed)
+    except (ValueError, UnicodeError, TypeError) as exc:
+        raise InstallRefusal("invalid installed distribution inventory") from exc
 
 
 def ensure_empty(path: Path) -> None:
@@ -273,6 +415,15 @@ def provision(args: argparse.Namespace) -> dict:
         cache = cache.resolve(strict=True)
         _no_reparse_components(cache)
         env["UV_CACHE_DIR"] = str(cache)
+    # The installer is distributed with a matching trusted source checkout.
+    checkout = Path(__file__).resolve().parents[2]
+    constraints = {
+        "core": runtime_constraints(uv, checkout, WHEELS["core"][1], env),
+    }
+    if args.component == "bridge":
+        constraints["bridge"] = runtime_constraints(
+            uv, checkout / "agent_bridge", WHEELS["bridge"][1], env
+        )
     root = storage.root(args.instance)
     envs = {role: root / "envs" / role for role, _ in jobs}
     # Validate all existing targets before even preparing missing directories.
@@ -306,7 +457,11 @@ def provision(args: argparse.Namespace) -> dict:
         "component": args.component,
         "instance": args.instance,
         "wheel_sha256": pins,
+        "constraints_sha256": {
+            kind: hashlib.sha256(data).hexdigest() for kind, data in constraints.items()
+        },
         "installed": [],
+        "locked_dependencies_verified": {},
         "phase": "private-input-staging",
     }
 
@@ -338,6 +493,19 @@ def provision(args: argparse.Namespace) -> dict:
                 "staged Wheel hash differs",
             )
             staged[kind] = target
+        staged_constraints = {}
+        for kind, data in constraints.items():
+            target = attempt / f"{kind}-constraints.txt"
+            with target.open("xb") as stream:
+                stream.write(data)
+            protect_new_file(target, sid)
+            storage.check_private(target, directory=False, sid=sid)
+            require(
+                hashlib.sha256(target.read_bytes()).hexdigest()
+                == report["constraints_sha256"][kind],
+                "staged runtime constraints differ",
+            )
+            staged_constraints[kind] = target
         for role, kinds in jobs:
             venv = envs[role]
             report["phase"] = role + "-create-venv"
@@ -351,24 +519,23 @@ def provision(args: argparse.Namespace) -> dict:
             py = venv / "Scripts/python.exe"
             require(py.is_file(), "new runtime interpreter missing")
             report["phase"] = role + "-offline-install"
+            lock_kind = "bridge" if kinds == ("bridge",) else "core"
+            install_locked_runtime(
+                uv, py, staged_constraints[lock_kind], [staged[k] for k in kinds], env, attempt
+            )
+            report["phase"] = role + "-dependency-check"
             run(
-                [
-                    uv,
-                    "--no-config",
-                    "pip",
-                    "install",
-                    "--offline",
-                    "--python",
-                    str(py),
-                    *[str(staged[k]) for k in kinds],
-                ],
+                [uv, "--no-config", "pip", "check", "--python", str(py)],
                 env,
                 attempt,
-                240,
+                45,
             )
             report["phase"] = role + "-private-tree"
             private_tree(venv, sid)
             report["phase"] = role + "-verify-installed"
+            report["locked_dependencies_verified"][role] = verify_locked_inventory(
+                venv, constraints[lock_kind], kinds, env
+            )
             verify_installed(venv, kinds, staged, env, sid)
             report["installed"].append(role)
         report["phase"] = "verified"

@@ -77,6 +77,63 @@ def test_loads_exact_private_binding_without_exposing_secret(private_binding) ->
     assert _SECRET not in repr(binding)
 
 
+def test_loads_private_v2_multi_grant_without_leaking_secret(
+    private_binding, tmp_path: Path
+) -> None:
+    document = dict(private_binding[4])
+    document["schema_version"] = 2
+    document["workdirs"] = [
+        {
+            "alias": document.pop("workdir_alias"),
+            "path": document.pop("workdir_path"),
+            "policy_revision": document.pop("policy_revision"),
+        },
+        {
+            "alias": "Other",
+            "path": str(tmp_path / "other"),
+            "policy_revision": "b" * 64,
+        },
+    ]
+    _write(private_binding, json.dumps(document))
+    result = _load(private_binding)
+    assert {grant.workdir_alias for grant in result.grants} == {"Workspace", "Other"}
+    assert result.grant == result.grants[0]
+    assert _SECRET not in repr(result)
+
+
+@pytest.mark.parametrize("bad_kind", ["duplicate", "nonabsolute", "empty", "oversized"])
+def test_private_v2_rejects_malformed_multi_grant(
+    private_binding, tmp_path: Path, bad_kind: str
+) -> None:
+    document = dict(private_binding[4])
+    document["schema_version"] = 2
+    entry = {
+        "alias": document.pop("workdir_alias"),
+        "path": document.pop("workdir_path"),
+        "policy_revision": document.pop("policy_revision"),
+    }
+    other = {"alias": "Other", "path": str(tmp_path / "other"), "policy_revision": "b" * 64}
+    document["workdirs"] = [entry, other]
+    if bad_kind == "duplicate":
+        document["workdirs"][1]["alias"] = entry["alias"]
+    elif bad_kind == "nonabsolute":
+        document["workdirs"][1]["path"] = "relative"
+    elif bad_kind == "empty":
+        document["workdirs"] = []
+    else:
+        document["workdirs"] = [entry] + [
+            {
+                "alias": f"Item{index}",
+                "path": str(tmp_path / f"item-{index}"),
+                "policy_revision": "b" * 64,
+            }
+            for index in range(16)
+        ]
+    _write(private_binding, json.dumps(document))
+    with pytest.raises(DarwinSharedBindingError):
+        _load(private_binding)
+
+
 @pytest.mark.parametrize(
     "identity",
     [

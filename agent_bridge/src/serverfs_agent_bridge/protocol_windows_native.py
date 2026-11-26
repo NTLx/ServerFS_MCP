@@ -407,7 +407,11 @@ class BridgeProtocolServer:
             if not isinstance(method, str) or not method or not isinstance(params, dict):
                 raise BridgeError("INVALID_REQUEST", "method and params have invalid types")
             result = (
-                await self._dispatch_core(authorized, params)
+                await self._dispatch_core(
+                    authorized,
+                    params,
+                    policy_revision=request["policy_revision"],
+                )
                 if authorized is not None
                 else await self._dispatch(method, params)
             )
@@ -418,7 +422,11 @@ class BridgeProtocolServer:
             return _error_response(request_id, "BRIDGE_PROTOCOL_ERROR", "protocol failure")
 
     async def _dispatch_core(
-        self, authorized: CoreAuthorization, params: dict[str, Any]
+        self,
+        authorized: CoreAuthorization,
+        params: dict[str, Any],
+        *,
+        policy_revision: str | None = None,
     ) -> dict[str, Any]:
         """v2 request adapter: validate and enforce Core task ownership.
 
@@ -485,6 +493,27 @@ class BridgeProtocolServer:
                 },
             )
             return await self.service.submit_task(**params, owner_core_id=authorized.core_id)
+        if method == "task.list":
+            if policy_revision is None or params.get("workdir") != authorized.workdir:
+                raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+            _require_keys(params, {"workdir"}, optional={"status", "limit", "cursor"})
+            _require_types(
+                params,
+                {"workdir": str},
+                optional={"status": str, "limit": int, "cursor": str},
+            )
+            # Discovery is not a task-ID operation. The shared service/store
+            # owns scope and pagination validation; only verified identities
+            # and the authenticated policy revision cross this boundary.
+            return self.service.list_tasks(
+                workdir=authorized.workdir,
+                core_id=authorized.core_id,
+                status=params.get("status", "active"),
+                limit=params.get("limit", 20),
+                cursor=params.get("cursor"),
+                policy_revision=policy_revision,
+                grant_key_id=authorized.key_id,
+            )
         if method.startswith("task."):
             task_id = params.get("task_id")
             if not isinstance(task_id, str) or not task_id:
@@ -596,6 +625,8 @@ class BridgeProtocolServer:
                 },
             )
             return await self.service.submit_task(**params)
+        if method == "task.list":
+            raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
         if method == "task.get":
             _require_keys(params, {"task_id"})
             _require_types(params, {"task_id": str})

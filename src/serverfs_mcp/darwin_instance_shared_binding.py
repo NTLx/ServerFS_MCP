@@ -47,6 +47,7 @@ class SharedBridgeBinding:
     socket_path: Path
     grant: SharedBridgeGrant
     core_policy_revision: str
+    grants: tuple[SharedBridgeGrant, ...] = ()
 
 
 def preflight_shared_core_binding(
@@ -115,22 +116,37 @@ def preflight_shared_core_binding(
         config_path = Path(core_config_path).expanduser()
         core_config_path = _safe_regular_file(config_path)
         workdirs, _ = load_native_config(core_config_path)
-        matches = [item for item in workdirs if item.alias == grant.workdir_alias]
-        if len(matches) != 1:
-            raise DarwinSharedBindingError("shared Bridge workdir alias is not configured")
-        core_workdir = Path(matches[0].root).resolve(strict=True)
-        bridge_workdir = Path(grant.workdir_path)
-        if (
-            not bridge_workdir.is_absolute()
-            or bridge_workdir.is_symlink()
-            or any(parent.is_symlink() for parent in bridge_workdir.parents)
-            or bridge_workdir.resolve(strict=True) != core_workdir
-            or not core_workdir.is_dir()
-        ):
-            raise DarwinSharedBindingError("shared Bridge workdir identity mismatch")
-        # This revision must come from the trusted owner-side canonical
-        # core_workdir_policy_digest calculation. Do not substitute a Core
-        # TOML hash: the Bridge digest covers effective policy and host root.
+        grants = binding.grants or (grant,)
+        if not 1 <= len(grants) <= 16 or grants[0] != grant:
+            raise DarwinSharedBindingError("shared Bridge workdir grants are invalid")
+        enabled = [item for item in workdirs if item.agent_mode != "disabled"]
+        if len(enabled) != len(grants) or {item.alias for item in enabled} != {
+            item.workdir_alias for item in grants
+        }:
+            raise DarwinSharedBindingError("shared Bridge workdir aliases do not match Core policy")
+        for entry in grants:
+            if (
+                entry.bridge_id != identity.bridge_id
+                or entry.core_id != identity.instance_id
+                or entry.key_id != grant.key_id
+                or entry.secret != grant.secret
+                or not _ALIAS.fullmatch(entry.workdir_alias)
+                or not _DIGEST.fullmatch(entry.policy_revision)
+            ):
+                raise DarwinSharedBindingError("shared Bridge grant identity is invalid")
+            matches = [item for item in enabled if item.alias == entry.workdir_alias]
+            if len(matches) != 1 or matches[0].policy.repo_ops_enabled:
+                raise DarwinSharedBindingError("shared Bridge workdir policy is invalid")
+            core_workdir = Path(matches[0].root).resolve(strict=True)
+            bridge_workdir = Path(entry.workdir_path)
+            if (
+                not bridge_workdir.is_absolute()
+                or bridge_workdir.is_symlink()
+                or any(parent.is_symlink() for parent in bridge_workdir.parents)
+                or bridge_workdir.resolve(strict=True) != core_workdir
+                or not core_workdir.is_dir()
+            ):
+                raise DarwinSharedBindingError("shared Bridge workdir identity mismatch")
         if grant.policy_revision != binding.core_policy_revision:
             raise DarwinSharedBindingError("shared Bridge policy revision is stale")
         return socket_path

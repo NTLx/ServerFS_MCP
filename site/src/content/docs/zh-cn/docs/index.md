@@ -5,7 +5,7 @@ description: 从纯文件 Core 开始，按需选择入口和宿主机执行能�
 
 ServerFS MCP 为 AI 客户端提供对显式配置的本地目录（Workdir）的受控访问。默认只读；写入需要明确策略和 revision 检查。可选能力包括有界二进制传输、确定性 Repo Ops 和宿主机 Agent 委托，不提供通用 Shell。
 
-**文档目标版本：v0.25.0。** 正式发布尚未完成，见[最新稳定版本](https://github.com/NTLx/ServerFS_MCP/releases/latest)。
+**当前稳定版本：[v0.26.0](https://github.com/NTLx/ServerFS_MCP/releases/tag/v0.26.0)。** 请使用版本匹配的安装产物与手册。本版本恢复多授权 Workdir，扩展签名 v2 的任务发现与审批审计，并支持 Windows 命名 Runtime 代理策略。
 
 ## 从这里开始
 
@@ -38,11 +38,13 @@ Connector 不拥有 Core 或 Bridge 的生命周期。每个签名 Bridge 接入
 | 文件系统 + 二进制 | 13 |
 | 文件系统 + Repo Ops | 15 |
 | 文件系统 + 二进制 + Repo Ops | 17 |
-| 文件系统 + Agent | 21 |
-| 文件系统 + 二进制 + Agent | 23 |
-| 文件系统 + Agent + Repo Ops | 25 |
-| 完整可选能力 | 27 |
+| 文件系统 + Agent | 22 |
+| 文件系统 + 二进制 + Agent | 24 |
+| 文件系统 + Agent + Repo Ops | 26 |
+| 完整可选能力 | 28 |
+
+Agent 工具包含 `list_agent_tasks`；有效任务发现需要支持该方法的签名 v2 接入和已授权别名。工具已注册不代表每个平台和协议均支持所有操作。
 
 ## 运维与维护
 
-使用 [Agent Skills](./agent-skills/)指导版本匹配的安装、配置、诊断、升级与组件操作。特定部署场景可参阅[宿主机可观测性](./host-observability/)与[受限网络 ARM64](./restricted-network-arm64/)。不要将历史兼容命令当作当前命名实例流程。精确发布版本及实机验收另见[发布清单](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.25.0-release-checklist-2026-11-21.md)。
+使用 [Agent Skills](./agent-skills/)指导版本匹配的安装、配置、诊断、升级与组件操作。特定部署场景可参阅[宿主机可观测性](./host-observability/)与[受限网络 ARM64](./restricted-network-arm64/)。不要将历史兼容命令当作当前命名实例流程。精确发布版本及实机验收另见[发布清单](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.26.0-release-checklist.md)。

@@ -1,6 +1,6 @@
 # Windows Cloudflare Connector
 
-Use `deployment/windows/v0250-native-operations.md`, `docs/windows-cloudflare-tunnel.md` and primary Skill gates. Select exact Core and Connector ID. Install provider runtime once per Core; further IDs share its environment, not credentials/tasks.
+Use `docs/deployment/windows/v0250-native-operations.md`, `docs/windows-cloudflare-tunnel.md` and primary Skill gates. Select exact Core and Connector ID. Install provider runtime once per Core; further IDs share its environment, not credentials/tasks.
 
 Prepare verified executable with trusted SHA256 and private protected-DACL token input. Use `configure-v25-connector.py` with the actual runbook arguments. Helper copies inputs and creates manifests, not registration/start. It is create-only; no overwrite/retry of existing private state. Audit duplicate Tunnel identities; `manual_cloudflare_peers_unchecked` requires checking legacy/manual provider routes independently before activation.
 

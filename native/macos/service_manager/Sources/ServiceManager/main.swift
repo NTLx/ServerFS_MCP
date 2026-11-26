@@ -296,15 +296,23 @@ private func namedOwnedRegistrationReady(instance: String) -> Bool {
               "-B", "-m", "serverfs_mcp.darwin_owned_bridge_supervisor",
               "--instance", instance
           ],
-          (core["arguments"] as? [String])?.suffix(2).elementsEqual(
-              ["--macos-instance", instance]
-          ) == true,
           bridge["bridge_config"] as? String == config.path,
           bridge["environment_file"] == nil || bridge["environment_file"] is NSNull,
           let bridgePython = bridge["bridge_python"] as? String,
           bridgePython.hasPrefix("/"),
           fm.isExecutableFile(atPath: bridgePython)
     else { return false }
+    let v2 = bridge["protocol_mode"] as? String == "v2"
+    guard bridge["protocol_mode"] == nil || v2
+    else { return false }
+    let expectedSuffix = ["--macos-instance", instance]
+        + (v2 ? ["--macos-agent-protocol", "v2"] : [])
+    guard (core["arguments"] as? [String])?.suffix(expectedSuffix.count)
+        .elementsEqual(expectedSuffix) == true
+    else { return false }
+    if v2 && !privatePath(root.appendingPathComponent("owned-bridge-v2-binding.json"), directory: false) {
+        return false
+    }
     return true
 }
 

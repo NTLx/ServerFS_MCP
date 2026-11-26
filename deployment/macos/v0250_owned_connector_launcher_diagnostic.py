@@ -19,11 +19,11 @@ import tempfile
 from pathlib import Path
 
 from v0250_owned_core_direct_runtime_acceptance import (
-    PROTECTED,
+    production_baseline,
     shutdown,
     start_bridge,
 )
-from v0250_owned_smappservice_live_acceptance import _no_owned_children
+from v0250_owned_smappservice_live_acceptance import _native_preflight, _no_owned_children
 
 from serverfs_mcp import darwin_instance_runtime as runtime
 from serverfs_mcp.darwin_instance_bridge_identity import named_owned_bridge_resources
@@ -52,14 +52,14 @@ def _log(path: Path, replacements: list[str]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--execute", action="store_true")
-    if not parser.parse_args().execute:
+    parser.add_argument("--agent-protocol", choices=("v1", "v2"), default="v1")
+    args = parser.parse_args()
+    if not args.execute:
         print("NOT_EXECUTED: explicit --execute required")
         return 2
     if sys.platform != "darwin":
         raise RuntimeError("requires macOS")
-    baseline = tuple(runtime.darwin_service._launchd_job_pid(label) for label in PROTECTED)
-    if any(pid is None for pid in baseline):
-        raise RuntimeError("production baseline unavailable")
+    baseline = production_baseline()
 
     name = "v25-diagnose-" + secrets.token_hex(4)
     identity = InstanceIdentity(instance_id=name, bridge_mode="owned", bridge_id=name)
@@ -132,15 +132,30 @@ def main() -> int:
             "synthetic.test",
             output / APP_NAME,
             BRIDGE_PYTHON,
+            agent_protocol=args.agent_protocol,
+            connector_ids={"cloudflare": ["fixture"], "openai": ["fixture"]},
         )
-        runtime.stage_cloudflare_connector(identity, fake, token)
+        runtime.stage_cloudflare_connector(identity, fake, token, connector_id="fixture")
         runtime.stage_openai_http_connector(
             identity,
             fake,
             "tunnel_" + secrets.token_hex(16),
             control,
             bearer,
+            connector_id="fixture",
         )
+        _native_preflight(identity)
+        launcher = root / APP_NAME / "Contents/Resources/serverfs-service-launcher"
+        for component in ("http-origin", "cloudflare.fixture", "tunnel.fixture"):
+            checked = subprocess.run(
+                [str(launcher), "--validate-only", identity.instance_id, component],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=True,
+            )
+            if json.loads(checked.stdout) != {"ok": True}:
+                raise RuntimeError("signed Connector manifest preflight refused")
         staged = True
         process = start_bridge(
             identity,
@@ -169,9 +184,7 @@ def main() -> int:
             except OSError:
                 errors.append("named socket directory not empty")
         no_children = _no_owned_children(identity, resource.config_path)
-        production_same = (
-            tuple(runtime.darwin_service._launchd_job_pid(label) for label in PROTECTED) == baseline
-        )
+        production_same = production_baseline() == baseline
         if (
             no_children
             and production_same
@@ -190,15 +203,14 @@ def main() -> int:
             errors.append("named process or filesystem ownership uncertain; retain evidence")
         if cleared:
             shutil.rmtree(workspace_temp)
-    prod_same = (
-        tuple(runtime.darwin_service._launchd_job_pid(label) for label in PROTECTED) == baseline
-    )
+    prod_same = production_baseline() == baseline
     if not prod_same:
         errors.append("production PID baseline changed")
     output = {
         "result": "PASS" if ready and cleared and prod_same and not errors else "NOT_ACCEPTED",
         "signed_bridge_launcher_ready": ready,
         "synthetic_connectors_staged": staged,
+        "agent_protocol": args.agent_protocol,
         "launchd_register_called": False,
         "test_instance_removed": cleared,
         "production_pids_unchanged": prod_same,

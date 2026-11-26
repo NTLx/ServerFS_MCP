@@ -15,6 +15,7 @@ from . import logging as jsonlog
 from .agent_client import (
     AgentBridgeClient,
     AgentBridgeClientError,
+    AgentBridgeInvalidRequest,
     AgentBridgeRemoteError,
     AgentBridgeUnavailable,
 )
@@ -255,7 +256,8 @@ def register_agent_tools(
             Field(
                 default=None,
                 description=(
-                    "Prior terminal ServerFS Agent task whose native provider session should resume"
+                    "Prior terminal ServerFS Agent task to resume, only on supported v1 "
+                    "endpoints. Omit on signed-v2 Core endpoints; continuation is not supported."
                 ),
             ),
         ] = None,
@@ -274,8 +276,8 @@ def register_agent_tools(
             Field(
                 default=None,
                 description=(
-                    "Optional retry key for one logical Agent submission. Reuse the same key "
-                    "only when retrying an uncertain submit outcome."
+                    "Optional retry key for one logical submission on supported v1 endpoints. "
+                    "Omit on signed-v2 Core endpoints; discover tasks rather than retry blindly."
                 ),
             ),
         ] = None,
@@ -289,8 +291,11 @@ def register_agent_tools(
         expansion; it does not weaken or bypass provider safety checks.
 
         The call never waits for provider completion. Poll get_agent_task or
-        read_agent_task_events. A follow-up conversation uses a NEW task with
-        continue_from_task_id.
+        read_agent_task_events. On signed-v2 Core endpoints, omit continue_from_task_id
+        and idempotency_key. Use list_agent_tasks on the authorized workdir to rediscover
+        an existing task after an uncertain submission or client restart. Submit a new
+        atomic task for distinct work; native session continuation is available only on
+        supported v1 endpoints.
         """
         t0 = time.monotonic()
         try:
@@ -343,6 +348,42 @@ def register_agent_tools(
             status=result.get("status"),
         )
         return result
+
+    @mcp.tool(annotations=AGENT_READ_ANNOTATIONS)
+    async def list_agent_tasks(
+        workdir: Annotated[
+            str,
+            Field(min_length=1, max_length=32, description="Exact configured Agent workdir alias"),
+        ],
+        status: Annotated[
+            Literal["active", "terminal", "all"], Field(description="Task state filter")
+        ] = "active",
+        limit: Annotated[
+            int, Field(ge=1, le=100, strict=True, description="Maximum tasks to return")
+        ] = 20,
+        cursor: Annotated[
+            str | None,
+            Field(default=None, max_length=2048, description="Opaque continuation cursor"),
+        ] = None,
+    ) -> dict[str, Any]:
+        """List a bounded page of tasks owned by one explicitly named Agent workdir."""
+        selected = registry.get(workdir)
+        if (
+            selected is None
+            or selected.policy.agent_mode == AGENT_MODE_DISABLED
+            or not selected.policy.agent_runtimes
+        ):
+            raise ToolError("INVALID_REQUEST: workdir is not Agent-enabled")
+        params: dict[str, Any] = {"workdir": workdir, "status": status, "limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        return await _simple_agent_call(
+            client,
+            "list_agent_tasks",
+            "task.list",
+            params,
+            workdir=workdir,
+        )
 
     @mcp.tool(annotations=AGENT_READ_ANNOTATIONS)
     async def get_agent_task(
@@ -487,7 +528,8 @@ def register_agent_tools(
 
         Keep steering within the task's existing authorized objective and mutation scope.
         If the requested work is a distinct objective, submit a new atomic task instead.
-        For a terminal task, submit a new task with continue_from_task_id. Runtimes such as
+        For a terminal task, submit a new atomic task. Use continue_from_task_id only on
+        supported v1 endpoints, never on signed-v2 Core endpoints. Runtimes such as
         Claude or Qoder may reject live steering even while active.
         """
         return await _simple_agent_call(
@@ -621,6 +663,8 @@ def _agent_tool_error(exc: Exception) -> ToolError:
         return ToolError(f"{exc.code}: {exc.message}")
     if isinstance(exc, AgentBridgeUnavailable):
         return ToolError("AGENT_BRIDGE_UNAVAILABLE: Agent Bridge is unavailable")
+    if isinstance(exc, AgentBridgeInvalidRequest):
+        return ToolError(f"INVALID_REQUEST: {exc}")
     if isinstance(exc, AgentBridgeClientError):
         return ToolError("AGENT_BRIDGE_PROTOCOL_ERROR: Agent Bridge protocol failure")
     return ToolError("AGENT_BRIDGE_ERROR: Agent Bridge request failed")

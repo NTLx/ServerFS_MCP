@@ -171,13 +171,13 @@ def tool_names(server) -> set[str]:
     return asyncio.run(_names())
 
 
-def test_tool_surface_is_the_ten_agent_tools_plus_the_filesystem_set(bridge) -> None:
+def test_tool_surface_is_the_eleven_agent_tools_plus_the_filesystem_set(bridge) -> None:
     enabled = agent_server(bridge.pipe_name, bridge.lock_dir, bridge.workdir)
     disabled = agent_server(bridge.pipe_name, bridge.lock_dir, bridge.workdir, enabled=False)
     disabled_names = tool_names(disabled)
     assert len(disabled_names) == 11, sorted(disabled_names)
     assert "submit_agent_task" not in disabled_names
-    assert len(tool_names(enabled) - disabled_names) == 10
+    assert len(tool_names(enabled) - disabled_names) == 11
 
 
 def test_runtime_discovery_over_the_pipe(bridge) -> None:

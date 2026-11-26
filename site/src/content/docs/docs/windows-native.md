@@ -18,14 +18,14 @@ All named HTTP Cores can use optional Cloudflare and OpenAI Connectors. The Core
 
 ## Deploy
 
-Use the [complete Windows runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/windows/v0250-native-operations.md) for the exact PowerShell commands.
+Use the [complete Windows runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/deployment/windows/v0250-native-operations.md) for the exact PowerShell commands.
 
 1. Prepare a trusted installed controller with matching Core/Native Wheels and a trusted uv offline cache. Include the separate Bridge Wheel only if needed.
 2. Install fresh private component runtimes, then configure the intended file-only, owned or shared topology. The initial helper generates independent bearer credentials and signed grants without starting any task.
 3. Register and start required tasks with the component CLI (`python -I -B -m serverfs_mcp.windows_v25.cli`). Start the Bridge before dependent Cores, then verify authenticated MCP before adding Connectors.
 4. For public ingress, provision a separate Connector ID, trusted executables and private provider credentials. OpenAI requires static Core bearer admission and the matching bundled cloudflared.
 
-The initial helpers support bearer authentication and explicit nonproxy runtime policy. For OAuth or special proxy configuration, follow the advanced manual path. Do not mix the two configuration routes or bypass private ACL/reparse-point checks.
+The initial helpers support bearer authentication and explicit per-runtime/ACP `use_proxy=true` with an owner-private credentialless `--agent-proxy-env-file`; use the version-matched runbook. OAuth and other specialized configurations retain the advanced manual path. Do not mix the two configuration routes or bypass private ACL/reparse-point checks.
 
 ## Verify and operate
 
@@ -33,4 +33,4 @@ Check task registration and actual running state, anonymous denial, authorized M
 
 Stop ingress before its Core; retire the Bridge only when all dependent Cores and active tasks are accounted for. Uninstall removes the verified task, not private data. Failed provisioning attempts retain evidence; do not rerun over partial state. Existing installations require an explicit migration/rollback plan.
 
-Current live-provider and OpenAI public acceptance limits are recorded in the [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.25.0-release-checklist-2026-11-21.md).
+Current live-provider and OpenAI public acceptance limits are recorded in the [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/main/docs/v0.26.0-release-checklist.md).

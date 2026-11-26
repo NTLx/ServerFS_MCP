@@ -49,6 +49,7 @@ def stage_owned_core_bridge(
     bridge_python: Path,
     *,
     connector_ids: dict[str, list[str] | tuple[str, ...]] | None = None,
+    agent_protocol: str = "v1",
     home: Path | None = None,
     default_bridge_config: Path | None = None,
 ) -> dict[str, str | int]:
@@ -59,6 +60,8 @@ def stage_owned_core_bridge(
         or identity.bridge_id != identity.instance_id
     ):
         raise DarwinOwnedStageError("independent named owned Bridge is required")
+    if agent_protocol not in {"v1", "v2"}:
+        raise DarwinOwnedStageError("owned Bridge protocol is invalid")
     root = instance_service_home(identity, home=home)
     base = (Path.home() if home is None else Path(home)) / ("Library/Application Support/ServerFS")
     _check_dir(base)
@@ -97,13 +100,30 @@ def stage_owned_core_bridge(
             **({"connector_ids": connector_ids} if connector_ids else {}),
         )
         _new_private_file(root / "http-origin-environment.json", snapshot)
-        stage_owned_bridge_policy(
-            identity,
-            config_path,
-            python,
-            home=home,
-            default_bridge_config=default_bridge_config,
-        )
+        if agent_protocol == "v2":
+            from .darwin_instance_owned_staging import stage_owned_v2_grant_binding
+            from .native_config import load_native_config
+
+            configured_workdirs, _settings = load_native_config(Path(config_path))
+            stage_owned_v2_grant_binding(
+                identity,
+                config_path,
+                python,
+                configured_workdirs,
+                home=home,
+                default_bridge_config=default_bridge_config,
+            )
+            document["services"]["http-origin"]["arguments"].extend(
+                ["--macos-agent-protocol", "v2"]
+            )
+        else:
+            stage_owned_bridge_policy(
+                identity,
+                config_path,
+                python,
+                home=home,
+                default_bridge_config=default_bridge_config,
+            )
         from .darwin_instance_bridge_identity import named_owned_bridge_resources
 
         resources = named_owned_bridge_resources(identity, home=home)
@@ -118,6 +138,7 @@ def stage_owned_core_bridge(
             ],
             "bridge_python": str(python),
             "bridge_config": str(resources.config_path),
+            **({"protocol_mode": "v2"} if agent_protocol == "v2" else {}),
             "environment_file": None,
             "working_directory": str(root / "data"),
             "stdout_log": str(logs / "bridge.stdout.log"),
@@ -129,19 +150,24 @@ def stage_owned_core_bridge(
             json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8"),
         )
         try:
-            resolve_owned_core_binding(
-                identity,
-                config_path,
-                port,
-                home=home,
-                default_bridge_config=default_bridge_config,
-                environ={
-                    "SERVERFS_MACOS_INSTANCE_ID": identity.instance_id,
-                    "SERVERFS_DATA_HOME": str(root / "data"),
-                    "SERVERFS_FILE_INGRESS_ENABLED": "false",
-                },
-            )
-        except DarwinOwnedBindingError as exc:
+            if agent_protocol == "v2":
+                from .darwin_owned_v2_bootstrap import load_owned_v2_clients
+
+                load_owned_v2_clients(identity, Path(config_path), home=home)
+            else:
+                resolve_owned_core_binding(
+                    identity,
+                    config_path,
+                    port,
+                    home=home,
+                    default_bridge_config=default_bridge_config,
+                    environ={
+                        "SERVERFS_MACOS_INSTANCE_ID": identity.instance_id,
+                        "SERVERFS_DATA_HOME": str(root / "data"),
+                        "SERVERFS_FILE_INGRESS_ENABLED": "false",
+                    },
+                )
+        except (DarwinOwnedBindingError, ValueError, OSError) as exc:
             raise DarwinOwnedStageError("owned Core/Bridge staged identity failed") from exc
     except BaseException:
         if created_candidate:

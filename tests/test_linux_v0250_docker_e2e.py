@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import secrets
@@ -73,8 +74,14 @@ print("signed ping accepted", flush=True)
 """
 
 
-@pytest.mark.parametrize("core_count", [1, 2], ids=["owned", "shared"])
-def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
+@pytest.mark.parametrize(
+    ("core_count", "repo_full"),
+    [(1, False), (2, False), (2, True)],
+    ids=["owned", "shared-multi-workdir", "repo-only-four-tools"],
+)
+def test_docker_core_with_host_v2_bridge(core_count: int, repo_full: bool, monkeypatch) -> None:
+    from serverfs_agent_bridge.policy import RepoActionPolicy
+
     assert os.getuid() != 0
     docker = shutil.which("docker")
     git = shutil.which("git")
@@ -129,6 +136,10 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": "/dev/null",
         }
+        if repo_full:
+            # Repo Ops uses the Bridge process HOME; isolate it from user Git configuration.
+            monkeypatch.setenv("HOME", str(root))
+            monkeypatch.setenv("XDG_CONFIG_HOME", str(root / "git-config"))
         for alias in aliases:
             core_id = "core-" + alias.lower()
             key_id = "key-" + alias.lower()
@@ -183,7 +194,14 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                     secret,
                     ((alias, digest),),
                     frozenset(
-                        {"bridge.ping", "runtime.list", "task.submit", "task.get", "repo.inspect"}
+                        {
+                            "bridge.ping",
+                            "runtime.list",
+                            "task.submit",
+                            "task.get",
+                            "task.list",
+                            "repo.inspect",
+                        }
                     ),
                 )
             )
@@ -202,6 +220,123 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                     "socket_path": "/run/serverfs-agent-bridge/bridge.sock",
                 },
             )
+            extra_workdirs = {}
+            if core_count == 2 and alias == "Alpha":
+                # One signed Core owns three independent policies, including
+                # non-adjacent slots. Bravo remains a separate single-slot Core.
+                entries = [
+                    {"alias": alias, "workdir_path": "/workdirs/01", "policy_revision": digest}
+                ]
+                for slot, name, agent, repo in (
+                    ("03", "AlphaDocs", False, True),
+                    ("05", "AlphaAgent", True, False),
+                ):
+                    target = root / name
+                    target.mkdir(mode=0o700)
+                    (target / "hello.txt").write_text(name, encoding="utf-8")
+                    (target / "task-context").mkdir()
+                    if repo:
+                        for args in (
+                            ["init", "-q", "-b", "docs-fixture"],
+                            ["add", "hello.txt"],
+                            [
+                                "-c",
+                                "user.name=Fixture",
+                                "-c",
+                                "user.email=fixture@example.invalid",
+                                "commit",
+                                "-qm",
+                                "fixture",
+                            ],
+                        ):
+                            subprocess.run(
+                                [git, *args],
+                                cwd=target,
+                                env=git_env,
+                                capture_output=True,
+                                check=True,
+                                timeout=10,
+                            )
+                    actions = ()
+                    if repo and repo_full:
+                        remote = root / "docs-fixture-remote.git"
+                        for cwd, argv in (
+                            (root, ["init", "--bare", "-q", str(remote)]),
+                            (target, ["config", "user.name", "Fixture"]),
+                            (target, ["config", "user.email", "fixture@example.invalid"]),
+                            (target, ["remote", "add", "fixture", str(remote)]),
+                            (target, ["config", "branch.docs-fixture.remote", "fixture"]),
+                            (
+                                target,
+                                ["config", "branch.docs-fixture.merge", "refs/heads/docs-fixture"],
+                            ),
+                        ):
+                            subprocess.run(
+                                [git, *argv],
+                                cwd=cwd,
+                                env=git_env,
+                                capture_output=True,
+                                check=True,
+                                timeout=10,
+                            )
+                        actions = (
+                            RepoActionPolicy(
+                                name="fixture_check",
+                                argv=(git, "rev-parse", "--is-inside-work-tree"),
+                                integrity=(
+                                    (
+                                        "hello.txt",
+                                        hashlib.sha256(
+                                            (target / "hello.txt").read_bytes()
+                                        ).hexdigest(),
+                                    ),
+                                ),
+                            ),
+                        )
+                    extra_policy = WorkdirAgentPolicy(
+                        slot=None,
+                        alias=name,
+                        host_path=target,
+                        mode=AgentMode.WORKSPACE_WRITE if agent else AgentMode.DISABLED,
+                        runtimes=frozenset({"codex"}) if agent else frozenset(),
+                        read_only=False,
+                        repo_ops_enabled=repo,
+                        repo_actions=actions,
+                    )
+                    policies.append(extra_policy)
+                    entries.append(
+                        {
+                            "alias": name,
+                            "workdir_path": f"/workdirs/{slot}",
+                            "policy_revision": core_workdir_policy_digest(extra_policy),
+                        }
+                    )
+                    extra_workdirs[slot] = (name, target, agent, repo)
+                grants[-1] = CoreGrant(
+                    core_id,
+                    key_id,
+                    secret,
+                    tuple((e["alias"], e["policy_revision"]) for e in entries),
+                    grants[-1].methods
+                    | (
+                        frozenset({"repo.action", "repo.commit", "repo.push"})
+                        if repo_full
+                        else frozenset()
+                    ),
+                )
+                _private_json(
+                    binding / "core-bridge-binding.json",
+                    {
+                        "schema_version": 2,
+                        "instance_id": core_id,
+                        "core_id": core_id,
+                        "bridge_id": bridge_id,
+                        "key_id": key_id,
+                        "secret_hex": secret.hex(),
+                        "socket_path": "/run/serverfs-agent-bridge/bridge.sock",
+                        "workdirs": entries,
+                    },
+                )
             port = _port()
             while any(port == core["port"] for core in cores):
                 port = _port()
@@ -231,6 +366,17 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
             }
             for slot in range(2, 17):
                 env[f"WORKDIR_{slot:02d}_PATH"] = str(disabled)
+            for slot, (name, target, agent, repo) in extra_workdirs.items():
+                env.update(
+                    {
+                        f"WORKDIR_{slot}_ALIAS": name,
+                        f"WORKDIR_{slot}_PATH": str(target),
+                        f"WORKDIR_{slot}_READ_ONLY": "false",
+                        f"WORKDIR_{slot}_AGENT_MODE": "workspace-write" if agent else "disabled",
+                        f"WORKDIR_{slot}_AGENT_RUNTIMES": "codex" if agent else "",
+                        f"WORKDIR_{slot}_REPO_OPS_ENABLED": "true" if repo else "false",
+                    }
+                )
             base = [*daemon, "compose", "--env-file", str(env_file), "-p", project]
             for path in files:
                 base.extend(("-f", str(path)))
@@ -342,13 +488,13 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
             result = await call(core, "get_agent_task", {"task_id": task_id})
             assert not result.is_error and result.structured_content["task_id"] == task_id
 
-        async def submit(core):
+        async def submit(core, alias=None):
             result = await call(
                 core,
                 "submit_agent_task",
                 {
                     "runtime": "codex",
-                    "workdir": core["alias"],
+                    "workdir": alias or core["alias"],
                     "path": "task-context",
                     "profile": "workspace-write",
                     "prompt": "complete:isolated synthetic smoke",
@@ -416,6 +562,123 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                     assert core["env"]["SERVERFS_LINUX_INSTANCE_ID"] in str(status.content)
 
                 first = cores[0]
+                extra_task = None
+                if core_count == 2:
+                    for name in ("AlphaDocs", "AlphaAgent"):
+                        result = await call(
+                            first, "read_text_file", {"workdir": name, "path": "hello.txt"}
+                        )
+                        assert not result.is_error and name in str(result.content)
+                    docs = await call(
+                        first, "inspect_repo", {"workdir": "AlphaDocs", "view": "status"}
+                    )
+                    assert not docs.is_error and "docs-fixture" in str(docs.content)
+                    if repo_full:
+                        target = root / "AlphaDocs"
+                        remote = root / "docs-fixture-remote.git"
+                        # Verify the effective push URL in the same isolated HOME; never push
+                        # to a configured user/project remote.
+                        effective = subprocess.check_output(
+                            [git, "remote", "get-url", "--push", "--all", "fixture"],
+                            cwd=target,
+                            env={**path_env, "XDG_CONFIG_HOME": str(root / "git-config")},
+                            text=True,
+                            timeout=10,
+                        ).splitlines()
+                        assert effective == [str(remote)] and remote.is_dir()
+                        listing = await call(
+                            first, "inspect_repo", {"workdir": "AlphaDocs", "view": "actions"}
+                        )
+                        assert not listing.is_error
+                        assert "fixture_check" in str(listing.structured_content)
+                        action = await call(
+                            first,
+                            "run_repo_action",
+                            {"workdir": "AlphaDocs", "action": "fixture_check"},
+                        )
+                        assert not action.is_error
+                        assert action.structured_content["returncode"] == 0
+                        assert action.structured_content["stdout"].strip() == "true"
+                        changed = await call(
+                            first,
+                            "create_text_file",
+                            {"workdir": "AlphaDocs", "path": "new.txt", "content": "repo-only"},
+                        )
+                        assert not changed.is_error
+                        committed = await call(
+                            first,
+                            "commit_repo_changes",
+                            {"workdir": "AlphaDocs", "paths": ["new.txt"], "message": "fixture"},
+                        )
+                        assert not committed.is_error
+                        commit = committed.structured_content["commit"]
+                        pushed = await call(first, "push_repo", {"workdir": "AlphaDocs"})
+                        assert not pushed.is_error and pushed.structured_content["pushed"] is True
+                        assert pushed.structured_content["commit"] == commit
+                        observed = subprocess.check_output(
+                            [git, "--git-dir", str(remote), "rev-parse", "refs/heads/docs-fixture"],
+                            env=git_env,
+                            text=True,
+                            timeout=10,
+                        ).strip()
+                        assert observed == commit
+                        denied_repo = await call(
+                            cores[1], "inspect_repo", {"workdir": "AlphaDocs", "view": "status"}
+                        )
+                        assert denied_repo.is_error
+                        print("linux_repo_only_four_tools=PASS local_bare_remote=VERIFIED")
+                    denied = await call(
+                        first, "inspect_repo", {"workdir": "AlphaAgent", "view": "status"}
+                    )
+                    assert denied.is_error
+                    denied = await call(
+                        first,
+                        "submit_agent_task",
+                        {
+                            "runtime": "codex",
+                            "workdir": "AlphaDocs",
+                            "path": "",
+                            "profile": "workspace-write",
+                            "prompt": "complete:must not run",
+                        },
+                    )
+                    assert denied.is_error
+                    submitted_extra_task = await submit(first, "AlphaAgent")
+                    del submitted_extra_task
+                    extra_page = await call(
+                        first,
+                        "list_agent_tasks",
+                        {"workdir": "AlphaAgent", "status": "all"},
+                    )
+                    assert not extra_page.is_error, extra_page.content
+                    extra_tasks = extra_page.structured_content["tasks"]
+                    assert extra_tasks and all(
+                        task["workdir"] == "AlphaAgent" for task in extra_tasks
+                    )
+                    extra_task = extra_tasks[0]["task_id"]
+                    alpha_page = await call(
+                        first,
+                        "list_agent_tasks",
+                        {"workdir": "Alpha", "status": "all"},
+                    )
+                    assert not alpha_page.is_error
+                    assert all(
+                        task["task_id"] != extra_task
+                        for task in alpha_page.structured_content["tasks"]
+                    )
+                    bravo_page = await call(
+                        cores[1],
+                        "list_agent_tasks",
+                        {"workdir": "Bravo", "status": "all"},
+                    )
+                    assert not bravo_page.is_error
+                    assert all(
+                        task["task_id"] != extra_task
+                        for task in bravo_page.structured_content["tasks"]
+                    )
+                    await lookup(first, extra_task)
+                    denied = await call(cores[1], "get_agent_task", {"task_id": extra_task})
+                    assert denied.is_error and "CORE_TASK_NOT_FOUND" in str(denied.content)
                 with lease_manager.acquire_exclusive(alias_lease_id(first["alias"])):
                     denied = await call(
                         first,
@@ -440,17 +703,34 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                 )
                 assert not written.is_error, written.content
                 assert (first["work"] / "written.txt").read_text() == "ok"
+                restricted = cores[1] if repo_full else first
                 denied_commit = await call(
-                    first,
+                    restricted,
                     "commit_repo_changes",
-                    {"workdir": first["alias"], "paths": ["written.txt"], "message": "denied"},
+                    {
+                        "workdir": restricted["alias"],
+                        "paths": ["hello.txt" if repo_full else "written.txt"],
+                        "message": "denied",
+                    },
                 )
                 assert denied_commit.is_error and "CORE_NOT_AUTHORIZED" in str(
                     denied_commit.content
                 )
 
-                task_ids = [await submit(core) for core in cores]
-                for core, task_id in zip(cores, task_ids, strict=True):
+                task_ids = []
+                for core in cores:
+                    submitted_task_id = await submit(core)
+                    del submitted_task_id
+                    page = await call(
+                        core,
+                        "list_agent_tasks",
+                        {"workdir": core["alias"], "status": "all"},
+                    )
+                    assert not page.is_error, page.content
+                    listed = page.structured_content["tasks"]
+                    assert listed and all(task["workdir"] == core["alias"] for task in listed)
+                    task_id = listed[0]["task_id"]
+                    task_ids.append(task_id)
                     await lookup(core, task_id)
                 if core_count == 2:
                     for index, core in enumerate(cores):
@@ -482,6 +762,8 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                 after = (socket_dir / "bridge.sock").stat()
                 assert (before.st_dev, before.st_ino) == (after.st_dev, after.st_ino)
                 await lookup(first, task_ids[0])
+                if extra_task is not None:
+                    await lookup(first, extra_task)
                 if core_count == 2:
                     assert await core_identity(cores[1]) == other_identity
                     await lookup(cores[1], task_ids[1])
@@ -510,6 +792,8 @@ def test_docker_core_with_host_v2_bridge(core_count: int) -> None:
                 for core, task_id, identity in zip(cores, task_ids, identities, strict=True):
                     await lookup(core, task_id)
                     assert await core_identity(core) == identity
+                if extra_task is not None:
+                    await lookup(first, extra_task)
             finally:
                 try:
                     # Attempt all owned projects even if cleanup of one fails.

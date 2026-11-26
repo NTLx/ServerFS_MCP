@@ -13,6 +13,7 @@ on:
   pull_request:
     branches:
       - main
+      - integration/v0.26.0
     paths-ignore:
       - "site/**"
       - ".github/workflows/pages.yml"
@@ -270,7 +271,7 @@ jobs:
   container-check:
     name: Container check
     # Also hard-gate the reusable Release workflow before it can create a tag.
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.26.0')
     needs:
       - test
     runs-on: ubuntu-latest
@@ -333,14 +334,24 @@ jobs:
             tests/test_linux_v0250_docker_e2e.py \
             tests/test_linux_v0250_dual_connector_lifecycle.py \
             --junitxml="$RUNNER_TEMP/linux-docker-topologies.xml"
-          # Four required live cases (file-only, owned, shared, dual stand-ins).
+          # Require each live topology, including the new Repo-only scenario.
           # A skipped opt-in test must never satisfy the publication gate.
           uv run --frozen python - "$RUNNER_TEMP/linux-docker-topologies.xml" <<'PY'
           import sys
           import xml.etree.ElementTree as ET
 
           cases = list(ET.parse(sys.argv[1]).iter("testcase"))
-          assert len(cases) == 4, f"Expected four cases, got {len(cases)}"
+          expected_cases = {
+              "test_bridge_disabled_direct_and_internal_http",
+              "test_docker_core_with_host_v2_bridge[owned]",
+              "test_docker_core_with_host_v2_bridge[shared-multi-workdir]",
+              "test_docker_core_with_host_v2_bridge[repo-only-four-tools]",
+              "test_two_offline_connectors_are_lifecycle_independent",
+          }
+          observed_cases = {case.attrib["name"] for case in cases}
+          assert len(cases) == len(expected_cases) and observed_cases == expected_cases, (
+              f"Unexpected isolated Docker topology cases: {sorted(observed_cases)}"
+          )
           assert all(
               case.find(outcome) is None
               for case in cases
@@ -358,7 +369,7 @@ jobs:
 
   publish:
     name: Publish edge container
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:
       - test
     permissions:

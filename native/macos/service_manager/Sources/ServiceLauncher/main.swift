@@ -36,6 +36,7 @@ private struct ServiceConfig: Decodable {
     let stderrLog: String
     let bridgePython: String?
     let bridgeConfig: String?
+    let protocolMode: String?
     let originOwner: String?
     let connectorOwner: String?
     let corePort: Int?
@@ -52,6 +53,7 @@ private struct ServiceConfig: Decodable {
         case stderrLog = "stderr_log"
         case bridgePython = "bridge_python"
         case bridgeConfig = "bridge_config"
+        case protocolMode = "protocol_mode"
         case originOwner = "origin_owner"
         case connectorOwner = "connector_owner"
         case corePort = "core_port"
@@ -475,8 +477,12 @@ private func loadManifest(instanceID: String) throws -> Manifest {
             let data = serviceHome.appendingPathComponent("data", isDirectory: true)
             let bridgeHome = data.appendingPathComponent("agent-bridge", isDirectory: true)
             let config = bridgeHome.appendingPathComponent("bridge.json")
-            guard core.originOwner == "independent-core",
-                  Array(core.arguments.suffix(2)) == ["--macos-instance", instanceID],
+            let v2 = bridge.protocolMode == "v2"
+            let expectedSuffix = ["--macos-instance", instanceID]
+                + (v2 ? ["--macos-agent-protocol", "v2"] : [])
+            guard bridge.protocolMode == nil || v2,
+                  core.originOwner == "independent-core",
+                  Array(core.arguments.suffix(expectedSuffix.count)) == expectedSuffix,
                   core.environmentFile == serviceHome.appendingPathComponent("http-origin-environment.json").path,
                   bridge.originOwner == "independent-bridge",
                   bridge.executable == core.executable,
@@ -505,6 +511,13 @@ private func loadManifest(instanceID: String) throws -> Manifest {
                 throw LauncherError.insecureFile("named Bridge config has symlink components")
             }
             try requirePrivateRegularFile(config, name: "named Bridge config")
+            if v2 {
+                let binding = serviceHome.appendingPathComponent("owned-bridge-v2-binding.json")
+                guard binding.standardizedFileURL.path == binding.resolvingSymlinksInPath().path else {
+                    throw LauncherError.insecureFile("owned v2 binding has symlink components")
+                }
+                try requirePrivateRegularFile(binding, name: "owned v2 binding")
+            }
             guard let portPosition = core.arguments.firstIndex(of: "--http-port"),
                   core.arguments.indices.contains(portPosition + 1),
                   let port = Int(core.arguments[portPosition + 1]),

@@ -216,7 +216,9 @@ def preflight_shared_core(
         )
     except (DarwinSharedManifestError, SharedCoreBootstrapError, OSError, ValueError):
         raise DarwinSharedLifecycleError("shared Core preflight failed") from None
-    if getattr(client, "_workdir_alias", None) != alias:
+    bound = set(client) if isinstance(client, dict) else {getattr(client, "_workdir_alias", None)}
+    expected = {alias} if isinstance(alias, str) else set(alias)
+    if bound != expected:
         raise DarwinSharedLifecycleError("shared Bridge grant alias mismatch")
 
     try:

@@ -136,11 +136,11 @@ git diff --check
 
 If dependencies are already present and the task explicitly forbids installation/update, use the existing declared build script without mutating dependencies or lockfiles; otherwise report the missing prerequisite instead of silently changing it.
 
-A static build proves generated routes/syntax, not rendered geometry. Use Node >=22.22.0 per `site/package.json` and locked dependencies; check bilingual route/link parity, base-path assets, both themes, narrow widths, keyboard and reduced motion. Visual CSS/layout changes require browser evidence. If none was executed report visual rendering as `Not verified`.
+A static build proves generated routes/syntax, not rendered geometry. Use Node >=22.23.4 per `site/package.json` and locked dependencies; check bilingual route/link parity and base-path assets for site content changes. CSS/layout/interaction changes require appropriate browser evidence (both themes, narrow widths, keyboard and reduced motion as affected). For copy-only changes with unchanged layout, styles and dependencies, static build and local reference checks are sufficient pre-release; a brief browser smoke is useful but not an additional hard gate. If none was executed report visual rendering as `Not verified`.
 
 ### Cross-boundary changes
 
-Run every applicable gate. Do not run unrelated heavyweight gates merely because they exist, but do not let one green layer substitute for another affected layer.
+Run every applicable gate. Do not run unrelated heavyweight gates merely because they exist, but do not let one green layer substitute for another affected layer. Carry forward scoped real-runtime evidence when the relevant product, native helpers, dependency locks, deployment semantics and test assumptions remain equivalent. Rerun affected boundaries when any of those inputs change or new evidence indicates a regression. A documentation/test-only successor need not repeat every live provider/connector combination. Mandatory final-SHA automated release gates and actual publication checks remain unchanged.
 
 ## 4. Website / GitHub Pages rules
 
@@ -154,11 +154,11 @@ Run every applicable gate. Do not run unrelated heavyweight gates merely because
 - Let Starlight own semantic light/dark palette foundations. Scope brand overrides by theme rather than globally replacing base gray/black/white variables.
 - Prefer content-driven Grid/Flex for semantic diagrams over fixed coordinates that break under localization/responsive widths.
 
-When current platform/release copy changes, update English and Chinese together and scan the built/source site for stale current-state wording. Historical timeline/version landmarks may remain unchanged when they accurately describe the older release.
+When current platform/release copy changes, read complete affected English and Chinese pages, reconcile them together, then scan the built/source site for stale current-state wording as a supplementary check. Historical timeline/version landmarks may remain unchanged when they accurately describe the older release.
 
 ## 5. Documentation status hygiene
 
-Release-facing docs must distinguish released product from the current candidate. Before publication, label the target pending; after successful publication, update stable-state copy on main without moving the released tag. Track current-file review, historical classification and check evidence separately.
+During release preparation, write release-facing docs in the intended stable-release voice for the exact target version, so the tagged source and published site need no immediate wording-only follow-up. Read affected documents in full and reconcile their meaning with implementation and measured capabilities. Keep unreleased operational status, actual CI/publication state, evidence and remaining gates in the internal release checklist or evidence ledger; do not invent successful checks. Publication remains independently authorized. Track current-file review, historical classification and check evidence separately.
 
 After a release-state cleanup, scan managed docs/site for stale concepts such as:
 
@@ -171,6 +171,8 @@ After a release-state cleanup, scan managed docs/site for stale concepts such as
 Exclude generated/cache/vendor trees and historical development memory such as `.git`, `.workbuddy`, `node_modules` and site build output. Classify every hit: current-state defect vs legitimate historical evidence.
 
 Do not make a search result disappear by falsifying history.
+
+Place standalone plans, architecture decisions, operational guides, diagnostics and release records under the appropriate `docs/` category; use the [documentation index](../README.md). Keep only repository/tool entry points, required component README files, canonical packaged Skills, website content sources and executable configuration inputs at their required locations. When relocating documents, repair repository links without changing historical claims or immutable source references.
 
 ## 6. Release workflow
 
@@ -208,7 +210,7 @@ Do **not** commit, push, create/move tags or publish a release unless the user e
 - After Core recreation establish fresh authenticated MCP; operate affected ingress separately only when required. No old SSE replay guarantee. Stop ingress before Core where native guards require it; shared Core never stops its owner.
 - Linux host Bridge uses user-scoped named systemd and explicit release stage/select; rollback selects an executable label, not a database/config rollback. Native named staging/helpers are create-only: preserve attempt markers and private state; unsupported updates require explicit migration planning.
 - Windows development/deployment work belongs on the Windows-native workflow; macOS work belongs on the macOS-native workflow. Do not use one host to infer another host's live state.
-- Windows uses the named component CLI documented in `deployment/windows/v0250-native-operations.md`; never replace current-user Task Scheduler with SCM/LocalSystem.
+- Windows uses the named component CLI documented in `docs/deployment/windows/v0250-native-operations.md`; never replace current-user Task Scheduler with SCM/LocalSystem.
 - macOS uses named SMAppService lifecycle documented in `deployment/macos/README.md`; respect Login Items approval, do not mutate raw launchd state.
 - Never use a persistent or `KeepAlive` `launchctl submit` job as a one-shot delayed maintenance handoff. Temporary macOS maintenance actions must be bounded, and completion evidence must include verification that the temporary launchd job/artifact no longer exists. When ServerFS reports a restart hand-over was scheduled, reconnect and verify the native `service status` hand-over result rather than treating scheduling as completion.
 

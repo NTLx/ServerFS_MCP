@@ -5,7 +5,7 @@ description: Deterministic repository operations through an explicitly authorize
 
 Deterministic Repo Ops is an optional non-Agent capability providing bounded repository operations through an explicitly authorized host Bridge, never a shell or Agent fallback.
 
-Repo Ops is enabled per workdir and must be admitted by the selected Bridge attachment. Named shared Core grants are independent; macOS owned uses private native authorization. Named macOS shared Core does not support Repo Ops.
+Repo Ops is enabled per workdir and must be admitted by the selected Bridge attachment. Named shared Core grants are independent; macOS Owned v1 uses private native authorization; explicitly provisioned Owned v2 uses per-alias grants. Named macOS shared Core does not support Repo Ops.
 
 ## Product boundary
 
@@ -30,7 +30,7 @@ Start with `inspect_repo(workdir="project", view="status")` and `inspect_repo(wo
 
 ## Per-workdir configuration
 
-Repo Ops defaults off. Linux named deployment enables the Core slot and the matching private owner JSON `workdirs` entry (`repo_ops_enabled: true`); the signed grant must allow the required `repo.*` methods. Follow the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md). Only one Agent/Repo Ops-enabled slot (01) is supported by the signed overlay. The Core-side settings for a writable repository are:
+Repo Ops defaults off. Linux named deployment enables the Core slot and the matching private owner JSON `workdirs` entry (`repo_ops_enabled: true`); the signed grant must allow the required `repo.*` methods. Follow the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md). The v0.26.0 signed overlay accepts 1–16 explicitly granted slots, including Repo Ops-only slots with Agent disabled. The Core-side settings for a writable repository are:
 
 ```text
 WORKDIR_01_ALIAS=project
@@ -193,9 +193,11 @@ Repo Ops adds four independently gated tools:
 | Filesystem + binary | 13 |
 | Filesystem + Repo Ops | 15 |
 | Filesystem + binary + Repo Ops | 17 |
-| Filesystem + Agent | 21 |
-| Filesystem + binary + Agent | 23 |
-| Filesystem + Agent + Repo Ops | 25 |
-| Filesystem + binary + Agent + Repo Ops | 27 |
+| Filesystem + Agent | 22 |
+| Filesystem + binary + Agent | 24 |
+| Filesystem + Agent + Repo Ops | 26 |
+| Filesystem + binary + Agent + Repo Ops | 28 |
+
+The eleven Agent tools include `list_agent_tasks`, whose successful use requires a supporting signed-v2 attachment.
 
 Acceptance must be verified for the target release and selected independent platform components.
