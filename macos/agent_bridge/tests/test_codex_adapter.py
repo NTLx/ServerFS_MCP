@@ -11,10 +11,9 @@ from typing import Any
 import pytest
 
 from codex_mock_provider import MockCodexServer
-from serverfs_agent_bridge.adapters.codex_transport import UnixSocketEndpoint
 from serverfs_agent_bridge.adapters.base import ReconcileResult
 from serverfs_agent_bridge.adapters.codex import CodexAdapter
-from serverfs_agent_bridge.adapters.codex_transport import CodexEndpoint
+from serverfs_agent_bridge.adapters.codex_transport import CodexEndpoint, UnixSocketEndpoint
 from serverfs_agent_bridge.config import CodexSettings
 from serverfs_agent_bridge.errors import BridgeError
 from serverfs_agent_bridge.lease_identity import slot_lease_id

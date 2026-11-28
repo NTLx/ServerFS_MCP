@@ -14,12 +14,12 @@ These tests prove the product layer can operate through the
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
-from platform_contract import LINUX
 from serverfs_mcp.backends import BackendError, WorkdirSession, get_backend
 from serverfs_mcp.config import Settings
 from serverfs_mcp.main import create_server
@@ -410,15 +410,15 @@ class TestProductLayerPurity:
             assert banned not in text, f"tools.py uses platform primitive: {banned}"
 
 
-@pytest.mark.skipif(not LINUX, reason="Linux kernel contract: the POSIX backend implementation")
-class TestLinuxSessionContract:
-    """The real Linux backend satisfies the same contract shape."""
+@pytest.mark.skipif(sys.platform != "darwin", reason="Darwin native backend contract")
+class TestDarwinSessionContract:
+    """The real Darwin backend satisfies the same contract shape."""
 
     def test_open_session_returns_session(self, tmp_path: Path) -> None:
-        from serverfs_mcp.linux_backend import LinuxBackend
+        from serverfs_mcp.darwin_backend import DarwinBackend
 
         backend = get_backend()
-        assert isinstance(backend, LinuxBackend)
+        assert isinstance(backend, DarwinBackend)
         wd = Workdir("test", tmp_path, None)
         session = backend.open_session(wd)
         for method in (
@@ -437,7 +437,7 @@ class TestLinuxSessionContract:
             "create_directory",
             "delete_directory",
         ):
-            assert hasattr(session, method), f"Linux session lacks {method}"
+            assert hasattr(session, method), f"Darwin session lacks {method}"
 
 
 class TestBackendErrorContract:
@@ -479,16 +479,16 @@ class TestProtocolCompleteness:
         ]
         assert not missing, f"unannotated session methods: {missing}"
 
-    @pytest.mark.skipif(not LINUX, reason="Linux kernel contract: the POSIX backend implementation")
-    def test_linux_session_covers_the_protocol(self) -> None:
-        from serverfs_mcp.linux_backend import LinuxWorkdirSession
+    @pytest.mark.skipif(sys.platform != "darwin", reason="Darwin native backend contract")
+    def test_darwin_session_covers_the_protocol(self) -> None:
+        from serverfs_mcp.darwin_backend import DarwinWorkdirSession
 
         missing = [
             name
             for name in _protocol_methods()
-            if not callable(getattr(LinuxWorkdirSession, name, None))
+            if not callable(getattr(DarwinWorkdirSession, name, None))
         ]
-        assert not missing, f"LinuxWorkdirSession lacks protocol members: {missing}"
+        assert not missing, f"DarwinWorkdirSession lacks protocol members: {missing}"
 
     def test_fake_session_covers_the_protocol(self) -> None:
         missing = [

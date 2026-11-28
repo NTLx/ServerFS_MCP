@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import tempfile
 import socket
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -17,12 +17,12 @@ from serverfs_agent_bridge.errors import BridgeError
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="macOS Unix Codex lifecycle")
 
+
 @pytest.fixture
 def tmp_path():
     # Darwin sun_path is 104 bytes including NUL; use an isolated short path.
     with tempfile.TemporaryDirectory(prefix="sfs-", dir="/tmp") as directory:
         yield Path(directory)
-
 
 
 class FakeProcess:

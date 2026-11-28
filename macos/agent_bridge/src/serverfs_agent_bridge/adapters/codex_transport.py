@@ -18,6 +18,7 @@ _DEFAULT_MAX_MESSAGE_BYTES = 128 * 1024 * 1024
 CONTROL_SOCKET_UNAVAILABLE_MESSAGE = "Codex App Server daemon control socket is unavailable"
 LISTENER_UNAVAILABLE_MESSAGE = "Codex App Server loopback listener is unavailable"
 
+
 @dataclass(frozen=True)
 class UnixSocketEndpoint:
     """The Linux managed-daemon control socket (AF_UNIX)."""

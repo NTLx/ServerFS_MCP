@@ -177,3 +177,63 @@ def test_snapshot_allows_only_randomized_private_repo_scratch(repo: tuple[Path, 
     unreviewed = scratch_parent / "unexpected-output"
     with pytest.raises(gate.CandidateSourceError, match="new outside path"):
         gate.snapshot_candidate(root, manifest, unreviewed)
+
+
+@pytest.fixture
+def split_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
+    top = (tmp_path / "split").resolve()
+    top.mkdir()
+    _git(top, "init", "-q")
+    root = top / "macos"
+    (root / "src").mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0.27.0'\n")
+    (root / "uv.lock").write_text("macos-lock\n")
+    (root / "src/app.py").write_text("VALUE = 'committed'\n")
+    (top / "windows").mkdir()
+    (top / "windows/sibling.py").write_text("VALUE = 'committed sibling'\n")
+    _git(top, "add", ".")
+    _git(
+        top, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+        "commit", "-qm", "split fixture",
+    )
+    (root / "src/app.py").write_text("VALUE = 'reviewed'\n")
+    (top / "windows/sibling.py").write_text("VALUE = 'unrelated edit'\n")
+    manifest = tmp_path / "split-reviewed.txt"
+    manifest.write_text("src/app.py\n")
+    return top, root, manifest
+
+
+def test_split_candidate_excludes_sibling_platform_and_root(split_repo, tmp_path):
+    top, root, manifest = split_repo
+    entries, scratch, _ = gate.verify_candidate(root, manifest)
+    assert entries == ("src/app.py",)
+    assert scratch == 0
+    destination = tmp_path.resolve() / "split-snapshot"
+    gate.snapshot_candidate(root, manifest, destination)
+    assert (destination / "src/app.py").read_text() == "VALUE = 'reviewed'\n"
+    assert not (destination / "windows").exists()
+    assert not (destination / "macos").exists()
+    assert (top / "windows/sibling.py").read_text() == "VALUE = 'unrelated edit'\n"
+
+
+def test_split_candidate_rejects_root_sibling_and_sibling_output(split_repo):
+    top, root, manifest = split_repo
+    for source in (top, top / "windows", root / "src"):
+        with pytest.raises(gate.CandidateSourceError, match="exact macOS project root"):
+            gate.verify_candidate(source, manifest)
+    output = top / "windows/snapshot"
+    with pytest.raises(gate.CandidateSourceError, match="new outside path"):
+        gate.snapshot_candidate(root, manifest, output)
+    assert not output.exists()
+
+
+def test_split_candidate_rejects_unreviewed_or_staged_local_changes(split_repo):
+    _, root, manifest = split_repo
+    extra = root / "src/unreviewed.py"
+    extra.write_text("unreviewed\n")
+    with pytest.raises(gate.CandidateSourceError, match="unreviewed"):
+        gate.verify_candidate(root, manifest)
+    extra.unlink()
+    _git(root, "add", "src/app.py")
+    with pytest.raises(gate.CandidateSourceError, match="staged"):
+        gate.verify_candidate(root, manifest)

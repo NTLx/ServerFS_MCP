@@ -50,19 +50,39 @@ def _git(source: Path, *args: str, timeout: int = 30) -> bytes:
     return completed.stdout
 
 
-def _expected_head(source: Path, commit: str) -> None:
+def _release_scope(source: Path, commit: str) -> tuple[Path, str]:
+    """Resolve only the macOS subtree, or a legacy pre-split repository root."""
     if not isinstance(commit, str) or _COMMIT.fullmatch(commit) is None:
         raise DarwinSharedRuntimeError("release commit must be a full lowercase Git SHA")
     try:
+        source = source.resolve(strict=True)
         top = Path(os.fsdecode(_git(source, "rev-parse", "--show-toplevel")).strip()).resolve(
             strict=True
         )
-        current = _git(source, "rev-parse", "--verify", "HEAD").decode("ascii").strip()
-        kind = _git(source, "cat-file", "-t", commit).decode("ascii").strip()
+        kind = _git(top, "cat-file", "-t", commit).decode("ascii").strip()
     except (OSError, UnicodeError, ValueError):
         raise DarwinSharedRuntimeError("release source Git identity is invalid") from None
-    if top != source or current != commit or kind != "commit":
+    if kind != "commit":
+        raise DarwinSharedRuntimeError("release source must identify a commit")
+    if source == top / "macos":
+        if _git(top, "cat-file", "-t", f"{commit}:macos").strip() != b"tree":
+            raise DarwinSharedRuntimeError("release commit lacks the macOS project tree")
+        return top, "macos/"
+    if source == top and not _git(top, "ls-tree", commit, "--", "macos").strip():
+        # Historical releases had one project at the repository root.
+        return top, ""
+    raise DarwinSharedRuntimeError("release source must be the exact macOS project root")
+
+
+def _expected_head(source: Path, commit: str) -> tuple[Path, str]:
+    top, prefix = _release_scope(source, commit)
+    try:
+        current = _git(top, "rev-parse", "--verify", "HEAD").decode("ascii").strip()
+    except (OSError, UnicodeError, ValueError):
+        raise DarwinSharedRuntimeError("release source Git identity is invalid") from None
+    if current != commit:
         raise DarwinSharedRuntimeError("release commit does not match source checkout HEAD")
+    return top, prefix
 
 
 def _extract_archive(archive: Path, destination: Path) -> None:
@@ -128,7 +148,7 @@ def _extract_archive(archive: Path, destination: Path) -> None:
 def materialize_release_source(source: Path, commit: str, target: Path) -> Path:
     """Use Git object data for the exact HEAD, never working-tree file contents."""
     source = Path(source).resolve(strict=True)
-    _expected_head(source, commit)
+    top, prefix = _expected_head(source, commit)
     if not target.is_absolute() or target.exists() or target.is_symlink():
         raise DarwinSharedRuntimeError("release snapshot requires unused absolute destination")
     if target.parent.resolve(strict=True) != target.parent:
@@ -137,7 +157,8 @@ def materialize_release_source(source: Path, commit: str, target: Path) -> Path:
     if archive.exists() or archive.is_symlink():
         raise DarwinSharedRuntimeError("release archive scratch name is already occupied")
     try:
-        _git(source, "archive", "--format=tar", "--output", str(archive), commit, timeout=90)
+        tree = f"{commit}:macos" if prefix else commit
+        _git(top, "archive", "--format=tar", "--output", str(archive), tree, timeout=90)
         _extract_archive(archive, target)
         return target
     finally:
@@ -148,6 +169,5 @@ def read_release_commit_file(source: Path, commit: str, filename: str) -> bytes:
     """Read project metadata from a Git commit, never from a mutable checkout."""
     if filename not in {"pyproject.toml", "uv.lock"}:
         raise DarwinSharedRuntimeError("release metadata filename is not allowed")
-    if not isinstance(commit, str) or _COMMIT.fullmatch(commit) is None:
-        raise DarwinSharedRuntimeError("release commit is invalid")
-    return _git(Path(source), "show", f"{commit}:{filename}")
+    top, prefix = _release_scope(Path(source), commit)
+    return _git(top, "show", f"{commit}:{prefix}{filename}")

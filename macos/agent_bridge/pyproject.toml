@@ -29,6 +29,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/serverfs_agent_bridge"]
 
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "src/hatch_build.py"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

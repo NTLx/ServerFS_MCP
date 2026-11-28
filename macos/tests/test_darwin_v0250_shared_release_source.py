@@ -78,6 +78,38 @@ def test_release_archive_comes_from_exact_commit_not_dirty_checkout(
     assert not (tmp_path / "release-snapshot.tar").exists()
 
 
+def test_split_release_archives_only_the_committed_macos_project(committed, tmp_path):
+    root, old_sha = committed["root"], committed["sha"]
+    macos = root / "macos"
+    (macos / "src").mkdir(parents=True)
+    (macos / "pyproject.toml").write_text("[project]\nname='serverfs-mcp'\nversion='0.27.0'\n")
+    (macos / "uv.lock").write_text("macos-lock\n")
+    (macos / "src" / "hatch_build.py").write_text("BUILD = 'committed'\n")
+    (root / "windows").mkdir()
+    (root / "windows" / "sentinel").write_text("other platform")
+    _git(root, "add", "macos", "windows")
+    _git(
+        root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+        "commit", "-qm", "split projects",
+    )
+    sha = _git(root, "rev-parse", "HEAD")
+    (macos / "uv.lock").write_text("dirty-lock\n")
+    output = tmp_path.resolve() / "macos-release"
+    assert release.materialize_release_source(macos, sha, output) == output
+    assert (output / "uv.lock").read_bytes() == b"macos-lock\n"
+    assert (output / "src" / "hatch_build.py").read_bytes() == b"BUILD = 'committed'\n"
+    assert not (output / "windows").exists()
+    assert not (output / "macos").exists()
+    assert release.read_release_commit_file(macos, sha, "uv.lock") == b"macos-lock\n"
+    assert release.read_release_commit_file(root, old_sha, "uv.lock") == b"committed-lock\n"
+
+    for source in (root, root / "windows", macos / "src"):
+        with pytest.raises(runtime.DarwinSharedRuntimeError):
+            release.materialize_release_source(source, sha, tmp_path.resolve() / "wrong-source")
+        with pytest.raises(runtime.DarwinSharedRuntimeError):
+            release.read_release_commit_file(source, sha, "uv.lock")
+
+
 @pytest.mark.parametrize("bad", ["HEAD", "0" * 40, "0" * 64, "../HEAD", "a" * 39, "A" * 40])
 def test_release_rejects_nonmatching_or_ambiguous_commit(
     committed: dict[str, object], tmp_path: Path, bad: str

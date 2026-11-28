@@ -2,7 +2,7 @@
 
 Use Apple Silicon, native arm64, macOS 27.x and local APFS. ServerFS runs as the current user and respects macOS filesystem permissions and privacy controls. Persistent services use signed SMAppService / LaunchAgents, without Docker, Rosetta or a root LaunchDaemon.
 
-Use the v0.26.0 checkout and matching installed runtimes. This runbook covers **new named instances**, not migration of an existing default installation.
+This platform-local runbook is for the v0.27.0 development candidate and uses the v0.26.0 deployment model. Run commands from this platform root; use the matching tagged source and installed runtimes for a released deployment. The candidate is not release-authorized. This runbook covers **new named instances**, not migration of an existing default installation.
 
 ## 1. Choose your deployment
 
@@ -55,7 +55,7 @@ SERVERFS_HTTP_ALLOWED_HOSTS=mcp.example.invalid,127.0.0.1:18781
 SERVERFS_HTTP_API_KEY=<generate-a-unique-secret-locally>
 ```
 
-Replace the example hostname and generate a unique high-entropy key locally. The Host allowlist must be **exactly** the configured hostname followed by the loopback authority, in that order. Choose an unused port. Do not put provider settings or arbitrary process environment into this file. OAuth is an alternative to the static API key, not an additional mode; it requires an independently configured authorization service. See [API Key](../../docs/api-key.md) and [OAuth](../../docs/oauth.md).
+Replace the example hostname and generate a unique high-entropy key locally. The Host allowlist must be **exactly** the configured hostname followed by the loopback authority, in that order. Choose an unused port. Do not put provider settings or arbitrary process environment into this file. OAuth is an alternative to the static API key, not an additional mode; it requires an independently configured authorization service. See [API Key](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/docs/api-key.md) and [OAuth](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/docs/oauth.md).
 
 ## 3. Stage and start a file-only Core
 
@@ -194,4 +194,4 @@ To retire a named instance, stop ingress first, unstage the selected Connector i
 
 For existing default installations use the version-matched scoped `serverfs service` compatibility commands; do not apply the named workflow to them. The [integration baseline](https://github.com/NTLx/ServerFS_MCP/blob/fffc0adb8341edb30ac7b03e72a017ca95b8c83d/deployment/macos/README.md) retains their commands and historical native acceptance recipes.
 
-Current acceptance and remaining release gates are recorded in the [release checklist](../../docs/v0.26.0-release-checklist.md). Historical signed native, public SSE and recovery tests do not establish that the final release artifact has passed every live combination.
+Current acceptance and remaining release gates are recorded in the [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/docs/v0.26.0-release-checklist.md). Historical signed native, public SSE and recovery tests do not establish that the final release artifact has passed every live combination.

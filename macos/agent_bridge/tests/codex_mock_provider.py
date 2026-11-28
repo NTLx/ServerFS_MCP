@@ -14,6 +14,7 @@ from serverfs_agent_bridge.adapters.codex_transport import (
     UnixSocketEndpoint,
 )
 
+
 class MockCodexServer:
     """The JSON-RPC behaviour of a Codex App Server, with no transport of its own."""
 
