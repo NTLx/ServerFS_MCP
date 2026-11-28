@@ -41,11 +41,13 @@ CLOUDFLARE_FILES = (
 PUBLIC_TIMEOUT = 180.0
 
 
-def _check_explicit_identity(hostname: str, approved_hostname: str, image: str) -> None:
+def _check_explicit_identity(
+    hostname: str, approved_hostname: str, image: str, *, expected_image: str = CANDIDATE_IMAGE
+) -> None:
     if hostname != HOSTNAME or approved_hostname != HOSTNAME:
-        raise ValueError("Cloudflare test hostname is not the allocated Linux v0.25 hostname")
-    if image != CANDIDATE_IMAGE:
-        raise ValueError("Core image is not the packaged Linux v0.25 candidate")
+        raise ValueError("Cloudflare test hostname is not the allocated Linux test hostname")
+    if image != expected_image:
+        raise ValueError("Core image is not the packaged Linux candidate")
 
 
 def _check_token_metadata(token_path: Path, workdir: Path, owner_uid: int, owner_gid: int) -> Path:
@@ -161,9 +163,10 @@ def _prepare_acceptance(
     token_file: Path,
     image: str,
     cloudflared_image: str,
+    expected_image: str = CANDIDATE_IMAGE,
 ) -> PreparedAcceptance:
     """Shared, local-only fixture/env/Compose preparation for both runner paths."""
-    _check_explicit_identity(hostname, hostname, image)
+    _check_explicit_identity(hostname, hostname, image, expected_image=expected_image)
     if cloudflared_image != CLOUDFLARED_IMAGE:
         raise ValueError("Cloudflare image differs from the tested pinned image")
     temp_root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -204,6 +207,7 @@ def _prepare_acceptance(
         port=port,
         uid=os.getuid(),
         gid=os.getgid(),
+        expected_image=expected_image,
     )
     return PreparedAcceptance(
         temp_root=temp_root,
@@ -269,13 +273,14 @@ def _assert_compose_model(
     port: int,
     uid: int,
     gid: int,
+    expected_image: str = CANDIDATE_IMAGE,
 ) -> None:
     services = model["services"]
     if set(services) != {"serverfs-mcp", "cloudflared"}:
         raise AssertionError("rendered project contains an unexpected service")
     core = services["serverfs-mcp"]
     cloudflared = services["cloudflared"]
-    if core["image"] != CANDIDATE_IMAGE:
+    if core["image"] != expected_image:
         raise AssertionError("Core is not using the packaged candidate image")
     ports = core.get("ports", [])
     if len(ports) != 1 or ports[0].get("host_ip") != "127.0.0.1":
@@ -504,23 +509,31 @@ def test_cloudflare_token_metadata_accepts_private_synthetic_file(tmp_path: Path
     reason="set SERVERFS_LINUX_CLOUDFLARE_LOCAL_ACCEPT=1 on the pinned candidate host",
 )
 def test_cloudflare_runner_preparation_runs_candidate_core_locally(tmp_path: Path) -> None:
+    _exercise_local_candidate(tmp_path, CANDIDATE_IMAGE, CANDIDATE_IMAGE_ID)
+
+
+def _exercise_local_candidate(
+    tmp_path: Path, image: str, image_id: str, *, require_connector_image: bool = True
+) -> None:
     assert sys.platform == "linux" and DOCKER is not None, "Linux Docker is required"
     root = tmp_path.resolve()
     root.chmod(0o700)
     token = root / "synthetic-config-only-token"
     token.write_text("synthetic-render-only", encoding="ascii")
     token.chmod(0o600)
-    project = "serverfs-v0250-cf-local-" + uuid.uuid4().hex[:12]
-    candidate_id = _image_id(CANDIDATE_IMAGE, root)
-    assert candidate_id == CANDIDATE_IMAGE_ID
-    assert _image_id(CLOUDFLARED_IMAGE, root) == CLOUDFLARED_IMAGE_ID
+    project = "serverfs-cf-local-" + uuid.uuid4().hex[:12]
+    candidate_id = _image_id(image, root)
+    assert candidate_id == image_id
+    if require_connector_image:
+        assert _image_id(CLOUDFLARED_IMAGE, root) == CLOUDFLARED_IMAGE_ID
     prepared = _prepare_acceptance(
         root,
         project=project,
         hostname=HOSTNAME,
         token_file=token,
-        image=CANDIDATE_IMAGE,
+        image=image,
         cloudflared_image=CLOUDFLARED_IMAGE,
+        expected_image=image,
     )
     base = prepared.compose_base
     try:
@@ -573,15 +586,22 @@ def test_cloudflare_runner_preparation_runs_candidate_core_locally(tmp_path: Pat
 )
 @pytest.mark.skipif(DOCKER is None or sys.platform != "linux", reason="Linux Docker unavailable")
 def test_cloudflare_only_public_candidate_acceptance(tmp_path: Path) -> None:
+    _exercise_public_candidate(
+        tmp_path, os.environ.get("SERVERFS_IMAGE", ""), CANDIDATE_IMAGE, CANDIDATE_IMAGE_ID
+    )
+
+
+def _exercise_public_candidate(
+    tmp_path: Path, image: str, expected_image: str, image_id: str
+) -> None:
     # Inputs are read only after the explicit opt-in; token content is never opened.
     hostname = os.environ.get("CLOUDFLARE_TEST_HOSTNAME", "")
     approved_hostname = os.environ.get("APPROVED_CLOUDFLARE_TEST_HOSTNAME", "")
-    image = os.environ.get("SERVERFS_IMAGE", "")
     cloudflared_image = os.environ.get("CLOUDFLARED_IMAGE", "")
     token_value = os.environ.get("CLOUDFLARE_TUNNEL_TOKEN_FILE", "")
     if not all((hostname, approved_hostname, image, cloudflared_image, token_value)):
         raise AssertionError("required explicit Cloudflare acceptance inputs are missing")
-    _check_explicit_identity(hostname, approved_hostname, image)
+    _check_explicit_identity(hostname, approved_hostname, image, expected_image=expected_image)
     if cloudflared_image != CLOUDFLARED_IMAGE:
         raise AssertionError("Cloudflare image must be explicitly pinned to the tested local image")
     if os.getuid() == 0:
@@ -593,12 +613,12 @@ def test_cloudflare_only_public_candidate_acceptance(tmp_path: Path) -> None:
     workdir.mkdir(mode=0o700)
     uid, gid = os.getuid(), os.getgid()
     token_file = _check_token_metadata(Path(token_value), workdir, uid, gid)
-    if _image_id(image, temp_root) != CANDIDATE_IMAGE_ID:
+    if _image_id(image, temp_root) != image_id:
         raise AssertionError("local candidate image ID differs from the accepted build")
     if _image_id(cloudflared_image, temp_root) != CLOUDFLARED_IMAGE_ID:
         raise AssertionError("local Cloudflare image ID differs from the tested image")
 
-    project = "serverfs-v0250-cf-public-" + uuid.uuid4().hex[:12]
+    project = "serverfs-cf-public-" + uuid.uuid4().hex[:12]
     prepared = _prepare_acceptance(
         temp_root,
         project=project,
@@ -606,6 +626,7 @@ def test_cloudflare_only_public_candidate_acceptance(tmp_path: Path) -> None:
         token_file=token_file,
         image=image,
         cloudflared_image=cloudflared_image,
+        expected_image=expected_image,
     )
     base = prepared.compose_base
     compose_env = _runner_env(temp_root)
@@ -632,7 +653,7 @@ def test_cloudflare_only_public_candidate_acceptance(tmp_path: Path) -> None:
         if not core_id:
             raise AssertionError("Core container was not created")
         core_image = _docker("inspect", "--format", "{{.Image}}", core_id, env=compose_env)
-        if core_image.returncode or core_image.stdout.strip() != CANDIDATE_IMAGE_ID:
+        if core_image.returncode or core_image.stdout.strip() != image_id:
             raise AssertionError("public Core container image differs from the pinned candidate")
         core_before = _inspect(core_id, temp_root)
         local_url = f"http://127.0.0.1:{prepared.port}/mcp"

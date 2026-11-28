@@ -23,7 +23,6 @@ from v0250_file_only_http_e2e import _mcp_roundtrip
 from v0250_multi_connector_native_acceptance import (
     BUILD,
     CONNECTORS,
-    _baseline,
     _port,
     _tracked_exited,
 )
@@ -33,6 +32,38 @@ from serverfs_mcp.darwin_instances import APP_NAME, instance_service_home
 from serverfs_mcp.instance_identity import InstanceIdentity
 
 SERVICE_KEYS = ("http-origin", "cloudflare.blue", "cloudflare.green", "tunnel.blue")
+
+
+def _protected_snapshot(
+    excluded: frozenset[str] = frozenset(),
+) -> dict[str, tuple[int | None, int]]:
+    """Protect all current ServerFS launchd jobs, including named instances."""
+    result = subprocess.run(
+        ["launchctl", "list"], capture_output=True, text=True, timeout=10, check=False
+    )
+    if result.returncode:
+        raise RuntimeError("protected launchd inventory unavailable")
+    snapshot: dict[str, tuple[int | None, int]] = {}
+    for row in result.stdout.splitlines():
+        fields = row.split()
+        if not fields or not fields[-1].startswith("com.ntlx.serverfs."):
+            continue
+        if len(fields) != 3:
+            raise RuntimeError("malformed protected launchd row")
+        raw_pid, raw_status, label = fields
+        if label in excluded:
+            continue
+        if label in snapshot:
+            raise RuntimeError("duplicate protected launchd label")
+        try:
+            pid = None if raw_pid == "-" else int(raw_pid)
+            status = int(raw_status)
+        except ValueError:
+            raise RuntimeError("malformed protected launchd state") from None
+        if pid is not None and pid <= 1:
+            raise RuntimeError("invalid protected launchd PID")
+        snapshot[label] = (pid, status)
+    return snapshot
 
 
 def _label(identity: InstanceIdentity, key: str) -> str:
@@ -107,7 +138,8 @@ def main() -> int:
     temp: Path | None = None
     config: Path | None = None
     port: int | None = None
-    baseline: tuple[int | None, ...] = ()
+    baseline: dict[str, tuple[int | None, int]] = {}
+    excluded: frozenset[str] = frozenset()
     tracked: set[int] = set()
     attempted: list[tuple[str, str, str]] = []
     core_attempted = False
@@ -126,14 +158,17 @@ def main() -> int:
     try:
         if sys.platform != "darwin" or os.uname().machine != "arm64":
             raise RuntimeError("native Apple Silicon macOS required")
-        baseline = _baseline()
-        if any(pid is None for pid in baseline):
-            raise RuntimeError("production launchd PID baseline incomplete")
+        baseline = _protected_snapshot()
+        if not baseline or not any(pid is not None for pid, _ in baseline.values()):
+            raise RuntimeError("no active production launchd baseline")
 
         instance_id = "v25-file-multi-" + secrets.token_hex(6)
         identity = InstanceIdentity(instance_id=instance_id, bridge_mode="disabled")
         root = instance_service_home(identity)
         owner = root.parent
+        excluded = frozenset(_label(identity, key) for key in SERVICE_KEYS)
+        if excluded.intersection(baseline):
+            raise RuntimeError("random fixture label already present")
         if owner.exists() or owner.is_symlink():
             raise RuntimeError("random file-only instance already exists")
         if (
@@ -212,6 +247,8 @@ def main() -> int:
         ):
             raise RuntimeError("test instance already registered after staging")
 
+        if _protected_snapshot(excluded) != baseline:
+            raise RuntimeError("protected launchd inventory changed before registration")
         phase = "core-start"
         core_attempted = True
         core_result = runtime.start_component(identity, "core")
@@ -314,6 +351,8 @@ def main() -> int:
             and runtime.darwin_service._launchd_job_pid(identity.macos_label("bridge")) is None
         )
         tested = core_stable and no_bridge and stop_refused and mcp_checks == 4
+        if _protected_snapshot(excluded) != baseline:
+            raise RuntimeError("protected launchd inventory changed during test")
     except Exception as exc:
         errors.append(type(exc).__name__ + " during " + phase)
     finally:
@@ -357,7 +396,7 @@ def main() -> int:
             and _no_listener(port)
             and no_bridge
         )
-        production_same = bool(baseline) and _baseline() == baseline
+        production_same = bool(baseline) and _protected_snapshot() == baseline
         safe_remove = (
             tested
             and not errors
@@ -372,12 +411,23 @@ def main() -> int:
         )
         if safe_remove:
             try:
+                # Remove only the fresh fixture after exact native shutdown and ownership checks.
+                manifest = json.loads((owner / "service-manager/services.json").read_text())
+                if (
+                    manifest.get("owner") != "v0.25-named-file-core"
+                    or manifest.get("instance_id") != identity.instance_id
+                    or manifest.get("bridge_mode") != "disabled"
+                    or set(manifest.get("services", {})) != set(SERVICE_KEYS)
+                    or {p.name for p in owner.iterdir()} != {"service-manager"}
+                    or stat.S_IMODE(owner.stat().st_mode) != 0o700
+                ):
+                    raise RuntimeError("fixture owner identity or layout differs")
                 shutil.rmtree(owner)
                 removed = not owner.exists()
                 if removed and temp is not None:
                     shutil.rmtree(temp)
                     temp_removed = not temp.exists()
-            except OSError as exc:
+            except (OSError, ValueError, RuntimeError) as exc:
                 errors.append("scoped artifact cleanup: " + type(exc).__name__)
 
     outcome = {

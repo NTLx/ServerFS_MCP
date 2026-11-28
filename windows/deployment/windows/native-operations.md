@@ -209,6 +209,14 @@ Confirm unrelated Core/Bridge/Connector identity remains unchanged, then establi
 
 The installer and configuration helpers are create-only. They leave one-shot `runtime-install-attempt` and `private-config-attempt` records; failed attempts retain evidence and may have partial private state. Do not blindly rerun, overwrite, re-ACL or remove that state. Plan explicit recovery or migration with preserved versions, configuration and state; no automatic in-place rollback or credential rotation is provided.
 
+### Historical named Bridge rollback limitation
+
+The released v0.26.0 named Bridge start guard cannot distinguish a missing exact legacy `ServerFS Native Tunnel` Scheduler task from an unavailable Scheduler query. On a host where that legacy task is absent, the historical guard can refuse to start or restart the named Bridge. The v0.27.0 candidate distinguishes verified Scheduler not-found HRESULTs from ambiguous errors; it still refuses active/queued legacy owners and unverifiable ownership. The historical release has not been patched.
+
+Do not plan rollback by replacing an installed candidate Bridge with v0.26.0 and assuming that it will restart. Do not create a dummy legacy task, modify a released wheel, relax the ownership guard, or bypass the Scheduler to make a rollback test pass. Before any cutover, verify a supported rollback target using the actual old artifacts, current host topology, private manifest/configuration/grant identities and retained state. Keep the existing deployment intact while staging a separate disposable candidate with disjoint writable roots, owner endpoints, credentials and instance IDs. Validate the candidate independently; never run two independent writers on the same root. A parallel staging exercise is not proof of historical same-state rollback. If the old Bridge cannot be safely restarted, stop the migration before altering the existing deployment and retain the evidence for an explicit maintainer disposition.
+
+The candidate-only native Bridge restart and the historical file-only Core rollback are separately tested. Neither establishes the unexecuted historical named Bridge rollback in the legacy-task-absent topology.
+
 ## 7. Advanced: manual configuration and private layout
 
 The manual `prepare` / `configure` path is for operator-managed inputs not covered by the initial helper. Do not repeat it after successful helper configuration. Prepare creates/validates private directories, not environments or credentials. The offline runtime installer remains the recommended way to populate fresh component venvs.
