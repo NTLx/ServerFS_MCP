@@ -99,41 +99,6 @@ def windows_common_projection(
     return _snapshot(PlatformFamily.WINDOWS, tuple(items), now), policy
 
 
-def darwin_common_projection(
-    native: Mapping[str, object], *, observed_at: datetime | None = None
-) -> tuple[ObservationSnapshot, RolePolicy]:
-    """Project macOS Tunnel lifecycle evidence, without inferring Bridge applicability."""
-    now = observed_at or datetime.now(UTC)
-    services = native.get("services")
-    services = services if isinstance(services, Mapping) else {}
-    processes = native.get("processes")
-    processes = processes if isinstance(processes, Mapping) else {}
-    tunnel_proc = processes.get("tunnel")
-    tunnel_proc = tunnel_proc if isinstance(tunnel_proc, Mapping) else {}
-    pid = tunnel_proc.get("pid")
-    unmanaged = native.get("unmanaged_tunnel_pids")
-    if native.get("bundle_valid") is False:
-        result = (Health.UNAVAILABLE, Provenance.OBSERVED, ReasonCode.INVALID_CONFIGURATION)
-    elif type(pid) is int and pid > 0:
-        result = (
-            (Health.DEGRADED, Provenance.OBSERVED, ReasonCode.DEGRADED)
-            if isinstance(unmanaged, list) and bool(unmanaged)
-            else (Health.HEALTHY, Provenance.OBSERVED, ReasonCode.OK)
-        )
-    else:
-        state = services.get("tunnel")
-        if state in {"not-installed", "not-registered", "not-found", "requires-approval"}:
-            result = (Health.UNAVAILABLE, Provenance.OBSERVED, ReasonCode.NOT_READY)
-        elif state == "invalid-bundle":
-            result = (Health.UNAVAILABLE, Provenance.OBSERVED, ReasonCode.INVALID_CONFIGURATION)
-        else:
-            result = (Health.UNKNOWN, Provenance.OBSERVED, ReasonCode.UNKNOWN_VALUE)
-    item = _observation(ComponentKey.TUNNEL, *result, now)
-    required = frozenset({ComponentKey.TUNNEL})
-    policy = RolePolicy(required, required, required)
-    return _snapshot(PlatformFamily.DARWIN, (item,), now), policy
-
-
 def common_document(snapshot: ObservationSnapshot, policy: RolePolicy) -> dict[str, object]:
     return {
         "snapshot": snapshot.as_dict(),

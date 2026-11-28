@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import uvicorn
@@ -197,6 +198,7 @@ def test_api_key_runner_disables_uvicorn_access_log(monkeypatch) -> None:
 
         async def serve(self) -> None:
             captured["served"] = True
+            assert isinstance(asyncio.get_running_loop(), asyncio.SelectorEventLoop)
 
     monkeypatch.setattr(uvicorn, "Config", FakeConfig)
     monkeypatch.setattr(uvicorn, "Server", FakeUvicornServer)

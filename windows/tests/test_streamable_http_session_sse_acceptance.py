@@ -17,7 +17,7 @@ from mcp.client.streamable_http import streamable_http_client
 
 from serverfs_mcp.config import Settings
 from serverfs_mcp.http_auth import StaticAPIKeyMiddleware
-from serverfs_mcp.main import create_server, streamable_http_transport_security
+from serverfs_mcp.main import create_server, run_http_server, streamable_http_transport_security
 from serverfs_mcp.workdirs import WorkdirRegistry
 
 RUN_ACCEPTANCE = os.environ.get("SERVERFS_RUN_LOCAL_HTTP_SESSION_SSE_ACCEPTANCE") == "1"
@@ -100,7 +100,7 @@ def _serve(listener: socket.socket, observer: _SSEObserver):
         uvicorn.Config(observer, log_config=None, access_log=False, lifespan="on")
     )
     thread = threading.Thread(
-        target=lambda: asyncio.run(server.serve(sockets=[listener])), daemon=True
+        target=lambda: run_http_server(server.serve(sockets=[listener])), daemon=True
     )
     thread.start()
     deadline = time.monotonic() + SERVER_START_TIMEOUT_SECONDS

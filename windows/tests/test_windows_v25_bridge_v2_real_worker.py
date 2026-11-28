@@ -68,13 +68,15 @@ print(digest)
 """
 
 
-def _test_installation(tmp_path: Path):
-    if not _WORKER.is_file():
+def _test_installation(tmp_path: Path, *, worker: Path = _WORKER, fake: bool = False):
+    if not worker.is_file():
+        if fake:
+            pytest.fail("required installed Bridge worker is missing")
         pytest.skip("separate local Bridge worker venv is not installed")
     sid = current_user_sid()
     bridge_id = "v2-worker-" + secrets.token_hex(5)
     resource = WindowsBridgeResources(sid, bridge_id)
-    workdir = tmp_path / "read-only"
+    workdir = tmp_path / ("fixture-write" if fake else "read-only")
     workdir.mkdir()
     home = tmp_path / "bridge-private"
     config_file = tmp_path / "isolated-v2-bridge.json"
@@ -88,12 +90,14 @@ def _test_installation(tmp_path: Path):
                 "state_dir": str(home / "state"),
                 "lock_dir": str(home / "locks"),
                 "allowed_peer_sid": sid,
+                "enable_fake_runtime": fake,
                 "workdirs": [
                     {
                         "alias": "Repo",
                         "host_path": str(workdir),
-                        "read_only": True,
-                        "agent_mode": "disabled",
+                        "read_only": not fake,
+                        "agent_mode": "workspace-write" if fake else "disabled",
+                        **({"agent_runtimes": ["fake"]} if fake else {}),
                     }
                 ],
             }
@@ -127,14 +131,15 @@ def _test_installation(tmp_path: Path):
                 "core_id": core_id,
                 "key_id": "key-" + core_id[-1],
                 "secret_hex": key.hex(),
-                "methods": ["bridge.ping", "runtime.list"],
+                "methods": ["bridge.ping", "runtime.list"]
+                + (["task.submit", "task.get", "task.list"] if fake else []),
                 "workdirs": [{"alias": "Repo", "policy_sha256": "0" * 64}],
             }
             for core_id, key in secrets_by_core.items()
         ],
     }
     result = subprocess.run(
-        [str(_WORKER), "-I", "-B", "-c", _PROVISION, str(config_file)],
+        [str(worker), "-I", "-B", "-c", _PROVISION, str(config_file)],
         input=json.dumps(document),
         text=True,
         capture_output=True,
@@ -149,7 +154,7 @@ def _test_installation(tmp_path: Path):
     plan = NativeBridgeV2Plan(
         bridge_id=bridge_id,
         config_path=config_file,
-        bridge_python=_WORKER,
+        bridge_python=worker,
         state_dir=home / "state",
         lock_dir=home / "locks",
         pipe_name=resource.pipe_name,

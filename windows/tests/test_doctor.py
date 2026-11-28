@@ -322,8 +322,6 @@ class TestAgentDoctorEnvFile:
         captured: list[dict[str, str] | None] = []
         import serverfs_mcp.agent_doctor as agent_doctor
 
-        monkeypatch.setattr(agent_doctor, "_probe_darwin_policy_sync", lambda *_args: None)
-
         original = agent_doctor.report_agent
 
         def capture(report, workdirs, settings, *, env=None):
@@ -368,9 +366,6 @@ class TestAgentDoctorEnvFile:
         failure: str,
     ) -> None:
         config = self._agent_config(tmp_path)
-        import serverfs_mcp.agent_doctor as agent_doctor
-
-        monkeypatch.setattr(agent_doctor, "_probe_darwin_policy_sync", lambda *_args: None)
         env_path = tmp_path / ".env"
         env_path.write_text(assignment + "\n", encoding="utf-8")
         lines: list[str] = []
@@ -385,7 +380,6 @@ class TestAgentDoctorEnvFile:
         config = self._agent_config(tmp_path)
         import serverfs_mcp.agent_doctor as agent_doctor
 
-        monkeypatch.setattr(agent_doctor, "_probe_darwin_policy_sync", lambda *_args: None)
         captured: list[dict[str, str] | None] = []
         monkeypatch.setattr(
             agent_doctor,
@@ -401,9 +395,6 @@ class TestAgentDoctorEnvFile:
         self, tmp_path: Path, isolated_data_home: Path, monkeypatch
     ) -> None:
         config = self._agent_config(tmp_path)
-        import serverfs_mcp.agent_doctor as agent_doctor
-
-        monkeypatch.setattr(agent_doctor, "_probe_darwin_policy_sync", lambda *_args: None)
         env_path = tmp_path / ".env"
         env_path.write_text(
             "SERVERFS_AGENT_PROXY_URL=first-secret\nSERVERFS_AGENT_PROXY_URL=second-secret\n",

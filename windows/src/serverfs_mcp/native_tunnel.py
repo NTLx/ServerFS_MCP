@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import signal
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -19,35 +18,6 @@ _TUNNEL_ID = re.compile(r"^tunnel_[a-z0-9]{32}$")
 
 class NativeTunnelError(ValueError):
     """Redacted, operator-safe tunnel configuration error."""
-
-
-@contextmanager
-def _darwin_tunnel_instance_lock():
-    """Hold one per-user lock for the lifetime of a native macOS tunnel process."""
-    if sys.platform != "darwin":
-        yield
-        return
-
-    import fcntl
-
-    from .darwin_service import service_home
-
-    directory = service_home()
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(directory, 0o700)
-    path = directory / "tunnel.lock"
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
-    try:
-        os.chmod(path, 0o600)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise NativeTunnelError(
-                "another native macOS tunnel instance is already running"
-            ) from exc
-        yield
-    finally:
-        os.close(fd)
 
 
 @contextmanager
@@ -87,11 +57,7 @@ def native_tunnel_instance_lock(*, already_held: bool = False):
     if already_held:
         yield
         return
-    if os.name == "nt":
-        with _windows_tunnel_instance_lock():
-            yield
-        return
-    with _darwin_tunnel_instance_lock():
+    with _windows_tunnel_instance_lock():
         yield
 
 
@@ -188,35 +154,6 @@ def _api_key_is_outside_workdirs(api_key_path: Path, config_path: Path) -> bool:
     return True
 
 
-def _materialize_key_file(api_key: str) -> Path:
-    """Write a key VALUE to a 0600 private file and return its path.
-
-    The operator may keep the control-plane key directly in ``.env``
-    (``CONTROL_PLANE_API_KEY``). The ``file:`` credential boundary of the
-    tunnel argv is preserved anyway: the launcher materializes the value
-    into a private file outside every workdir instead of putting the
-    secret into argv (visible in ``ps``) or the child environment. The
-    runtime location is the OS-provided per-user runtime directory on
-    macOS; Windows deployments keep the explicit key-file flow.
-    """
-    if sys.platform == "darwin":
-        from .darwin_libc import darwin_runtime_dir
-
-        directory = darwin_runtime_dir() / "control-plane"
-    else:
-        raise NativeTunnelError("on this platform, pass the control-plane key as an --api-key-file")
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    key_path = directory / "api-key"
-    fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        os.write(fd, api_key.encode("utf-8"))
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    os.chmod(key_path, 0o600)
-    return key_path
-
-
 def _run_tunnel_client(
     argv: list[str],
     env: dict[str, str],
@@ -225,14 +162,7 @@ def _run_tunnel_client(
     stdout: BinaryIO | None = None,
     stderr: BinaryIO | None = None,
 ) -> int:
-    """Wait for tunnel-client and forward launchd termination on macOS.
-
-    v0.13.1 used ``subprocess.run`` directly. A SIGTERM delivered to the Python
-    parent could therefore leave tunnel-client/supervisor descendants orphaned.
-    Under the v0.13.2 LaunchAgent the Python process is the job launchd owns, so
-    it must explicitly forward termination to tunnel-client and wait for the
-    existing tunnel-client shutdown path to finish.
-    """
+    """Wait for tunnel-client, using the Windows Job owner when provided."""
     popen_kwargs: dict[str, Any] = {"env": env}
     if os.name == "nt" and job is not None:
         # The persistent Windows service is a background task. tunnel-client
@@ -264,23 +194,7 @@ def _run_tunnel_client(
                     pass
         raise
 
-    if sys.platform != "darwin":
-        return process.wait()
-
-    previous_handlers: dict[int, object] = {}
-
-    def forward(signum, _frame) -> None:
-        if process.poll() is None:
-            process.send_signal(signum)
-
-    for signum in (signal.SIGTERM, signal.SIGINT):
-        previous_handlers[signum] = signal.getsignal(signum)
-        signal.signal(signum, forward)
-    try:
-        return process.wait()
-    finally:
-        for signum, handler in previous_handlers.items():
-            signal.signal(signum, handler)
+    return process.wait()
 
 
 def run_native_tunnel(
@@ -300,20 +214,10 @@ def run_native_tunnel(
 ) -> int:
     """Run tunnel-client, whose stdio child is the minimal sanitizer supervisor.
 
-    The control-plane key comes from exactly one source: ``--api-key-file``
-    (the frozen Windows flow) or, on macOS, the ``CONTROL_PLANE_API_KEY``
-    value (materialized to a 0600 private file so the argv keeps the
-    ``file:`` credential boundary).
+    Windows requires the explicit key-file boundary; no key value is materialized.
     """
-    if sys.platform == "linux":
-        raise NativeTunnelError(
-            "the Linux deployment runs the Docker compose topology; the native "
-            "tunnel launcher is supported on Windows and macOS 27"
-        )
-    if sys.platform == "darwin":
-        from .darwin_platform import ensure_supported_darwin
-
-        ensure_supported_darwin()
+    if sys.platform != "win32":
+        raise NativeTunnelError("the native tunnel launcher requires Windows")
     if base_url is not None:
         base_url = _validated_base_url(base_url)
     if health_listen_addr is not None:
@@ -340,7 +244,7 @@ def run_native_tunnel(
     if api_key is not None:
         if not api_key.strip():
             raise NativeTunnelError("CONTROL_PLANE_API_KEY is empty")
-        key_path = _materialize_key_file(api_key)
+        raise NativeTunnelError("on this platform, pass the control-plane key as an --api-key-file")
     elif api_key_file is not None:
         key_path = api_key_file.resolve(strict=True)
     else:

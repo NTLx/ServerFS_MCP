@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 
 from mcp.server import MCPServer
 from mcp.server.auth.provider import TokenVerifier
@@ -190,6 +192,18 @@ def register_resource_template(mcp: MCPServer, registry, settings: Settings) -> 
         return result.content
 
 
+def run_http_server(serve: Coroutine[Any, Any, None]) -> None:
+    """Run the Windows Core HTTP socket loop without affecting native IPC.
+
+    Proactor transport shutdown can raise WinError 10054 before releasing
+    its server reference, leaving asyncio.Server.wait_closed() blocked.
+    The Core's loopback HTTP server needs only TCP sockets; Named Pipe
+    calls use native blocking I/O in worker threads. Keep the change local
+    to this HTTP runner, not the global asyncio event-loop policy.
+    """
+    asyncio.run(serve, loop_factory=asyncio.SelectorEventLoop)
+
+
 def run_api_key_streamable_http(mcp: MCPServer, settings: Settings, registry) -> None:
     """Serve the SDK Streamable HTTP app behind the static API Key boundary."""
     import uvicorn
@@ -203,7 +217,7 @@ def run_api_key_streamable_http(mcp: MCPServer, settings: Settings, registry) ->
         log_level=settings.log_level.lower(),
         access_log=False,
     )
-    asyncio.run(uvicorn.Server(config).serve())
+    run_http_server(uvicorn.Server(config).serve())
 
 
 def create_streamable_http_app(mcp: MCPServer, settings: Settings, registry):
@@ -239,7 +253,7 @@ def run_streamable_http(mcp: MCPServer, settings: Settings, registry) -> None:
         log_level=settings.log_level.lower(),
         access_log=False,
     )
-    asyncio.run(uvicorn.Server(config).serve())
+    run_http_server(uvicorn.Server(config).serve())
 
 
 def main() -> int:

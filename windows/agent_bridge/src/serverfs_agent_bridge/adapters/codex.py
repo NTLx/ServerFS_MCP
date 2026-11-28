@@ -40,12 +40,17 @@ _NATIVE_DECISIONS = {
 @dataclass
 class _ActiveTask:
     context: TaskContext
-    connection: CodexConnection
+    connection: CodexConnection | None = None
     thread_id: str = ""
     turn_id: str = ""
     turn_ready: asyncio.Event = field(default_factory=asyncio.Event)
     final_messages: list[tuple[str | None, str]] = field(default_factory=list)
     request_handlers: dict[str, asyncio.Task[None]] = field(default_factory=dict)
+
+    def require_connection(self) -> CodexConnection:
+        if self.connection is None:
+            raise BridgeError("AGENT_TASK_NOT_ACTIVE", "Codex connection is not established")
+        return self.connection
 
 
 class CodexAdapter(AgentAdapter):
@@ -162,7 +167,7 @@ class CodexAdapter(AgentAdapter):
         await active.turn_ready.wait()
         if not active.turn_id:
             raise BridgeError("AGENT_TASK_NOT_ACTIVE", "Codex turn is no longer steerable")
-        await active.connection.request(
+        await active.require_connection().request(
             "turn/steer",
             {
                 "threadId": active.thread_id,
@@ -183,7 +188,7 @@ class CodexAdapter(AgentAdapter):
         if not active.turn_id:
             return
         try:
-            await active.connection.request(
+            await active.require_connection().request(
                 "turn/interrupt",
                 {"threadId": active.thread_id, "turnId": active.turn_id},
             )
@@ -283,7 +288,7 @@ class CodexAdapter(AgentAdapter):
             await self._cancel_request_handlers(item)
         if active:
             await asyncio.gather(
-                *(item.connection.close() for item in active),
+                *(item.connection.close() for item in active if item.connection is not None),
                 return_exceptions=True,
             )
         # Ordering matters: every connection that could still be using the child is closed first,
@@ -310,10 +315,9 @@ class CodexAdapter(AgentAdapter):
         # immediately hits a spurious "not active" error that Phase A's adapter
         # never produced.
         #
-        # The connection here is an unconnected placeholder replaced immediately below. It cannot be
-        # acquired yet: doing so would start the Bridge-owned app-server before the task is
-        # registered, so a rejected task would leave a provider child behind for no task at all.
-        active = _ActiveTask(context=context, connection=self._new_unix_connection())
+        # Register the task before acquiring the native listener; no foreign transport
+        # placeholder or provider startup is needed to reserve its active identity.
+        active = _ActiveTask(context=context)
         async with self._active_lock:
             if context.task_id in self._active:
                 raise BridgeError("AGENT_PROVIDER_ERROR", "Codex task is already active")
@@ -322,6 +326,8 @@ class CodexAdapter(AgentAdapter):
         connection: CodexConnection | None = None
         try:
             connection = await self._connect_with_optional_start()
+            if self._closed:
+                raise BridgeError("AGENT_RUNTIME_UNAVAILABLE", "Codex adapter is closed")
             active.connection = connection
 
             if resume:
@@ -424,7 +430,9 @@ class CodexAdapter(AgentAdapter):
 
     async def _consume_turn(self, active: _ActiveTask) -> AdapterResult:
         while True:
-            event = await active.connection.next_event(timeout=self._event_timeout(active))
+            event = await active.require_connection().next_event(
+                timeout=self._event_timeout(active)
+            )
             method = event.get("method")
             params = event.get("params")
             if not isinstance(method, str):
@@ -505,7 +513,7 @@ class CodexAdapter(AgentAdapter):
         params = message.get("params")
         request_id = message.get("id")
         if not isinstance(method, str) or not isinstance(params, dict):
-            await active.connection.respond_error(request_id)
+            await active.require_connection().respond_error(request_id)
             return
         try:
             if method == _COMMAND_APPROVAL:
@@ -517,9 +525,9 @@ class CodexAdapter(AgentAdapter):
             elif method == _USER_INPUT:
                 result = await self._user_input(active, params)
             else:
-                await active.connection.respond_error(request_id)
+                await active.require_connection().respond_error(request_id)
                 return
-            await active.connection.respond(request_id, result)
+            await active.require_connection().respond(request_id, result)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -527,7 +535,7 @@ class CodexAdapter(AgentAdapter):
             # Provider schema drift or an unexpected adapter bug must not leave
             # Codex waiting forever for a JSON-RPC response.
             try:
-                await active.connection.respond_error(
+                await active.require_connection().respond_error(
                     request_id,
                     code=-32000,
                     message="ServerFS could not satisfy the interaction request",

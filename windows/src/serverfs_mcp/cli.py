@@ -646,17 +646,6 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
             sys.stderr.write(f"cloudflared {VERSION} installed: {path.resolve()}\n")
             return 0
         if args.bootstrap_target == "tunnel-client":
-            if sys.platform == "darwin":
-                # v0.13 ships and accepts only the darwin-arm64 official
-                # asset; refuse anything else before downloading (C3).
-                from .darwin_platform import UNSUPPORTED_CODE, darwin_platform_status
-
-                status = darwin_platform_status()
-                if not status.supported:
-                    return _fail(
-                        f"{UNSUPPORTED_CODE}: tunnel-client bootstrap requires native arm64 "
-                        f"macOS 27 ({status.reason})"
-                    )
             path = bootstrap_tunnel_client(
                 force=args.force,
                 version=args.version or TESTED_TUNNEL_CLIENT_VERSION,
@@ -665,14 +654,6 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
             sys.stderr.write(f"tunnel-client installed: {path}\n")
             return 0
         if args.bootstrap_target == "native-wheel":
-            if sys.platform == "darwin":
-                # C4: the native wheel stays Windows-only; macOS needs no
-                # compiled kernel package, so refuse clearly instead of
-                # creating a dummy artifact.
-                return _fail(
-                    "native-wheel is not required on macOS: the Darwin backend is pure "
-                    "Python over POSIX/Darwin primitives (no native package exists for v0.13)"
-                )
             path = bootstrap_native_wheel(url=args.url, sha256=args.sha256)
             sys.stderr.write(f"native wheel verified and stored: {path}\n")
             sys.stderr.write(

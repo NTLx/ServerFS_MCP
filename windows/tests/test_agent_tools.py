@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 from pathlib import Path
 from typing import Any
 
@@ -12,8 +13,8 @@ from mcp.server import MCPServer
 
 from helpers import call_error, call_success, error_code, registry_for
 from serverfs_mcp.agent_client import AgentBridgeRemoteError
+from serverfs_mcp.agent_core_grant_client import CoreGrantBridgeClient
 from serverfs_mcp.config import Settings
-from serverfs_mcp.darwin_shared_agent_adapter import DarwinSharedAgentAdapter
 from serverfs_mcp.main import create_server
 from serverfs_mcp.workdirs import (
     AGENT_MODE_DISABLED,
@@ -799,7 +800,23 @@ def test_signed_v2_unsupported_option_returns_actionable_tool_error(
     tmp_path: Path, key: str
 ) -> None:
     client = FakeAgentClient()
-    adapter = DarwinSharedAgentAdapter(client, "repo")
+    adapter = CoreGrantBridgeClient(
+        Path(r"\\.\pipe\serverfs-v27-tool-fixture"),
+        core_id="core-a",
+        bridge_id="bridge-a",
+        key_id="key-a",
+        secret=b"R" * 32,
+        policy_revisions={"repo": "a" * 64},
+        server_pid_validator=lambda pid: pid > 0,
+    )
+
+    async def exchange(raw, request_id):
+        request = json.loads(raw)
+        assert request["request_id"] == request_id
+        assert request["protocol_version"] == 2
+        return await client.call(request["method"], request["params"])
+
+    adapter._exchange = exchange
     server = server_with_client(tmp_path, adapter)
     args = {"runtime": "codex", "workdir": "repo", "prompt": "test", key: "private-value"}
     message = call_error(server, "submit_agent_task", args)

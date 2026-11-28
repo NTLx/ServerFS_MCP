@@ -24,14 +24,14 @@ from pathlib import Path, PurePosixPath
 
 VERSION = "0.26.0"
 WHEELS = {
-    "core": (f"serverfs_mcp-{VERSION}-py3-none-any.whl", "serverfs-mcp", "serverfs_mcp"),
+    "core": (f"serverfs_mcp-{VERSION}-py3-none-win_amd64.whl", "serverfs-mcp", "serverfs_mcp"),
     "native": (
         f"serverfs_windows_native-{VERSION}-cp312-abi3-win_amd64.whl",
         "serverfs-windows-native",
         "serverfs_windows_native",
     ),
     "bridge": (
-        f"serverfs_agent_bridge-{VERSION}-py3-none-any.whl",
+        f"serverfs_agent_bridge-{VERSION}-py3-none-win_amd64.whl",
         "serverfs-agent-bridge",
         "serverfs_agent_bridge",
     ),
@@ -104,6 +104,11 @@ def pinned_payload(path: Path, kind: str, expected: str) -> bytes:
         records = [n for n in names if n.endswith(".dist-info/METADATA")]
         require(records == [prefix + "METADATA"], "Wheel metadata identity differs")
         info = BytesParser().parsebytes(wheel.read(records[0]))
+        wheel_records = [n for n in names if n.endswith(".dist-info/WHEEL")]
+        require(wheel_records == [prefix + "WHEEL"], "Wheel tag metadata is missing or ambiguous")
+        wheel_info = BytesParser().parsebytes(wheel.read(wheel_records[0]))
+        expected_tag = "cp312-abi3-win_amd64" if kind == "native" else "py3-none-win_amd64"
+        require(wheel_info.get_all("Tag") == [expected_tag], "Wheel platform tag differs")
         require(
             info["Name"] == dist
             and info["Version"] == VERSION

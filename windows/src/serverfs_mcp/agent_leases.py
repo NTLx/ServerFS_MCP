@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from .errors import AgentLeaseError, WorkdirRecoveryRequiredError
-from .lease_identity import guard_artifact_name, lock_artifact_name, validate_lease_id
+from .lease_identity import guard_artifact_name, validate_lease_id
 
 
 @contextlib.contextmanager

@@ -83,29 +83,20 @@ def data_home(env=None) -> Path:
     """The frozen ServerFS data home for native deployments.
 
     Windows: ``SERVERFS_DATA_HOME`` or ``%LOCALAPPDATA%\\ServerFS``.
-    macOS (v0.13): ``SERVERFS_DATA_HOME`` or
-    ``~/Library/Application Support/ServerFS`` (§10 C2 — never the Linux
-    XDG defaults on macOS).
-    Linux: ``SERVERFS_DATA_HOME`` or XDG ``~/.local/share/serverfs``.
     """
     environ = os.environ if env is None else env
     override = environ.get("SERVERFS_DATA_HOME", "").strip()
     if override:
         return Path(override)
-    if sys.platform == "win32":
-        base = environ.get("LOCALAPPDATA", "").strip()
-        if not base:
-            raise NativeEndpointError(
-                "neither SERVERFS_DATA_HOME nor LOCALAPPDATA is set; the native Agent state "
-                "location cannot be determined"
-            )
-        return Path(base) / "ServerFS"
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "ServerFS"
-    xdg = environ.get("XDG_DATA_HOME", "").strip()
-    if xdg:
-        return Path(xdg) / "serverfs"
-    return Path.home() / ".local" / "share" / "serverfs"
+    if sys.platform != "win32":
+        raise NativeEndpointError("native Agent state requires Windows")
+    base = environ.get("LOCALAPPDATA", "").strip()
+    if not base:
+        raise NativeEndpointError(
+            "neither SERVERFS_DATA_HOME nor LOCALAPPDATA is set; the native Agent state "
+            "location cannot be determined"
+        )
+    return Path(base) / "ServerFS"
 
 
 def bridge_home(env=None) -> Path:
@@ -121,16 +112,10 @@ def derive_lock_dir(env=None) -> Path:
 def derive_endpoint(env=None) -> str:
     """The deterministic native Bridge endpoint for the current user.
 
-    Windows: the user-scoped pipe name (§6). Darwin (v0.13 §11 D2): the
-    OS-provided per-user runtime directory holding a 0700
-    ``serverfs-agent-bridge-v1/bridge.sock``, length-checked against the
-    sun_path budget. Other platforms have no native derivation (the Linux
-    Docker deployment passes its endpoint explicitly).
+    Windows: the user-scoped pipe name (§6).
     """
-    if sys.platform == "darwin":
-        from .darwin_libc import darwin_bridge_socket_path
-
-        return str(darwin_bridge_socket_path())
+    if sys.platform != "win32":
+        raise NativeEndpointError("native Agent endpoint requires Windows")
     return derive_pipe_name(current_user_sid())
 
 
