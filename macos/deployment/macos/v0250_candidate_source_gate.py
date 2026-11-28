@@ -119,7 +119,7 @@ def dirty_paths(root: Path) -> tuple[set[str], int]:
             raise CandidateSourceError("invalid Git filename encoding") from exc
         if not name.startswith(prefix):
             raise CandidateSourceError("Git status path escaped the macOS project")
-        name = name[len(prefix):]
+        name = name[len(prefix) :]
         if name.startswith(SCRATCH_PREFIX):
             if item[:2] != b"??":
                 raise CandidateSourceError("tracked generated scratch is unsafe")

@@ -89,8 +89,14 @@ def test_split_release_archives_only_the_committed_macos_project(committed, tmp_
     (root / "windows" / "sentinel").write_text("other platform")
     _git(root, "add", "macos", "windows")
     _git(
-        root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-        "commit", "-qm", "split projects",
+        root,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-qm",
+        "split projects",
     )
     sha = _git(root, "rev-parse", "HEAD")
     (macos / "uv.lock").write_text("dirty-lock\n")

@@ -193,8 +193,14 @@ def split_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     (top / "windows/sibling.py").write_text("VALUE = 'committed sibling'\n")
     _git(top, "add", ".")
     _git(
-        top, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-        "commit", "-qm", "split fixture",
+        top,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-qm",
+        "split fixture",
     )
     (root / "src/app.py").write_text("VALUE = 'reviewed'\n")
     (top / "windows/sibling.py").write_text("VALUE = 'unrelated edit'\n")

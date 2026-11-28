@@ -251,9 +251,12 @@ def test_installed_wheel_three_process_http_acceptance() -> None:
         assert not hold_seconds, "historical rollback must remain loopback-only"
         first_bridge_python = wheelhouse / "baseline-bridge-venv/bin/python"
         assert first_bridge_python.is_file()
-        assert _wheel_provenance(
-            first_bridge_python, "serverfs_agent_bridge.main", "serverfs-agent-bridge", scratch
-        ) == "0.26.0"
+        assert (
+            _wheel_provenance(
+                first_bridge_python, "serverfs_agent_bridge.main", "serverfs-agent-bridge", scratch
+            )
+            == "0.26.0"
+        )
 
     root = scratch / "case"
     socket_path = root / "owner.sock"
