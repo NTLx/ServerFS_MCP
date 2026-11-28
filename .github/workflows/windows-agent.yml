@@ -144,8 +144,9 @@ jobs:
             "path = `"$escaped`""
             'read_only = true'
           )
-          $lines | Set-Content -Encoding utf8NoBOM doctor-smoke.toml
-          $disabledOut = .venv-serverfs/Scripts/serverfs.exe doctor --config doctor-smoke.toml
+          $disabledConfig = Join-Path $env:RUNNER_TEMP "doctor-smoke.toml"
+          $lines | Set-Content -Encoding utf8NoBOM -LiteralPath $disabledConfig
+          $disabledOut = .venv-serverfs/Scripts/serverfs.exe doctor --config $disabledConfig
           # stdout is reserved for MCP frames; doctor reports on stderr only.
           if ($disabledOut) {
             Write-Output "agent-disabled doctor wrote to stdout:"
@@ -185,9 +186,10 @@ jobs:
             "path = `"$escaped`""
             'read_only = true'
           )
-          $enabledLines | Set-Content -Encoding utf8NoBOM doctor-enabled.toml
+          $enabledConfig = Join-Path $env:RUNNER_TEMP "doctor-enabled.toml"
+          $enabledLines | Set-Content -Encoding utf8NoBOM -LiteralPath $enabledConfig
           $env:SERVERFS_BRIDGE_PYTHON = (Resolve-Path $bridgePy).Path
-          $enabledOut = .venv-serverfs/Scripts/serverfs.exe doctor --config doctor-enabled.toml
+          $enabledOut = .venv-serverfs/Scripts/serverfs.exe doctor --config $enabledConfig
           $env:SERVERFS_BRIDGE_PYTHON = $null
           if ($enabledOut) {
             Write-Output "agent-enabled doctor wrote to stdout:"

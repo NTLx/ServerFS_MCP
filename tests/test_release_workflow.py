@@ -41,6 +41,19 @@ def test_common_distribution_gate_is_independent_of_product_runtime() -> None:
     assert "sys.modules[package] = None" in gate
 
 
+def test_windows_doctor_fixtures_stay_outside_platform_source() -> None:
+    workflow = text("windows-agent.yml")
+    for variable, name in (
+        ("disabledConfig", "doctor-smoke.toml"),
+        ("enabledConfig", "doctor-enabled.toml"),
+    ):
+        assert f'${variable} = Join-Path $env:RUNNER_TEMP "{name}"' in workflow
+        assert f"-LiteralPath ${variable}" in workflow
+        assert f"doctor --config ${variable}" in workflow
+        assert f"utf8NoBOM {name}" not in workflow
+        assert f"doctor --config {name}" not in workflow
+
+
 def test_stable_release_is_dispatch_first_not_tag_first() -> None:
     release = on_block("wheel-release.yml")
     assert "workflow_dispatch:" in release
