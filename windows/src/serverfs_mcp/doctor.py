@@ -21,7 +21,6 @@ Rules this module must never break:
 
 from __future__ import annotations
 
-import errno
 import os
 import platform
 import socket
@@ -87,65 +86,7 @@ def _filesystem_probe(report: _Report, root: Path) -> None:
         state, detail = _classify_windows_storage(_windows_volume_info(root))
         report.status("filesystem", state, detail)
         return
-    if sys.platform == "darwin":
-        state, detail = _classify_darwin_storage(_darwin_volume_info(root))
-        report.status("filesystem", state, detail)
-        return
-    fs_name = _linux_mount_fstype(root)
-    if fs_name is None:
-        report.status("filesystem", WARN, "mount entry not found (unknown filesystem)")
-    else:
-        report.status("filesystem", OK, fs_name)
-
-
-def _darwin_volume_info(root: Path) -> tuple[str, bool] | None:
-    """(filesystem type, is network storage) from mount(8) output.
-
-    Longest-mount-point prefix match against the resolved root, the same
-    shape as the Linux /proc/mounts probe. The first mount option is the
-    filesystem type (e.g. ``apfs``); a mount without the ``local`` option
-    is treated as network storage. Diagnostics-only: runs outside the
-    request path on the operator's own configured root and assembles no
-    request paths.
-    """
-    try:
-        resolved = os.path.realpath(root)
-        completed = subprocess.run(["mount"], capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if completed.returncode != 0:
-        return None
-    best_point = ""
-    best: tuple[str, bool] | None = None
-    for line in completed.stdout.splitlines():
-        if " on " not in line or " (" not in line:
-            continue
-        point, rest = line.split(" on ", 1)[1].split(" (", 1)
-        options = rest.rstrip(")").split(", ")
-        if not options:
-            continue
-        if resolved == point or resolved.startswith(point.rstrip("/") + "/"):
-            if len(point) > len(best_point):
-                best_point = point
-                best = (options[0].lower(), "local" not in options)
-    return best
-
-
-def _classify_darwin_storage(info: tuple[str, bool] | None) -> tuple[str, str]:
-    """v0.13 GA filesystem verdict for one macOS root (dev_plan §9 B6).
-
-    GA support is LOCAL APFS on macOS 27. Network volumes break the
-    atomicity assumptions behind revision/CAS and fail outright; other
-    local filesystems work mechanically but carry no support claim.
-    """
-    if info is None:
-        return FAIL, "storage class could not be determined -- failing closed"
-    fs_name, is_remote = info
-    if is_remote:
-        return FAIL, f"{fs_name} on network storage -- unsupported (atomicity assumptions)"
-    if fs_name == "apfs":
-        return OK, "APFS"
-    return WARN, f"{fs_name} -- not local APFS, functional but unsupported in v0.13"
+    report.status("filesystem", FAIL, "native filesystem probe requires Windows")
 
 
 def _windows_volume_info(root: Path) -> tuple[str, bool] | None:
@@ -191,29 +132,6 @@ def _windows_volume_info(root: Path) -> tuple[str, bool] | None:
     elif str(root).startswith("\\\\") or volume_root.value.startswith("\\\\"):
         is_remote = True
     return (fs_name.value or "unknown"), is_remote
-
-
-def _linux_mount_fstype(root: Path) -> str | None:
-    """Longest-mount-point prefix match against /proc/mounts."""
-    try:
-        resolved = os.path.realpath(root)
-    except OSError:
-        return None
-    best_point = ""
-    best_fstype: str | None = None
-    try:
-        with open("/proc/mounts", encoding="utf-8") as fh:
-            for line in fh:
-                fields = line.split()
-                if len(fields) < 3:
-                    continue
-                point, fstype = fields[1], fields[2]
-                if resolved == point or resolved.startswith(point.rstrip("/") + "/"):
-                    if len(point) > len(best_point):
-                        best_point, best_fstype = point, fstype
-    except OSError:
-        return None
-    return best_fstype
 
 
 def _reparse_probe(report: _Report, root: Path, root_stat: os.stat_result) -> bool:
@@ -332,130 +250,8 @@ def _backend_line(report: _Report) -> None:
             return
         version = _distribution_version("serverfs-windows-native")
         report.status("native backend", OK, f"serverfs-windows-native {version}")
-    elif sys.platform == "linux":
-        report.status("native backend", OK, "linux fdio kernel")
-    elif sys.platform == "darwin":
-        from .darwin_platform import darwin_platform_status
-
-        status = darwin_platform_status()
-        if not status.supported:
-            report.status(
-                "native backend",
-                FAIL,
-                f"unsupported Darwin platform -- {status.reason} "
-                f"(v0.13 supports native arm64 macOS 27 only)",
-            )
-            return
-        # metadata-copy support is the one Darwin primitive the mutation
-        # path cannot do without; binding presence is checked read-only
-        # here (a live fcopyfile probe is exercised by the test-suite and
-        # acceptance, never against user files from doctor).
-        try:
-            from .darwin_libc import fcopyfile_metadata  # noqa: F401
-        except Exception:
-            report.status("native backend", FAIL, "darwin libc bindings unavailable (fcopyfile)")
-            return
-        report.status("native backend", OK, f"darwin FD kernel (macOS {status.macos_version})")
     else:
-        report.status("native backend", WARN, f"unsupported platform ({sys.platform})")
-
-
-def _darwin_platform_note(report: _Report) -> None:
-    """One informational line naming the measured platform facts (§10 C5)."""
-    if sys.platform != "darwin":
-        return
-    from .darwin_platform import darwin_platform_status
-
-    status = darwin_platform_status()
-    darwin_release = platform.release()
-    rosetta = "unknown" if status.rosetta is None else ("yes" if status.rosetta else "no")
-    report.note(
-        "platform",
-        f"macOS {status.macos_version or 'unknown'} (Darwin {darwin_release}); "
-        f"machine={status.machine}; rosetta={rosetta}",
-    )
-
-
-def _darwin_service_probe(report: _Report) -> None:
-    """Read-only v0.13.2 ServiceManagement registration and process diagnostics."""
-    if sys.platform != "darwin":
-        return
-    try:
-        from .darwin_service import DarwinServiceError, status
-
-        snapshot = status()
-    except (OSError, DarwinServiceError) as exc:
-        report.status(
-            "persistent services",
-            WARN,
-            f"status unavailable ({type(exc).__name__})",
-        )
-        return
-
-    build_tools = snapshot.get("build_tools", {})
-    if isinstance(build_tools, dict):
-        missing = sorted(name for name, available in build_tools.items() if not available)
-        report.status(
-            "service manager tools",
-            WARN if missing else OK,
-            f"missing: {', '.join(missing)}" if missing else "xcrun/codesign/plutil available",
-        )
-
-    if not snapshot.get("app_installed"):
-        report.note(
-            "persistent services",
-            "not installed; run 'serverfs service install --config <serverfs.toml> "
-            "--env-file <.env>'",
-        )
-        return
-
-    if snapshot.get("bundle_valid") is not True:
-        report.status(
-            "service manager",
-            FAIL,
-            str(snapshot.get("bundle_error") or "bundle validation failed"),
-        )
-        return
-
-    version = snapshot.get("bundle_version") or "unknown"
-    report.status("service manager", OK, f"valid signed bundle {version}")
-    services = snapshot.get("services", {})
-    processes = snapshot.get("processes", {})
-    if isinstance(services, dict):
-        for name in ("tunnel", "agent-bridge"):
-            state = services.get(name, "unknown")
-            process = processes.get(name, {}) if isinstance(processes, dict) else {}
-            pid = process.get("pid") if isinstance(process, dict) else None
-            if state == "enabled":
-                detail = f"enabled; pid={pid}" if pid else "enabled; process not currently running"
-                report.status(f"service {name}", OK if pid else WARN, detail)
-            elif state == "requires-approval":
-                report.status(
-                    f"service {name}",
-                    FAIL,
-                    "requires approval in System Settings > General > Login Items",
-                )
-            elif state in {"not-registered", "not-found"}:
-                report.status(f"service {name}", WARN, state)
-            else:
-                report.status(f"service {name}", WARN, str(state))
-
-    if snapshot.get("legacy_bridge_plist"):
-        report.status(
-            "legacy LaunchAgent",
-            WARN,
-            "v0.13.0/v0.13.1 Agent Bridge plist is still present",
-        )
-    unmanaged = snapshot.get("unmanaged_tunnel_pids", [])
-    if isinstance(unmanaged, list) and unmanaged:
-        report.status(
-            "unmanaged tunnel",
-            WARN,
-            "legacy/manual tunnel process detected outside the managed launchd job",
-        )
-    log_dir = snapshot.get("log_dir")
-    if isinstance(log_dir, str) and log_dir:
-        report.note("persistent service logs", log_dir)
+        report.status("native backend", FAIL, f"unsupported platform ({sys.platform})")
 
 
 def _distribution_version(package: str) -> str:
@@ -597,11 +393,6 @@ def _probe_workdir(report: _Report, backend: object | None, workdir: object) -> 
         return
     except OSError as exc:
         detail = f"configured root cannot be inspected ({type(exc).__name__})"
-        if sys.platform == "darwin" and exc.errno in (errno.EPERM, errno.EACCES):
-            # macOS privacy controls surface as EPERM/EACCES on protected
-            # paths; doctor identifies the likely cause instead of hiding
-            # it (dev_plan_v0.13.md §9 B7). No TCC bypass is attempted.
-            detail += " -- likely macOS TCC denial; grant disk access to the host application"
         report.status("root", FAIL, detail)
         return
     import stat as _stat
@@ -656,7 +447,6 @@ def run_doctor(
     report = _Report(writer)
     report.say(f"ServerFS {SERVER_VERSION}")
     report.say(f"Python {sys.version.split()[0]} ({sys.platform} {platform.machine()})")
-    _darwin_platform_note(report)
     try:
         workdirs, settings = load_native_config(config_path)
     except NativeConfigError as exc:
@@ -666,7 +456,7 @@ def run_doctor(
     _backend_line(report)
 
     backend: object | None
-    if sys.platform in {"win32", "linux"} or sys.platform == "darwin":
+    if sys.platform == "win32":
         try:
             from .backends import get_backend
 
@@ -696,7 +486,6 @@ def run_doctor(
         report.status("agent env", FAIL, str(exc))
         agent_env = dict.fromkeys(_AGENT_DOCTOR_ENV_KEYS, "")
     report_agent(report, workdirs, settings, env=agent_env)
-    _darwin_service_probe(report)
 
     _tunnel_probe(report, tunnel_client)
     _proxy_probe(report, env_path)

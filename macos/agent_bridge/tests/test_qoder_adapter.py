@@ -18,6 +18,7 @@ from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
 from serverfs_agent_bridge.service import BridgeService
 from serverfs_agent_bridge.store import TaskStore
 
+
 @dataclass
 class FakeTextBlock:
     text: str

@@ -50,10 +50,7 @@ def open_flags(access: str, *, create: bool = False, exclusive: bool = False) ->
     an access mode instead of OR-ing platform constants, which is what §24 asks for.
     """
     mode = {"read": os.O_RDONLY, "write": os.O_WRONLY, "read-write": os.O_RDWR}[access]
-    flags = (
-        mode
-        | getattr(os, "O_NOINHERIT", 0)
-    )
+    flags = mode | getattr(os, "O_NOINHERIT", 0)
     if create:
         flags |= os.O_CREAT
     if exclusive:

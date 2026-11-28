@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -18,10 +19,18 @@ from serverfs_mcp.agent_client import (
 )
 
 
+@pytest.fixture
+def socket_dir():
+    # Darwin sockaddr_un.sun_path is 104 bytes. pytest's per-test path can
+    # exceed that even for a short basename; use a private short directory.
+    with tempfile.TemporaryDirectory(prefix="sfs-", dir="/tmp") as directory:
+        yield Path(directory)
+
+
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS Unix socket transport")
-def test_agent_bridge_client_round_trip(tmp_path: Path) -> None:
+def test_agent_bridge_client_round_trip(socket_dir: Path) -> None:
     async def scenario() -> None:
-        socket_path = tmp_path / "bridge.sock"
+        socket_path = socket_dir / "bridge.sock"
         seen: dict = {}
 
         async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -63,10 +72,10 @@ def test_agent_bridge_client_round_trip(tmp_path: Path) -> None:
     ],
 )
 def test_agent_bridge_client_calls_private_diagnostics_rpc(
-    tmp_path: Path, method: str, params: dict
+    socket_dir: Path, method: str, params: dict
 ) -> None:
     async def scenario() -> None:
-        socket_path = tmp_path / "diagnostics.sock"
+        socket_path = socket_dir / "diagnostics.sock"
         seen: dict = {}
 
         async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -96,9 +105,9 @@ def test_agent_bridge_client_calls_private_diagnostics_rpc(
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS Unix socket transport")
-def test_agent_bridge_remote_error_preserves_code(tmp_path: Path) -> None:
+def test_agent_bridge_remote_error_preserves_code(socket_dir: Path) -> None:
     async def scenario() -> None:
-        socket_path = tmp_path / "bridge.sock"
+        socket_path = socket_dir / "bridge.sock"
 
         async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             request = json.loads(await reader.readline())
@@ -128,9 +137,9 @@ def test_agent_bridge_remote_error_preserves_code(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS Unix socket transport")
-def test_agent_bridge_rejects_response_id_mismatch(tmp_path: Path) -> None:
+def test_agent_bridge_rejects_response_id_mismatch(socket_dir: Path) -> None:
     async def scenario() -> None:
-        socket_path = tmp_path / "bridge.sock"
+        socket_path = socket_dir / "bridge.sock"
 
         async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             await reader.readline()
@@ -171,9 +180,9 @@ def test_agent_bridge_missing_socket_is_unavailable(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS Unix socket transport")
-def test_lost_submit_response_can_be_retried_with_same_idempotency_key(tmp_path: Path) -> None:
+def test_lost_submit_response_can_be_retried_with_same_idempotency_key(socket_dir: Path) -> None:
     async def scenario() -> None:
-        socket_path = tmp_path / "bridge.sock"
+        socket_path = socket_dir / "bridge.sock"
         tasks: dict[str, str] = {}
         attempts = 0
 

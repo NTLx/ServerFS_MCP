@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from serverfs_mcp import cli
 from serverfs_mcp.observability import Projection
 from serverfs_mcp.service_observability import (
-    darwin_common_projection,
     render_common_human,
     render_common_json,
     windows_common_projection,
@@ -32,23 +31,6 @@ def test_windows_projection_conservative_tunnel_and_aggregates() -> None:
     unknown = {key: value for key, value in healthy.items() if not key.startswith("last_tunnel")}
     snapshot, policy = windows_common_projection(unknown, observed_at=NOW)
     assert snapshot.aggregate(policy, Projection.READINESS).health.value == "unknown"
-
-
-def test_darwin_projection_states_are_conservative() -> None:
-    base = {
-        "bundle_valid": True,
-        "services": {"tunnel": "started"},
-        "processes": {"tunnel": {"pid": 21}},
-    }
-    cases = [
-        (base, "healthy"),
-        ({**base, "unmanaged_tunnel_pids": [22]}, "degraded"),
-        ({"bundle_valid": True, "services": {"tunnel": "not-installed"}}, "unavailable"),
-        ({"bundle_valid": True, "services": {"tunnel": "future-state"}}, "unknown"),
-    ]
-    for native, expected in cases:
-        snapshot, policy = darwin_common_projection(native, observed_at=NOW)
-        assert snapshot.aggregate(policy, Projection.HEALTH).health.value == expected
 
 
 def test_renderers_sanitize_native_values_and_agree() -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+import struct
 import threading
 import time
 from contextlib import contextmanager
@@ -16,7 +17,7 @@ from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
 from serverfs_mcp.config import Settings
-from serverfs_mcp.main import create_server
+from serverfs_mcp.main import create_server, run_http_server
 from serverfs_mcp.workdirs import WorkdirRegistry
 
 
@@ -98,7 +99,7 @@ def _serve(app):
         uvicorn.Config(recorder, log_config=None, access_log=False, lifespan="on")
     )
     thread = threading.Thread(
-        target=lambda: asyncio.run(server.serve(sockets=[listener])), daemon=True
+        target=lambda: run_http_server(server.serve(sockets=[listener])), daemon=True
     )
     thread.start()
     deadline = time.monotonic() + 5
@@ -116,7 +117,11 @@ def _serve(app):
         thread.join(timeout=5)
         listener.close()
         if thread.is_alive():
-            raise RuntimeError("test HTTP server did not stop")
+            raise RuntimeError(
+                "test HTTP server did not stop: "
+                f"connections={len(server.server_state.connections)}, "
+                f"tasks={len(server.server_state.tasks)}"
+            )
 
 
 def _client_roundtrip(url: str, mode: str):
@@ -212,6 +217,24 @@ def test_stateful_legacy_client_negotiates_and_closes_session() -> None:
         request["method"] == "DELETE" and request["headers"].get("mcp-session-id") == session_id
         for request in requests
     )
+
+
+def test_reset_http_connection_does_not_prevent_graceful_shutdown() -> None:
+    with _serve(_stateful_app()) as (url, _):
+        port = int(url.split(":")[-1].split("/")[0])
+        # Receive a byte to establish that the server accepted the connection;
+        # SO_LINGER with a zero timeout makes close an abortive TCP reset.
+        for _ in range(5):
+            with socket.create_connection(("127.0.0.1", port), timeout=3) as peer:
+                peer.sendall(
+                    b"GET /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n"
+                )
+                assert peer.recv(1)
+                peer.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("HH", 1, 0))
+        protocol, tools, result = _client_roundtrip(url, "legacy")
+        assert protocol == "2025-11-25"
+        assert "list_workdirs" in tools
+        assert result.structured_content == {"workdirs": []}
 
 
 def test_stateful_modern_client_uses_per_request_wire_metadata() -> None:

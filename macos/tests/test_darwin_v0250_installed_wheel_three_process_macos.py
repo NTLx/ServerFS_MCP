@@ -245,6 +245,15 @@ def test_installed_wheel_three_process_http_acceptance() -> None:
     print(f"core_wheel={core_version} bridge_wheel={bridge_version}")
     hold_seconds = int(os.environ.get("SERVERFS_V0250_CF_HOLD_SECONDS", "0"))
     assert 0 <= hold_seconds <= 180, "public hold must be between 1 and 180 seconds"
+    historical_rollback = os.environ.get("SERVERFS_V27_HISTORICAL_BRIDGE_ROLLBACK") == "1"
+    first_bridge_python = bridge_python
+    if historical_rollback:
+        assert not hold_seconds, "historical rollback must remain loopback-only"
+        first_bridge_python = wheelhouse / "baseline-bridge-venv/bin/python"
+        assert first_bridge_python.is_file()
+        assert _wheel_provenance(
+            first_bridge_python, "serverfs_agent_bridge.main", "serverfs-agent-bridge", scratch
+        ) == "0.26.0"
 
     root = scratch / "case"
     socket_path = root / "owner.sock"
@@ -321,7 +330,7 @@ def test_installed_wheel_three_process_http_acceptance() -> None:
         with ExitStack() as stack:
             owner = _start_wheel_process(
                 stack,
-                python=bridge_python,
+                python=first_bridge_python,
                 module="serverfs_agent_bridge.main",
                 args=["--config", str(bridge_config)],
                 cwd=root,
@@ -435,15 +444,34 @@ def test_installed_wheel_three_process_http_acceptance() -> None:
                         "runtime": "fake",
                         "path": ".",
                         "profile": "review",
-                        "prompt": "installed wheel isolation",
+                        "prompt": (
+                            "complete:historical-result"
+                            if historical_rollback
+                            else "installed wheel isolation"
+                        ),
                     },
                 )
                 task_id = submitted["task_id"]
+
+                async def completed(task_id: str, expected: str) -> None:
+                    for _ in range(100):
+                        task = await bridge_probe.call("task.get", {"task_id": task_id})
+                        if task["status"] == "succeeded":
+                            assert task["final_response"] == expected
+                            return
+                        assert task["status"] not in {"failed", "cancelled", "timed_out"}
+                        await asyncio.sleep(0.05)
+                    pytest.fail("installed Bridge task did not complete")
+
+                if historical_rollback:
+                    await completed(task_id, "historical-result")
                 cross = await _mcp_call(ports[1], tokens[1], "get_agent_task", {"task_id": task_id})
                 assert cross.is_error, cross
 
                 _stop(owner)
                 assert owner.poll() is not None, "installed-wheel Bridge owner did not stop"
+                if historical_rollback:
+                    assert owner.returncode == 0
                 socket_deadline = time.monotonic() + 5
                 while socket_path.exists() and time.monotonic() < socket_deadline:
                     await asyncio.sleep(0.05)
@@ -511,6 +539,54 @@ def test_installed_wheel_three_process_http_acceptance() -> None:
                     ports[1], tokens[1], "get_agent_task", {"task_id": task_id}
                 )
                 assert cross_after_restart.is_error, cross_after_restart
+                if historical_rollback:
+                    await completed(task_id, "historical-result")
+                    new_task = await bridge_probe.call(
+                        "task.submit",
+                        {
+                            "runtime": "fake",
+                            "path": ".",
+                            "profile": "review",
+                            "prompt": "complete:candidate-result",
+                        },
+                    )
+                    candidate_id = new_task["task_id"]
+                    await completed(candidate_id, "candidate-result")
+                    _stop(restarted_owner)
+                    assert restarted_owner.returncode == 0
+                    assert not socket_path.exists()
+                    restarted_owner = _start_wheel_process(
+                        stack,
+                        python=first_bridge_python,
+                        module="serverfs_agent_bridge.main",
+                        args=["--config", str(bridge_config)],
+                        cwd=root,
+                        home=home,
+                        env_extra={},
+                        log=root / "bridge-rollback.stderr",
+                    )
+                    from test_darwin_v0250_shared_owner_process_macos import _wait_owner
+
+                    await _wait_owner(restarted_owner, root / "bridge-rollback.stderr", bridge_probe)
+                    await completed(task_id, "historical-result")
+                    await completed(candidate_id, "candidate-result")
+                    for index, process in enumerate(core_processes):
+                        assert process.poll() is None
+                        listing = await _mcp_call(ports[index], tokens[index], "list_workdirs", {})
+                        assert {wd["alias"] for wd in listing.structured_content["workdirs"]} == {
+                            "Workspace"
+                        }
+                    for retained_id in (task_id, candidate_id):
+                        own = await _mcp_call(
+                            ports[0], tokens[0], "get_agent_task", {"task_id": retained_id}
+                        )
+                        assert not own.is_error
+                        assert own.structured_content["task_id"] == retained_id
+                        denied = await _mcp_call(
+                            ports[1], tokens[1], "get_agent_task", {"task_id": retained_id}
+                        )
+                        assert denied.is_error
+                    print("MACOS_HISTORICAL_BRIDGE_ROLLBACK_PASS", flush=True)
                 if hold_seconds:
                     _private_file(root / "public-bearer", tokens[0].encode())
                     ready = {

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import tempfile
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -14,12 +14,12 @@ from serverfs_agent_bridge.adapters.codex_transport import (
     UnixSocketEndpoint,
 )
 
+
 @pytest.fixture
 def tmp_path():
     # Darwin sun_path is 104 bytes including NUL; use an isolated short path.
     with tempfile.TemporaryDirectory(prefix="sfs-", dir="/tmp") as directory:
         yield Path(directory)
-
 
 
 @pytest.mark.asyncio

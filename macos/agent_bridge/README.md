@@ -4,9 +4,9 @@ The optional host-side Bridge owns Agent execution, task state, writer coordinat
 
 ## Deployment
 
-- [Linux named user systemd Bridge](../deployment/linux/README.md)
 - [macOS native SMAppService](../deployment/macos/README.md)
-- [Windows native Task Scheduler and Named Pipe](../docs/deployment/windows/v0250-native-operations.md)
+
+This platform-local Bridge is part of the v0.27.0 candidate. For existing v0.26.0 deployments, use the tagged source and matching installed artifacts.
 
 Repo Ops and Agent delegation are independently gated per workdir. Repo Ops never submits a provider task. Native Codex, Claude and Qoder plus fixed operator-configured ACP profiles are supported as documented; ACP needs workspace-write and must not infer unsupported capabilities. Provider authorization is provider-owned. Jev is advisory only. See the [Agent Bridge guide](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/) for task lifecycle, model discovery, recovery, diagnostics and limits.
 
@@ -60,17 +60,17 @@ uv run ruff format --check .
 uv run pytest
 ```
 
-The repository-level tests must also remain green.
+The macOS Core suite and external public contract gate must also remain green.
 
 ## Two-process MCP E2E harness
 
-The two-process end-to-end gate lives in `../tests/e2e/` and is run from the repository
-root with the **root** environment, which starts this package as a separate host
+The two-process end-to-end gate lives in `../tests/e2e/` and is run from the macOS
+platform root with its Core environment, which starts this package as a separate host
 process:
 
 ```bash
 uv sync --frozen                        # in agent_bridge/
-uv run python tests/e2e/run_e2e.py      # from the repository root
+uv run python tests/e2e/run_e2e.py      # from the macOS platform root
 ```
 
 It launches the Bridge over a real Unix socket and drives the published MCP surface

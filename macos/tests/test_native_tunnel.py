@@ -221,7 +221,6 @@ def test_tunnel_gets_proxy_only_in_internal_env_not_argv(tmp_path: Path, monkeyp
         captured.update(argv=argv, env=env)
         return 0
 
-    monkeypatch.setattr(native_tunnel.sys, "platform", "win32")
     monkeypatch.setattr(native_tunnel, "_run_tunnel_client", fake_run)
     monkeypatch.setenv("CONTROL_PLANE_HTTP_PROXY", "old-control-proxy")
     monkeypatch.setenv("TUNNEL_CLIENT_HTTP_PROXY", "old-global-proxy")
@@ -339,79 +338,6 @@ def test_darwin_tunnel_client_forwards_sigterm_and_restores_handlers(monkeypatch
     ]
 
 
-def test_windows_managed_tunnel_assigns_child_to_outer_job(monkeypatch) -> None:
-    class FakeProcess:
-        def __init__(self) -> None:
-            self.terminated = False
-
-        def poll(self):
-            return None if not self.terminated else 2
-
-        def wait(self, timeout=None):
-            del timeout
-            return 7
-
-        def terminate(self) -> None:
-            self.terminated = True
-
-        def kill(self) -> None:
-            self.terminated = True
-
-    class FakeJob:
-        def __init__(self) -> None:
-            self.assigned = None
-
-        def assign(self, process) -> None:
-            self.assigned = process
-
-    process = FakeProcess()
-    job = FakeJob()
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(native_tunnel.sys, "platform", "win32")
-    monkeypatch.setattr(native_tunnel.os, "name", "nt")
-
-    def fake_popen(argv, **kwargs):
-        captured.update(argv=argv, **kwargs)
-        return process
-
-    monkeypatch.setattr(native_tunnel.subprocess, "Popen", fake_popen)
-
-    assert native_tunnel._run_tunnel_client(["client"], {}, job=job) == 7
-    assert job.assigned is process
-    assert captured["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
-
-def test_windows_managed_tunnel_kills_child_if_job_assignment_fails(monkeypatch) -> None:
-    class FakeProcess:
-        def __init__(self) -> None:
-            self.terminated = False
-
-        def poll(self):
-            return None if not self.terminated else 1
-
-        def wait(self, timeout=None):
-            del timeout
-            return 1
-
-        def terminate(self) -> None:
-            self.terminated = True
-
-        def kill(self) -> None:
-            self.terminated = True
-
-    class FailingJob:
-        def assign(self, _process) -> None:
-            raise RuntimeError("assignment failed")
-
-    process = FakeProcess()
-    monkeypatch.setattr(native_tunnel.sys, "platform", "win32")
-    monkeypatch.setattr(native_tunnel.subprocess, "Popen", lambda argv, **kwargs: process)
-
-    with pytest.raises(RuntimeError, match="assignment failed"):
-        native_tunnel._run_tunnel_client(["client"], {}, job=FailingJob())
-    assert process.terminated is True
-
-
 def test_api_key_file_inside_workdir_is_refused(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "work"
     root.mkdir()
@@ -421,7 +347,6 @@ def test_api_key_file_inside_workdir_is_refused(tmp_path: Path, monkeypatch) -> 
     key.write_text("secret")
     client = tmp_path / "tunnel-client.exe"
     client.touch()
-    monkeypatch.setattr(native_tunnel.sys, "platform", "win32")
     with pytest.raises(NativeTunnelError, match="outside every configured workdir"):
         run_native_tunnel(
             config_path=config,
@@ -568,7 +493,6 @@ def _launcher_capture(tmp_path, monkeypatch, **kwargs):
         captured.update(argv=argv, env=env)
         return 0
 
-    monkeypatch.setattr(native_tunnel.sys, "platform", "win32")
     monkeypatch.setattr(native_tunnel, "_run_tunnel_client", fake_run)
     monkeypatch.setenv("CONTROL_PLANE_BASE_URL", "https://inherited.example")
     monkeypatch.setenv("HEALTH_LISTEN_ADDR", "127.0.0.1:9999")
@@ -675,6 +599,9 @@ class TestDarwinTunnel:
         monkeypatch.setattr(
             "serverfs_mcp.darwin_service.service_home", lambda: tmp_path / "service-home"
         )
+        runtime = tmp_path / "runtime"
+        runtime.mkdir(mode=0o700)
+        monkeypatch.setattr("serverfs_mcp.darwin_libc.darwin_runtime_dir", lambda: runtime)
         captured: dict[str, object] = {}
 
         def fake_run(argv, env):
@@ -695,6 +622,7 @@ class TestDarwinTunnel:
         key_index = argv.index("--control-plane.api-key")
         assert argv[key_index + 1].startswith("file:")
         key_path = Path(argv[key_index + 1].removeprefix("file:"))
+        assert key_path == runtime / "control-plane" / "api-key"
         # 0600 private file, outside every workdir, carrying the exact value
         assert (key_path.stat().st_mode & 0o777) == 0o600
         assert key_path.read_text(encoding="utf-8") == "darwin-key-sentinel"

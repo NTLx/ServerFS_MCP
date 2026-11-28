@@ -2,13 +2,86 @@
 
 from __future__ import annotations
 
+import json
+import time
 from pathlib import Path
 
 import pytest
 
+from pipe_support import new_pipe_name
+from serverfs_agent_bridge.adapters import FakeAdapter
+from serverfs_agent_bridge.core_grants import (
+    CoreGrant,
+    CoreGrantVerifier,
+    core_workdir_policy_digest,
+    sign_core_request,
+)
 from serverfs_agent_bridge.errors import BridgeError
+from serverfs_agent_bridge.leases import LeaseManager
+from serverfs_agent_bridge.models import AgentMode
+from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
+from serverfs_agent_bridge.protocol import BridgeProtocolServer
+from serverfs_agent_bridge.service import BridgeService
 from serverfs_agent_bridge.store import TaskStore
-from test_core_grants_protocol import _dispatch, _server, _signed
+
+_SECRET = bytes(range(32))
+
+
+def _server(tmp_path: Path, *, v2_only: bool = True):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    policy = WorkdirAgentPolicy(
+        slot=None,
+        alias="Repo",
+        host_path=repo,
+        mode=AgentMode.WORKSPACE_WRITE,
+        runtimes=frozenset({"fake"}),
+        read_only=False,
+    )
+    store = TaskStore(tmp_path / "state")
+    service = BridgeService(
+        store=store,
+        policies=PolicyRegistry([policy]),
+        adapters={"fake": FakeAdapter()},
+        lease_manager=LeaseManager(tmp_path / "locks", lease_ids=[policy.lease_id]),
+    )
+    scope = (("Repo", core_workdir_policy_digest(policy)),)
+    verifier = CoreGrantVerifier(
+        "bridge-x",
+        (
+            CoreGrant("alpha", "key-a", _SECRET, scope, frozenset({"task.submit", "task.get"})),
+            CoreGrant("beta", "key-b", bytes(range(32, 64)), scope, frozenset({"task.get"})),
+        ),
+        nonce_claim=store.claim_core_nonce,
+    )
+    return (
+        BridgeProtocolServer(
+            service=service,
+            pipe_name=new_pipe_name(),
+            core_grants=verifier if v2_only else None,
+        ),
+        store,
+    )
+
+
+def _signed(server, method: str, *, nonce: str, params: dict) -> dict:
+    request = {
+        "protocol_version": 2,
+        "bridge_id": "bridge-x",
+        "core_id": "alpha",
+        "key_id": "key-a",
+        "request_id": "request-" + nonce,
+        "method": method,
+        "params": params,
+        "policy_revision": core_workdir_policy_digest(server.service.policies.get("Repo")),
+        "issued_at": int(time.time()),
+        "nonce": nonce,
+    }
+    return {**request, "signature": sign_core_request(request, _SECRET)}
+
+
+async def _dispatch(server, request: dict) -> dict:
+    return await server._dispatch_raw(json.dumps(request).encode() + b"\n")
 
 
 @pytest.mark.asyncio

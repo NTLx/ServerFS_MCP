@@ -40,13 +40,19 @@ def test_unknown_component_refused():
         installer.plan("default")
 
 
-def make_wheel(tmp_path, kind, *, version=installer.VERSION, extra=None, name=None):
+def make_wheel(tmp_path, kind, *, version=installer.VERSION, extra=None, name=None, tag=None):
     filename, dist, package = installer.WHEELS[kind]
     path = tmp_path / (name or filename)
     with zipfile.ZipFile(path, "w") as wheel:
         wheel.writestr(
             dist.replace("-", "_") + f"-{installer.VERSION}.dist-info/METADATA",
             f"Metadata-Version: 2.1\nName: {dist}\nVersion: {version}\n",
+        )
+        if tag is None:
+            tag = "cp312-abi3-win_amd64" if kind == "native" else "py3-none-win_amd64"
+        wheel.writestr(
+            dist.replace("-", "_") + f"-{installer.VERSION}.dist-info/WHEEL",
+            f"Wheel-Version: 1.0\nTag: {tag}\n",
         )
         wheel.writestr(package + "/__init__.py", "")
         if extra:
@@ -62,6 +68,14 @@ def make_wheel(tmp_path, kind, *, version=installer.VERSION, extra=None, name=No
 def test_matching_pinned_wheel_bytes(kind, tmp_path):
     path, sha = make_wheel(tmp_path, kind)
     assert installer.pinned_payload(path, kind, sha) == path.read_bytes()
+
+
+@pytest.mark.parametrize("kind", ["core", "bridge"])
+@pytest.mark.parametrize("tag", ["py3-none-any", "py3-none-macosx_27_0_arm64", "py3-none-linux_x86_64"])
+def test_wrong_platform_tag_refused_even_with_matching_filename_and_hash(tmp_path, kind, tag):
+    path, sha = make_wheel(tmp_path, kind, tag=tag)
+    with pytest.raises(installer.InstallRefusal, match="platform tag"):
+        installer.pinned_payload(path, kind, sha)
 
 
 @pytest.mark.parametrize("digest", ["bad", "0" * 64, "A" * 64])

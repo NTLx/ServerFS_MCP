@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import signal
@@ -51,45 +50,10 @@ def _darwin_tunnel_instance_lock():
 
 
 @contextmanager
-def _windows_tunnel_instance_lock():
-    """Hold one current-user/session Mutex for a native Windows Tunnel owner."""
-    if os.name != "nt":
-        yield
-        return
-
-    import ctypes
-
-    from .native_endpoint import current_user_sid
-
-    digest = hashlib.sha256(current_user_sid().encode("utf-8")).hexdigest()[:32]
-    name = f"Local\\serverfs-native-tunnel-v1-{digest}"
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.CreateMutexW.restype = ctypes.c_void_p
-    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
-    kernel32.CloseHandle.restype = ctypes.c_int
-    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-    ctypes.set_last_error(0)
-    handle = kernel32.CreateMutexW(None, False, name)
-    if not handle:
-        raise NativeTunnelError("the native Windows Tunnel ownership mutex is unavailable")
-    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
-        kernel32.CloseHandle(handle)
-        raise NativeTunnelError("another native Windows tunnel instance is already running")
-    try:
-        yield
-    finally:
-        kernel32.CloseHandle(handle)
-
-
-@contextmanager
 def native_tunnel_instance_lock(*, already_held: bool = False):
     """Hold the platform-native single-owner guard for the Tunnel lifecycle."""
     if already_held:
         yield
-        return
-    if os.name == "nt":
-        with _windows_tunnel_instance_lock():
-            yield
         return
     with _darwin_tunnel_instance_lock():
         yield
@@ -221,7 +185,6 @@ def _run_tunnel_client(
     argv: list[str],
     env: dict[str, str],
     *,
-    job: Any | None = None,
     stdout: BinaryIO | None = None,
     stderr: BinaryIO | None = None,
 ) -> int:
@@ -234,39 +197,11 @@ def _run_tunnel_client(
     existing tunnel-client shutdown path to finish.
     """
     popen_kwargs: dict[str, Any] = {"env": env}
-    if os.name == "nt" and job is not None:
-        # The persistent Windows service is a background task. tunnel-client
-        # is a console-subsystem executable; without CREATE_NO_WINDOW Windows
-        # creates a visible conhost window even though the Task action itself
-        # is pythonw.exe.
-        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     if stdout is not None:
         popen_kwargs["stdout"] = stdout
     if stderr is not None:
         popen_kwargs["stderr"] = stderr
     process = subprocess.Popen(argv, **popen_kwargs)
-    try:
-        if job is not None:
-            # v0.14 Windows persistence owns the whole Tunnel generation with
-            # a kill-on-close Job Object.  Assignment happens immediately so
-            # terminating the lifecycle runner cannot strand descendants.
-            job.assign(process)
-    except BaseException:
-        if process.poll() is None:
-            try:
-                process.terminate()
-                process.wait(timeout=5)
-            except (OSError, subprocess.TimeoutExpired):
-                try:
-                    process.kill()
-                    process.wait(timeout=5)
-                except (OSError, subprocess.TimeoutExpired):
-                    pass
-        raise
-
-    if sys.platform != "darwin":
-        return process.wait()
-
     previous_handlers: dict[int, object] = {}
 
     def forward(signum, _frame) -> None:
@@ -293,7 +228,6 @@ def run_native_tunnel(
     api_key: str | None = None,
     base_url: str | None = None,
     health_listen_addr: str | None = None,
-    job: Any | None = None,
     stdout: BinaryIO | None = None,
     stderr: BinaryIO | None = None,
     instance_lock_held: bool = False,
@@ -301,19 +235,15 @@ def run_native_tunnel(
     """Run tunnel-client, whose stdio child is the minimal sanitizer supervisor.
 
     The control-plane key comes from exactly one source: ``--api-key-file``
-    (the frozen Windows flow) or, on macOS, the ``CONTROL_PLANE_API_KEY``
+    or the ``CONTROL_PLANE_API_KEY``
     value (materialized to a 0600 private file so the argv keeps the
     ``file:`` credential boundary).
     """
-    if sys.platform == "linux":
-        raise NativeTunnelError(
-            "the Linux deployment runs the Docker compose topology; the native "
-            "tunnel launcher is supported on Windows and macOS 27"
-        )
-    if sys.platform == "darwin":
-        from .darwin_platform import ensure_supported_darwin
+    if sys.platform != "darwin":
+        raise NativeTunnelError("native tunnel launcher requires macOS 27")
+    from .darwin_platform import ensure_supported_darwin
 
-        ensure_supported_darwin()
+    ensure_supported_darwin()
     if base_url is not None:
         base_url = _validated_base_url(base_url)
     if health_listen_addr is not None:
@@ -395,13 +325,12 @@ def run_native_tunnel(
     # ephemeral loopback port unless the operator overrides it.
     tunnel_env["HEALTH_LISTEN_ADDR"] = health_listen_addr or "127.0.0.1:0"
     with native_tunnel_instance_lock(already_held=instance_lock_held):
-        if job is None and stdout is None and stderr is None:
+        if stdout is None and stderr is None:
             # Preserve the direct-launch call shape used before v0.14.
             return _run_tunnel_client(tunnel_argv, tunnel_env)
         return _run_tunnel_client(
             tunnel_argv,
             tunnel_env,
-            job=job,
             stdout=stdout,
             stderr=stderr,
         )

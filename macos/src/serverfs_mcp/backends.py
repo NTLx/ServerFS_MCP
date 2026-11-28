@@ -181,6 +181,7 @@ def get_backend() -> FilesystemBackend:
         f"no ServerFS filesystem backend for platform {sys.platform!r}",
     )
 
+
 __all__ = [
     "BackendError",
     "FilesystemBackend",

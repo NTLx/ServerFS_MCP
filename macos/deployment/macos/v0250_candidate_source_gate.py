@@ -85,9 +85,27 @@ def read_manifest(path: Path) -> tuple[str, ...]:
     return tuple(entries)
 
 
+def _project_scope(root: Path) -> tuple[Path, str]:
+    """Accept the macOS subtree or a standalone/legacy project, never a split root."""
+    root = root.resolve(strict=True)
+    try:
+        top = Path(os.fsdecode(_git(root, "rev-parse", "--show-toplevel")).strip()).resolve(
+            strict=True
+        )
+    except (OSError, ValueError) as exc:
+        raise CandidateSourceError("candidate Git root is invalid") from exc
+    if root == top / "macos":
+        return top, "macos/"
+    if root == top and not _git(top, "ls-tree", "HEAD", "--", "macos").strip():
+        return top, ""
+    raise CandidateSourceError("candidate source must be the exact macOS project root")
+
+
 def dirty_paths(root: Path) -> tuple[set[str], int]:
-    """Parse only simple unstaged modifications and untracked files; fail closed otherwise."""
-    raw = _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+    """Parse project-local unstaged modifications/untracked files; reject other statuses."""
+    _, prefix = _project_scope(root)
+    # Porcelain v1 always emits repo-relative paths, even with a scoped pathspec.
+    raw = _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
     paths: set[str] = set()
     scratch = 0
     for item in raw.split(b"\0"):
@@ -99,6 +117,9 @@ def dirty_paths(root: Path) -> tuple[set[str], int]:
             name = item[3:].decode("utf-8")
         except UnicodeDecodeError as exc:
             raise CandidateSourceError("invalid Git filename encoding") from exc
+        if not name.startswith(prefix):
+            raise CandidateSourceError("Git status path escaped the macOS project")
+        name = name[len(prefix):]
         if name.startswith(SCRATCH_PREFIX):
             if item[:2] != b"??":
                 raise CandidateSourceError("tracked generated scratch is unsafe")
@@ -140,12 +161,13 @@ def snapshot_candidate(root: Path, manifest: Path, output: Path) -> tuple[int, i
     """Build a HEAD archive plus reviewed dirty-file overlays outside the live repo."""
     root = root.resolve(strict=True)
     output = output.absolute()
+    top, _ = _project_scope(root)
     within_private_scratch = (
         output.parent == root / "deployment/macos"
         and re.fullmatch(r"\.serverfs-v0250-candidate-[a-f0-9]{12}", output.name) is not None
     )
     if (
-        (output.is_relative_to(root) and not within_private_scratch)
+        (output.is_relative_to(top) and not within_private_scratch)
         or output.exists()
         or output.is_symlink()
     ):

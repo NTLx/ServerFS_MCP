@@ -1,12 +1,12 @@
 # ServerFS Agent Bridge
 
-The optional host-side Bridge owns Agent execution, task state, writer coordination and deterministic Repo Ops. Core and Connector lifecycles are separate. Choose `disabled` for file-only service, `owned` for a dedicated Bridge, or `shared` for attachment to an explicitly authorized owner. Named shared attachments have per-Core grants and method/alias scope; macOS Owned defaults to v1 private native IPC and manifest/policy checks; new Owned instances can explicitly select signed v2. Shared Cores cannot manage the owner. Keep owner state and credentials private.
+The optional host-side Bridge owns Agent execution, task state, writer coordination and deterministic Repo Ops. Core and Connector lifecycles are separate. Choose `disabled` for file-only service, `owned` for a dedicated Bridge, or `shared` for attachment to an explicitly authorized owner. Named Windows attachments use signed per-Core grants and method/alias scope over Named Pipes. Shared Cores cannot manage the owner. Keep owner state and credentials private.
 
 ## Deployment
 
-- [Linux named user systemd Bridge](../deployment/linux/README.md)
-- [macOS native SMAppService](../deployment/macos/README.md)
-- [Windows native Task Scheduler and Named Pipe](../docs/deployment/windows/v0250-native-operations.md)
+- [Windows native Task Scheduler and Named Pipe](../deployment/windows/native-operations.md)
+
+This platform-local Bridge is part of the v0.27.0 candidate. For existing v0.26.0 deployments, use the tagged source and matching artifacts.
 
 Repo Ops and Agent delegation are independently gated per workdir. Repo Ops never submits a provider task. Native Codex, Claude and Qoder plus fixed operator-configured ACP profiles are supported as documented; ACP needs workspace-write and must not infer unsupported capabilities. Provider authorization is provider-owned. Jev is advisory only. See the [Agent Bridge guide](https://ntlx.github.io/ServerFS_MCP/docs/agent-bridge/) for task lifecycle, model discovery, recovery, diagnostics and limits.
 
@@ -47,7 +47,7 @@ verify owner ACL/mode, task expiry and live provider behavior.
 
 On signed-v2 attachments with explicit `task.list` and `task.get` grants, `list_agent_tasks(workdir, status="active", limit=20, cursor=None)` discovers retained tasks for one authorized Agent alias. Use `active`, `terminal` or `all` and opaque pagination. Signed v2 does not support continuation or idempotency keys; rediscover rather than blindly retrying an uncertain submission. Legacy v1 retains its documented task-by-ID and continuation semantics.
 
-Keep the native provider runtime and its SDK compatible. On macOS, Qoder SDK 1.0.15 with bundled CLI 1.1.61 passed real dual-workdir acceptance; the independently installed CLI 1.1.98 failed initialization with this SDK and with 1.0.17. Select a verified executable explicitly with `qoder_bin` when necessary. Do not overwrite the operator's CLI, configuration or local memory.
+Keep each native provider runtime compatible with its SDK. Use a verified executable explicitly where needed; do not overwrite the operator's CLI, configuration or local memory.
 
 ## Development
 
@@ -60,40 +60,22 @@ uv run ruff format --check .
 uv run pytest
 ```
 
-The repository-level tests must also remain green.
+The Windows Core suite and external public contract gate must also remain green. Full lifecycle tests require an isolated test account.
 
-## Two-process MCP E2E harness
+## Named Pipe process acceptance
 
-The two-process end-to-end gate lives in `../tests/e2e/` and is run from the repository
-root with the **root** environment, which starts this package as a separate host
-process:
+From the Windows platform root, with both platform-local environments installed,
+run the isolated worker and Core process fixtures in a dedicated test account:
 
-```bash
-uv sync --frozen                        # in agent_bridge/
-uv run python tests/e2e/run_e2e.py      # from the repository root
+```powershell
+uv run pytest tests/test_windows_mcp_agent_e2e.py tests/test_windows_v25_bridge_v2_real_worker.py tests/test_windows_v25_two_independent_bridge_workers.py tests/test_windows_v25_topology_c_real_core_processes.py
 ```
 
-It launches the Bridge over a real Unix socket and drives the published MCP surface
-against it, covering runtime listing, submit/poll/events, approval and question
-round-trips, steering, cancellation and the shared cross-process writer lease. The harness uses the public runtime ID `codex`, so it supplies the
-deterministic `FakeAdapter` under the name `codex` on the Bridge side; the production
-adapter keeps `name == "fake"`; it is not a public production runtime.
-
-This is a standalone harness, not a pytest suite: its files are not named
-`test_*.py`, and normal `uv run pytest` does not run it. Install both environments
-before running the explicit harness command.
-
-## Local fake-runtime smoke test
-
-The example JSON is a POSIX-only, standalone protocol-v1 fixture with `fake` enabled. It is not a production configuration, a signed attachment, or a Windows Named Pipe example. Run it only as the current unprivileged user in a fresh private scratch directory, without exposing the socket or any real workdir:
-
-```bash
-fixture=$(mktemp -d)
-mkdir "$fixture/workdir"
-cp config.example.json "$fixture/config.json"
-```
-
-Edit the copied JSON: point `socket_path`, `state_dir`, `lock_dir` and `workdirs[0].host_path` to distinct locations under `$fixture` (the workdir already exists); keep real providers disabled. Then run `uv run serverfs-agent-bridge --config "$fixture/config.json"` in the foreground. Stop only this test process before removing its scratch directory. Null peer UID/GID defaults to the current POSIX UID/GID; it does not establish a named Core grant. Use the platform runbooks for production deployment and authorization.
+These use disposable Named Pipes, Jobs and private fixture state, not a public
+Tunnel or a real provider. They do not replace current-user Scheduler or
+real-provider acceptance. Legacy SID-global lifecycle tests must not run
+against a production owner. Do not translate the old Unix-socket harness or
+POSIX example JSON into Windows production configuration.
 
 ## Historical evidence
 

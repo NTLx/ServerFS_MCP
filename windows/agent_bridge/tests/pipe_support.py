@@ -82,7 +82,6 @@ class RunningBridge:
         self.service = service
         self.server = BridgeProtocolServer(
             service=service,
-            socket_path=service.store.state_dir / "endpoint",
             allowed_peer_sid=allowed_peer_sid,
             pipe_name=self.pipe_name,
             **({"core_grants": core_grants} if core_grants is not None else {}),

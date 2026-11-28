@@ -456,55 +456,21 @@ def _probe_identity(report) -> None:
         # the operator needs to know is whether it is measurable.
         report.status("agent identity", OK, "current user SID is measurable")
         return
-    # POSIX (Linux / macOS v0.13): the AF_UNIX Bridge authorizes the peer by
-    # the kernel-measured uid/gid (SO_PEERCRED / getpeereid) — never a
-    # fabricated PID — so the measurable fact is this process's uid.
-    report.status("agent identity", OK, "AF_UNIX peer identity via uid/gid (measurable)")
+    report.status("agent identity", FAIL, "native Agent identity requires Windows")
 
 
 def _probe_endpoint(report, env: Mapping[str, str] | None) -> None:
     """The deterministic endpoint, and whether something is already serving it."""
-    if sys.platform == "darwin":
-        # v0.13: the endpoint derives from the OS-provided per-user runtime
-        # dir (§11 D2); probe presence with a read-only connect, mirroring
-        # the Windows pipe observation's "existence, nothing more" rule.
-        from .native_endpoint import derive_endpoint
-
-        try:
-            endpoint = derive_endpoint()
-        except (RuntimeError, OSError) as exc:
-            report.status("agent endpoint", FAIL, type(exc).__name__)
-            return
-        report.status("agent endpoint", OK, "derived from the per-user runtime directory")
-        if _socket_is_served(endpoint):
-            report.note(
-                "agent bridge",
-                "socket present (an AF_UNIX listener exists; identity and health are not "
-                "established here)",
-            )
-        else:
-            report.note(
-                "agent bridge",
-                "not running (start it with: serverfs agent-bridge start)",
-            )
+    if sys.platform != "win32":
+        report.status("agent endpoint", FAIL, "native Agent endpoint requires Windows")
         return
-    if sys.platform.startswith("linux"):
-        # The Linux deployment supplies the endpoint explicitly (Phase E
-        # configuration); derivation is a Windows/macOS contract.
-        endpoint = (_lookup(env, "SERVERFS_AGENT_BRIDGE_SOCKET") or "").strip()
-        if endpoint:
-            report.status("agent endpoint", OK, "supplied by deployment configuration")
-        else:
-            report.note("agent endpoint", "not set (SERVERFS_AGENT_BRIDGE_SOCKET unset)")
-        return
-    if sys.platform == "win32":
-        from .native_endpoint import current_user_sid
+    from .native_endpoint import current_user_sid
 
-        try:
-            endpoint = derive_pipe_name(current_user_sid())
-        except (NativeEndpointError, OSError) as exc:
-            report.status("agent endpoint", FAIL, type(exc).__name__)
-            return
+    try:
+        endpoint = derive_pipe_name(current_user_sid())
+    except (NativeEndpointError, OSError) as exc:
+        report.status("agent endpoint", FAIL, type(exc).__name__)
+        return
     report.status("agent endpoint", OK, "derivable from the current user identity")
 
     if _pipe_is_served(endpoint):
@@ -539,22 +505,6 @@ def _pipe_is_served(endpoint: str, timeout: float = 1.0) -> bool:
     kernel32.WaitNamedPipeW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD]
     # A zero timeout asks only whether the instance exists right now.
     return bool(kernel32.WaitNamedPipeW(endpoint, 0))
-
-
-def _socket_is_served(endpoint: str, timeout: float = 1.0) -> bool:
-    """Whether something is listening on the AF_UNIX endpoint (existence only).
-
-    The same observation rule as the Windows pipe probe: a successful
-    connect proves a listener exists, nothing is written, and identity or
-    health are the client's authenticated readiness check, not doctor's.
-    """
-    try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
-            probe.settimeout(timeout)
-            probe.connect(endpoint)
-        return True
-    except OSError:
-        return False
 
 
 def _bridge_interpreter(env: Mapping[str, str] | None) -> Path:
@@ -681,32 +631,6 @@ def _probe_workdir_policy(report, workdirs) -> None:
         )
 
 
-def _probe_darwin_policy_sync(report, workdirs, settings) -> None:
-    """Fail when launchd's private Bridge policy has drifted from serverfs.toml.
-
-    The comparison runs inside the Bridge package, so doctor never reads the private JSON containing
-    Jev/proxy material.  Only the redacted boolean result crosses the package boundary.
-    """
-    if sys.platform != "darwin":
-        return
-    from .darwin_bridge_policy import DarwinBridgePolicyError, policy_is_synced
-
-    try:
-        synced = policy_is_synced(workdirs, settings)
-    except DarwinBridgePolicyError as exc:
-        report.status("agent bridge policy", FAIL, f"could not verify synchronization ({exc})")
-        return
-    if synced:
-        report.status("agent bridge policy", OK, "matches serverfs.toml")
-    else:
-        report.status(
-            "agent bridge policy",
-            FAIL,
-            "stale relative to serverfs.toml; run 'serverfs agent-bridge restart --config "
-            "<serverfs.toml>'",
-        )
-
-
 def report_agent(
     report,
     workdirs,
@@ -726,7 +650,6 @@ def report_agent(
 
     report.status("agent", OK, "enabled")
     _probe_workdir_policy(report, workdirs)
-    _probe_darwin_policy_sync(report, workdirs, settings)
     _probe_runtimes(report, settings)
     _probe_data_home(report, env)
     _probe_bridge_availability(report, env)
