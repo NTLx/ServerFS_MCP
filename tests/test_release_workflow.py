@@ -32,6 +32,20 @@ def test_stable_site_does_not_link_to_retired_root_paths_on_main() -> None:
             assert prefix + path not in content, (document, path)
 
 
+def test_platform_specific_acceptance_drivers_have_one_owner() -> None:
+    owners = {
+        "macos_shared_claude_owner.py": "macos",
+        "macos_shared_qoder_diagnostics.py": "macos",
+        "macos_shared_qoder_owner.py": "macos",
+        "run_v012_linux_provider_acceptance.py": "linux",
+        "v026_windows_candidate_batch.py": "windows",
+    }
+    for filename, owner in owners.items():
+        for platform in ("linux", "macos", "windows"):
+            path = ROOT / platform / "tests" / "e2e" / filename
+            assert path.is_file() == (platform == owner), (platform, filename, owner)
+
+
 def test_common_distribution_gate_is_independent_of_product_runtime() -> None:
     workflow = text("container.yml")
     assert on_block("container.yml").count('      - "deployment/native/check_distribution.py"') == 2
