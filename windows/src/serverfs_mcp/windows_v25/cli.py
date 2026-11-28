@@ -181,9 +181,19 @@ def configure(args: argparse.Namespace) -> dict[str, bool | str]:
 
 
 def _legacy_bridge_active() -> bool:
-    """Refuse second same-SID Bridge while the old OpenAI owner is still active."""
-    from .tasks import _run
+    """Exclude an active legacy owner, distinguishing exact absence from query failure."""
+    from serverfs_mcp.windows_service import TASK_NAME, _schtasks_executable
 
+    from .tasks import _NOT_FOUND, _run
+
+    # Use Scheduler's locale-independent HRESULT contract (also used by
+    # Scheduler._task_xml). A failed targeted PowerShell query alone does
+    # not distinguish an absent task from an inaccessible Scheduler.
+    query = _run([str(_schtasks_executable()), "/Query", "/TN", TASK_NAME, "/XML", "/HResult"])
+    if query.returncode != 0:
+        if query.returncode & 0xFFFFFFFF in _NOT_FOUND:
+            return False
+        raise TaskError("legacy same-user Bridge ownership cannot be excluded")
     script = (
         "$ErrorActionPreference='Stop';"
         "$t=@(Get-ScheduledTask -TaskPath '\\' -TaskName 'ServerFS Native Tunnel');"

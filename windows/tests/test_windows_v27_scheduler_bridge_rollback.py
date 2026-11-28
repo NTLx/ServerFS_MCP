@@ -120,6 +120,15 @@ def _worker_install(release, python: Path, sid: str, uv: str, env: dict[str, str
 
 
 def test_historical_independent_bridge_scheduler_rollback(tmp_path: Path) -> None:
+    _exercise_scheduler_bridge(tmp_path, historical=True)
+
+
+def test_candidate_independent_bridge_scheduler_restart(tmp_path: Path) -> None:
+    """Prove installed candidate lifecycle separately from a historical rollback."""
+    _exercise_scheduler_bridge(tmp_path, historical=False)
+
+
+def _exercise_scheduler_bridge(tmp_path: Path, *, historical: bool) -> None:
     assert os.environ.get("GITHUB_ACTIONS") != "true"
     sid = current_user_sid()
     assert not sid.endswith("-500")
@@ -147,7 +156,10 @@ def test_historical_independent_bridge_scheduler_rollback(tmp_path: Path) -> Non
     expected = os.environ["SERVERFS_WINDOWS_BRIDGE_ROLLBACK_SHA"]
     assert _run("git", "rev-parse", "HEAD", cwd=REPO, env=env) == expected
     releases = []
-    for name, tree in (("old", BASELINE), ("new", expected + ":windows")):
+    sources = [("new", expected + ":windows")]
+    if historical:
+        sources.insert(0, ("old", BASELINE))
+    for name, tree in sources:
         source = tmp_path / name
         source.mkdir()
         archive = tmp_path / (name + ".tar")
@@ -224,9 +236,9 @@ def test_historical_independent_bridge_scheduler_rollback(tmp_path: Path) -> Non
             cwd=ROOT,
             env=env,
         )
-    old, new = releases
-    _install(old[0], owner_python, sid, uv, env)
-    _worker_install(old[1], worker_python, sid, uv, env)
+    first, last = releases[0], releases[-1]
+    _install(first[0], owner_python, sid, uv, env)
+    _worker_install(first[1], worker_python, sid, uv, env)
     keys = {core: secrets.token_bytes(32) for core in ("core-a", "core-b")}
     grants = {
         "schema_version": 1,
@@ -334,14 +346,21 @@ def test_historical_independent_bridge_scheduler_rollback(tmp_path: Path) -> Non
         assert not installed["enabled"] and not installed["running"]
         task_xml = home / "task.xml"
         protected[task_xml] = task_xml.read_bytes()
-        for index, (release, marker) in enumerate(
-            ((old, "historical-result"), (new, "candidate-result"), (old, None))
-        ):
+        sequence = (
+            ((first, "historical-result"), (last, "candidate-result"), (first, None))
+            if historical
+            else (
+                (first, "candidate-first-result"),
+                (first, "candidate-second-result"),
+                (first, None),
+            )
+        )
+        for index, (release, marker) in enumerate(sequence):
             assert _protected_tasks(manifest.task_name()) == prior_tasks
             assert _existing_instances() == prior_instances | {instance}
             assert scheduler.status(manifest)["enabled"] is False
             assert _current_identity(manifest) is None
-            if index:
+            if index and historical:
                 _install(release[0], owner_python, sid, uv, env)
                 _worker_install(release[1], worker_python, sid, uv, env)
             active = scheduler.start(manifest)
@@ -373,7 +392,12 @@ def test_historical_independent_bridge_scheduler_rollback(tmp_path: Path) -> Non
         if passed:
             _remove_owned_root(root, instance, sid)
             assert _existing_instances() == prior_instances
-    print("WINDOWS_HISTORICAL_SCHEDULER_BRIDGE_ROLLBACK_PASS", flush=True)
+    print(
+        "WINDOWS_HISTORICAL_SCHEDULER_BRIDGE_ROLLBACK_PASS"
+        if historical
+        else "WINDOWS_CANDIDATE_SCHEDULER_BRIDGE_RESTART_PASS",
+        flush=True,
+    )
 
 
 async def _wait_worker_exit(worker) -> bool:

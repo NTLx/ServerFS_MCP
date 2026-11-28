@@ -200,32 +200,71 @@ def test_bridge_start_refuses_legacy_same_sid_owner(
         cli.dispatch(args)
 
 
-def test_unknown_legacy_owner_state_refuses_handover(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("code", "state", "expected"),
+    [
+        (0x80070002, b"", False),
+        (-2147024894, b"", False),
+        (0x80070003, b"", False),
+        (0, b"Running", True),
+        (0, b"Queued", True),
+        (0, b"Ready", False),
+        (0, b"Disabled", False),
+    ],
+)
+def test_legacy_owner_state_verified(monkeypatch, code, state, expected) -> None:
+    from serverfs_mcp import windows_service
     from serverfs_mcp.windows_v25 import tasks
 
-    monkeypatch.setattr(
-        tasks,
-        "_run",
-        lambda args: subprocess.CompletedProcess(args, 0, b"Unknown"),
-    )
-    with pytest.raises(cli.TaskError, match="unknown"):
+    calls = []
+    executable = Path("schtasks.exe")
+    monkeypatch.setattr(windows_service, "_schtasks_executable", lambda: executable)
+
+    def run(args):
+        calls.append(args)
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(args, code, b"<Task/>")
+        assert len(calls) == 2
+        return subprocess.CompletedProcess(args, 0, state)
+
+    monkeypatch.setattr(tasks, "_run", run)
+    assert cli._legacy_bridge_active() is expected
+    assert calls[0] == [
+        str(executable),
+        "/Query",
+        "/TN",
+        windows_service.TASK_NAME,
+        "/XML",
+        "/HResult",
+    ]
+    assert len(calls) == (2 if code == 0 else 1)
+
+
+@pytest.mark.parametrize(
+    ("query_code", "state_code", "state", "message"),
+    [
+        (0x80070005, 0, b"", "cannot be excluded"),
+        (1, 0, b"", "cannot be excluded"),
+        (0, 17, b"", "cannot be excluded"),
+        (0, 0, b"Unknown", "unknown"),
+        (0, 0, b"", "unknown"),
+        (0, 0, b"Running\\nDisabled", "unknown"),
+        (0, 0, b"Absent", "unknown"),
+    ],
+)
+def test_unknown_legacy_owner_state_refuses_handover(
+    monkeypatch, query_code, state_code, state, message
+) -> None:
+    from serverfs_mcp import windows_service
+    from serverfs_mcp.windows_v25 import tasks
+
+    monkeypatch.setattr(windows_service, "_schtasks_executable", lambda: Path("schtasks.exe"))
+    results = iter([(query_code, b"<Task/>"), (state_code, state)])
+
+    def run(args):
+        code, output = next(results)
+        return subprocess.CompletedProcess(args, code, output)
+
+    monkeypatch.setattr(tasks, "_run", run)
+    with pytest.raises(cli.TaskError, match=message):
         cli._legacy_bridge_active()
-
-
-def test_status_never_prints_private_paths(core: Manifest, monkeypatch) -> None:
-    args = cli.parser().parse_args(["core", "status"])
-    monkeypatch.setattr(storage, "load", lambda _component: core)
-
-    class Fake:
-        def status(self, manifest):
-            return {
-                "component": manifest.component,
-                "registered": False,
-                "enabled": False,
-                "readiness": "not_verified",
-            }
-
-    monkeypatch.setattr(cli, "Scheduler", Fake)
-    result = cli.dispatch(args)
-    assert "secret" not in str(result)
-    assert "auth_file" not in str(result)

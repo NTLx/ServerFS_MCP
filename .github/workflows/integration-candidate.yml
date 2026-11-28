@@ -79,6 +79,47 @@ jobs:
           unset DBUS_SESSION_BUS_ADDRESS
           linux/agent_bridge/.venv/bin/python -I -B deployment/native/check_linux_upgrade.py --persistent-systemd --online
 
+  linux-docker-rollback:
+    name: Linux historical Docker Core rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout candidate and historical Git objects
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync Linux test controller
+        working-directory: linux
+        run: uv sync --frozen
+
+      - name: Verify historical and candidate installed Docker images with shared workspace
+        working-directory: linux
+        shell: bash
+        env:
+          SERVERFS_LINUX_DOCKER_ROLLBACK: "1"
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/linux-docker-rollback.xml"
+          .venv/bin/python -B -m pytest -q -rs -s -o addopts='' \
+            tests/test_linux_v27_docker_core_rollback.py --junitxml="$report"
+          .venv/bin/python -I -B - "$report" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          cases = list(ET.parse(sys.argv[1]).iter("testcase"))
+          assert len(cases) == 1
+          assert cases[0].get("name") == "test_historical_docker_core_upgrade_and_rollback"
+          assert all(cases[0].find(k) is None for k in ("failure", "error", "skipped"))
+          PY
+
   windows-native-gate:
     name: Windows Native gate
     uses: ./.github/workflows/windows-native.yml

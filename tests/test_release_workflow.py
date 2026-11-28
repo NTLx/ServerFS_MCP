@@ -304,7 +304,7 @@ def test_macos_platform_assertions_do_not_depend_on_unchecked_out_subtree() -> N
 def test_integration_requires_historical_linux_systemd_rollback() -> None:
     gate = text("integration-candidate.yml")
     job = gate.split("  linux-systemd-rollback:\n", 1)[1].split(
-        "  windows-native-gate:", 1
+        "  linux-docker-rollback:", 1
     )[0]
     assert "runs-on: ubuntu-latest" in job
     assert "fetch-depth: 0" in job and "persist-credentials: false" in job
@@ -321,6 +321,26 @@ def test_integration_requires_historical_linux_systemd_rollback() -> None:
     assert "test_actual_release_persistent_systemd_upgrade_rollback" in driver
     assert '"failure", "error", "skipped"' in driver
     assert "SERVERFS_LINUX_BASELINE_BRIDGE_SOURCE" in driver
+
+
+def test_integration_requires_historical_linux_docker_core_rollback() -> None:
+    gate = text("integration-candidate.yml")
+    job = gate.split("  linux-docker-rollback:\n", 1)[1].split("  windows-native-gate:", 1)[0]
+    assert "runs-on: ubuntu-latest" in job
+    assert "fetch-depth: 0" in job and "persist-credentials: false" in job
+    assert 'SERVERFS_LINUX_DOCKER_ROLLBACK: "1"' in job
+    assert "tests/test_linux_v27_docker_core_rollback.py" in job
+    assert 'cases[0].get("name") == "test_historical_docker_core_upgrade_and_rollback"' in job
+    assert '"failure", "error", "skipped"' in job
+    assert "continue-on-error:" not in job
+    fixture = (ROOT / "linux/tests/test_linux_v27_docker_core_rollback.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"' in fixture
+    assert 'enumerate((0, 1, 0))' in fixture
+    assert '"--no-build", "--pull", "never"' in fixture or '"--no-build",\n' in fixture
+    assert 'inspect["Image"] == images[index]' in fixture
+    assert "LINUX_HISTORICAL_DOCKER_CORE_ROLLBACK_PASS" in fixture
 
 
 def test_integration_requires_historical_windows_scheduler_rollback() -> None:
