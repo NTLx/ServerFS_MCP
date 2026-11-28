@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager
+from dataclasses import dataclass, field
+from pathlib import Path
 from urllib.parse import urlsplit
 
 
@@ -59,6 +61,9 @@ class Settings:
     linux_v0250_bridge_binding_file: str = ""
     agent_bridge_timeout_seconds: float = 30.0
     agent_lock_dir: str = "/run/serverfs-agent-locks"
+    shared_mutation_lease: Callable[[str, Path], AbstractContextManager[None]] | None = field(
+        default=None, repr=False, compare=False
+    )
 
 
 def _get_int(env: Mapping[str, str], key: str, default: int) -> int:

@@ -8,6 +8,7 @@ import hmac
 import json
 import re
 import secrets
+import socket
 import sys
 import time
 from pathlib import Path
@@ -102,7 +103,7 @@ class CoreBridgeClientV2:
     def __repr__(self) -> str:
         return "CoreBridgeClientV2(<credentials hidden>)"
 
-    async def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+    def _encode_request(self, method: str, params: dict[str, Any]) -> tuple[str, bytes]:
         if not isinstance(method, str) or method not in _METHODS:
             raise ValueError("Core Bridge method is invalid")
         if not isinstance(params, dict):
@@ -143,6 +144,29 @@ class CoreBridgeClientV2:
             raise CoreBridgeClientV2Error("invalid Core Bridge request") from exc
         if len(encoded) > MAX_REQUEST_BYTES:
             raise CoreBridgeClientV2Error("Core Bridge request exceeds configured limit")
+        return request_id, encoded
+
+    def verify_writer_lease(self, proof: str) -> None:
+        """A bounded synchronous local proof, used only while the mutation lease is held."""
+        if not isinstance(proof, str) or not _DIGEST.fullmatch(proof):
+            raise CoreBridgeClientV2Error("invalid writer lease proof")
+        request_id, encoded = self._encode_request("bridge.ping", {"lease_probe": proof})
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                connection.settimeout(min(2.0, self._timeout_seconds))
+                connection.connect(str(self._socket_path))
+                connection.sendall(encoded)
+                with connection.makefile("rb") as stream:
+                    raw = stream.readline(4097)
+            if len(raw) > 4096 or not raw.endswith(b"\n"):
+                raise ValueError("invalid writer lease response")
+            if _parse_response(raw[:-1], request_id) != {"status": "ok", "lease_verified": True}:
+                raise ValueError("writer lease proof not acknowledged")
+        except (OSError, ValueError, CoreBridgeClientV2Error):
+            raise CoreBridgeClientV2Error("writer lease could not be verified") from None
+
+    async def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        request_id, encoded = self._encode_request(method, params)
         try:
             async with asyncio.timeout(self._timeout_seconds):
                 raw = await self._exchange(encoded)

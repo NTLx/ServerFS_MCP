@@ -144,6 +144,52 @@ async def test_v2_rejects_tampered_signature_and_workdir_scope(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_v2_writer_lease_proof_is_grant_and_namespace_scoped(tmp_path: Path) -> None:
+    from serverfs_agent_bridge.lease_identity import writer_lease_proof
+
+    server, _ = _server(tmp_path.resolve())
+    policy = server.service.policies.get("Repo")
+    locks = server.service.lease_manager.lock_dir
+    proof = writer_lease_proof(locks, policy.lease_id, policy.host_path)
+    result = await _dispatch(server, _signed(server, "bridge.ping", params={"lease_probe": proof}))
+    assert result["result"] == {"status": "ok", "lease_verified": True}
+    ordinary = await _dispatch(server, _signed(server, "bridge.ping", nonce="b" * 32))
+    assert ordinary["result"] == {"status": "ok"}
+    for index, params in enumerate(
+        (
+            {"lease_probe": "0" * 64},
+            {"lease_probe": proof, "extra": True},
+            {"lease_probe": None},
+        ),
+        1,
+    ):
+        result = await _dispatch(
+            server, _signed(server, "bridge.ping", nonce=f"{index:032x}", params=params)
+        )
+        assert result["error"]["code"] == "CORE_LEASE_UNVERIFIED"
+    denied = await _dispatch(
+        server,
+        _signed(
+            server,
+            "bridge.ping",
+            core_id="beta",
+            key_id="key-b",
+            secret=_SECRET_B,
+            nonce="c" * 32,
+            params={"lease_probe": proof},
+        ),
+    )
+    assert denied["error"]["code"] == "CORE_NOT_AUTHORIZED"
+    wrong_alias = await _dispatch(
+        server,
+        _signed(
+            server, "bridge.ping", workdir="Other", nonce="d" * 32, params={"lease_probe": proof}
+        ),
+    )
+    assert wrong_alias["error"]["code"] == "CORE_NOT_AUTHORIZED"
+
+
+@pytest.mark.asyncio
 async def test_v2_nonce_replay_is_rejected(tmp_path: Path) -> None:
     server, _ = _server(tmp_path)
     request = _signed(server)

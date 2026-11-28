@@ -129,6 +129,46 @@ def test_signed_unix_exchange_and_mismatched_response_id(
         asyncio.run(run())
 
 
+def test_sync_writer_lease_requires_explicit_signed_proof_acknowledgment(monkeypatch) -> None:
+    monkeypatch.setattr(client_module.sys, "platform", "darwin")
+    seen = []
+
+    async def serve(reader, writer):
+        request = json.loads(await reader.readline())
+        signature = request.pop("signature")
+        assert signature == sign_core_request(request, bytes(range(32)))
+        assert request["method"] == "bridge.ping"
+        assert request["params"] == {"workdir": "Repo", "lease_probe": "f" * 64}
+        seen.append(request["nonce"])
+        # A historical liveness pong is insufficient to authorize a mutation.
+        result = {"status": "ok"}
+        if len(seen) == 1:
+            result["lease_verified"] = True
+        writer.write(
+            json.dumps({"request_id": request["request_id"], "ok": True, "result": result}).encode()
+            + b"\n"
+        )
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    async def run(path):
+        server = await asyncio.start_unix_server(serve, path=str(path))
+        try:
+            client = _client(path)
+            await asyncio.to_thread(client.verify_writer_lease, "f" * 64)
+            with pytest.raises(CoreBridgeClientV2Error, match="could not be verified"):
+                await asyncio.to_thread(client.verify_writer_lease, "f" * 64)
+            assert len(set(seen)) == 2
+        finally:
+            server.close()
+            await server.wait_closed()
+            path.unlink(missing_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="cb2-lease-", dir="/tmp") as root:
+        asyncio.run(run(Path(root) / "bridge.sock"))
+
+
 def test_timeout_remote_error_and_invalid_calls_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

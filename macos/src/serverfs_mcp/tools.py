@@ -133,6 +133,8 @@ def _mutation_lease(settings: Settings, resolved: ResolvedPath):
     """
     if not settings.agent_bridge_enabled:
         return contextlib.nullcontext()
+    if settings.shared_mutation_lease is not None:
+        return settings.shared_mutation_lease(resolved.workdir.lease_id, resolved.workdir.root)
     from .agent_leases import mutation_agent_lease
 
     return mutation_agent_lease(

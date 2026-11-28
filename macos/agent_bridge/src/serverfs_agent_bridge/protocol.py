@@ -338,6 +338,33 @@ class BridgeProtocolServer:
         if method not in _V2_DISPATCH_METHODS:
             raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
         params = dict(request["params"])
+        if method == "bridge.ping" and "lease_probe" in params:
+            # Only an authenticated workdir grant may verify the live owner's
+            # writer-lock identity. Legacy liveness ping and v1 stay unchanged.
+            from .core_grants import core_workdir_policy_digest
+            from .lease_identity import writer_lease_proof
+
+            try:
+                policy = self.service.policies.get(authorization.workdir)
+                if (
+                    set(params) != {"workdir", "lease_probe"}
+                    or core_workdir_policy_digest(policy) != request["policy_revision"]
+                ):
+                    raise ValueError("invalid lease probe")
+                expected = writer_lease_proof(
+                    self.service.lease_manager.lock_dir, policy.lease_id, policy.host_path
+                )
+                if params["lease_probe"] != expected:
+                    raise ValueError("lease identity mismatch")
+            except (OSError, ValueError, TypeError, AttributeError, BridgeError):
+                raise BridgeError(
+                    "CORE_LEASE_UNVERIFIED", "Core writer lease cannot be verified"
+                ) from None
+            return {
+                "request_id": request_id,
+                "ok": True,
+                "result": {"status": "ok", "lease_verified": True},
+            }
         # The canonical Core envelope binds a workdir for every method. Legacy RPC
         # methods keep their existing parameter shape after that scope is checked.
         if method in _V2_TASK_METHODS:

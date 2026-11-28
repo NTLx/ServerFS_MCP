@@ -534,7 +534,7 @@ def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
         return _fail("--macos-shared-bridge must be non-empty")
     if owned_agent_protocol is not None and (not named_instance or shared_bridge is not None):
         return _fail("--macos-agent-protocol v2 requires an explicitly named owned Core")
-    shared_wiring: tuple[object, Path] | None = None
+    shared_wiring = None
     owned_wiring: tuple[str, Path] | None = None
     owned_v2_wiring: tuple[object, Path, Path] | None = None
     if named_instance and shared_bridge:
@@ -558,8 +558,8 @@ def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
             workdir_alias, trusted_socket = resolve_shared_core_manifest(
                 identity, args.config, args.port
             )
-            from .darwin_instances import instance_service_home
             from .darwin_shared_agent_factory import prepare_shared_agent_adapter
+            from .darwin_shared_mutation_lease import prepare_shared_mutation_lease
 
             client = asyncio.run(
                 prepare_shared_agent_adapter(identity, Path(args.config), trusted_socket)
@@ -572,8 +572,8 @@ def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
             expected = set(workdir_alias) if isinstance(workdir_alias, tuple) else {workdir_alias}
             if bound != expected:
                 raise SharedCoreBootstrapError("shared Bridge grant mismatch")
-            lock_dir = instance_service_home(identity) / "data" / "agent-bridge" / "locks"
-            shared_wiring = (client, lock_dir)
+            shared_lease = prepare_shared_mutation_lease(identity, trusted_socket, client)
+            shared_wiring = (client, shared_lease)
         except (
             DarwinSharedManifestError,
             SharedCoreBootstrapError,
@@ -650,12 +650,13 @@ def cmd_serve(args: argparse.Namespace, *, agent_wiring_override=None) -> int:
     from .workdirs import WorkdirRegistry
 
     if shared_wiring is not None:
-        client, lock_dir = shared_wiring
+        client, shared_lease = shared_wiring
         settings = Settings(
             log_level=native_settings.log_level,
             agent_bridge_enabled=True,
             agent_bridge_socket=str(trusted_socket),
-            agent_lock_dir=str(lock_dir),
+            agent_lock_dir=str(shared_lease.lock_dir) if shared_lease.lock_dir else "",
+            shared_mutation_lease=shared_lease.hold,
         )
     elif owned_v2_wiring is not None:
         client, socket_path, lock_dir = owned_v2_wiring

@@ -14,7 +14,10 @@ There is deliberately no platform argument: the name shape follows from the leas
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import stat
+from pathlib import Path
 
 SLOT_PREFIX = "slot:"
 ALIAS_PREFIX = "alias:"
@@ -122,3 +125,39 @@ def is_guard_artifact_name(name: str) -> bool:
     if len(name) != ARTIFACT_HASH_LENGTH:
         return False
     return all(character in "0123456789abcdef" for character in name)
+
+
+def writer_lease_proof(
+    lock_dir: Path, lease_id: str, workdir_root: Path, *, opened: os.stat_result | None = None
+) -> str:
+    """Digest the existing private lock and recovery directory identities; never create them."""
+    validate_lease_id(lease_id)
+    if not lock_dir.is_absolute() or lock_dir.resolve(strict=True) != lock_dir:
+        raise ValueError("unsafe writer lease directory")
+    if not workdir_root.is_absolute() or workdir_root.resolve(strict=True) != workdir_root:
+        raise ValueError("unsafe writer workdir identity")
+    workdir = workdir_root.lstat()
+    if not stat.S_ISDIR(workdir.st_mode):
+        raise ValueError("unsafe writer workdir identity")
+    identities = [(workdir.st_dev, workdir.st_ino)]
+    for path, directory in (
+        (lock_dir, True),
+        (lock_dir / "active", True),
+        (lock_dir / lock_artifact_name(lease_id), False),
+    ):
+        info = path.lstat()
+        if (
+            info.st_uid != os.getuid()
+            or (stat.S_IMODE(info.st_mode) not in ({0o700, 0o750} if directory else {0o600, 0o640}))
+            or not (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))
+            or (not directory and info.st_nlink != 1)
+        ):
+            raise ValueError("unsafe writer lease artifact")
+        identity = (info.st_dev, info.st_ino)
+        if not directory and opened is not None and identity != (opened.st_dev, opened.st_ino):
+            raise ValueError("writer lease artifact changed")
+        identities.append(identity)
+    material = (
+        "writer-lease-v1:" + lease_id + ":" + ":".join(f"{dev}:{ino}" for dev, ino in identities)
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()

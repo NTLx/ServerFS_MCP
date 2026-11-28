@@ -9,7 +9,7 @@ import contextlib
 import fcntl
 import os
 import stat
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from .errors import AgentLeaseError, WorkdirBusyError, WorkdirRecoveryRequiredError
@@ -17,7 +17,9 @@ from .lease_identity import guard_artifact_name, lock_artifact_name, validate_le
 
 
 @contextlib.contextmanager
-def mutation_agent_lease(lock_dir: Path, lease_id: str, *, enabled: bool) -> Iterator[None]:
+def mutation_agent_lease(
+    lock_dir: Path, lease_id: str, *, enabled: bool, verify: Callable[[int], None] | None = None
+) -> Iterator[None]:
     """Take the same per-workdir exclusive lock used by workspace-write Agent tasks.
 
     When Agent Bridge integration is disabled this is a no-op, preserving the v0.2 mutation
@@ -32,7 +34,9 @@ def mutation_agent_lease(lock_dir: Path, lease_id: str, *, enabled: bool) -> Ite
         raise AgentLeaseError("shared Agent lock directory is invalid")
 
     hold = _flock_hold(lock_dir, lease_id)
-    with hold:
+    with hold as fd:
+        if verify is not None:
+            verify(fd)
         # A live workspace-write task holds both the lock and the persistent guard. Only an
         # available lock plus a remaining guard is recovery state, so the lock is taken first.
         _refuse_unrecovered_workdir(lock_dir, lease_id)
@@ -40,7 +44,7 @@ def mutation_agent_lease(lock_dir: Path, lease_id: str, *, enabled: bool) -> Ite
 
 
 @contextlib.contextmanager
-def _flock_hold(lock_dir: Path, lease_id: str) -> Iterator[None]:
+def _flock_hold(lock_dir: Path, lease_id: str) -> Iterator[int]:
     path = lock_dir / lock_artifact_name(lease_id)
     flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
     try:
@@ -55,7 +59,7 @@ def _flock_hold(lock_dir: Path, lease_id: str) -> Iterator[None]:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise WorkdirBusyError from exc
-        yield
+        yield fd
     finally:
         os.close(fd)
 

@@ -123,12 +123,13 @@ def test_shared_success_uses_authenticated_adapter_and_skips_owned_v1_and_ingres
     _native_config(monkeypatch)
     from serverfs_mcp import (
         darwin_instance_shared_manifest,
-        darwin_instances,
         darwin_shared_agent_factory,
+        darwin_shared_mutation_lease,
     )
 
     socket_path = tmp_path / "bridge.sock"
-    service_home = tmp_path / "instance"
+    owner_lock_dir = tmp_path / "owner-locks"
+    lease = SimpleNamespace(lock_dir=owner_lock_dir, hold=lambda _lease, _root: None)
     adapter = SimpleNamespace(_workdir_alias="repo", call=lambda *_a: None)
     seen: dict[str, object] = {}
 
@@ -150,7 +151,15 @@ def test_shared_success_uses_authenticated_adapter_and_skips_owned_v1_and_ingres
 
     monkeypatch.setattr(darwin_instance_shared_manifest, "resolve_shared_core_manifest", resolve)
     monkeypatch.setattr(darwin_shared_agent_factory, "prepare_shared_agent_adapter", prepare)
-    monkeypatch.setattr(darwin_instances, "instance_service_home", lambda _identity: service_home)
+
+    def prepare_lease(identity, trusted_socket, selected):
+        assert identity is seen["identity"]
+        assert trusted_socket == socket_path and selected is adapter
+        return lease
+
+    monkeypatch.setattr(
+        darwin_shared_mutation_lease, "prepare_shared_mutation_lease", prepare_lease
+    )
     monkeypatch.setattr(cli, "_native_agent_settings", lambda *_a, **_kw: pytest.fail("v1 wiring"))
     monkeypatch.setattr(cli, "_overlay_ingress_env", lambda *_a: pytest.fail("ingress env overlay"))
     monkeypatch.setattr(cli, "_darwin_ingress_helper", lambda *_a: pytest.fail("ingress helper"))
@@ -166,7 +175,8 @@ def test_shared_success_uses_authenticated_adapter_and_skips_owned_v1_and_ingres
     assert settings.log_level == "DEBUG"
     assert settings.agent_bridge_enabled is True
     assert settings.agent_bridge_socket == str(socket_path)
-    assert settings.agent_lock_dir == str(service_home / "data" / "agent-bridge" / "locks")
+    assert settings.agent_lock_dir == str(owner_lock_dir)
+    assert settings.shared_mutation_lease is lease.hold
     assert seen["client"] is adapter
     assert seen["ingress"] is None
     assert seen["ran"] is True

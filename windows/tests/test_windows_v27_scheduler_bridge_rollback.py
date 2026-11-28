@@ -128,7 +128,17 @@ def test_candidate_independent_bridge_scheduler_restart(tmp_path: Path) -> None:
     _exercise_scheduler_bridge(tmp_path, historical=False)
 
 
-def _exercise_scheduler_bridge(tmp_path: Path, *, historical: bool) -> None:
+@pytest.mark.skipif(
+    os.environ.get("SERVERFS_WINDOWS_REAL_CLAUDE_ACCEPT") != "1",
+    reason="explicit single real Claude provider diagnostic required",
+)
+def test_candidate_independent_bridge_scheduler_real_claude(tmp_path: Path) -> None:
+    _exercise_scheduler_bridge(tmp_path, historical=False, real_provider=True)
+
+
+def _exercise_scheduler_bridge(
+    tmp_path: Path, *, historical: bool, real_provider: bool = False
+) -> None:
     assert os.environ.get("GITHUB_ACTIONS") != "true"
     sid = current_user_sid()
     assert not sid.endswith("-500")
@@ -141,6 +151,10 @@ def _exercise_scheduler_bridge(tmp_path: Path, *, historical: bool) -> None:
     assert not tmp_path.resolve().is_relative_to(REPO)
     uv = shutil.which("uv")
     assert uv
+    runtime = "claude" if real_provider else "fake"
+    claude = shutil.which("claude") if real_provider else None
+    if real_provider:
+        assert not historical and claude, "native Claude CLI unavailable"
     env = {
         k: v
         for k, v in os.environ.items()
@@ -210,14 +224,19 @@ def _exercise_scheduler_bridge(tmp_path: Path, *, historical: bool) -> None:
                 "state_dir": str(state),
                 "lock_dir": str(home / "locks"),
                 "allowed_peer_sid": sid,
-                "enable_fake_runtime": True,
+                "enable_fake_runtime": not real_provider,
+                **(
+                    {"claude": {"enabled": True, "claude_bin": str(Path(claude).resolve())}}
+                    if real_provider
+                    else {}
+                ),
                 "workdirs": [
                     {
                         "alias": "Repo",
                         "host_path": str(workspace),
                         "read_only": False,
                         "agent_mode": "workspace-write",
-                        "agent_runtimes": ["fake"],
+                        "agent_runtimes": [runtime],
                     }
                 ],
             }
@@ -248,7 +267,15 @@ def _exercise_scheduler_bridge(tmp_path: Path, *, historical: bool) -> None:
                 "core_id": core,
                 "key_id": "key-" + core[-1],
                 "secret_hex": key.hex(),
-                "methods": ["bridge.ping", "runtime.list", "task.submit", "task.get", "task.list"],
+                "methods": [
+                    "bridge.ping",
+                    "runtime.list",
+                    "task.submit",
+                    "task.get",
+                    "task.list",
+                    "task.events",
+                    "task.cancel",
+                ],
                 "workdirs": [{"alias": "Repo", "policy_sha256": "0" * 64}],
             }
             for core, key in keys.items()
@@ -305,7 +332,8 @@ def _exercise_scheduler_bridge(tmp_path: Path, *, historical: bool) -> None:
             for task_id, value in retained.items():
                 args = {"workdir": "Repo", "task_id": task_id}
                 task = await own.call("task.get", args)
-                assert task["status"] == "succeeded" and task["final_response"] == value
+                if task["status"] != "succeeded" or task["final_response"] != value:
+                    pytest.fail("retained task result mismatch")
                 with pytest.raises(AgentBridgeRemoteError) as denied:
                     await peer.call("task.get", args)
                 assert denied.value.code == "CORE_TASK_NOT_FOUND"
@@ -313,24 +341,81 @@ def _exercise_scheduler_bridge(tmp_path: Path, *, historical: bool) -> None:
                 row = await own.call(
                     "task.submit",
                     {
-                        "runtime": "fake",
+                        "runtime": runtime,
                         "workdir": "Repo",
                         "path": "",
                         "profile": "workspace-write",
-                        "prompt": f"complete:{marker}",
+                        "prompt": (
+                            f"Respond with exactly {marker}. Text only. Do not run commands, "
+                            "use tools, access files, browse, edit, call MCP servers or request "
+                            "permissions. Stop after replying."
+                            if real_provider
+                            else f"complete:{marker}"
+                        ),
                     },
                 )
                 task_id = row["task_id"]
-                for _ in range(100):
-                    task = await own.call("task.get", {"workdir": "Repo", "task_id": task_id})
-                    if task["status"] == "succeeded":
-                        assert task["final_response"] == marker
-                        retained[task_id] = marker
-                        break
-                    assert task["status"] in {"queued", "running"}
-                    await asyncio.sleep(0.05)
-                else:
-                    pytest.fail("installed Bridge synthetic task did not finish")
+                try:
+                    deadline = asyncio.get_running_loop().time() + (110 if real_provider else 10)
+                    while asyncio.get_running_loop().time() < deadline:
+                        task = await own.call("task.get", {"workdir": "Repo", "task_id": task_id})
+                        if task["status"] == "succeeded":
+                            response = task["final_response"]
+                            if (
+                                not isinstance(response, str)
+                                or (response.strip() if real_provider else response) != marker
+                            ):
+                                pytest.fail("provider marker mismatch")
+                            if real_provider:
+                                result = task["result"]
+                                assert result["storage"] == "inline"
+                                assert result["size_bytes"] == len(response.encode())
+                                assert (
+                                    result["sha256"]
+                                    == hashlib.sha256(response.encode()).hexdigest()
+                                )
+                                assert task["final_response_truncated"] is False
+                                cursor, count = 0, 0
+                                for _ in range(20):
+                                    page = await own.call(
+                                        "task.events",
+                                        {
+                                            "workdir": "Repo",
+                                            "task_id": task_id,
+                                            "after_event_id": cursor,
+                                            "limit": 100,
+                                        },
+                                    )
+                                    events = page["events"]
+                                    assert isinstance(events, list)
+                                    for event in events:
+                                        kind = event["event_type"]
+                                        assert isinstance(kind, str)
+                                        assert not kind.startswith(
+                                            ("tool.", "command.", "file_change.")
+                                        )
+                                        assert kind != "file.changed"
+                                    count += len(events)
+                                    if not events:
+                                        break
+                                    next_cursor = page["next_after_event_id"]
+                                    assert type(next_cursor) is int and next_cursor > cursor
+                                    cursor = next_cursor
+                                else:
+                                    pytest.fail("provider event audit exceeded bound")
+                                assert count > 0 and not list(workspace.iterdir())
+                            retained[task_id] = response
+                            break
+                        assert task["status"] in {"queued", "running"}, "provider task refused"
+                        await asyncio.sleep(0.5 if real_provider else 0.05)
+                    else:
+                        pytest.fail("installed Bridge task did not finish")
+                finally:
+                    if real_provider and task_id not in retained:
+                        try:
+                            await own.call("task.cancel", {"workdir": "Repo", "task_id": task_id})
+                        except AgentBridgeRemoteError:
+                            pass
             history = await own.call("task.list", {"workdir": "Repo", "status": "all"})
             assert {task["task_id"] for task in history["tasks"]} == set(retained)
 
@@ -355,6 +440,8 @@ def _exercise_scheduler_bridge(tmp_path: Path, *, historical: bool) -> None:
                 (first, None),
             )
         )
+        if real_provider:
+            sequence = ((first, "SF_V27_" + secrets.token_hex(12)), (first, None))
         for index, (release, marker) in enumerate(sequence):
             assert _protected_tasks(manifest.task_name()) == prior_tasks
             assert _existing_instances() == prior_instances | {instance}
@@ -379,7 +466,8 @@ def _exercise_scheduler_bridge(tmp_path: Path, *, historical: bool) -> None:
             assert state.stat().st_ino == state_inode
             assert all(p.read_bytes() == value for p, value in protected.items())
             assert _protected_tasks(manifest.task_name()) == prior_tasks
-        assert len(generations) == 3 and len(retained) == 2
+        assert len(generations) == (2 if real_provider else 3)
+        assert len(retained) == (1 if real_provider else 2)
         passed = True
     finally:
         if attempted and scheduler.status(manifest)["registered"]:
@@ -395,6 +483,8 @@ def _exercise_scheduler_bridge(tmp_path: Path, *, historical: bool) -> None:
     print(
         "WINDOWS_HISTORICAL_SCHEDULER_BRIDGE_ROLLBACK_PASS"
         if historical
+        else "WINDOWS_CANDIDATE_REAL_CLAUDE_PASS"
+        if real_provider
         else "WINDOWS_CANDIDATE_SCHEDULER_BRIDGE_RESTART_PASS",
         flush=True,
     )

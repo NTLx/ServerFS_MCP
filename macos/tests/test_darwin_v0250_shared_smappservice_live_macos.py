@@ -772,6 +772,63 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
         if build.returncode != 0:
             raise RuntimeError("isolated signed native app build failed")
         template = scratch / "native-build" / APP_NAME
+        core_coexistence = os.environ.get("SERVERFS_V27_HISTORICAL_SMAPP_CORE_COEXISTENCE") == "1"
+        core_runtimes = (python, python)
+        core_templates = (template, template)
+        if core_coexistence:
+            # Staging is create-only: prove side-by-side old/new installed
+            # Cores, not an unsupported in-place replacement.
+            assert not historical and core_source == source and bridge_python is None
+            expected = os.environ["SERVERFS_V27_SMAPP_CANDIDATE_SHA"]
+            assert re.fullmatch(r"[0-9a-f]{40}", expected)
+            assert (
+                subprocess.check_output(
+                    ["git", "-C", str(source.parent), "rev-parse", "HEAD"],
+                    text=True,
+                    timeout=20,
+                ).strip()
+                == expected
+            )
+            baseline = "fd1019498b281cdeb8c5805242f1a71222f5eebd"
+            archive = scratch / "historical-core.tar"
+            subprocess.run(
+                ["git", "-C", str(source.parent), "archive", "--output", str(archive), baseline],
+                check=True,
+                timeout=90,
+            )
+            old_source = scratch / "historical-core-source"
+            old_source.mkdir(mode=0o700)
+            with tarfile.open(archive) as bundle:
+                assert all(m.isfile() or m.isdir() for m in bundle.getmembers())
+                bundle.extractall(old_source, filter="data")
+            old_runtime = work / "historical-python"
+            old = create_shared_core_runtime(
+                old_runtime,
+                old_source,
+                Path(sys.executable),
+                Path(uv_binary).resolve(strict=True),
+            )
+            from serverfs_mcp.darwin_shared_runtime import verify_shared_core_runtime
+
+            for label, target, origin in (
+                ("historical", old_runtime, old_source),
+                ("candidate", work / "shared-python", source),
+            ):
+                verified = verify_shared_core_runtime(
+                    target, project_root=origin, require_site_packages=True
+                )
+                assert verified["state"] == "verified"
+                print(f"SMAPP_CORE_WHEEL {label} {verified['wheel_sha256']}", flush=True)
+            old_build = scratch / "historical-native-build"
+            subprocess.run(
+                ["bash", str(old_source / "native/macos/service_manager/build.sh"), str(old_build)],
+                capture_output=True,
+                check=True,
+                timeout=180,
+            )
+            core_runtimes = (Path(old["python"]), python)
+            core_templates = (old_build / APP_NAME, template)
+            assert core_runtimes[0] != core_runtimes[1]
 
         # Synthetic independent owner, not a production Bridge or native
         # ServiceManagement registration. No provider network calls.
@@ -779,6 +836,7 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
             owner_config,
             {
                 "protocol_mode": "v2",
+                "lease_key": "alias",
                 "bridge_id": "shsm-owner",
                 "socket_path": str(owner_socket),
                 "state_dir": str(state),
@@ -787,7 +845,6 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                 "enable_fake_runtime": True,
                 "workdirs": [
                     {
-                        "slot": 1,
                         "alias": "Workspace",
                         "host_path": str(project),
                         "read_only": False,
@@ -803,6 +860,9 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
         from serverfs_agent_bridge.store import TaskStore
 
         config = BridgeConfig.load(owner_config)
+        from serverfs_mcp.lease_identity import alias_lease_id
+
+        assert config.policies.get("Workspace").lease_id == alias_lease_id("Workspace")
         digest = core_workdir_policy_digest(config.policies.get("Workspace"))
         keys = (secrets.token_bytes(32), secrets.token_bytes(32))
         provision_private_core_grants(
@@ -859,14 +919,14 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                         bridge_socket=owner_socket,
                         policy_digest=digest,
                         workspace=project,
-                        template_app=template,
-                        python=python,
+                        template_app=core_templates[i],
+                        python=core_runtimes[i],
                         port=ports[i],
                         token=tokens[i],
                         secret=keys[i],
                     )
                     pinned_candidates[identity.instance_id] = _pin_test_candidate(
-                        identity, core_config, ports[i], python
+                        identity, core_config, ports[i], core_runtimes[i]
                     )
                     _signed_preflight(identity)
                     assert protected_snapshot() == before
@@ -885,6 +945,99 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                     assert {wd["alias"] for wd in result.structured_content["workdirs"]} == {
                         "Workspace"
                     }
+
+                if core_coexistence:
+                    old_pid, new_pid = (
+                        darwin_service._launchd_job_pid(identity.macos_label("core"))
+                        for identity in ids
+                    )
+                    assert old_pid is not None and new_pid is not None and old_pid != new_pid
+                    # The historical defect remains reproducible; never modify
+                    # the old wheel to make the new writer test appear green.
+                    refused = await _mcp_call(
+                        ports[0],
+                        tokens[0],
+                        "create_text_file",
+                        {
+                            "workdir": "Workspace",
+                            "path": "old-core.txt",
+                            "content": "must-not-exist",
+                        },
+                    )
+                    assert refused.is_error and "AGENT_LOCK_UNAVAILABLE" in str(refused.content)
+                    assert not (project / "old-core.txt").exists()
+                    import fcntl
+
+                    from serverfs_mcp.lease_identity import guard_artifact_name, lock_artifact_name
+
+                    lease_id = alias_lease_id("Workspace")
+                    lock_dir = scratch / "bridge-locks"
+                    artifact = lock_dir / lock_artifact_name(lease_id)
+                    guard = lock_dir / "active" / guard_artifact_name(lease_id)
+                    original_identity = (artifact.stat().st_dev, artifact.stat().st_ino)
+                    request = {
+                        "workdir": "Workspace",
+                        "path": "candidate-core.txt",
+                        "content": "candidate-core-persistent-data",
+                    }
+                    with artifact.open("rb") as held:
+                        fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        busy = await _mcp_call(ports[1], tokens[1], "create_text_file", request)
+                        assert busy.is_error and "WORKDIR_BUSY" in str(busy.content)
+                    assert not (project / "candidate-core.txt").exists()
+                    assert not guard.exists()
+                    _private_json(guard, {"fixture": "unresolved"})
+                    try:
+                        refused = await _mcp_call(ports[1], tokens[1], "create_text_file", request)
+                        assert refused.is_error
+                        assert "WORKDIR_RECOVERY_REQUIRED" in str(refused.content)
+                        assert not (project / "candidate-core.txt").exists()
+                    finally:
+                        guard.unlink()
+                    written = await _mcp_call(ports[1], tokens[1], "create_text_file", request)
+                    assert not written.is_error, str(written.content)
+                    assert (artifact.stat().st_dev, artifact.stat().st_ino) == original_identity
+                    observed = await _mcp_call(
+                        ports[0],
+                        tokens[0],
+                        "read_text_file",
+                        {"workdir": "Workspace", "path": "candidate-core.txt"},
+                    )
+                    assert not observed.is_error
+                    assert "candidate-core-persistent-data" in str(observed.content)
+                    # The historical Core may restart without affecting the
+                    # candidate Core or the shared owner. No app replacement.
+                    await asyncio.to_thread(stop_shared_core, ids[0])
+                    assert _nothing_registered(ids[0])
+                    assert darwin_service._launchd_job_pid(ids[1].macos_label("core")) == new_pid
+                    assert bridge.poll() is None and bridge.pid == bridge_pid
+                    old_config = scratch / f"input-{ids[0].instance_id}" / "core.toml"
+                    await asyncio.to_thread(start_shared_core, ids[0], old_config, ports[0])
+                    restarted = darwin_service._launchd_job_pid(ids[0].macos_label("core"))
+                    assert restarted is not None and restarted not in {old_pid, new_pid}
+                    await _wait_authenticated_core_http_ready(
+                        ids[0],
+                        restarted,
+                        ports[0],
+                        tokens[0],
+                        time.monotonic() + 40,
+                        lambda: (
+                            protected_snapshot() == before
+                            and bridge.poll() is None
+                            and darwin_service._launchd_job_pid(ids[1].macos_label("core"))
+                            == new_pid
+                        ),
+                    )
+                    observed = await _mcp_call(
+                        ports[0],
+                        tokens[0],
+                        "read_text_file",
+                        {"workdir": "Workspace", "path": "candidate-core.txt"},
+                    )
+                    assert not observed.is_error
+                    assert "candidate-core-persistent-data" in str(observed.content)
+                    print("SMAPP_SHARED_WRITER_FIX_PASS", flush=True)
+                    print("SMAPP_HISTORICAL_CORE_COEXISTENCE_PASS", flush=True)
 
                 submitted = await direct[0].call(
                     "task.submit",
@@ -944,12 +1097,28 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                     with pytest.raises(CoreBridgeUnavailable):
                         await direct[i].call("bridge.ping", {})
 
+                if core_coexistence:
+                    request = {
+                        "workdir": "Workspace",
+                        "path": "after-owner-restart.txt",
+                        "content": "fresh-live-proof",
+                    }
+                    offline = await _mcp_call(ports[1], tokens[1], "create_text_file", request)
+                    assert offline.is_error and "AGENT_LOCK_UNAVAILABLE" in str(offline.content)
+                    assert not (project / request["path"]).exists()
+
                 bridge_next, stderr_next = _start_test_owner(
                     stack, source, scratch, scratch / "home", owner_config, 2, bridge_python
                 )
                 await _wait_owner(bridge_next, stderr_next, direct[0])
                 assert bridge_next.poll() is None and bridge_next.pid != bridge_pid
                 assert all(_registration_state(identity) == "registered" for identity in ids)
+                if core_coexistence:
+                    assert darwin_service._launchd_job_pid(ids[1].macos_label("core")) == new_pid
+                    resumed = await _mcp_call(ports[1], tokens[1], "create_text_file", request)
+                    assert not resumed.is_error
+                    assert (project / request["path"]).read_text() == request["content"]
+                    print("SMAPP_SHARED_WRITER_OWNER_RESTART_PASS", flush=True)
                 restarted_tasks = []
                 for i in (0, 1):
                     assert await direct[i].call("bridge.ping", {}) == {"status": "ok"}
