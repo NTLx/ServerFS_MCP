@@ -629,6 +629,28 @@ async def _wait_authenticated_core_http_ready(
     raise TimeoutError("authenticated Core MCP did not become ready within recovery deadline")
 
 
+async def _wait_fixture_port_release(
+    identity: InstanceIdentity, port: int, *, timeout: float = 120.0
+) -> None:
+    """Wait for the real conservative bind gate; never reuse an occupied port.
+
+    Darwin can reject a plain bind after the previous TCP connection closed.
+    SO_REUSEADDR is not a safe substitute: a wildcard listener can coexist
+    with a more specific bind. Only the normal product preflight may pass.
+    """
+    started = time.monotonic()
+    assert _nothing_registered(identity)
+    while time.monotonic() - started < timeout:
+        if darwin_service._loopback_port_available(port):
+            assert _nothing_registered(identity) and _no_core_child(identity)
+            print(
+                f"SMAPP_CORE_PORT_RELEASE_PASS wait_ms={int((time.monotonic() - started) * 1000)}"
+            )
+            return
+        await asyncio.sleep(0.5)
+    pytest.fail("test Core port did not become available after unregister")
+
+
 def _no_core_child(identity: InstanceIdentity) -> bool:
     result = subprocess.run(
         ["ps", "-axo", "pid=,command="],
@@ -1011,6 +1033,8 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                     assert _nothing_registered(ids[0])
                     assert darwin_service._launchd_job_pid(ids[1].macos_label("core")) == new_pid
                     assert bridge.poll() is None and bridge.pid == bridge_pid
+                    await _wait_fixture_port_release(ids[0], ports[0])
+                    assert protected_snapshot() == before
                     old_config = scratch / f"input-{ids[0].instance_id}" / "core.toml"
                     await asyncio.to_thread(start_shared_core, ids[0], old_config, ports[0])
                     restarted = darwin_service._launchd_job_pid(ids[0].macos_label("core"))

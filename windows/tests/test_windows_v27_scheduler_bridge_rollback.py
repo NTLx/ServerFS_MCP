@@ -13,6 +13,7 @@ import json
 import os
 import secrets
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -22,6 +23,7 @@ from uuid import uuid4
 
 import pytest
 
+from e2e.fixture_memory_policy import fixture_entry_evidence
 from serverfs_mcp.agent_client import AgentBridgeRemoteError
 from serverfs_mcp.agent_core_grant_client import CoreGrantBridgeClient
 from serverfs_mcp.agent_lifecycle import bridge_child_environment
@@ -213,6 +215,46 @@ def _exercise_scheduler_bridge(
     storage.prepare("bridge", instance)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    marker_bytes = b"serverfs-v27-provider-fixture\n"
+    marker_file = workspace / "marker.txt"
+    sibling = tmp_path / "unsubmitted"
+    if real_provider:
+        marker_file.write_bytes(marker_bytes)
+        sibling.mkdir()
+        (sibling / "marker.txt").write_bytes(marker_bytes)
+
+    def verify_provider_workspace():
+        # Maintainer-approved v0.26.0 acceptance policy: permit ONLY an ordinary
+        # local .remember directory in the submitted alias. Never read its contents.
+        def ordinary(path, *, directory):
+            info = path.lstat()
+            return (
+                not info.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                and (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))
+                and (directory or info.st_nlink == 1)
+            )
+
+        assert ordinary(workspace, directory=True) and ordinary(sibling, directory=True)
+        names = {p.name for p in workspace.iterdir()}
+        memory = workspace / ".remember"
+        evidence = fixture_entry_evidence(
+            {"marker.txt"},
+            names,
+            memory_allowed=True,
+            memory_is_directory=".remember" in names and ordinary(memory, directory=True),
+        )
+        assert evidence["entries_unchanged"], "provider created an unexpected entry"
+        assert ordinary(marker_file, directory=False) and marker_file.read_bytes() == marker_bytes
+        assert {p.name for p in sibling.iterdir()} == {"marker.txt"}
+        sibling_marker = sibling / "marker.txt"
+        assert (
+            ordinary(sibling_marker, directory=False)
+            and sibling_marker.read_bytes() == marker_bytes
+        )
+        print(
+            f"WINDOWS_PROVIDER_FIXTURE_PASS remember_added={evidence['remember_added']}", flush=True
+        )
+
     _private_file(
         config,
         json.dumps(
@@ -403,7 +445,7 @@ def _exercise_scheduler_bridge(
                                     cursor = next_cursor
                                 else:
                                     pytest.fail("provider event audit exceeded bound")
-                                assert count > 0 and not list(workspace.iterdir())
+                                assert count > 0
                             retained[task_id] = response
                             break
                         assert task["status"] in {"queued", "running"}, "provider task refused"
@@ -463,6 +505,8 @@ def _exercise_scheduler_bridge(
             assert _current_identity(manifest) is None
             deadline = asyncio.run(_wait_worker_exit(worker))
             assert deadline, "owned Bridge worker did not exit"
+            if real_provider:
+                verify_provider_workspace()
             assert state.stat().st_ino == state_inode
             assert all(p.read_bytes() == value for p, value in protected.items())
             assert _protected_tasks(manifest.task_name()) == prior_tasks
