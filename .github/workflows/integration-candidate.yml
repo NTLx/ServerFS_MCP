@@ -19,6 +19,54 @@ jobs:
       packages: write
     uses: ./.github/workflows/container.yml
 
+  linux-systemd-rollback:
+    name: Linux historical Bridge systemd rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate and historical Git objects
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync isolated Bridge dependencies
+        working-directory: linux/agent_bridge
+        run: uv sync --frozen
+
+      - name: Require clean hosted runner user manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          # This is a disposable GitHub-hosted VM, not an installed ServerFS host.
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          unset DBUS_SESSION_BUS_ADDRESS
+          if ! systemctl --user show --property=Version >/dev/null 2>&1; then
+            sudo systemctl start "user@$(id -u).service"
+          fi
+          systemctl --user show --property=Version
+          # Do not replace or shadow any existing ServerFS template or unit.
+          templates="$(systemctl --user list-unit-files 'serverfs-agent-bridge*' --no-legend --no-pager)"
+          units="$(systemctl --user list-units 'serverfs-agent-bridge*' --all --no-legend --no-pager)"
+          test -z "$templates"
+          test -z "$units"
+          printf 'XDG_RUNTIME_DIR=%s\n' "$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+
+      - name: Historical installed Bridge upgrade and rollback under systemd
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset DBUS_SESSION_BUS_ADDRESS
+          linux/agent_bridge/.venv/bin/python -I -B deployment/native/check_linux_upgrade.py --systemd --online
+
   windows-native-gate:
     name: Windows Native gate
     uses: ./.github/workflows/windows-native.yml

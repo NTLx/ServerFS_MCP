@@ -2,8 +2,8 @@
 
 Only unique, randomly named test Core jobs may be registered. The Bridge owner
 is a separate, disposable synthetic v2 subprocess (FakeAdapter), not a macOS
-Login Item. Both Cores pin the independently built offline runtime. Default
-OpenAI/Cloudflare/Bridge/HTTP jobs must retain exactly their baseline PIDs.
+Login Item. Both Cores pin the independently built offline runtime. Every pre-existing
+ServerFS launchd label must retain its baseline PID and exit status.
 
 The test refuses manual approval bypass, makes a best effort to unregister
 only its two Core jobs, and preserves unknown active state for diagnosis.
@@ -78,6 +78,38 @@ _PROTECTED = (
 
 def _production_pids() -> tuple[int | None, ...]:
     return tuple(darwin_service._launchd_job_pid(label) for label in _PROTECTED)
+
+
+def _protected_launchd_snapshot(
+    excluded: frozenset[str] = frozenset(),
+) -> dict[str, tuple[int | None, int]]:
+    """Protect all current ServerFS jobs, not just the legacy default topology."""
+    result = subprocess.run(
+        ["launchctl", "list"], capture_output=True, text=True, timeout=10, check=False
+    )
+    if result.returncode:
+        raise RuntimeError("protected launchd inventory unavailable")
+    snapshot: dict[str, tuple[int | None, int]] = {}
+    for row in result.stdout.splitlines():
+        fields = row.split()
+        if not fields or not fields[-1].startswith("com.ntlx.serverfs."):
+            continue
+        if len(fields) != 3:
+            raise RuntimeError("malformed protected launchd row")
+        raw_pid, raw_status, label = fields
+        if label in excluded:
+            continue
+        if label in snapshot:
+            raise RuntimeError("duplicate protected launchd label")
+        try:
+            pid = None if raw_pid == "-" else int(raw_pid)
+            status = int(raw_status)
+        except ValueError:
+            raise RuntimeError("malformed protected launchd state") from None
+        if pid is not None and pid <= 1:
+            raise RuntimeError("invalid protected launchd PID")
+        snapshot[label] = (pid, status)
+    return snapshot
 
 
 def _active_shsm_labels() -> set[str]:
@@ -555,29 +587,23 @@ def _signed_preflight(identity: InstanceIdentity) -> None:
 
 def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
     source = Path(__file__).resolve().parents[1]
-    before = _production_pids()
-    if any(pid is None for pid in before):
-        pytest.fail("default production launchd PID baseline is incomplete")
+    before = _protected_launchd_snapshot()
+    if not before or not any(pid is not None for pid, _status in before.values()):
+        pytest.fail("no active ServerFS launchd baseline for shared Core acceptance")
     if _active_shsm_labels() or _shsm_residuals():
         pytest.fail("pre-existing shsm test launchd jobs or scratch paths require investigation")
-    launchd = subprocess.run(
-        ["launchctl", "list"], capture_output=True, text=True, timeout=10, check=False
-    )
-    if launchd.returncode:
-        pytest.fail("default production launchd label inventory unavailable")
-    active_labels = {
-        fields[-1]
-        for row in launchd.stdout.splitlines()
-        if len(fields := row.split()) >= 3 and fields[-1].startswith("com.ntlx.serverfs.")
-    }
-    if active_labels != set(_PROTECTED):
-        pytest.fail("unexpected active ServerFS launchd labels before shared Core acceptance")
 
     suffix = secrets.token_hex(5)
     ids = (
         InstanceIdentity(f"shsm-a-{suffix}", "shared", "shsm-owner"),
         InstanceIdentity(f"shsm-b-{suffix}", "shared", "shsm-owner"),
     )
+    test_labels = frozenset(item.macos_label("core") for item in ids)
+    assert not test_labels.intersection(before)
+
+    def protected_snapshot() -> dict[str, tuple[int | None, int]]:
+        return _protected_launchd_snapshot(test_labels)
+
     owners = [instance_service_home(item).parent for item in ids]
     assert all(not path.exists() and not path.is_symlink() for path in owners)
     scratch = Path(tempfile.mkdtemp(prefix=f"shsm-{suffix}-", dir="/tmp")).resolve(strict=True)
@@ -722,11 +748,11 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                         identity, core_config, ports[i], python
                     )
                     _signed_preflight(identity)
-                    assert _production_pids() == before
+                    assert protected_snapshot() == before
                     assert _nothing_registered(identity)
                     registration_attempted.add(identity.instance_id)
                     await asyncio.to_thread(start_shared_core, identity, core_config, ports[i])
-                    assert _production_pids() == before
+                    assert protected_snapshot() == before
                     assert bridge.poll() is None and bridge.pid == bridge_pid
 
                 for i in (0, 1):
@@ -838,7 +864,7 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                 )
                 await _wait_owner(bridge_revoked, stderr_revoked, direct[0])
                 assert bridge_revoked.poll() is None
-                assert _production_pids() == before
+                assert protected_snapshot() == before
                 assert (
                     tuple(
                         darwin_service._launchd_job_pid(identity.macos_label("core"))
@@ -903,7 +929,7 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                 )
                 await _wait_owner(bridge_restored, stderr_restored, direct[0])
                 assert bridge_restored.poll() is None
-                assert _production_pids() == before
+                assert protected_snapshot() == before
                 assert (
                     tuple(
                         darwin_service._launchd_job_pid(identity.macos_label("core"))
@@ -946,7 +972,7 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                     raise RuntimeError("refusing SIGKILL: Core B ownership proof failed")
                 if (
                     darwin_service._launchd_job_pid(ids[1].macos_label("core")) != core_b_pid
-                    or _production_pids() != before
+                    or protected_snapshot() != before
                     or bridge_restored.poll() is not None
                     or bridge_restored.pid != bridge_pid_before_crash
                     or darwin_service._launchd_job_pid(ids[0].macos_label("core")) != core_a_pid
@@ -974,7 +1000,7 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                             recovered_b_pid = candidate
                             break
                     if (
-                        _production_pids() != before
+                        protected_snapshot() != before
                         or bridge_restored.poll() is not None
                         or bridge_restored.pid != bridge_pid_before_crash
                         or darwin_service._launchd_job_pid(ids[0].macos_label("core")) != core_a_pid
@@ -993,7 +1019,7 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                         darwin_service._launchd_job_pid(ids[0].macos_label("core")) == core_a_pid
                         and bridge_restored.poll() is None
                         and bridge_restored.pid == bridge_pid_before_crash
-                        and _production_pids() == before
+                        and protected_snapshot() == before
                     )
 
                 await _wait_authenticated_core_http_ready(
@@ -1043,7 +1069,7 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                 core_pids = (core_a_pid, recovered_b_pid)
                 assert bridge_restored.poll() is None
                 assert bridge_restored.pid == bridge_pid_before_crash
-                assert _production_pids() == before
+                assert protected_snapshot() == before
 
                 # Rotate only Core B's OWNER grant while both signed Login
                 # Items stay registered. The Core's private binding remains
@@ -1092,7 +1118,7 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                 )
                 await _wait_owner(bridge_rotated, stderr_rotated, direct[0])
                 assert bridge_rotated.poll() is None
-                assert _production_pids() == before
+                assert protected_snapshot() == before
                 assert all(_registration_state(identity) == "registered" for identity in ids)
                 assert (
                     tuple(
@@ -1192,9 +1218,9 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
             except Exception as exc:
                 cleanup_errors.append(f"{identity.instance_id}: {type(exc).__name__}")
 
-        preserved = _production_pids() == before
+        preserved = protected_snapshot() == before
         if not preserved:
-            cleanup_errors.append("default production launchd PID baseline changed")
+            cleanup_errors.append("protected ServerFS launchd baseline changed")
         if not cleanup_errors and all(not path.exists() for path in owners):
             shutil.rmtree(scratch)
         else:
@@ -1207,4 +1233,4 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
             pytest.fail("; ".join(cleanup_errors))
     assert accepted
     assert all(not path.exists() for path in owners)
-    assert _production_pids() == before
+    assert protected_snapshot() == before

@@ -1283,8 +1283,11 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
     assert initial_fields.get("MainPID") in {None, "0"}
 
     offline = os.environ["SERVERFS_LINUX_INSTALL_TEST"] != "online"
+    baseline_source = Path(
+        os.environ.get("SERVERFS_LINUX_BASELINE_BRIDGE_SOURCE", str(ROOT / "agent_bridge"))
+    )
     first = installer.stage(
-        bridge_id, "fixture-release-a", ROOT / "agent_bridge", Path(uv), offline=offline
+        bridge_id, "fixture-release-a", baseline_source, Path(uv), offline=offline
     )
     second = installer.stage(
         bridge_id, "fixture-release-b", ROOT / "agent_bridge", Path(uv), offline=offline
@@ -1297,9 +1300,10 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
     current = app_root / "current"
     assert current.resolve() == first
 
-    binding = json.loads(
-        (root / "core-bindings/core-blue/core-bridge-binding.json").read_text(encoding="utf-8")
-    )
+    binding_path = root / "core-bindings/core-blue/core-bridge-binding.json"
+    binding_bytes = binding_path.read_bytes()
+    config_bytes = (root / "config.json").read_bytes()
+    binding = json.loads(binding_bytes)
     socket_path = root / "bridge/run/bridge.sock"
     state_dir = root / "bridge/state"
     socket_dir = socket_path.parent
@@ -1377,9 +1381,20 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
         deadline = time.monotonic() + 12
         stopped = False
         while time.monotonic() < deadline:
-            state = ctl("show", unit, "--property=ActiveState", "--property=MainPID", check=False)
+            state = ctl(
+                "show",
+                unit,
+                "--property=LoadState",
+                "--property=ActiveState",
+                "--property=MainPID",
+                check=False,
+            )
             fields = dict(line.split("=", 1) for line in state.stdout.splitlines() if "=" in line)
-            if fields.get("ActiveState") == "inactive" and fields.get("MainPID") in {None, "0"}:
+            if (
+                fields.get("LoadState") == "not-found"
+                and fields.get("ActiveState") == "inactive"
+                and fields.get("MainPID") in {None, "0"}
+            ):
                 stopped = True
                 break
             time.sleep(0.1)
@@ -1476,7 +1491,10 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
     final_fields = dict(
         line.split("=", 1) for line in final_state.stdout.splitlines() if "=" in line
     )
-    assert final_fields.get("ActiveState") in {"inactive", None}
+    assert final_fields.get("LoadState") == "not-found"
+    assert final_fields.get("ActiveState") == "inactive"
     assert not socket_path.exists()
     assert current.resolve() == first
+    assert binding_path.read_bytes() == binding_bytes
+    assert (root / "config.json").read_bytes() == config_bytes
     print(f"systemd release acceptance cleaned: bridge_id={bridge_id} unit={unit}")

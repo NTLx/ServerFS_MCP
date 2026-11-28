@@ -23,6 +23,63 @@ from serverfs_mcp.instance_identity import InstanceIdentity
 CORE = InstanceIdentity("shsm-synthetic", "shared", "synthetic-owner")
 
 
+def test_protected_snapshot_includes_named_and_inactive_services(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    test_label = InstanceIdentity("shsm-a-0123456789", "shared", "shsm-owner").macos_label("core")
+    rows = [
+        "PID Status Label",
+        "101 0 com.ntlx.serverfs.named.core",
+        "- 1 com.ntlx.serverfs.named.cloudflare",
+        "203 0 com.ntlx.serverfs.other.bridge",
+        f"304 0 {test_label}",
+        f"305 0 {test_label}.unexpected",
+        "402 0 unrelated.service",
+    ]
+    monkeypatch.setattr(
+        acceptance.subprocess,
+        "run",
+        lambda *_a, **_kw: SimpleNamespace(returncode=0, stdout="\n".join(rows)),
+    )
+    expected = {
+        "com.ntlx.serverfs.named.core": (101, 0),
+        "com.ntlx.serverfs.named.cloudflare": (None, 1),
+        "com.ntlx.serverfs.other.bridge": (203, 0),
+        f"{test_label}.unexpected": (305, 0),
+    }
+    assert acceptance._protected_launchd_snapshot(frozenset({test_label})) == expected
+    rows[1] = "102 0 com.ntlx.serverfs.named.core"
+    assert acceptance._protected_launchd_snapshot(frozenset({test_label})) != expected
+    rows[1] = "101 0 com.ntlx.serverfs.named.core"
+    rows[2] = "- 2 com.ntlx.serverfs.named.cloudflare"
+    assert acceptance._protected_launchd_snapshot(frozenset({test_label})) != expected
+    rows.pop(2)
+    assert acceptance._protected_launchd_snapshot(frozenset({test_label})) != expected
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout"),
+    [
+        (1, ""),
+        (0, "invalid 0 com.ntlx.serverfs.core"),
+        (0, "123 invalid com.ntlx.serverfs.core"),
+        (0, "0 0 com.ntlx.serverfs.core"),
+        (0, "123 com.ntlx.serverfs.core"),
+        (0, "123 0 com.ntlx.serverfs.core\n124 0 com.ntlx.serverfs.core"),
+    ],
+)
+def test_protected_snapshot_refuses_unverifiable_inventory(
+    monkeypatch: pytest.MonkeyPatch, returncode: int, stdout: str
+) -> None:
+    monkeypatch.setattr(
+        acceptance.subprocess,
+        "run",
+        lambda *_a, **_kw: SimpleNamespace(returncode=returncode, stdout=stdout),
+    )
+    with pytest.raises(RuntimeError):
+        acceptance._protected_launchd_snapshot()
+
+
 def test_authenticated_http_readiness_accepts_delayed_mcp_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

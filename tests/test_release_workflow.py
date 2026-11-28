@@ -301,6 +301,22 @@ def test_macos_platform_assertions_do_not_depend_on_unchecked_out_subtree() -> N
         assert "working-directory: ${{ github.workspace }}" in before_checkout
 
 
+def test_integration_requires_historical_linux_systemd_rollback() -> None:
+    gate = text("integration-candidate.yml")
+    job = gate.split("  linux-systemd-rollback:\n", 1)[1].split(
+        "  windows-native-gate:", 1
+    )[0]
+    assert "runs-on: ubuntu-latest" in job
+    assert "fetch-depth: 0" in job and "persist-credentials: false" in job
+    assert "systemctl --user list-unit-files 'serverfs-agent-bridge*'" in job
+    assert "check_linux_upgrade.py --systemd --online" in job
+    assert "continue-on-error:" not in job
+    driver = (ROOT / "deployment/native/check_linux_upgrade.py").read_text(encoding="utf-8")
+    assert "test_actual_release_systemd_upgrade_rollback" in driver
+    assert '"failure", "error", "skipped"' in driver
+    assert "SERVERFS_LINUX_BASELINE_BRIDGE_SOURCE" in driver
+
+
 def test_exact_integration_sha_gate_is_validation_only() -> None:
     gate = text("integration-candidate.yml")
     assert "  push:\n    branches:\n      - integration/v0.27.0\n" in gate
