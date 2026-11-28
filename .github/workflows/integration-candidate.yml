@@ -54,10 +54,15 @@ jobs:
           fi
           systemctl --user show --property=Version
           # Do not replace or shadow any existing ServerFS template or unit.
-          templates="$(systemctl --user list-unit-files 'serverfs-agent-bridge*' --no-legend --no-pager)"
-          units="$(systemctl --user list-units 'serverfs-agent-bridge*' --all --no-legend --no-pager)"
-          test -z "$templates"
-          test -z "$units"
+          # List the full inventory first: a pattern with no matches may exit nonzero.
+          # Preserve query errors via pipefail, and do not confuse them with empty matches.
+          templates="$(systemctl --user list-unit-files --no-legend --no-pager)"
+          units="$(systemctl --user list-units --all --plain --no-legend --no-pager)"
+          conflicts="$(printf '%s\n' "$templates" "$units" | awk '$1 ~ /^serverfs-agent-bridge/ {print $1}')"
+          if [ -n "$conflicts" ]; then
+            printf 'Existing ServerFS units or templates:\n%s\n' "$conflicts" >&2
+            exit 1
+          fi
           printf 'XDG_RUNTIME_DIR=%s\n' "$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
 
       - name: Historical installed Bridge upgrade and rollback under systemd
@@ -74,6 +79,46 @@ jobs:
   windows-agent-gate:
     name: Windows Agent gate
     uses: ./.github/workflows/windows-agent.yml
+
+  windows-scheduler-rollback:
+    name: Windows historical Core Scheduler rollback
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout candidate and historical Git objects
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync test controller dependencies
+        working-directory: windows
+        run: uv sync --frozen
+
+      - name: Historical file-only Core upgrade and rollback under Scheduler
+        working-directory: windows
+        shell: pwsh
+        env:
+          SERVERFS_WINDOWS_SCHEDULER_ROLLBACK: "1"
+        run: |
+          $report = Join-Path $env:RUNNER_TEMP "windows-scheduler-rollback.xml"
+          .venv/Scripts/python.exe -B -m pytest -q -rs -o addopts='' tests/test_windows_v27_scheduler_core_rollback.py "--junitxml=$report"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [xml]$xml = Get-Content -Raw -LiteralPath $report
+          $cases = @($xml.SelectNodes("//testcase"))
+          if ($cases.Count -ne 1 -or $cases[0].GetAttribute("name") -ne "test_historical_file_only_core_scheduler_upgrade_and_rollback") {
+            throw "Unexpected historical Scheduler acceptance case"
+          }
+          if ($cases[0].SelectSingleNode("failure|error|skipped")) {
+            throw "Required historical Scheduler acceptance did not pass"
+          }
 
   macos-gate:
     name: macOS Native gate

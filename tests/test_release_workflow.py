@@ -308,13 +308,34 @@ def test_integration_requires_historical_linux_systemd_rollback() -> None:
     )[0]
     assert "runs-on: ubuntu-latest" in job
     assert "fetch-depth: 0" in job and "persist-credentials: false" in job
-    assert "systemctl --user list-unit-files 'serverfs-agent-bridge*'" in job
+    assert "systemctl --user list-unit-files --no-legend --no-pager" in job
+    assert "systemctl --user list-units --all --plain --no-legend --no-pager" in job
+    assert "awk '$1 ~ /^serverfs-agent-bridge/ {print $1}'" in job
+    assert "systemctl --user list-unit-files 'serverfs-agent-bridge*'" not in job
+    assert 'if [ -n "$conflicts" ]; then' in job
     assert "check_linux_upgrade.py --systemd --online" in job
     assert "continue-on-error:" not in job
     driver = (ROOT / "deployment/native/check_linux_upgrade.py").read_text(encoding="utf-8")
     assert "test_actual_release_systemd_upgrade_rollback" in driver
     assert '"failure", "error", "skipped"' in driver
     assert "SERVERFS_LINUX_BASELINE_BRIDGE_SOURCE" in driver
+
+
+def test_integration_requires_historical_windows_scheduler_rollback() -> None:
+    gate = text("integration-candidate.yml")
+    job = gate.split("  windows-scheduler-rollback:\n", 1)[1].split("  macos-gate:", 1)[0]
+    assert "runs-on: windows-latest" in job
+    assert "fetch-depth: 0" in job and "persist-credentials: false" in job
+    assert 'SERVERFS_WINDOWS_SCHEDULER_ROLLBACK: "1"' in job
+    assert "tests/test_windows_v27_scheduler_core_rollback.py" in job
+    assert 'SelectSingleNode("failure|error|skipped")' in job
+    assert "continue-on-error:" not in job
+    fixture = (
+        ROOT / "windows/tests/test_windows_v27_scheduler_core_rollback.py"
+    ).read_text(encoding="utf-8")
+    assert 'os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"' in fixture
+    assert "for index, release in enumerate((baseline, candidate, baseline)):" in fixture
+    assert 'scheduler.uninstall(manifest)["registered"] is False' in fixture
 
 
 def test_exact_integration_sha_gate_is_validation_only() -> None:
