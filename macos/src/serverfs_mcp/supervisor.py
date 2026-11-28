@@ -14,6 +14,7 @@ import threading
 from collections.abc import Sequence
 from typing import BinaryIO
 
+
 def sanitized_environment(source: dict[str, str] | None = None) -> dict[str, str]:
     env = dict(os.environ if source is None else source)
     prefixes = ("CONTROL_PLANE_", "TUNNEL_CLIENT_", "OPENAI_", "MCP_", "SERVERFS_PROXY_")

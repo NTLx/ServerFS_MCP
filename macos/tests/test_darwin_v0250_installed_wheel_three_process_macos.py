@@ -567,7 +567,9 @@ def test_installed_wheel_three_process_http_acceptance() -> None:
                     )
                     from test_darwin_v0250_shared_owner_process_macos import _wait_owner
 
-                    await _wait_owner(restarted_owner, root / "bridge-rollback.stderr", bridge_probe)
+                    await _wait_owner(
+                        restarted_owner, root / "bridge-rollback.stderr", bridge_probe
+                    )
                     await completed(task_id, "historical-result")
                     await completed(candidate_id, "candidate-result")
                     for index, process in enumerate(core_processes):

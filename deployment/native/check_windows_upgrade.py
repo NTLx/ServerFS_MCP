@@ -55,6 +55,8 @@ def main():
         and k.upper() not in {"VIRTUAL_ENV", "CONDA_PREFIX", "UV_WORKING_DIR"}
     }
     env["UV_OFFLINE"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    sys.stdout.reconfigure(errors="backslashreplace")
     ruff = ROOT / ".venv/Scripts/ruff.exe"
     python = ROOT / ".venv/Scripts/python.exe"
     run("lint", [str(ruff), "check", *FILES], env)

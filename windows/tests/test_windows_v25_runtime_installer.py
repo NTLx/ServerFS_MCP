@@ -71,7 +71,9 @@ def test_matching_pinned_wheel_bytes(kind, tmp_path):
 
 
 @pytest.mark.parametrize("kind", ["core", "bridge"])
-@pytest.mark.parametrize("tag", ["py3-none-any", "py3-none-macosx_27_0_arm64", "py3-none-linux_x86_64"])
+@pytest.mark.parametrize(
+    "tag", ["py3-none-any", "py3-none-macosx_27_0_arm64", "py3-none-linux_x86_64"]
+)
 def test_wrong_platform_tag_refused_even_with_matching_filename_and_hash(tmp_path, kind, tag):
     path, sha = make_wheel(tmp_path, kind, tag=tag)
     with pytest.raises(installer.InstallRefusal, match="platform tag"):

@@ -85,9 +85,11 @@ def _post(
             response_headers = dict(response.headers.items())
             body = response.read(256 * 1024)
     except urllib.error.HTTPError as exc:
-        code = exc.code
-        response_headers = dict(exc.headers.items())
-        body = exc.read(256 * 1024)
+        # Rejected requests are tested by status and headers, not MCP payload.
+        # A server may close after rejecting an unread request body. Do not
+        # require the optional error body to arrive before a Windows TCP reset.
+        with exc:
+            return exc.code, dict(exc.headers.items()), None
     payload = None
     for line in body.decode("utf-8", errors="replace").splitlines():
         if line.startswith("data: "):
