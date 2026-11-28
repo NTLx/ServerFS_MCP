@@ -1,4 +1,4 @@
-"""Run historical installed Bridge rollback as processes or transient systemd units."""
+"""Run historical installed Bridge rollback as processes or systemd units."""
 
 from __future__ import annotations
 
@@ -18,7 +18,10 @@ REPO = Path(__file__).resolve().parents[2]
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--systemd", action="store_true", help="Require a clean user manager")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--systemd", action="store_true", help="Require a clean user manager")
+    modes.add_argument("--persistent-systemd", action="store_true",
+                       help="Require a disposable hosted runner and install the shipped template")
     parser.add_argument("--online", action="store_true", help="Allow dependency downloads")
     args = parser.parse_args()
     if sys.platform != "linux":
@@ -41,6 +44,7 @@ def main() -> None:
         UV_PYTHON=str(Path(sys._base_executable).resolve(strict=True)),
         SERVERFS_LINUX_INSTALL_TEST="online" if args.online else "offline",
         SERVERFS_LINUX_INSTALL_SYSTEMD_ACCEPT="1" if args.systemd else "0",
+        SERVERFS_LINUX_PERSISTENT_SYSTEMD_ACCEPT="1" if args.persistent_systemd else "0",
         SERVERFS_LINUX_SYSTEMD_TEST="0",
     )
     if not args.online:
@@ -61,11 +65,12 @@ def main() -> None:
         if not (baseline / "pyproject.toml").is_file():
             raise RuntimeError("historical Bridge archive is incomplete")
         env["SERVERFS_LINUX_BASELINE_BRIDGE_SOURCE"] = str(baseline)
-        case = (
-            "test_actual_release_systemd_upgrade_rollback"
-            if args.systemd
-            else "test_actual_release_packaging"
-        )
+        if args.persistent_systemd:
+            case = "test_actual_release_persistent_systemd_upgrade_rollback"
+        elif args.systemd:
+            case = "test_actual_release_systemd_upgrade_rollback"
+        else:
+            case = "test_actual_release_packaging"
         report = scratch / "rollback.xml"
         subprocess.run(
             [
@@ -86,7 +91,12 @@ def main() -> None:
             )
         ):
             raise RuntimeError("required historical rollback test did not execute successfully")
-    mode = "SYSTEMD" if args.systemd else "PROCESS"
+    if args.persistent_systemd:
+        mode = "PERSISTENT_SYSTEMD"
+    elif args.systemd:
+        mode = "SYSTEMD"
+    else:
+        mode = "PROCESS"
     print(f"LINUX_{mode}_ROLLBACK_PASS baseline={BASELINE}", flush=True)
 
 

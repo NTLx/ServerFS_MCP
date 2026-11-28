@@ -72,6 +72,13 @@ jobs:
           unset DBUS_SESSION_BUS_ADDRESS
           linux/agent_bridge/.venv/bin/python -I -B deployment/native/check_linux_upgrade.py --systemd --online
 
+      - name: Historical installed Bridge upgrade and rollback using shipped persistent template
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset DBUS_SESSION_BUS_ADDRESS
+          linux/agent_bridge/.venv/bin/python -I -B deployment/native/check_linux_upgrade.py --persistent-systemd --online
+
   windows-native-gate:
     name: Windows Native gate
     uses: ./.github/workflows/windows-native.yml
@@ -81,7 +88,7 @@ jobs:
     uses: ./.github/workflows/windows-agent.yml
 
   windows-scheduler-rollback:
-    name: Windows historical Core Scheduler rollback
+    name: Windows Scheduler environment and rollback gate
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -102,23 +109,37 @@ jobs:
         working-directory: windows
         run: uv sync --frozen
 
-      - name: Historical file-only Core upgrade and rollback under Scheduler
+      - name: Validate runner account and execute applicable Scheduler acceptance
         working-directory: windows
         shell: pwsh
         env:
           SERVERFS_WINDOWS_SCHEDULER_ROLLBACK: "1"
         run: |
           $report = Join-Path $env:RUNNER_TEMP "windows-scheduler-rollback.xml"
-          .venv/Scripts/python.exe -B -m pytest -q -rs -o addopts='' tests/test_windows_v27_scheduler_core_rollback.py "--junitxml=$report"
+          $sid = & .venv/Scripts/python.exe -I -B -c "from serverfs_mcp.native_endpoint import current_user_sid; print(current_user_sid())"
+          if ($LASTEXITCODE -ne 0 -or $sid -isnot [string] -or $sid -notmatch '^S-1-\d+(?:-\d+)+$') {
+            throw "Runner SID cannot be verified"
+          }
+          $file = "tests/test_windows_v27_scheduler_core_rollback.py"
+          $case = "test_historical_file_only_core_scheduler_upgrade_and_rollback"
+          $coverage = "Historical Windows Scheduler rollback executed"
+          if ($sid.EndsWith("-500")) {
+            $file = "tests/test_windows_v27_scheduler_hosted_identity.py"
+            $case = "test_hosted_builtin_admin_refuses_private_owner"
+            $coverage = "Hosted built-in Administrator ACL refusal only; actual rollback NOT EXECUTED. Separate ordinary-user native evidence required for release."
+          }
+          .venv/Scripts/python.exe -B -m pytest -q -rs -o addopts='' "${file}::${case}" "--junitxml=$report"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           [xml]$xml = Get-Content -Raw -LiteralPath $report
           $cases = @($xml.SelectNodes("//testcase"))
-          if ($cases.Count -ne 1 -or $cases[0].GetAttribute("name") -ne "test_historical_file_only_core_scheduler_upgrade_and_rollback") {
-            throw "Unexpected historical Scheduler acceptance case"
+          if ($cases.Count -ne 1 -or $cases[0].GetAttribute("name") -ne $case) {
+            throw "Unexpected Scheduler acceptance case"
           }
           if ($cases[0].SelectSingleNode("failure|error|skipped")) {
-            throw "Required historical Scheduler acceptance did not pass"
+            throw "Required applicable Scheduler acceptance did not pass"
           }
+          Write-Output $coverage
+          $coverage | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
   macos-gate:
     name: macOS Native gate

@@ -1,7 +1,8 @@
 """Historical installed file-only Core rollback through the real Windows Scheduler.
 
-Opt-in on disposable GitHub-hosted Windows runners only. No provider, Tunnel,
-existing ServerFS instance, or production task is used.
+Opt-in on a disposable Windows runner or an explicitly authorized ordinary-user
+host. Only a random, previously absent instance and task may be mutated.
+Pre-existing tasks and instance names must remain unchanged.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import sys
 import tarfile
 import zipfile
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx2
 import pytest
@@ -37,7 +38,7 @@ from serverfs_mcp.windows_v25.tasks import Scheduler
 
 pytestmark = pytest.mark.skipif(
     sys.platform != "win32" or os.environ.get("SERVERFS_WINDOWS_SCHEDULER_ROLLBACK") != "1",
-    reason="explicit disposable Windows Scheduler rollback opt-in required",
+    reason="explicit isolated Windows Scheduler rollback opt-in required",
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -191,10 +192,97 @@ async def _mcp_read(port: int, token: str) -> None:
             assert not read.is_error and read.structured_content["content"] == "rollback-proof"
 
 
+def _protected_tasks(excluded: str = "") -> dict[str, tuple[str, str, tuple]]:
+    """Protect exact definitions and running instances, not periodic trigger timestamps."""
+    command = (
+        "$ErrorActionPreference='Stop';"
+        "$service=New-Object -ComObject Schedule.Service;$service.Connect();"
+        "$tasks=@(Get-ScheduledTask | Where-Object {$_.TaskName -like 'ServerFS*'});"
+        "$rows=@($tasks|ForEach-Object{"
+        "$registered=$service.GetFolder($_.TaskPath).GetTask($_.TaskName);"
+        "$xml=$registered.Xml;"
+        "$running=$registered.GetInstances(0);"
+        "$instances=@(for($i=1;$i -le $running.Count;$i++){"
+        "$item=$running.Item($i);"
+        "[pscustomobject]@{guid=$item.InstanceGuid;engine=[int]$item.EnginePID}});"
+        "$hash=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create()."
+        "ComputeHash([Text.Encoding]::UTF8.GetBytes($xml)));"
+        "[pscustomobject]@{name=$_.TaskName;path=$_.TaskPath;"
+        "state=$_.State.ToString();hash=$hash;instances=$instances}});"
+        "ConvertTo-Json -InputObject $rows -Depth 5 -Compress"
+    )
+    rows = json.loads(
+        _run(
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            command,
+            cwd=ROOT,
+            env=dict(os.environ),
+        )
+    )
+    assert isinstance(rows, list)
+    result = {}
+    for row in rows:
+        assert row["path"] == chr(92)
+        name = row["name"].casefold()
+        assert name not in result
+        if name != excluded.casefold():
+            assert "w27gate" not in name
+            state = row["state"]
+            assert state in {"Running", "Ready", "Disabled"}
+            assert isinstance(row["instances"], list)
+            assert all(isinstance(item, dict) for item in row["instances"]), (
+                "Scheduler instance JSON serialization is incomplete"
+            )
+            instances = tuple(
+                sorted((str(UUID(item["guid"])), item["engine"]) for item in row["instances"])
+            )
+            assert all(type(engine) is int and engine > 0 for _guid, engine in instances)
+            assert len(instances) == (1 if state == "Running" else 0)
+            result[name] = (state, row["hash"], instances)
+    return result
+
+
+def _existing_instances() -> set[str]:
+    parent = storage.root() / "instances"
+    if not parent.exists():
+        assert not parent.is_symlink()
+        return set()
+    storage.check_private(parent, directory=True, sid=current_user_sid())
+    return {item.name for item in parent.iterdir()}
+
+
+def _remove_owned_root(root: Path, instance: str, sid: str) -> None:
+    assert root == storage.root(instance) and instance.startswith("w27gate")
+    assert root.parent == storage.root() / "instances"
+    storage.check_private(root, directory=True, sid=sid)
+    for path in root.rglob("*"):
+        _no_reparse_components(path)
+        info = path.lstat()
+        directory = stat.S_ISDIR(info.st_mode)
+        assert directory or (stat.S_ISREG(info.st_mode) and info.st_nlink == 1)
+        assert not path.is_symlink() and not info.st_file_attributes & 0x400
+    shutil.rmtree(root)
+    assert not root.exists()
+
+
 def test_historical_file_only_core_scheduler_upgrade_and_rollback(tmp_path: Path) -> None:
-    assert os.environ.get("GITHUB_ACTIONS") == "true"
-    assert os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
-    assert not storage.root().exists() and not storage.root().is_symlink()
+    local = os.environ.get("SERVERFS_WINDOWS_SCHEDULER_ROLLBACK_LOCAL") == "1"
+    if local:
+        assert os.environ.get("GITHUB_ACTIONS") != "true"
+        assert not current_user_sid().endswith("-500")
+        storage.check_private(storage.root(), directory=True)
+        storage.check_private(storage.root() / "instances", directory=True)
+        assert _protected_tasks(), "local host must have a verified baseline"
+    else:
+        assert os.environ.get("GITHUB_ACTIONS") == "true"
+        assert os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        assert not storage.root().exists() and not storage.root().is_symlink()
+    prior_tasks = _protected_tasks()
+    prior_instances = _existing_instances()
+    assert not any(name.startswith("w27gate") for name in prior_instances), "prior fixture residue"
     assert not tmp_path.resolve().is_relative_to(REPO)
     uv = shutil.which("uv")
     assert uv is not None
@@ -205,17 +293,39 @@ def test_historical_file_only_core_scheduler_upgrade_and_rollback(tmp_path: Path
         and key.upper() not in {"VIRTUAL_ENV", "CONDA_PREFIX", "UV_OFFLINE", "CARGO_NET_OFFLINE"}
     }
     env.update(UV_LINK_MODE="copy", UV_PYTHON=str(Path(sys._base_executable).resolve()))
-    assert _run("git", "rev-parse", "HEAD", cwd=REPO, env=env) == os.environ["GITHUB_SHA"]
+    if local:
+        env.update(UV_OFFLINE="1", CARGO_NET_OFFLINE="true")
+        expected_sha = os.environ["SERVERFS_WINDOWS_SCHEDULER_ROLLBACK_SHA"]
+    else:
+        expected_sha = os.environ["GITHUB_SHA"]
+    assert _run("git", "rev-parse", "HEAD", cwd=REPO, env=env) == expected_sha
     old = tmp_path / "historical"
     old.mkdir()
     archive = tmp_path / "historical.tar"
     _run("git", "archive", "--output", str(archive), BASELINE, cwd=REPO, env=env)
     with tarfile.open(archive) as bundle:
         bundle.extractall(old, filter="data")
+    candidate_source = tmp_path / "candidate"
+    candidate_source.mkdir()
+    candidate_archive = tmp_path / "candidate.tar"
+    _run(
+        "git",
+        "archive",
+        "--output",
+        str(candidate_archive),
+        f"{expected_sha}:windows",
+        cwd=REPO,
+        env=env,
+    )
+    with tarfile.open(candidate_archive) as bundle:
+        bundle.extractall(candidate_source, filter="data")
     baseline = _build(old, tmp_path / "old-wheels", uv, env)
-    candidate = _build(ROOT, tmp_path / "new-wheels", uv, env)
-    # Recheck that no existing ServerFS instance appeared during the builds.
-    assert not storage.root().exists() and not storage.root().is_symlink()
+    candidate = _build(candidate_source, tmp_path / "new-wheels", uv, env)
+    # No installed task or instance may have changed during the builds.
+    assert _protected_tasks() == prior_tasks
+    assert _existing_instances() == prior_instances
+    if not local:
+        assert not storage.root().exists() and not storage.root().is_symlink()
     sid = current_user_sid()
     instance = "w27gate" + uuid4().hex[:16]
     root = storage.root(instance)
@@ -277,6 +387,7 @@ def test_historical_file_only_core_scheduler_upgrade_and_rollback(tmp_path: Path
     expected = {p: p.read_bytes() for p in protected}
     generations = set()
     attempted = False
+    passed = False
     try:
         attempted = True
         installed = scheduler.install(manifest)
@@ -284,6 +395,8 @@ def test_historical_file_only_core_scheduler_upgrade_and_rollback(tmp_path: Path
         task_xml = home / "task.xml"
         expected[task_xml] = task_xml.read_bytes()
         for index, release in enumerate((baseline, candidate, baseline)):
+            assert _protected_tasks(manifest.task_name()) == prior_tasks
+            assert _existing_instances() == prior_instances | {instance}
             assert scheduler.status(manifest)["enabled"] is False
             assert _current_identity(manifest) is None
             if index:
@@ -302,14 +415,21 @@ def test_historical_file_only_core_scheduler_upgrade_and_rollback(tmp_path: Path
             assert not any(row.port == port for row in _windows_ipv4_tcp_listeners())
             assert all(p.read_bytes() == expected[p] for p in expected)
             assert storage.load("core", instance) == manifest
+            assert _protected_tasks(manifest.task_name()) == prior_tasks
         assert len(generations) == 3
+        passed = True
     finally:
         # Exact manifest/XML owner checks remain mandatory even after a partial Create.
-        # Never kill a PID or delete unknown state. The hosted VM owns fixture files.
+        # Never kill a PID or delete unknown state. Preserve failed fixture files.
         if attempted and scheduler.status(manifest)["registered"]:
             scheduler.stop(manifest)
             assert _current_identity(manifest) is None
             assert not any(row.port == port for row in _windows_ipv4_tcp_listeners())
             assert scheduler.uninstall(manifest)["registered"] is False
         assert scheduler.status(manifest)["registered"] is False
+        assert _protected_tasks() == prior_tasks
+        assert _existing_instances() == prior_instances | {instance}
+        if passed and local:
+            _remove_owned_root(root, instance, sid)
+            assert _existing_instances() == prior_instances
     print("WINDOWS_HISTORICAL_SCHEDULER_CORE_ROLLBACK_PASS")

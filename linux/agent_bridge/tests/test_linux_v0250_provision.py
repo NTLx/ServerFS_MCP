@@ -1206,7 +1206,23 @@ def test_actual_release_packaging(tmp_path, monkeypatch):
     reason="explicit opt-in to installed release and transient systemd lifecycle acceptance",
 )
 def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
-    """Exercise two installed releases through the exact per-instance unit identity."""
+    """Exercise two installed releases through a transient per-instance unit."""
+    _exercise_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch, persistent=False)
+
+
+@pytest.mark.skipif(
+    os.environ.get("SERVERFS_LINUX_INSTALL_TEST") not in {"1", "offline", "online"}
+    or os.environ.get("SERVERFS_LINUX_PERSISTENT_SYSTEMD_ACCEPT") != "1",
+    reason="explicit disposable hosted-runner persistent systemd acceptance required",
+)
+def test_actual_release_persistent_systemd_upgrade_rollback(tmp_path, monkeypatch):
+    """Use the shipped installed template and its actual current-release pointer."""
+    assert os.environ.get("GITHUB_ACTIONS") == "true"
+    assert os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+    _exercise_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch, persistent=True)
+
+
+def _exercise_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch, *, persistent):
     uv = shutil.which("uv")
     systemctl = shutil.which("systemctl")
     systemd_run = shutil.which("systemd-run")
@@ -1215,7 +1231,28 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
 
     manifest, initial_root, work, config_path = _fixture(tmp_path, monkeypatch)
     bridge_id = "r" + uuid.uuid4().hex[:8]
-    root = initial_root.parent / bridge_id
+    if persistent:
+        # %h is expanded by systemd from the account, not the pytest HOME fixture.
+        # This branch is allowed only on a disposable GitHub-hosted VM.
+        import pwd
+
+        real_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+        assert Path(os.environ["HOME"]) == real_home == real_home.resolve(strict=True)
+        assert os.getuid() != 0 and real_home.stat().st_uid == os.getuid()
+        config_parent = real_home / ".config/serverfs-agent-bridge"
+        app_parent = real_home / ".local/share/serverfs-agent-bridge"
+        template = real_home / ".config/systemd/user/serverfs-agent-bridge@.service"
+        for path in (config_parent, app_parent, template):
+            installer._canonical_no_links(path, must_exist=False)
+            assert not path.exists() and not path.is_symlink(), "existing ServerFS surface"
+        xdg_config = os.environ.get("XDG_CONFIG_HOME")
+        assert not xdg_config or Path(xdg_config) == real_home / ".config"
+        instances = config_parent / "instances"
+        instances.mkdir(mode=0o700, parents=True)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: real_home))
+        root = instances / bridge_id
+    else:
+        root = initial_root.parent / bridge_id
     manifest.update(bridge_id=bridge_id, root=str(root))
     doc = json.loads(config_path.read_text(encoding="utf-8"))
     doc.update(
@@ -1320,6 +1357,15 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
         timeout_seconds=1,
     )
     unit_created = False
+    template_path = None
+    template_bytes = None
+
+    def assert_persistent_fragment():
+        assert template_path is not None and template_bytes is not None
+        assert not template_path.is_symlink() and template_path.read_bytes() == template_bytes
+        assert ctl("show", unit, "--property=FragmentPath", "--value").stdout.strip() == str(
+            template_path
+        )
 
     def start(selected: Path) -> int:
         nonlocal unit_created
@@ -1332,38 +1378,42 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
             check=False,
         )
         fields = dict(line.split("=", 1) for line in state.stdout.splitlines() if "=" in line)
-        assert fields.get("LoadState") == "not-found", (
-            "transient acceptance unit is already loaded or has a fragment"
-        )
+        assert fields.get("LoadState") == ("loaded" if persistent else "not-found")
         assert fields.get("ActiveState") == "inactive" and fields.get("MainPID") in {None, "0"}
-        executable = selected / ".venv/bin/serverfs-agent-bridge"
-        command = [
-            systemd_run,
-            "--user",
-            "--collect",
-            "--unit",
-            unit,
-            "--property=Type=exec",
-            "--property=Restart=on-failure",
-            "--property=KillMode=control-group",
-            "--property=TimeoutStopSec=45s",
-            "--working-directory",
-            str(work),
-            "/usr/bin/env",
-            "-i",
-            f"HOME={fixture_home}",
-            f"PATH={os.defpath}",
-            "PYTHONUNBUFFERED=1",
-            str(executable),
-            "--config",
-            str(root / "config.json"),
-        ]
-        result = subprocess.run(
-            command, env=bus_env, capture_output=True, text=True, timeout=30, check=False
-        )
-        assert result.returncode == 0, "transient unit start failed: " + result.stderr
-        # Only a successful creation grants this fixture ownership for cleanup.
-        unit_created = True
+        if persistent:
+            assert_persistent_fragment()
+            assert ctl("is-enabled", unit).stdout.strip() == "enabled"
+            unit_created = True
+            ctl("start", unit)
+        else:
+            executable = selected / ".venv/bin/serverfs-agent-bridge"
+            command = [
+                systemd_run,
+                "--user",
+                "--collect",
+                "--unit",
+                unit,
+                "--property=Type=exec",
+                "--property=Restart=on-failure",
+                "--property=KillMode=control-group",
+                "--property=TimeoutStopSec=45s",
+                "--working-directory",
+                str(work),
+                "/usr/bin/env",
+                "-i",
+                f"HOME={fixture_home}",
+                f"PATH={os.defpath}",
+                "PYTHONUNBUFFERED=1",
+                str(executable),
+                "--config",
+                str(root / "config.json"),
+            ]
+            result = subprocess.run(
+                command, env=bus_env, capture_output=True, text=True, timeout=30, check=False
+            )
+            assert result.returncode == 0, "transient unit start failed: " + result.stderr
+            # Only a successful creation grants this fixture ownership for cleanup.
+            unit_created = True
         deadline = time.monotonic() + 12
         while time.monotonic() < deadline:
             state = ctl("show", unit, "--property=ActiveState", "--property=MainPID", check=False)
@@ -1377,7 +1427,9 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
         nonlocal unit_created
         if not unit_created:
             return
-        ctl("stop", unit, check=False)
+        if persistent:
+            assert_persistent_fragment()
+        ctl("stop", unit, check=persistent)
         deadline = time.monotonic() + 12
         stopped = False
         while time.monotonic() < deadline:
@@ -1391,7 +1443,7 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
             )
             fields = dict(line.split("=", 1) for line in state.stdout.splitlines() if "=" in line)
             if (
-                fields.get("LoadState") == "not-found"
+                fields.get("LoadState") == ("loaded" if persistent else "not-found")
                 and fields.get("ActiveState") == "inactive"
                 and fields.get("MainPID") in {None, "0"}
             ):
@@ -1435,12 +1487,28 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
     def assert_selected_executable(selected: Path) -> int:
         detail = ctl("show", unit, "--property=ExecStart", "--property=MainPID")
         fields = dict(line.split("=", 1) for line in detail.stdout.splitlines() if "=" in line)
-        assert str(selected / ".venv/bin/serverfs-agent-bridge") in fields["ExecStart"]
-        return int(fields["MainPID"])
+        pid = int(fields["MainPID"])
+        if persistent:
+            assert_persistent_fragment()
+            assert str(current / ".venv/bin/serverfs-agent-bridge") in fields["ExecStart"]
+            assert current.resolve() == selected
+            assert (Path("/proc") / str(pid) / "cwd").resolve(strict=True) == selected
+        else:
+            assert str(selected / ".venv/bin/serverfs-agent-bridge") in fields["ExecStart"]
+        return pid
 
     task_a = task_b = None
     pid_a = pid_b = None
     try:
+        if persistent:
+            source = ROOT / "deployment/linux/serverfs-agent-bridge@.service"
+            template_bytes = source.read_bytes()
+            template_path = installer.install_template(source)
+            assert template_path == template
+            ctl("daemon-reload")
+            assert_persistent_fragment()
+            ctl("enable", unit)
+            assert ctl("is-enabled", unit).stdout.strip() == "enabled"
         pid_a = start(first)
         awaitable = asyncio.run(wait_ready())
         assert awaitable is None
@@ -1486,6 +1554,16 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
         assert (socket_dir.stat().st_dev, socket_dir.stat().st_ino) == socket_dir_identity
     finally:
         stop()
+        if persistent and template_path is not None:
+            assert_persistent_fragment()
+            assert (
+                ctl("show", unit, "--property=ActiveState", "--value").stdout.strip() == "inactive"
+            )
+            ctl("disable", unit)
+            assert ctl("is-enabled", unit, check=False).stdout.strip() == "disabled"
+            assert template_path.read_bytes() == template_bytes
+            template_path.unlink()
+            ctl("daemon-reload")
 
     final_state = ctl("show", unit, "--property=LoadState", "--property=ActiveState", check=False)
     final_fields = dict(
