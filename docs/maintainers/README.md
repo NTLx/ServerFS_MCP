@@ -6,12 +6,17 @@
 
 v0.26.0 is the current release baseline. Read the [release notes](../releases/v0.26.0.md) for scope, the [release checklist](../v0.26.0-release-checklist.md) and [evidence ledger](../releases/v0.26.0-evidence.md) for actual acceptance, and the [versioned plan](../plans/dev_plan_v0.26.0.md) for design history. Core, optional Connector and optional Bridge are independently managed with explicit per-Core authorization and native lifecycle implementations. macOS owned defaults to v1 private IPC/policy checks and supports explicit v2 on new instances; shared uses signed v2 grants.
 
+## Active development
+
+For v0.27.0, the [accepted Platform Independence ADR](../architecture/v0.27.0-platform-independence.md) and [approved development plan](../plans/dev_plan_v0.27.0.md) are mandatory reading before changes. Gate A (behavior-preserving independent platform split) precedes parallel feature development. The approved target deltas supersede conflicting older design permissions only for v0.27.0; current release behavior and security invariants remain binding until their explicit, tested replacement. During migration update root-based commands, paths and executable gates with their implementation. A plan is not evidence of support.
+
 ## Read order
 
 1. [`AGENTS.md`](../../AGENTS.md) — scope, current baseline and non-negotiable working rules.
 2. [`invariants.md`](./invariants.md) — durable filesystem, mutation, protocol, Agent Bridge, platform and security contracts.
 3. [`workflow.md`](./workflow.md) — change protocol, validation gates, website rules and release workflow.
-4. The implementation, tests and release-facing docs for the subsystem being changed.
+4. The active ADR and versioned development plan above for target-version work.
+5. The implementation, tests and release-facing docs for the subsystem being changed.
 
 ## Authority and source hierarchy
 

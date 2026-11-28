@@ -16,6 +16,12 @@ Repository-wide maintainer entry point. Keep this file short; durable rules and 
 - Linux: Docker Compose per Core, direct HTTP or optional OpenAI/Cloudflare, user systemd host Bridge; signed v2 attachments. macOS: native arm64 Apple Silicon, macOS 27, APFS, signed SMAppService; owned defaults to v1 private IPC/policy checks or explicitly selected signed v2; shared uses v2 owner grants. Windows: native Windows 11 x64/NTFS, current-user Scheduler, Job Objects and Named Pipe. Use the platform's named lifecycle; no forced private IPC parity or central instance manager.
 - Current runbooks, not historical/default-owner recipes, govern current operation. Do not infer platform or provider parity.
 
+## Active development: v0.27.0
+
+- Before any v0.27.0 design, code, test or release work, read the [accepted Platform Independence ADR](docs/architecture/v0.27.0-platform-independence.md) and [approved development plan](docs/plans/dev_plan_v0.27.0.md). These govern the target architecture and mandatory gates; the v0.26.0 release baseline above still governs current deployed behavior.
+- **One product, three independent implementations.** No cross-platform ServerFS runtime source dependency. First complete the behavior-preserving split and Gate A; then confine parallel platform work to `linux/`, `macos/` or `windows/`. Common contracts, documentation and release coordination require centralized review. Share public schemas and black-box acceptance, not runtime implementation.
+- P0 release blockers: platform independence, authorized signed-v2 continuation/idempotency, durable partial results, and bounded read-only inventory approval. NFS-specific work is deferred. Do not add features during the split or silently weaken security to achieve parity. Record actual acceptance per platform; never treat a target design as deployed behavior.
+
 ## Read the smallest relevant source set
 
 - [Repository documentation index](docs/README.md) and [maintainer index](docs/maintainers/README.md): current guides, versioned plans and evidence.
@@ -32,7 +38,7 @@ For operational tasks select one matching [Skill](skills/README.md), then its ap
 - Repo Ops has exactly four public tools, operator-owned integrity-pinned actions and writer coordination; never replace deterministic work with Agent delegation.
 - Preserve public schemas, stable errors and protocol-clean stdout; never expose secrets, private paths or raw sensitive data in normal logs.
 - Provider configuration/authentication/default models/sandbox remain provider-owned. `model=None` means no override; no automatic cross-provider fallback, fabricated model catalogs or auto-approval. Jev is optional advisory-only and external transfer requires authorization.
-- Signed v2 Core grants support scoped task discovery (`list_agent_tasks`) but reject continuation/idempotency keys. Do not blindly retry uncertain submission, bypass grants/leases or clear recovery guards. Preserve private approval identity before public redaction; a recognized outside-workdir write request cannot be approved remotely. Advice never grants authority.
+- Released v0.26.0 signed-v2 Core grants support scoped task discovery (`list_agent_tasks`) but reject continuation/idempotency keys. v0.27.0 may enable them only under the approved P0-02 contract, with complete scoped authorization and durable retry tests. Do not blindly retry uncertain submission, bypass grants/leases or clear recovery guards. Preserve private approval identity before public redaction; a recognized outside-workdir write request cannot be approved remotely. Advice never grants authority.
 - **Standard protocol first.** Before adding any provider-specific native runtime, follow the [native runtime admission gate](docs/maintainers/invariants.md#native-runtime-admission-gate). Use ACP when sufficient. An Agent may draft the admission record but cannot self-approve or start native-adapter implementation without explicit maintainer PASS.
 
 ## Working and verification rules
