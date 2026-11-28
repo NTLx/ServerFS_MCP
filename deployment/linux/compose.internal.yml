@@ -1,5 +1,0 @@
-# Use after compose.http.yml to remove host publication for an internal-only Core.
-# Requires Docker Compose v2.24+ for the !reset merge tag.
-services:
-  serverfs-mcp:
-    ports: !reset []
