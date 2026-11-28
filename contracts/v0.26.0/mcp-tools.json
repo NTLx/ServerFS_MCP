@@ -1,0 +1,2563 @@
+{
+  "definitions": {
+    "answer_agent_question": [
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true,
+          "readOnlyHint": false
+        },
+        "description": "Answer one pending Agent question set.\n\n        Supports option selection, multiple choice and free text as represented\n        by the provider-neutral pending request returned by get_agent_task.\n        ",
+        "inputSchema": {
+          "$defs": {
+            "AgentQuestionAnswer": {
+              "description": "One normalized answer to a pending Agent question.",
+              "properties": {
+                "question_id": {
+                  "description": "Question identifier from the pending request",
+                  "title": "Question Id",
+                  "type": "string"
+                },
+                "selected_option_ids": {
+                  "description": "Selected option identifiers; empty when using free text only",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Selected Option Ids",
+                  "type": "array"
+                },
+                "text": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Optional free-text answer",
+                  "title": "Text"
+                }
+              },
+              "required": [
+                "question_id"
+              ],
+              "title": "AgentQuestionAnswer",
+              "type": "object"
+            }
+          },
+          "properties": {
+            "answers": {
+              "description": "One answer for every pending question",
+              "items": {
+                "$ref": "#/$defs/AgentQuestionAnswer"
+              },
+              "minItems": 1,
+              "title": "Answers",
+              "type": "array"
+            },
+            "request_id": {
+              "description": "Pending question request identifier",
+              "title": "Request Id",
+              "type": "string"
+            },
+            "task_id": {
+              "description": "ServerFS Agent task identifier",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "request_id",
+            "answers"
+          ],
+          "title": "answer_agent_questionArguments",
+          "type": "object"
+        },
+        "name": "answer_agent_question",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "answer_agent_questionDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "cancel_agent_task": [
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": true,
+          "openWorldHint": true,
+          "readOnlyHint": false
+        },
+        "description": "Cancel or interrupt an active Agent task; repeated cancellation is safe.",
+        "inputSchema": {
+          "properties": {
+            "task_id": {
+              "description": "ServerFS Agent task identifier",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "title": "cancel_agent_taskArguments",
+          "type": "object"
+        },
+        "name": "cancel_agent_task",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "cancel_agent_taskDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "commit_repo_changes": [
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "description": "Stage only explicit files and create one Git commit; never push.\n\n        The operation refuses pre-existing staged changes and directory paths so an MCP\n        caller cannot accidentally sweep unrelated work into the commit. Git hooks are\n        disabled by the host Repo Ops implementation for this deterministic path.\n        ",
+        "inputSchema": {
+          "properties": {
+            "message": {
+              "description": "Single-line Git commit message",
+              "maxLength": 1024,
+              "minLength": 1,
+              "title": "Message",
+              "type": "string"
+            },
+            "paths": {
+              "description": "Exact workdir-relative file paths to stage and commit",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 64,
+              "minItems": 1,
+              "title": "Paths",
+              "type": "array"
+            },
+            "workdir": {
+              "description": "Repo Ops-enabled read-write workdir alias",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "paths",
+            "message"
+          ],
+          "title": "commit_repo_changesArguments",
+          "type": "object"
+        },
+        "name": "commit_repo_changes",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "commit_repo_changesDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "create_directory": [
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "description": "Create ONE new directory. The parent must already exist.\n\n        Not recursive: to create a/b/c, first create a/b, then a/b/c — each\n        step is explicit and auditable. Fails with PATH_ALREADY_EXISTS if\n        anything already occupies the path (an existing directory included),\n        so a repeat call never performs a second change. Requires a\n        read-write workdir.\n        ",
+        "inputSchema": {
+          "properties": {
+            "path": {
+              "description": "Path of the directory to create, relative to the root",
+              "title": "Path",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path"
+          ],
+          "title": "create_directoryArguments",
+          "type": "object"
+        },
+        "name": "create_directory",
+        "outputSchema": {
+          "description": "Result of create_directory.",
+          "properties": {
+            "created": {
+              "title": "Created",
+              "type": "boolean"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "revision": {
+              "description": "Revision of the created directory",
+              "title": "Revision",
+              "type": "string"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "created",
+            "revision"
+          ],
+          "title": "CreateDirectoryResult",
+          "type": "object"
+        }
+      }
+    ],
+    "create_text_file": [
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "description": "Create a NEW UTF-8 text file. Never overwrites an existing path.\n\n        Use this only when the target does not exist — inspect it first with\n        stat_file or list_directory if it might. If anything already occupies\n        the path (file, directory or symlink) the call fails with\n        PATH_ALREADY_EXISTS; there is no overwrite or force option. The\n        parent directory must already exist. Content is written exactly as\n        given (no newline or whitespace normalization) and published\n        atomically, so a concurrent reader sees either no file or the whole\n        file. Requires a read-write workdir.\n        ",
+        "inputSchema": {
+          "properties": {
+            "content": {
+              "description": "Full UTF-8 text content of the new file",
+              "title": "Content",
+              "type": "string"
+            },
+            "path": {
+              "description": "Path of the file to create, relative to the root",
+              "title": "Path",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "content"
+          ],
+          "title": "create_text_fileArguments",
+          "type": "object"
+        },
+        "name": "create_text_file",
+        "outputSchema": {
+          "description": "Result of create_text_file.",
+          "properties": {
+            "bytes_written": {
+              "title": "Bytes Written",
+              "type": "integer"
+            },
+            "created": {
+              "title": "Created",
+              "type": "boolean"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "revision": {
+              "description": "Revision of the created file",
+              "title": "Revision",
+              "type": "string"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "created",
+            "bytes_written",
+            "revision"
+          ],
+          "title": "CreateTextFileResult",
+          "type": "object"
+        }
+      }
+    ],
+    "delete_directory": [
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "description": "Permanently delete one EMPTY directory. Never recursive.\n\n        Stat the directory first and pass its revision as expected_revision.\n        If the directory holds anything at all — including hidden, denied or\n        temporary entries — the call fails with DIRECTORY_NOT_EMPTY; list it\n        and delete the contents first, one file at a time. There is no\n        recursive or force option, and the deletion is permanent.\n        ",
+        "inputSchema": {
+          "properties": {
+            "expected_revision": {
+              "description": "Revision returned by stat_file for this directory; the delete is refused if it changed since",
+              "title": "Expected Revision",
+              "type": "string"
+            },
+            "path": {
+              "description": "Path of the directory to delete, relative to the root",
+              "title": "Path",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "expected_revision"
+          ],
+          "title": "delete_directoryArguments",
+          "type": "object"
+        },
+        "name": "delete_directory",
+        "outputSchema": {
+          "description": "Result of delete_directory.",
+          "properties": {
+            "deleted": {
+              "title": "Deleted",
+              "type": "boolean"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "revision_deleted": {
+              "title": "Revision Deleted",
+              "type": "string"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "deleted",
+            "revision_deleted"
+          ],
+          "title": "DeleteDirectoryResult",
+          "type": "object"
+        }
+      }
+    ],
+    "delete_file": [
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "description": "Permanently delete one regular file.\n\n        Stat or read it first and pass the current revision as\n        expected_revision, so a file that changed (or was already replaced)\n        is not deleted by mistake. Any regular file can be deleted, binary\n        included — only *editing* is limited to UTF-8 text. Directories are\n        not accepted here (see delete_directory) and symlinks are never\n        followed or removed. The deletion is permanent: there is no trash,\n        backup or undo.\n        ",
+        "inputSchema": {
+          "properties": {
+            "expected_revision": {
+              "description": "Revision returned by stat_file or read_text_file for this file; the delete is refused if the file changed since",
+              "title": "Expected Revision",
+              "type": "string"
+            },
+            "path": {
+              "description": "Path of the file to delete, relative to the root",
+              "title": "Path",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "expected_revision"
+          ],
+          "title": "delete_fileArguments",
+          "type": "object"
+        },
+        "name": "delete_file",
+        "outputSchema": {
+          "description": "Result of delete_file.",
+          "properties": {
+            "bytes_deleted": {
+              "title": "Bytes Deleted",
+              "type": "integer"
+            },
+            "deleted": {
+              "title": "Deleted",
+              "type": "boolean"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "revision_deleted": {
+              "title": "Revision Deleted",
+              "type": "string"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "deleted",
+            "bytes_deleted",
+            "revision_deleted"
+          ],
+          "title": "DeleteFileResult",
+          "type": "object"
+        }
+      }
+    ],
+    "download_binary_file": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Download one regular file through the optional raw-byte channel.\n\n            The selected workdir must explicitly enable binary transfer. The\n            file is read from one held descriptor, bounded by that workdir's\n            binary transfer limit, and rejected if it changes while being\n            read. The MCP result contains a standard binary resource block\n            plus structured size/MIME/SHA-256/revision metadata.\n            ",
+        "inputSchema": {
+          "properties": {
+            "path": {
+              "description": "File path relative to the workdir root",
+              "title": "Path",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path"
+          ],
+          "title": "download_binary_fileArguments",
+          "type": "object"
+        },
+        "name": "download_binary_file",
+        "outputSchema": {
+          "description": "Structured metadata returned alongside a binary MCP content block.",
+          "properties": {
+            "mime_type": {
+              "description": "Best-effort MIME type",
+              "title": "Mime Type",
+              "type": "string"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "revision": {
+              "description": "Opaque revision of the unchanged file that was read",
+              "title": "Revision",
+              "type": "string"
+            },
+            "sha256": {
+              "description": "SHA-256 hex digest of the raw bytes",
+              "title": "Sha256",
+              "type": "string"
+            },
+            "size": {
+              "description": "Exact number of raw bytes returned",
+              "title": "Size",
+              "type": "integer"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "size",
+            "mime_type",
+            "sha256",
+            "revision"
+          ],
+          "title": "DownloadBinaryFileMetadata",
+          "type": "object"
+        }
+      }
+    ],
+    "edit_text_file": [
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "description": "Replace exact text in an existing UTF-8 text file. Never creates one.\n\n        Read the file first (read_text_file or stat_file) and pass the\n        revision it returned as expected_revision; if the file has changed\n        since, the call fails with REVISION_CONFLICT — re-read the file and\n        retry with fresh text. If the path does not exist the call fails with\n        PATH_NOT_FOUND: it will not create a file, so a mistyped path cannot\n        silently become a new file.\n\n        Each edit replaces every occurrence of exactly `old_text` and\n        requires that count to equal `expected_count` (default 1); a mismatch\n        fails with EDIT_CONFLICT, so include enough surrounding context to\n        make the match unique. All edits in one call are applied in order and\n        are all-or-nothing: if one fails, the file is left untouched.\n        Deletions and replacements happen in a single atomic step, so no\n        reader ever sees a partial file.\n        ",
+        "inputSchema": {
+          "$defs": {
+            "TextEdit": {
+              "description": "One exact-match edit within edit_text_file.",
+              "properties": {
+                "expected_count": {
+                  "default": 1,
+                  "description": "Number of occurrences old_text must have; else EDIT_CONFLICT",
+                  "minimum": 1,
+                  "title": "Expected Count",
+                  "type": "integer"
+                },
+                "new_text": {
+                  "description": "Replacement text",
+                  "title": "New Text",
+                  "type": "string"
+                },
+                "old_text": {
+                  "description": "Exact text to replace. Empty is allowed only to fill a completely empty file. Include enough context to make the match unique.",
+                  "title": "Old Text",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "old_text",
+                "new_text"
+              ],
+              "title": "TextEdit",
+              "type": "object"
+            }
+          },
+          "properties": {
+            "edits": {
+              "description": "Exact-match text edits, applied in order",
+              "items": {
+                "$ref": "#/$defs/TextEdit"
+              },
+              "minItems": 1,
+              "title": "Edits",
+              "type": "array"
+            },
+            "expected_revision": {
+              "description": "Revision returned by read_text_file or stat_file for this file; the edit is refused if the file changed since",
+              "title": "Expected Revision",
+              "type": "string"
+            },
+            "path": {
+              "description": "Path of the file to edit, relative to the root",
+              "title": "Path",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "expected_revision",
+            "edits"
+          ],
+          "title": "edit_text_fileArguments",
+          "type": "object"
+        },
+        "name": "edit_text_file",
+        "outputSchema": {
+          "description": "Result of edit_text_file.",
+          "properties": {
+            "bytes_after": {
+              "title": "Bytes After",
+              "type": "integer"
+            },
+            "bytes_before": {
+              "title": "Bytes Before",
+              "type": "integer"
+            },
+            "edited": {
+              "title": "Edited",
+              "type": "boolean"
+            },
+            "edits_applied": {
+              "title": "Edits Applied",
+              "type": "integer"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "revision": {
+              "description": "Revision of the file after the edit",
+              "title": "Revision",
+              "type": "string"
+            },
+            "revision_before": {
+              "title": "Revision Before",
+              "type": "string"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "edited",
+            "edits_applied",
+            "bytes_before",
+            "bytes_after",
+            "revision_before",
+            "revision"
+          ],
+          "title": "EditTextFileResult",
+          "type": "object"
+        }
+      }
+    ],
+    "find_files": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Find files by name using a glob pattern, recursively.\n\n        Pattern is matched against file names (fnmatch semantics), e.g.\n        \"*compose*.yml\". Symlinked directories are not followed. truncated\n        is true whenever the scan stopped early due to a limit.\n        ",
+        "inputSchema": {
+          "properties": {
+            "limit": {
+              "default": 50,
+              "description": "Maximum matches to return (server default applies if omitted)",
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "path": {
+              "default": "",
+              "description": "Directory path relative to the workdir root",
+              "title": "Path",
+              "type": "string"
+            },
+            "pattern": {
+              "description": "Glob pattern matched against file names, e.g. \"*compose*.yml\"",
+              "title": "Pattern",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "pattern"
+          ],
+          "title": "find_filesArguments",
+          "type": "object"
+        },
+        "name": "find_files",
+        "outputSchema": {
+          "$defs": {
+            "FileMatch": {
+              "description": "One find_files match.",
+              "properties": {
+                "path": {
+                  "description": "Workdir-relative path of the matched file",
+                  "title": "Path",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "title": "FileMatch",
+              "type": "object"
+            }
+          },
+          "description": "Result of find_files.",
+          "properties": {
+            "matches": {
+              "items": {
+                "$ref": "#/$defs/FileMatch"
+              },
+              "title": "Matches",
+              "type": "array"
+            },
+            "returned": {
+              "title": "Returned",
+              "type": "integer"
+            },
+            "truncated": {
+              "title": "Truncated",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "matches",
+            "returned",
+            "truncated"
+          ],
+          "title": "FindFilesResult",
+          "type": "object"
+        }
+      }
+    ],
+    "get_agent_task": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Get the normalized state/result or pending interaction for one Agent task.",
+        "inputSchema": {
+          "properties": {
+            "task_id": {
+              "description": "ServerFS Agent task identifier",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "title": "get_agent_taskArguments",
+          "type": "object"
+        },
+        "name": "get_agent_task",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "get_agent_taskDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "inspect_repo": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Inspect Git status/diff or list administrator-configured Repo Ops actions.\n\n        This never starts an Agent runtime. `status` and `actions` accept no paths;\n        `diff` and `staged_diff` require explicit policy-valid paths. Status path lists\n        are filtered through the ServerFS path/deny policy before they are returned.\n        Output is bounded by the host Repo Ops service.\n        ",
+        "inputSchema": {
+          "properties": {
+            "paths": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 64,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional explicit workdir-relative file paths for diff views",
+              "title": "Paths"
+            },
+            "view": {
+              "description": "Repository view to inspect",
+              "enum": [
+                "status",
+                "diff",
+                "staged_diff",
+                "actions"
+              ],
+              "title": "View",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Repo Ops-enabled workdir alias",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "view"
+          ],
+          "title": "inspect_repoArguments",
+          "type": "object"
+        },
+        "name": "inspect_repo",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "inspect_repoDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "list_agent_models": [
+      {
+        "annotations": {
+          "openWorldHint": true,
+          "readOnlyHint": true
+        },
+        "description": "Discover provider-native models and optionally return pre-submit Jev advice.\n\n        Discovery never submits an Agent task. A model recommendation is advisory only;\n        the MCP caller decides whether to pass it later as submit_agent_task.model.\n        ",
+        "inputSchema": {
+          "properties": {
+            "path": {
+              "default": "",
+              "description": "Relative starting directory for advisory task context",
+              "title": "Path",
+              "type": "string"
+            },
+            "profile": {
+              "default": "workspace-write",
+              "description": "Provider-neutral execution profile; native Codex/Claude/Qoder require workspace-write",
+              "enum": [
+                "review",
+                "workspace-write"
+              ],
+              "title": "Profile",
+              "type": "string"
+            },
+            "runtime": {
+              "description": "Configured Agent runtime: codex, claude, qoder, or configured acp-<profile-id>",
+              "maxLength": 32,
+              "minLength": 4,
+              "title": "Runtime",
+              "type": "string"
+            },
+            "task_prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional exact Agent objective being considered. Provide together with workdir to request Jev model advice when enabled.",
+              "title": "Task Prompt"
+            },
+            "workdir": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional workdir for pre-submit model advice",
+              "title": "Workdir"
+            }
+          },
+          "required": [
+            "runtime"
+          ],
+          "title": "list_agent_modelsArguments",
+          "type": "object"
+        },
+        "name": "list_agent_models",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "list_agent_modelsDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "list_agent_runtimes": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "List configured Agent runtimes and their current normalized capabilities.\n\n        This is read-only and never starts or installs a provider. Runtimes not\n        allowlisted on any ServerFS workdir are omitted.\n        ",
+        "inputSchema": {
+          "properties": {},
+          "title": "list_agent_runtimesArguments",
+          "type": "object"
+        },
+        "name": "list_agent_runtimes",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "list_agent_runtimesDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "list_agent_tasks": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "List a bounded page of tasks owned by one explicitly named Agent workdir.",
+        "inputSchema": {
+          "properties": {
+            "cursor": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Opaque continuation cursor",
+              "title": "Cursor"
+            },
+            "limit": {
+              "default": 20,
+              "description": "Maximum tasks to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "status": {
+              "default": "active",
+              "description": "Task state filter",
+              "enum": [
+                "active",
+                "terminal",
+                "all"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Exact configured Agent workdir alias",
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir"
+          ],
+          "title": "list_agent_tasksArguments",
+          "type": "object"
+        },
+        "name": "list_agent_tasks",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "list_agent_tasksDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "list_directory": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "List entries of a directory inside a workdir.\n\n        Entries are sorted by name. Symlinks are shown as type \"symlink\",\n        FIFOs/sockets/devices as type \"other\"; neither is ever followed.\n        ",
+        "inputSchema": {
+          "properties": {
+            "limit": {
+              "default": 100,
+              "description": "Maximum entries to return (server default applies if omitted)",
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "offset": {
+              "default": 0,
+              "description": "Entries to skip",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "path": {
+              "default": "",
+              "description": "Directory path relative to the workdir root",
+              "title": "Path",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir"
+          ],
+          "title": "list_directoryArguments",
+          "type": "object"
+        },
+        "name": "list_directory",
+        "outputSchema": {
+          "$defs": {
+            "EntryInfo": {
+              "description": "One directory entry.",
+              "properties": {
+                "modified_at": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Last modification time as RFC 3339 UTC (e.g. 2026-09-17T01:20:30Z)",
+                  "title": "Modified At"
+                },
+                "name": {
+                  "description": "Entry name within its parent directory",
+                  "title": "Name",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Workdir-relative path of the entry",
+                  "title": "Path",
+                  "type": "string"
+                },
+                "size": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Size in bytes (files only; omitted for others)",
+                  "title": "Size"
+                },
+                "type": {
+                  "description": "\"file\", \"directory\", \"symlink\", \"reparse_point\" or \"other\"",
+                  "title": "Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "path",
+                "type"
+              ],
+              "title": "EntryInfo",
+              "type": "object"
+            }
+          },
+          "description": "Result of list_directory.",
+          "properties": {
+            "entries": {
+              "items": {
+                "$ref": "#/$defs/EntryInfo"
+              },
+              "title": "Entries",
+              "type": "array"
+            },
+            "has_more": {
+              "title": "Has More",
+              "type": "boolean"
+            },
+            "limit": {
+              "title": "Limit",
+              "type": "integer"
+            },
+            "offset": {
+              "title": "Offset",
+              "type": "integer"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "returned": {
+              "title": "Returned",
+              "type": "integer"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "entries",
+            "offset",
+            "limit",
+            "returned",
+            "has_more"
+          ],
+          "title": "ListDirectoryResult",
+          "type": "object"
+        }
+      }
+    ],
+    "list_workdirs": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "List all configured workdirs with their descriptions.\n\n        Use this first to discover which workdirs are available before\n        exploring the filesystem.\n        ",
+        "inputSchema": {
+          "properties": {},
+          "title": "list_workdirsArguments",
+          "type": "object"
+        },
+        "name": "list_workdirs",
+        "outputSchema": {
+          "$defs": {
+            "WorkdirInfo": {
+              "description": "One enabled workdir as presented to the agent.",
+              "properties": {
+                "access": {
+                  "default": "read-only",
+                  "description": "\"read-only\" or \"read-write\"; mutation tools only work in read-write",
+                  "title": "Access",
+                  "type": "string"
+                },
+                "agent_mode": {
+                  "default": "disabled",
+                  "description": "Effective Agent policy: \"disabled\", \"review\" or \"workspace-write\"",
+                  "title": "Agent Mode",
+                  "type": "string"
+                },
+                "agent_runtimes": {
+                  "description": "Effective native Agent runtimes allowlisted for this workdir",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Agent Runtimes",
+                  "type": "array"
+                },
+                "alias": {
+                  "description": "Logical workdir name used in tool calls",
+                  "title": "Alias",
+                  "type": "string"
+                },
+                "binary_transfer": {
+                  "default": false,
+                  "description": "Whether binary download/upload tools are authorized for this workdir",
+                  "title": "Binary Transfer",
+                  "type": "boolean"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Optional human-provided description of the workdir",
+                  "title": "Description"
+                },
+                "repo_ops": {
+                  "default": false,
+                  "description": "Whether deterministic non-Agent repository operations are enabled",
+                  "title": "Repo Ops",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "alias"
+              ],
+              "title": "WorkdirInfo",
+              "type": "object"
+            }
+          },
+          "description": "Result of list_workdirs.",
+          "properties": {
+            "workdirs": {
+              "items": {
+                "$ref": "#/$defs/WorkdirInfo"
+              },
+              "title": "Workdirs",
+              "type": "array"
+            }
+          },
+          "required": [
+            "workdirs"
+          ],
+          "title": "ListWorkdirsResult",
+          "type": "object"
+        }
+      }
+    ],
+    "push_repo": [
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true,
+          "readOnlyHint": false
+        },
+        "description": "Push exactly the current branch to its configured upstream branch.\n\n        The host derives the upstream remote/ref and supplies an exact fixed refspec. No remote,\n        ref, force option, credential or arbitrary Git argument is accepted from the caller.\n        This never starts an Agent runtime.\n        ",
+        "inputSchema": {
+          "properties": {
+            "workdir": {
+              "description": "Repo Ops-enabled read-write workdir alias",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir"
+          ],
+          "title": "push_repoArguments",
+          "type": "object"
+        },
+        "name": "push_repo",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "push_repoDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "read_agent_task_events": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Read cursor-paginated normalized task events; never raw provider stdout/stderr.",
+        "inputSchema": {
+          "properties": {
+            "after_event_id": {
+              "default": 0,
+              "description": "Return events after this cursor",
+              "minimum": 0,
+              "title": "After Event Id",
+              "type": "integer"
+            },
+            "limit": {
+              "default": 100,
+              "description": "Maximum normalized events",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "task_id": {
+              "description": "ServerFS Agent task identifier",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "title": "read_agent_task_eventsArguments",
+          "type": "object"
+        },
+        "name": "read_agent_task_events",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "read_agent_task_eventsDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "read_agent_task_result": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Read an exact byte-ranged UTF-8 chunk from a spooled Agent result.",
+        "inputSchema": {
+          "properties": {
+            "max_bytes": {
+              "default": 65536,
+              "description": "Maximum UTF-8 bytes to return",
+              "maximum": 65536,
+              "minimum": 1,
+              "title": "Max Bytes",
+              "type": "integer"
+            },
+            "offset_bytes": {
+              "default": 0,
+              "description": "UTF-8 result byte offset",
+              "minimum": 0,
+              "title": "Offset Bytes",
+              "type": "integer"
+            },
+            "task_id": {
+              "description": "ServerFS Agent task identifier",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "title": "read_agent_task_resultArguments",
+          "type": "object"
+        },
+        "name": "read_agent_task_result",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "read_agent_task_resultDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "read_text_file": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Read a UTF-8 text file with line-based pagination.\n\n        Reads at most max_lines lines and a server-configured byte budget.\n        Use next_start_line to continue reading.\n        ",
+        "inputSchema": {
+          "properties": {
+            "max_lines": {
+              "default": 200,
+              "description": "Maximum lines to return",
+              "minimum": 1,
+              "title": "Max Lines",
+              "type": "integer"
+            },
+            "path": {
+              "description": "File path relative to the workdir root",
+              "title": "Path",
+              "type": "string"
+            },
+            "start_line": {
+              "default": 1,
+              "description": "1-based first line to read",
+              "minimum": 1,
+              "title": "Start Line",
+              "type": "integer"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path"
+          ],
+          "title": "read_text_fileArguments",
+          "type": "object"
+        },
+        "name": "read_text_file",
+        "outputSchema": {
+          "description": "Result of read_text_file.",
+          "properties": {
+            "bytes_returned": {
+              "title": "Bytes Returned",
+              "type": "integer"
+            },
+            "content": {
+              "title": "Content",
+              "type": "string"
+            },
+            "end_line": {
+              "title": "End Line",
+              "type": "integer"
+            },
+            "has_more": {
+              "title": "Has More",
+              "type": "boolean"
+            },
+            "next_start_line": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Line number to pass as start_line to continue reading",
+              "title": "Next Start Line"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "revision": {
+              "description": "Opaque revision of the file content; pass it as expected_revision to edit_text_file. Stable across pages of the same unchanged file.",
+              "title": "Revision",
+              "type": "string"
+            },
+            "start_line": {
+              "title": "Start Line",
+              "type": "integer"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "start_line",
+            "end_line",
+            "content",
+            "bytes_returned",
+            "has_more",
+            "revision"
+          ],
+          "title": "ReadTextFileResult",
+          "type": "object"
+        }
+      }
+    ],
+    "respond_agent_approval": [
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": true,
+          "openWorldHint": true,
+          "readOnlyHint": false
+        },
+        "description": "Resolve one pending Agent approval; no permanent approvals are exposed.",
+        "inputSchema": {
+          "properties": {
+            "decision": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "approve_once",
+                    "approve_session",
+                    "deny",
+                    "cancel_task"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Decision offered by a native runtime approval",
+              "title": "Decision"
+            },
+            "granted_permission_ids": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional subset of permission IDs from the pending request",
+              "title": "Granted Permission Ids"
+            },
+            "option_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Exact option_id offered by an ACP approval request",
+              "title": "Option Id"
+            },
+            "request_id": {
+              "description": "Pending approval request identifier",
+              "title": "Request Id",
+              "type": "string"
+            },
+            "task_id": {
+              "description": "ServerFS Agent task identifier",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "request_id"
+          ],
+          "title": "respond_agent_approvalArguments",
+          "type": "object"
+        },
+        "name": "respond_agent_approval",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "respond_agent_approvalDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "run_repo_action": [
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true,
+          "readOnlyHint": false
+        },
+        "description": "Run one fixed administrator-configured repository action.\n\n        The executable and base argv are not request parameters. No shell is used. Named\n        actions require a read-write workdir and always take the host writer lease, including\n        logically read-only checks, so integrity verification cannot race ServerFS/Agent writes.\n        A path is accepted only when that action declares a path argument and must pass the\n        same ServerFS path policy as filesystem tools. Built-in release actions instead\n        accept only release_tag, validate semver, and fix HEAD/repository/workflow internally.\n        Unknown parameters such as force, commit, remote or workflow are rejected.\n        ",
+        "inputSchema": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "description": "Administrator-configured named repository action",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+              "title": "Action",
+              "type": "string"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional workdir-relative path accepted only by path actions",
+              "title": "Path"
+            },
+            "release_tag": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Release action only: vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-beta.N",
+              "title": "Release Tag"
+            },
+            "workdir": {
+              "description": "Repo Ops-enabled workdir alias",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "action"
+          ],
+          "title": "run_repo_actionArguments",
+          "type": "object"
+        },
+        "name": "run_repo_action",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "run_repo_actionDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "search_text": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Search text file contents for a literal string (not regex).\n\n        Uses ripgrep. UTF-8 text files are searched; oversized files are\n        skipped. Provide a glob like \"*.py\" to restrict file names. The\n        result limit is global: the search stops as soon as enough\n        policy-valid matches are found.\n        ",
+        "inputSchema": {
+          "properties": {
+            "case_sensitive": {
+              "default": true,
+              "description": "Whether matching is case-sensitive",
+              "title": "Case Sensitive",
+              "type": "boolean"
+            },
+            "glob": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional glob filter, e.g. \"*.py\"",
+              "title": "Glob"
+            },
+            "limit": {
+              "default": 50,
+              "description": "Maximum matches to return (server default applies if omitted)",
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "path": {
+              "default": "",
+              "description": "Directory path relative to the workdir root",
+              "title": "Path",
+              "type": "string"
+            },
+            "query": {
+              "description": "Literal text to search for (not a regex)",
+              "title": "Query",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "query"
+          ],
+          "title": "search_textArguments",
+          "type": "object"
+        },
+        "name": "search_text",
+        "outputSchema": {
+          "$defs": {
+            "TextMatch": {
+              "description": "One search_text match.",
+              "properties": {
+                "line": {
+                  "description": "1-based line number of the match",
+                  "title": "Line",
+                  "type": "integer"
+                },
+                "path": {
+                  "description": "Workdir-relative path of the matched file",
+                  "title": "Path",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "Content of the matched line",
+                  "title": "Text",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "line",
+                "text"
+              ],
+              "title": "TextMatch",
+              "type": "object"
+            }
+          },
+          "description": "Result of search_text.",
+          "properties": {
+            "matches": {
+              "items": {
+                "$ref": "#/$defs/TextMatch"
+              },
+              "title": "Matches",
+              "type": "array"
+            },
+            "returned": {
+              "title": "Returned",
+              "type": "integer"
+            },
+            "truncated": {
+              "title": "Truncated",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "matches",
+            "returned",
+            "truncated"
+          ],
+          "title": "SearchTextResult",
+          "type": "object"
+        }
+      }
+    ],
+    "send_agent_message": [
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true,
+          "readOnlyHint": false
+        },
+        "description": "Steer an active task with a narrow follow-up when live_steer is supported.\n\n        Keep steering within the task's existing authorized objective and mutation scope.\n        If the requested work is a distinct objective, submit a new atomic task instead.\n        For a terminal task, submit a new atomic task. Use continue_from_task_id only on\n        supported v1 endpoints, never on signed-v2 Core endpoints. Runtimes such as\n        Claude or Qoder may reject live steering even while active.\n        ",
+        "inputSchema": {
+          "properties": {
+            "message": {
+              "description": "Narrow follow-up for the active task; include only information required to steer the current objective without expanding its authorized scope",
+              "title": "Message",
+              "type": "string"
+            },
+            "task_id": {
+              "description": "Active ServerFS Agent task identifier",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "message"
+          ],
+          "title": "send_agent_messageArguments",
+          "type": "object"
+        },
+        "name": "send_agent_message",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "send_agent_messageDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "stat_file": [
+      {
+        "annotations": {
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Get metadata for one file or directory.\n\n        Returns type (file/directory/symlink/other), size, modified time\n        (RFC 3339 UTC) and best-effort MIME type. A symlink as the FINAL\n        component is reported as type \"symlink\" (target never revealed);\n        symlinks in parent components are rejected.\n        ",
+        "inputSchema": {
+          "properties": {
+            "path": {
+              "description": "Path relative to the workdir root",
+              "title": "Path",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path"
+          ],
+          "title": "stat_fileArguments",
+          "type": "object"
+        },
+        "name": "stat_file",
+        "outputSchema": {
+          "description": "Result of stat_file.",
+          "properties": {
+            "mime_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Best-effort MIME type (files only)",
+              "title": "Mime Type"
+            },
+            "modified_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last modification time as RFC 3339 UTC",
+              "title": "Modified At"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "revision": {
+              "description": "Opaque revision of this object (metadata included); pass it as expected_revision to edit_text_file / delete_file / delete_directory.",
+              "title": "Revision",
+              "type": "string"
+            },
+            "size": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Size in bytes (files only; omitted for others)",
+              "title": "Size"
+            },
+            "type": {
+              "description": "\"file\", \"directory\", \"symlink\", \"reparse_point\" or \"other\"",
+              "title": "Type",
+              "type": "string"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "type",
+            "revision"
+          ],
+          "title": "StatFileResult",
+          "type": "object"
+        }
+      }
+    ],
+    "submit_agent_task": [
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true,
+          "readOnlyHint": false
+        },
+        "description": "Submit one narrow authorized Agent objective and return a task handle.\n\n        Keep the task atomic: provide only the context required for the objective,\n        explicitly bound allowed mutations and stop conditions, and prefer existing\n        structured project workflows over embedding unrelated shell/network/security\n        implementation detail. This guidance reduces ambiguity and accidental scope\n        expansion; it does not weaken or bypass provider safety checks.\n\n        The call never waits for provider completion. Poll get_agent_task or\n        read_agent_task_events. On signed-v2 Core endpoints, omit continue_from_task_id\n        and idempotency_key. Use list_agent_tasks on the authorized workdir to rediscover\n        an existing task after an uncertain submission or client restart. Submit a new\n        atomic task for distinct work; native session continuation is available only on\n        supported v1 endpoints.\n        ",
+        "inputSchema": {
+          "properties": {
+            "continue_from_task_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Prior terminal ServerFS Agent task to resume, only on supported v1 endpoints. Omit on signed-v2 Core endpoints; continuation is not supported.",
+              "title": "Continue From Task Id"
+            },
+            "correlation_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional opaque correlation identifier (UTF-8, at most 256 bytes); stored as metadata only and never forwarded as provider instructions",
+              "title": "Correlation Id"
+            },
+            "idempotency_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional retry key for one logical submission on supported v1 endpoints. Omit on signed-v2 Core endpoints; discover tasks rather than retry blindly.",
+              "title": "Idempotency Key"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional provider-native model identifier for this task only. Omit it to preserve the runtime's native default or resumed-session model.",
+              "title": "Model"
+            },
+            "path": {
+              "default": "",
+              "description": "Relative starting directory inside the workdir",
+              "title": "Path",
+              "type": "string"
+            },
+            "profile": {
+              "default": "workspace-write",
+              "description": "Provider-neutral execution profile; native Codex/Claude/Qoder require workspace-write",
+              "enum": [
+                "review",
+                "workspace-write"
+              ],
+              "title": "Profile",
+              "type": "string"
+            },
+            "prompt": {
+              "description": "One narrow authorized objective for the delegated Agent. Include only the context needed to complete that objective, state the allowed mutation scope and stop conditions, and prefer structured project actions over unrelated implementation detail.",
+              "title": "Prompt",
+              "type": "string"
+            },
+            "runtime": {
+              "description": "Configured Agent runtime: codex, claude, qoder, or configured acp-<profile-id>",
+              "maxLength": 32,
+              "minLength": 4,
+              "title": "Runtime",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias where delegation starts",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "runtime",
+            "workdir",
+            "prompt"
+          ],
+          "title": "submit_agent_taskArguments",
+          "type": "object"
+        },
+        "name": "submit_agent_task",
+        "outputSchema": {
+          "additionalProperties": true,
+          "title": "submit_agent_taskDictOutput",
+          "type": "object"
+        }
+      }
+    ],
+    "upload_binary_file": [
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "description": "Create or revision-guardedly replace one regular file from raw bytes.\n\n            Binary transfer must be enabled for the selected read-write\n            workdir. overwrite=false is create-only and never replaces an\n            existing path. overwrite=true requires expected_revision and\n            atomically replaces exactly the regular file at that revision,\n            preserving metadata and rejecting multiple hard links.\n            ",
+        "inputSchema": {
+          "$defs": {
+            "OpenAIFileInput": {
+              "additionalProperties": false,
+              "description": "OpenAI/ChatGPT file parameter resolved by the client platform.",
+              "properties": {
+                "download_url": {
+                  "description": "Temporary HTTPS download URL supplied by ChatGPT",
+                  "title": "Download Url",
+                  "type": "string"
+                },
+                "file_id": {
+                  "description": "Opaque ChatGPT/OpenAI file identifier",
+                  "title": "File Id",
+                  "type": "string"
+                },
+                "file_name": {
+                  "default": null,
+                  "description": "Optional client-reported file name",
+                  "title": "File Name",
+                  "type": "string"
+                },
+                "mime_type": {
+                  "default": null,
+                  "description": "Optional client-reported MIME type",
+                  "title": "Mime Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "download_url",
+                "file_id"
+              ],
+              "title": "OpenAIFileInput",
+              "type": "object"
+            }
+          },
+          "properties": {
+            "data_base64": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional complete file payload as strict RFC 4648 base64; provide exactly one of data_base64 or file",
+              "title": "Data Base64"
+            },
+            "expected_revision": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Required only when overwrite=true; current revision from stat_file or download_binary_file",
+              "title": "Expected Revision"
+            },
+            "file": {
+              "$ref": "#/$defs/OpenAIFileInput",
+              "default": null,
+              "description": "Optional ChatGPT/OpenAI file parameter; provide exactly one of data_base64 or file"
+            },
+            "overwrite": {
+              "default": false,
+              "description": "False creates a new file; true replaces one existing regular file and requires expected_revision",
+              "title": "Overwrite",
+              "type": "boolean"
+            },
+            "path": {
+              "description": "Path of the new file, relative to the workdir root",
+              "title": "Path",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path"
+          ],
+          "title": "upload_binary_fileArguments",
+          "type": "object"
+        },
+        "name": "upload_binary_file",
+        "outputSchema": {
+          "description": "Result of binary create or revision-guarded replacement.",
+          "properties": {
+            "bytes_written": {
+              "title": "Bytes Written",
+              "type": "integer"
+            },
+            "created": {
+              "title": "Created",
+              "type": "boolean"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "replaced": {
+              "default": false,
+              "title": "Replaced",
+              "type": "boolean"
+            },
+            "revision": {
+              "description": "Revision of the published file",
+              "title": "Revision",
+              "type": "string"
+            },
+            "revision_before": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Previous revision when an existing file was replaced",
+              "title": "Revision Before"
+            },
+            "sha256": {
+              "description": "SHA-256 hex digest of the uploaded raw bytes",
+              "title": "Sha256",
+              "type": "string"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "created",
+            "bytes_written",
+            "sha256",
+            "revision"
+          ],
+          "title": "UploadBinaryFileResult",
+          "type": "object"
+        }
+      },
+      {
+        "_meta": {
+          "openai/fileParams": [
+            "file"
+          ]
+        },
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "description": "Create or revision-guardedly replace one regular file from raw bytes.\n\n            Binary transfer must be enabled for the selected read-write\n            workdir. overwrite=false is create-only and never replaces an\n            existing path. overwrite=true requires expected_revision and\n            atomically replaces exactly the regular file at that revision,\n            preserving metadata and rejecting multiple hard links.\n            ",
+        "inputSchema": {
+          "$defs": {
+            "OpenAIFileInput": {
+              "additionalProperties": false,
+              "description": "OpenAI/ChatGPT file parameter resolved by the client platform.",
+              "properties": {
+                "download_url": {
+                  "description": "Temporary HTTPS download URL supplied by ChatGPT",
+                  "title": "Download Url",
+                  "type": "string"
+                },
+                "file_id": {
+                  "description": "Opaque ChatGPT/OpenAI file identifier",
+                  "title": "File Id",
+                  "type": "string"
+                },
+                "file_name": {
+                  "default": null,
+                  "description": "Optional client-reported file name",
+                  "title": "File Name",
+                  "type": "string"
+                },
+                "mime_type": {
+                  "default": null,
+                  "description": "Optional client-reported MIME type",
+                  "title": "Mime Type",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "download_url",
+                "file_id"
+              ],
+              "title": "OpenAIFileInput",
+              "type": "object"
+            }
+          },
+          "properties": {
+            "data_base64": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Optional complete file payload as strict RFC 4648 base64; provide exactly one of data_base64 or file",
+              "title": "Data Base64"
+            },
+            "expected_revision": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Required only when overwrite=true; current revision from stat_file or download_binary_file",
+              "title": "Expected Revision"
+            },
+            "file": {
+              "$ref": "#/$defs/OpenAIFileInput",
+              "default": null,
+              "description": "Optional ChatGPT/OpenAI file parameter; provide exactly one of data_base64 or file"
+            },
+            "overwrite": {
+              "default": false,
+              "description": "False creates a new file; true replaces one existing regular file and requires expected_revision",
+              "title": "Overwrite",
+              "type": "boolean"
+            },
+            "path": {
+              "description": "Path of the new file, relative to the workdir root",
+              "title": "Path",
+              "type": "string"
+            },
+            "workdir": {
+              "description": "Workdir alias to operate on",
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path"
+          ],
+          "title": "upload_binary_fileArguments",
+          "type": "object"
+        },
+        "name": "upload_binary_file",
+        "outputSchema": {
+          "description": "Result of binary create or revision-guarded replacement.",
+          "properties": {
+            "bytes_written": {
+              "title": "Bytes Written",
+              "type": "integer"
+            },
+            "created": {
+              "title": "Created",
+              "type": "boolean"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "replaced": {
+              "default": false,
+              "title": "Replaced",
+              "type": "boolean"
+            },
+            "revision": {
+              "description": "Revision of the published file",
+              "title": "Revision",
+              "type": "string"
+            },
+            "revision_before": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Previous revision when an existing file was replaced",
+              "title": "Revision Before"
+            },
+            "sha256": {
+              "description": "SHA-256 hex digest of the uploaded raw bytes",
+              "title": "Sha256",
+              "type": "string"
+            },
+            "workdir": {
+              "title": "Workdir",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workdir",
+            "path",
+            "created",
+            "bytes_written",
+            "sha256",
+            "revision"
+          ],
+          "title": "UploadBinaryFileResult",
+          "type": "object"
+        }
+      }
+    ]
+  },
+  "description": "Registered tool definitions indexed by name and variant; synthetic workdir, no execution.",
+  "format_version": 1,
+  "mcp_sdk_version": "2.3.0",
+  "source_sha": "fd1019498b281cdeb8c5805242f1a71222f5eebd",
+  "variants": {
+    "binary=0,agent=0,repo=0,ingress=0": {
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "read_text_file": 0,
+      "search_text": 0,
+      "stat_file": 0
+    },
+    "binary=0,agent=0,repo=1,ingress=0": {
+      "commit_repo_changes": 0,
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "inspect_repo": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "push_repo": 0,
+      "read_text_file": 0,
+      "run_repo_action": 0,
+      "search_text": 0,
+      "stat_file": 0
+    },
+    "binary=0,agent=1,repo=0,ingress=0": {
+      "answer_agent_question": 0,
+      "cancel_agent_task": 0,
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "get_agent_task": 0,
+      "list_agent_models": 0,
+      "list_agent_runtimes": 0,
+      "list_agent_tasks": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "read_agent_task_events": 0,
+      "read_agent_task_result": 0,
+      "read_text_file": 0,
+      "respond_agent_approval": 0,
+      "search_text": 0,
+      "send_agent_message": 0,
+      "stat_file": 0,
+      "submit_agent_task": 0
+    },
+    "binary=0,agent=1,repo=1,ingress=0": {
+      "answer_agent_question": 0,
+      "cancel_agent_task": 0,
+      "commit_repo_changes": 0,
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "get_agent_task": 0,
+      "inspect_repo": 0,
+      "list_agent_models": 0,
+      "list_agent_runtimes": 0,
+      "list_agent_tasks": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "push_repo": 0,
+      "read_agent_task_events": 0,
+      "read_agent_task_result": 0,
+      "read_text_file": 0,
+      "respond_agent_approval": 0,
+      "run_repo_action": 0,
+      "search_text": 0,
+      "send_agent_message": 0,
+      "stat_file": 0,
+      "submit_agent_task": 0
+    },
+    "binary=1,agent=0,repo=0,ingress=0": {
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "download_binary_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "read_text_file": 0,
+      "search_text": 0,
+      "stat_file": 0,
+      "upload_binary_file": 0
+    },
+    "binary=1,agent=0,repo=0,ingress=1": {
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "download_binary_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "read_text_file": 0,
+      "search_text": 0,
+      "stat_file": 0,
+      "upload_binary_file": 1
+    },
+    "binary=1,agent=0,repo=1,ingress=0": {
+      "commit_repo_changes": 0,
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "download_binary_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "inspect_repo": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "push_repo": 0,
+      "read_text_file": 0,
+      "run_repo_action": 0,
+      "search_text": 0,
+      "stat_file": 0,
+      "upload_binary_file": 0
+    },
+    "binary=1,agent=0,repo=1,ingress=1": {
+      "commit_repo_changes": 0,
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "download_binary_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "inspect_repo": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "push_repo": 0,
+      "read_text_file": 0,
+      "run_repo_action": 0,
+      "search_text": 0,
+      "stat_file": 0,
+      "upload_binary_file": 1
+    },
+    "binary=1,agent=1,repo=0,ingress=0": {
+      "answer_agent_question": 0,
+      "cancel_agent_task": 0,
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "download_binary_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "get_agent_task": 0,
+      "list_agent_models": 0,
+      "list_agent_runtimes": 0,
+      "list_agent_tasks": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "read_agent_task_events": 0,
+      "read_agent_task_result": 0,
+      "read_text_file": 0,
+      "respond_agent_approval": 0,
+      "search_text": 0,
+      "send_agent_message": 0,
+      "stat_file": 0,
+      "submit_agent_task": 0,
+      "upload_binary_file": 0
+    },
+    "binary=1,agent=1,repo=0,ingress=1": {
+      "answer_agent_question": 0,
+      "cancel_agent_task": 0,
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "download_binary_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "get_agent_task": 0,
+      "list_agent_models": 0,
+      "list_agent_runtimes": 0,
+      "list_agent_tasks": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "read_agent_task_events": 0,
+      "read_agent_task_result": 0,
+      "read_text_file": 0,
+      "respond_agent_approval": 0,
+      "search_text": 0,
+      "send_agent_message": 0,
+      "stat_file": 0,
+      "submit_agent_task": 0,
+      "upload_binary_file": 1
+    },
+    "binary=1,agent=1,repo=1,ingress=0": {
+      "answer_agent_question": 0,
+      "cancel_agent_task": 0,
+      "commit_repo_changes": 0,
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "download_binary_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "get_agent_task": 0,
+      "inspect_repo": 0,
+      "list_agent_models": 0,
+      "list_agent_runtimes": 0,
+      "list_agent_tasks": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "push_repo": 0,
+      "read_agent_task_events": 0,
+      "read_agent_task_result": 0,
+      "read_text_file": 0,
+      "respond_agent_approval": 0,
+      "run_repo_action": 0,
+      "search_text": 0,
+      "send_agent_message": 0,
+      "stat_file": 0,
+      "submit_agent_task": 0,
+      "upload_binary_file": 0
+    },
+    "binary=1,agent=1,repo=1,ingress=1": {
+      "answer_agent_question": 0,
+      "cancel_agent_task": 0,
+      "commit_repo_changes": 0,
+      "create_directory": 0,
+      "create_text_file": 0,
+      "delete_directory": 0,
+      "delete_file": 0,
+      "download_binary_file": 0,
+      "edit_text_file": 0,
+      "find_files": 0,
+      "get_agent_task": 0,
+      "inspect_repo": 0,
+      "list_agent_models": 0,
+      "list_agent_runtimes": 0,
+      "list_agent_tasks": 0,
+      "list_directory": 0,
+      "list_workdirs": 0,
+      "push_repo": 0,
+      "read_agent_task_events": 0,
+      "read_agent_task_result": 0,
+      "read_text_file": 0,
+      "respond_agent_approval": 0,
+      "run_repo_action": 0,
+      "search_text": 0,
+      "send_agent_message": 0,
+      "stat_file": 0,
+      "submit_agent_task": 0,
+      "upload_binary_file": 1
+    }
+  }
+}

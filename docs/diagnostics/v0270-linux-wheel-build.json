@@ -1,0 +1,24 @@
+{
+  "scope": "Linux minimal independent build contexts, offline",
+  "results": [
+    {
+      "package": "serverfs_mcp",
+      "wheel": "serverfs_mcp-0.26.0-py3-none-any.whl",
+      "version": "0.26.0",
+      "sha256": "ed225f7e24fdee8c2d340f3cdd073efa4a57162a0375d0b315b7d8cd35084d5a",
+      "members": 144,
+      "lock_check": "pass",
+      "wheel_build": "pass"
+    },
+    {
+      "package": "serverfs_agent_bridge",
+      "wheel": "serverfs_agent_bridge-0.26.0-py3-none-any.whl",
+      "version": "0.26.0",
+      "sha256": "373aa2ff48d133e8929b8cf291ceb27087f6e2169c4ed9784b936630b0a8a93b",
+      "members": 51,
+      "lock_check": "pass",
+      "wheel_build": "pass"
+    }
+  ],
+  "limitations": "Not Docker image, installed wheel, full test suite, or native three-platform acceptance."
+}

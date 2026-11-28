@@ -26,7 +26,7 @@ HOST_PATH = re.compile(
 
 
 def _read_project_version() -> str:
-    with (ROOT / "pyproject.toml").open("rb") as file:
+    with (ROOT / "linux/pyproject.toml").open("rb") as file:
         return tomllib.load(file)["project"]["version"]
 
 
@@ -48,9 +48,9 @@ def validate_manifest(manifest: dict[str, Any] | None = None) -> None:
     version = _read_project_version()
     package = _single_package(data)
     if data["version"] != version or package.get("version") != version:
-        raise ValueError("server.json and package versions must match root project version")
+        raise ValueError("server.json and package versions must match Linux Core project version")
     if package.get("identifier") != f"{OCI_REPOSITORY}:{version}":
-        raise ValueError("OCI identifier must use the exact root project version tag")
+        raise ValueError("OCI identifier must use the exact Linux Core project version tag")
     if re.search(r":(?:latest|edge)$", package["identifier"]):
         raise ValueError("mutable OCI tags are forbidden")
     if data["name"] != OCI_NAME or _docker_label() != OCI_NAME:
@@ -70,7 +70,7 @@ def _single_package(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _docker_label() -> str | None:
-    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    dockerfile = (ROOT / "linux/Dockerfile").read_text(encoding="utf-8")
     match = re.search(rf'^LABEL\s+{re.escape(OCI_LABEL)}="([^"]+)"\s*$', dockerfile, re.MULTILINE)
     return match.group(1) if match else None
 

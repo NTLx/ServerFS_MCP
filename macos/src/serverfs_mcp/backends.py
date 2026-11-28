@@ -1,0 +1,190 @@
+"""macOS filesystem backend contract.
+
+Keep filesystem policy and public MCP models separate from kernel primitives.
+Every channel uses a WorkdirSession bound to an already authorized workdir.
+DarwinBackend uses the native Darwin filesystem implementation and platform gate.
+
+The backend is imported lazily and only on its supported host. Revision tokens
+are opaque, errors are normalized as BackendError, and session methods accept
+policy-validated ResolvedPath values rather than absolute host paths.
+"""
+
+from __future__ import annotations
+
+import sys
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from .binary_payload import BinaryRead
+    from .models import (
+        CreateDirectoryResult,
+        CreateTextFileResult,
+        DeleteDirectoryResult,
+        DeleteFileResult,
+        EditTextFileResult,
+        EntryInfo,
+        StatFileResult,
+        TextEdit,
+        TextMatch,
+        UploadBinaryFileResult,
+    )
+    from .paths import ResolvedPath
+    from .workdirs import Workdir
+
+
+class BackendError(Exception):
+    """Backend-raised failure that the tool layer maps to a coded ToolError.
+
+    ``code``/``message`` are the agent-facing contract; backends must never
+    leak host paths, raw NTSTATUS/errno strings or object identifiers here.
+    """
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+class TextPage:
+    """Plain-data result of one paginated text read (no FDs, no stat)."""
+
+    __slots__ = (
+        "revision",
+        "lines",
+        "bytes_returned",
+        "end_line",
+        "has_more",
+        "has_nul",
+        "has_bom",
+    )
+
+    def __init__(
+        self,
+        *,
+        revision: str,
+        lines: list[bytes],
+        bytes_returned: int,
+        end_line: int,
+        has_more: bool,
+        has_nul: bool,
+        has_bom: bool,
+    ):
+        self.revision = revision
+        self.lines = lines
+        self.bytes_returned = bytes_returned
+        self.end_line = end_line
+        self.has_more = has_more
+        self.has_nul = has_nul
+        self.has_bom = has_bom
+
+
+class WorkdirSession(Protocol):
+    """The capability-scoped operations one workdir exposes.
+
+    The Linux implementation opens the root per operation exactly as v0.9
+    did; a native backend may retain the root capability for the process
+    lifetime (§10.1) — that difference stays invisible behind this shape.
+    Every method is part of the contract a new platform kernel must
+    implement; ``tests/test_backends.py`` enforces protocol coverage.
+    """
+
+    # ---- read channels ----
+
+    def stat(self, resolved: ResolvedPath) -> StatFileResult: ...
+    def list(
+        self, resolved: ResolvedPath, *, offset: int, limit: int
+    ) -> tuple[list[EntryInfo], bool]: ...
+    def find(
+        self, resolved: ResolvedPath, *, pattern: str, limit: int, max_walk_entries: int
+    ) -> tuple[list[str], bool]: ...
+    def search(
+        self,
+        resolved: ResolvedPath,
+        *,
+        query: str,
+        glob: str | None,
+        case_sensitive: bool,
+        limit: int,
+        timeout_seconds: float,
+        max_file_bytes: int,
+    ) -> tuple[list[TextMatch], bool]: ...
+    def read_text_page(
+        self,
+        resolved: ResolvedPath,
+        *,
+        start_line: int,
+        max_lines: int,
+        max_read_bytes: int,
+        binary_sample: int,
+    ) -> TextPage: ...
+    def read_binary(self, resolved: ResolvedPath, *, max_bytes: int) -> BinaryRead: ...
+
+    def validate_directory(self, resolved: ResolvedPath) -> None:
+        """Open-and-close one directory to surface PATH/NOT_DIRECTORY errors
+        before the channel work starts (v0.9 find/search pre-open)."""
+        ...
+
+    # ---- mutation channels ----
+
+    def create_file(
+        self, resolved: ResolvedPath, content: str, *, max_write_bytes: int
+    ) -> CreateTextFileResult: ...
+    def replace_file(
+        self,
+        resolved: ResolvedPath,
+        expected_revision: str,
+        edits: list[TextEdit],
+        *,
+        max_write_bytes: int,
+        max_edits_per_call: int,
+    ) -> EditTextFileResult: ...
+    def delete_file(self, resolved: ResolvedPath, expected_revision: str) -> DeleteFileResult: ...
+    def create_binary_file(
+        self, resolved: ResolvedPath, data: bytes, *, max_binary_bytes: int
+    ) -> UploadBinaryFileResult: ...
+    def replace_binary_file(
+        self,
+        resolved: ResolvedPath,
+        data: bytes,
+        expected_revision: str,
+        *,
+        max_binary_bytes: int,
+    ) -> UploadBinaryFileResult: ...
+    def create_directory(self, resolved: ResolvedPath) -> CreateDirectoryResult: ...
+    def delete_directory(
+        self, resolved: ResolvedPath, expected_revision: str
+    ) -> DeleteDirectoryResult: ...
+
+
+class FilesystemBackend(Protocol):
+    """Per-platform filesystem kernel factory.
+
+    ``open_session`` is the only entry the product layer uses. It performs
+    no policy validation — the caller passes an already-authorized workdir
+    and receives a session bound to that workdir's trusted root.
+    """
+
+    def open_session(self, workdir: Workdir) -> WorkdirSession: ...
+
+
+def get_backend() -> FilesystemBackend:
+    """Load only the macOS filesystem kernel; reject other hosts."""
+    if sys.platform == "darwin":
+        from .darwin_platform import ensure_supported_darwin
+
+        ensure_supported_darwin()
+        from .darwin_backend import DarwinBackend
+
+        return DarwinBackend()
+    raise BackendError(
+        "NATIVE_PLATFORM_UNSUPPORTED",
+        f"no ServerFS filesystem backend for platform {sys.platform!r}",
+    )
+
+__all__ = [
+    "BackendError",
+    "FilesystemBackend",
+    "TextPage",
+    "WorkdirSession",
+    "get_backend",
+]

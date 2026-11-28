@@ -1,0 +1,275 @@
+{
+  "baseline": "fd1019498b281cdeb8c5805242f1a71222f5eebd",
+  "deleted_duplicates": [
+    {
+      "removed": "linux/agent_bridge/tests/test_acp_windows_process.py",
+      "retained_owner": "windows/agent_bridge/tests/test_acp_windows_process.py",
+      "sha256": "142a256fb4e9ba729f5f7525912e0ec8f2eb111805279bca2be0ef4c2a2244c0"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_acp_windows_process.py",
+      "retained_owner": "windows/agent_bridge/tests/test_acp_windows_process.py",
+      "sha256": "142a256fb4e9ba729f5f7525912e0ec8f2eb111805279bca2be0ef4c2a2244c0"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_codex_windows_runtime.py",
+      "retained_owner": "windows/agent_bridge/tests/test_codex_windows_runtime.py",
+      "sha256": "759eb9c309ac2d556b70847f7b80d7b9567553385cfe34a0283449251b716f6d"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_codex_windows_runtime.py",
+      "retained_owner": "windows/agent_bridge/tests/test_codex_windows_runtime.py",
+      "sha256": "759eb9c309ac2d556b70847f7b80d7b9567553385cfe34a0283449251b716f6d"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_core_grants_macos_ipc.py",
+      "retained_owner": "macos/agent_bridge/tests/test_core_grants_macos_ipc.py",
+      "sha256": "1c29da69a63f02cb135b58a38bc240c260200c2b22891f4cd4d21883684a7787"
+    },
+    {
+      "removed": "windows/agent_bridge/tests/test_core_grants_macos_ipc.py",
+      "retained_owner": "macos/agent_bridge/tests/test_core_grants_macos_ipc.py",
+      "sha256": "1c29da69a63f02cb135b58a38bc240c260200c2b22891f4cd4d21883684a7787"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_dangling_reparse.py",
+      "retained_owner": "windows/agent_bridge/tests/test_dangling_reparse.py",
+      "sha256": "d9c3d109a01367fb8b70de1f3e1c6f586385178b10c580ef67ecbd37451cccd6"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_dangling_reparse.py",
+      "retained_owner": "windows/agent_bridge/tests/test_dangling_reparse.py",
+      "sha256": "d9c3d109a01367fb8b70de1f3e1c6f586385178b10c580ef67ecbd37451cccd6"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_darwin_seams.py",
+      "retained_owner": "macos/agent_bridge/tests/test_darwin_seams.py",
+      "sha256": "b18d811692d505e7fbc2c32d1a3609b63ce08ddb29cb9782440b4e5aa175a2d6"
+    },
+    {
+      "removed": "windows/agent_bridge/tests/test_darwin_seams.py",
+      "retained_owner": "macos/agent_bridge/tests/test_darwin_seams.py",
+      "sha256": "b18d811692d505e7fbc2c32d1a3609b63ce08ddb29cb9782440b4e5aa175a2d6"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_inspect_state.py",
+      "retained_owner": "windows/agent_bridge/tests/test_inspect_state.py",
+      "sha256": "476ce77255be94370ae7853caabc4acbe5a711835554a2cd27c9a8212b0d8600"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_inspect_state.py",
+      "retained_owner": "windows/agent_bridge/tests/test_inspect_state.py",
+      "sha256": "476ce77255be94370ae7853caabc4acbe5a711835554a2cd27c9a8212b0d8600"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_linux_v0250_core_grants_ipc.py",
+      "retained_owner": "linux/agent_bridge/tests/test_linux_v0250_core_grants_ipc.py",
+      "sha256": "c3154b45a7ac46debbb7cc57acaba0e2470f680a6ff773e00c92672970bce880"
+    },
+    {
+      "removed": "windows/agent_bridge/tests/test_linux_v0250_core_grants_ipc.py",
+      "retained_owner": "linux/agent_bridge/tests/test_linux_v0250_core_grants_ipc.py",
+      "sha256": "c3154b45a7ac46debbb7cc57acaba0e2470f680a6ff773e00c92672970bce880"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_linux_v0250_provision.py",
+      "retained_owner": "linux/agent_bridge/tests/test_linux_v0250_provision.py",
+      "sha256": "d2a8b8e1210ddcd1540b03ee8fa2b215e4ccd563ff0d0919711f9edbcf117408"
+    },
+    {
+      "removed": "windows/agent_bridge/tests/test_linux_v0250_provision.py",
+      "retained_owner": "linux/agent_bridge/tests/test_linux_v0250_provision.py",
+      "sha256": "d2a8b8e1210ddcd1540b03ee8fa2b215e4ccd563ff0d0919711f9edbcf117408"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_linux_v0250_two_core_isolation.py",
+      "retained_owner": "linux/agent_bridge/tests/test_linux_v0250_two_core_isolation.py",
+      "sha256": "1cae2c4d59c8ecaab99be4e0b994750686655c086ce01a9c8bc47429291e9439"
+    },
+    {
+      "removed": "windows/agent_bridge/tests/test_linux_v0250_two_core_isolation.py",
+      "retained_owner": "linux/agent_bridge/tests/test_linux_v0250_two_core_isolation.py",
+      "sha256": "1cae2c4d59c8ecaab99be4e0b994750686655c086ce01a9c8bc47429291e9439"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_linux_v026_preflight.py",
+      "retained_owner": "linux/agent_bridge/tests/test_linux_v026_preflight.py",
+      "sha256": "d13bde719ee7c1ac5ef92eed1e0afdd3a855aeb1b7d5c46a4d03c2517ab7a878"
+    },
+    {
+      "removed": "windows/agent_bridge/tests/test_linux_v026_preflight.py",
+      "retained_owner": "linux/agent_bridge/tests/test_linux_v026_preflight.py",
+      "sha256": "d13bde719ee7c1ac5ef92eed1e0afdd3a855aeb1b7d5c46a4d03c2517ab7a878"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_linux_v026_task_discovery.py",
+      "retained_owner": "linux/agent_bridge/tests/test_linux_v026_task_discovery.py",
+      "sha256": "6db6eea5f3992b8a039e44bfcc30d969f1ac191a0af07783ebdccb2f4896065c"
+    },
+    {
+      "removed": "windows/agent_bridge/tests/test_linux_v026_task_discovery.py",
+      "retained_owner": "linux/agent_bridge/tests/test_linux_v026_task_discovery.py",
+      "sha256": "6db6eea5f3992b8a039e44bfcc30d969f1ac191a0af07783ebdccb2f4896065c"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_macos_owned_config.py",
+      "retained_owner": "macos/agent_bridge/tests/test_macos_owned_config.py",
+      "sha256": "8ea622eeffbcf2f4f11267e800d0ce0f5759e4cc7fe66a6fcb50e3dff5ad22c1"
+    },
+    {
+      "removed": "windows/agent_bridge/tests/test_macos_owned_config.py",
+      "retained_owner": "macos/agent_bridge/tests/test_macos_owned_config.py",
+      "sha256": "8ea622eeffbcf2f4f11267e800d0ce0f5759e4cc7fe66a6fcb50e3dff5ad22c1"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_private_state_dangling_reparse.py",
+      "retained_owner": "windows/agent_bridge/tests/test_private_state_dangling_reparse.py",
+      "sha256": "9f7e43a8bd51c53913f96c5f45f657cb54a438faa877fd7723e6274d7181c591"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_private_state_dangling_reparse.py",
+      "retained_owner": "windows/agent_bridge/tests/test_private_state_dangling_reparse.py",
+      "sha256": "9f7e43a8bd51c53913f96c5f45f657cb54a438faa877fd7723e6274d7181c591"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_render_config.py",
+      "retained_owner": "windows/agent_bridge/tests/test_render_config.py",
+      "sha256": "b95a54e075af5cc57f7ea9dab6fa2df050445f827b947fe08032ed2aa79e176d"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_render_config.py",
+      "retained_owner": "windows/agent_bridge/tests/test_render_config.py",
+      "sha256": "b95a54e075af5cc57f7ea9dab6fa2df050445f827b947fe08032ed2aa79e176d"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_render_config_publication.py",
+      "retained_owner": "windows/agent_bridge/tests/test_render_config_publication.py",
+      "sha256": "b3b6cb6032dc8852967f4f214da381e1d1e8e6049d92793590f6205016fcf0af"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_render_config_publication.py",
+      "retained_owner": "windows/agent_bridge/tests/test_render_config_publication.py",
+      "sha256": "b3b6cb6032dc8852967f4f214da381e1d1e8e6049d92793590f6205016fcf0af"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_repo_git_windows.py",
+      "retained_owner": "windows/agent_bridge/tests/test_repo_git_windows.py",
+      "sha256": "44ca53ed2287842dfac3dd494ab75f13a2799c6032a5a142f5f8ce1441e67d4c"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_repo_git_windows.py",
+      "retained_owner": "windows/agent_bridge/tests/test_repo_git_windows.py",
+      "sha256": "44ca53ed2287842dfac3dd494ab75f13a2799c6032a5a142f5f8ce1441e67d4c"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_repo_ops_windows.py",
+      "retained_owner": "windows/agent_bridge/tests/test_repo_ops_windows.py",
+      "sha256": "9b9dbab7a383e0bdb651e15d608a3c41d0a89e0f22a06c207d0efbc5565adaad"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_repo_ops_windows.py",
+      "retained_owner": "windows/agent_bridge/tests/test_repo_ops_windows.py",
+      "sha256": "9b9dbab7a383e0bdb651e15d608a3c41d0a89e0f22a06c207d0efbc5565adaad"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_supervised_bridge.py",
+      "retained_owner": "windows/agent_bridge/tests/test_supervised_bridge.py",
+      "sha256": "1f7079385facab642d0a1a4adf3576165570d07bd181dae63376da76a45656dc"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_supervised_bridge.py",
+      "retained_owner": "windows/agent_bridge/tests/test_supervised_bridge.py",
+      "sha256": "1f7079385facab642d0a1a4adf3576165570d07bd181dae63376da76a45656dc"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_windows_lease.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_lease.py",
+      "sha256": "b506787076484317b5b39b83948e93d3f73e1b85a2963d7a17ba112b6af1d716"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_windows_lease.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_lease.py",
+      "sha256": "b506787076484317b5b39b83948e93d3f73e1b85a2963d7a17ba112b6af1d716"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_windows_peer_identity.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_peer_identity.py",
+      "sha256": "2b28243e77c6d704085fcfddaa9f0d6386809b0a86f23d9c8032fd9cc1898376"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_windows_peer_identity.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_peer_identity.py",
+      "sha256": "2b28243e77c6d704085fcfddaa9f0d6386809b0a86f23d9c8032fd9cc1898376"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_windows_pipe_claude_pending_cancel.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_pipe_claude_pending_cancel.py",
+      "sha256": "056c599a0a10fc9f0e06e95f67849ee531a5d291d05ff146bca2b601332b13be"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_windows_pipe_claude_pending_cancel.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_pipe_claude_pending_cancel.py",
+      "sha256": "056c599a0a10fc9f0e06e95f67849ee531a5d291d05ff146bca2b601332b13be"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_windows_pipe_core_v2.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_pipe_core_v2.py",
+      "sha256": "06d8c1405ff8ee77a2b2f0b6ae1066239b62e607eb7fe24e79e735026f1ceb4c"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_windows_pipe_core_v2.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_pipe_core_v2.py",
+      "sha256": "06d8c1405ff8ee77a2b2f0b6ae1066239b62e607eb7fe24e79e735026f1ceb4c"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_windows_pipe_core_v2_claude_adapter_ownership.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_pipe_core_v2_claude_adapter_ownership.py",
+      "sha256": "36bd63eeb5c3f6f01130727bf055f1fdfa70fbe196bedd60393dfb7c03404773"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_windows_pipe_core_v2_claude_adapter_ownership.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_pipe_core_v2_claude_adapter_ownership.py",
+      "sha256": "36bd63eeb5c3f6f01130727bf055f1fdfa70fbe196bedd60393dfb7c03404773"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_windows_pipe_core_v2_ownership_rotation.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_pipe_core_v2_ownership_rotation.py",
+      "sha256": "7f4289ba93f357a1887a91ca33213aabacf399212ab4de539737810b039ca9a2"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_windows_pipe_core_v2_ownership_rotation.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_pipe_core_v2_ownership_rotation.py",
+      "sha256": "7f4289ba93f357a1887a91ca33213aabacf399212ab4de539737810b039ca9a2"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_windows_pipe_e2e.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_pipe_e2e.py",
+      "sha256": "99ad21089e470c1f82a137810c807b806698f1b5d79c39c5170423b578589d90"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_windows_pipe_e2e.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_pipe_e2e.py",
+      "sha256": "99ad21089e470c1f82a137810c807b806698f1b5d79c39c5170423b578589d90"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_windows_private_state.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_private_state.py",
+      "sha256": "bc0fe3e7691acffbc94bd70d4b942e06f8e0754424e006f94cc999081a0f5d9b"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_windows_private_state.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_private_state.py",
+      "sha256": "bc0fe3e7691acffbc94bd70d4b942e06f8e0754424e006f94cc999081a0f5d9b"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/test_windows_sqlite_sidecar_churn.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_sqlite_sidecar_churn.py",
+      "sha256": "380a050b08a03f7507e09aa055e93aadf17a7e9a59e670eb2684b34412ea9d8a"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/test_windows_sqlite_sidecar_churn.py",
+      "retained_owner": "windows/agent_bridge/tests/test_windows_sqlite_sidecar_churn.py",
+      "sha256": "380a050b08a03f7507e09aa055e93aadf17a7e9a59e670eb2684b34412ea9d8a"
+    }
+  ]
+}

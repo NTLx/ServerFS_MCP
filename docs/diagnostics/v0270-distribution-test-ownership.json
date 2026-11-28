@@ -1,0 +1,131 @@
+{
+  "baseline": "fd1019498b281cdeb8c5805242f1a71222f5eebd",
+  "removed": [
+    {
+      "path": "linux/tests/test_agent_skills.py",
+      "retained": "tests/test_agent_skills.py",
+      "sha256": "f4117844079f1ab4f2fc020346f653e4f17574b4820c268a1dec46951388f25f"
+    },
+    {
+      "path": "linux/tests/test_registry_manifest.py",
+      "retained": "tests/test_registry_manifest.py",
+      "sha256": "613c4eb38e9f33e34bfff9bb216ee61b971ff62656a0731efa0f2ea398af89ac"
+    },
+    {
+      "path": "linux/tests/test_release_metadata.py",
+      "retained": "tests/test_release_metadata.py",
+      "sha256": "a58b29b1e7baf954ad74d1ca7917d093bcb2256f3fc9b1b756715a5155cd529d"
+    },
+    {
+      "path": "linux/tests/test_release_workflow.py",
+      "retained": "tests/test_release_workflow.py",
+      "sha256": "7d98510f9f2a9f9a2f6d4b22b6b772184c18e9507eb949a5e92e462499424945"
+    },
+    {
+      "path": "linux/tests/test_wheel_release.py",
+      "retained": "tests/test_wheel_release.py",
+      "sha256": "d39e1e2f83d3b831b19507b81cad79b393ed27e17e546b15676178de38b85c5f"
+    },
+    {
+      "path": "linux/tests/e2e/test_v026_site_static_acceptance.py",
+      "retained": "tests/e2e/test_v026_site_static_acceptance.py",
+      "sha256": "d7886cb108368195668729707b7e53bbcae135a854eda915b3458eb948c0aa7c"
+    },
+    {
+      "path": "linux/tests/e2e/v026_site_static_acceptance.py",
+      "retained": "tests/e2e/v026_site_static_acceptance.py",
+      "sha256": "4ea7895c0abde12d87600f989c3958ff2148df1c721db550bf68f11866a1260e"
+    },
+    {
+      "path": "linux/tests/e2e/test_v026_windows_retention_policy.py",
+      "retained": "tests/e2e/test_v026_windows_retention_policy.py",
+      "sha256": "8616710bc4209aeef051f4b04488b6238cc2b39465deb463cca93838b3b1c6d1"
+    },
+    {
+      "path": "linux/tests/e2e/windows_lifecycle_retention.py",
+      "retained": "tests/e2e/windows_lifecycle_retention.py",
+      "sha256": "aa65b93dc1a99f7eed36eaa8333891df0ba30615f99f0253acfa23a3d3a2cbda"
+    },
+    {
+      "path": "macos/tests/test_agent_skills.py",
+      "retained": "tests/test_agent_skills.py",
+      "sha256": "f4117844079f1ab4f2fc020346f653e4f17574b4820c268a1dec46951388f25f"
+    },
+    {
+      "path": "macos/tests/test_registry_manifest.py",
+      "retained": "tests/test_registry_manifest.py",
+      "sha256": "613c4eb38e9f33e34bfff9bb216ee61b971ff62656a0731efa0f2ea398af89ac"
+    },
+    {
+      "path": "macos/tests/test_release_metadata.py",
+      "retained": "tests/test_release_metadata.py",
+      "sha256": "a58b29b1e7baf954ad74d1ca7917d093bcb2256f3fc9b1b756715a5155cd529d"
+    },
+    {
+      "path": "macos/tests/test_release_workflow.py",
+      "retained": "tests/test_release_workflow.py",
+      "sha256": "7d98510f9f2a9f9a2f6d4b22b6b772184c18e9507eb949a5e92e462499424945"
+    },
+    {
+      "path": "macos/tests/test_wheel_release.py",
+      "retained": "tests/test_wheel_release.py",
+      "sha256": "d39e1e2f83d3b831b19507b81cad79b393ed27e17e546b15676178de38b85c5f"
+    },
+    {
+      "path": "macos/tests/e2e/test_v026_site_static_acceptance.py",
+      "retained": "tests/e2e/test_v026_site_static_acceptance.py",
+      "sha256": "d7886cb108368195668729707b7e53bbcae135a854eda915b3458eb948c0aa7c"
+    },
+    {
+      "path": "macos/tests/e2e/v026_site_static_acceptance.py",
+      "retained": "tests/e2e/v026_site_static_acceptance.py",
+      "sha256": "4ea7895c0abde12d87600f989c3958ff2148df1c721db550bf68f11866a1260e"
+    },
+    {
+      "path": "macos/tests/e2e/test_v026_windows_retention_policy.py",
+      "retained": "tests/e2e/test_v026_windows_retention_policy.py",
+      "sha256": "8616710bc4209aeef051f4b04488b6238cc2b39465deb463cca93838b3b1c6d1"
+    },
+    {
+      "path": "macos/tests/e2e/windows_lifecycle_retention.py",
+      "retained": "tests/e2e/windows_lifecycle_retention.py",
+      "sha256": "aa65b93dc1a99f7eed36eaa8333891df0ba30615f99f0253acfa23a3d3a2cbda"
+    },
+    {
+      "path": "windows/tests/test_agent_skills.py",
+      "retained": "tests/test_agent_skills.py",
+      "sha256": "f4117844079f1ab4f2fc020346f653e4f17574b4820c268a1dec46951388f25f"
+    },
+    {
+      "path": "windows/tests/test_registry_manifest.py",
+      "retained": "tests/test_registry_manifest.py",
+      "sha256": "613c4eb38e9f33e34bfff9bb216ee61b971ff62656a0731efa0f2ea398af89ac"
+    },
+    {
+      "path": "windows/tests/test_release_metadata.py",
+      "retained": "tests/test_release_metadata.py",
+      "sha256": "a58b29b1e7baf954ad74d1ca7917d093bcb2256f3fc9b1b756715a5155cd529d"
+    },
+    {
+      "path": "windows/tests/test_release_workflow.py",
+      "retained": "tests/test_release_workflow.py",
+      "sha256": "7d98510f9f2a9f9a2f6d4b22b6b772184c18e9507eb949a5e92e462499424945"
+    },
+    {
+      "path": "windows/tests/test_wheel_release.py",
+      "retained": "tests/test_wheel_release.py",
+      "sha256": "d39e1e2f83d3b831b19507b81cad79b393ed27e17e546b15676178de38b85c5f"
+    },
+    {
+      "path": "windows/tests/e2e/test_v026_site_static_acceptance.py",
+      "retained": "tests/e2e/test_v026_site_static_acceptance.py",
+      "sha256": "d7886cb108368195668729707b7e53bbcae135a854eda915b3458eb948c0aa7c"
+    },
+    {
+      "path": "windows/tests/e2e/v026_site_static_acceptance.py",
+      "retained": "tests/e2e/v026_site_static_acceptance.py",
+      "sha256": "4ea7895c0abde12d87600f989c3958ff2148df1c721db550bf68f11866a1260e"
+    }
+  ],
+  "scope": "Shared product distribution tests and site audit remain root-owned; Windows retention policy remains in Windows and root."
+}

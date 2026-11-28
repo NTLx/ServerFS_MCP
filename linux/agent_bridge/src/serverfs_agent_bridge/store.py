@@ -1,0 +1,1202 @@
+"""SQLite persistence for Agent Bridge tasks, events and pending requests."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
+import math
+import re
+import secrets
+import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
+
+from . import private_state
+from .errors import BridgeError
+from .models import (
+    TERMINAL_STATUSES,
+    BridgeEvent,
+    PendingRequest,
+    RequestStatus,
+    TaskRecord,
+    TaskStatus,
+)
+from .state import validate_transition
+from .util import utc_now
+
+
+class _Unset:
+    pass
+
+
+_UNSET = _Unset()
+
+
+class TaskStore:
+    def __init__(self, state_dir: Path):
+        self.state_dir = state_dir
+        private_state.ensure_private_directory(
+            state_dir,
+            mode=0o700,
+            parents=True,
+            messages=private_state.DirectoryMessages(
+                not_a_directory="state_dir must be a real directory",
+                not_owned="state_dir must be owned by the bridge user and mode 0700",
+            ),
+        )
+        self.db_path = self.state_dir / "state.sqlite3"
+        private_state.require_regular_file(
+            self.db_path, not_regular="state database path must be a regular file"
+        )
+        self._initialize()
+
+    @contextmanager
+    def _connect(self) -> sqlite3.Connection:
+        con = sqlite3.connect(self.db_path, timeout=5.0)
+        con.row_factory = sqlite3.Row
+        con.execute("PRAGMA foreign_keys = ON")
+        con.execute("PRAGMA busy_timeout = 5000")
+        try:
+            yield con
+        except BaseException:
+            con.rollback()
+            raise
+        else:
+            con.commit()
+        finally:
+            con.close()
+            self._secure_database_files()
+
+    def _secure_database_files(self) -> None:
+        # §29: the WAL and SHM companions SQLite creates must not end up less confined than
+        # the database. They inherit the state directory's protection, and each one is
+        # re-verified (Windows) or re-set (Linux) after every connection.
+        for path in (
+            self.db_path,
+            self.db_path.with_name("state.sqlite3-wal"),
+            self.db_path.with_name("state.sqlite3-shm"),
+        ):
+            private_state.require_regular_file(
+                path, not_regular="state database sidecar must be a regular file"
+            )
+            private_state.protect_existing_file(
+                path, mode=0o600, not_private="state database sidecar must be private"
+            )
+
+    def _initialize(self) -> None:
+        with self._connect() as con:
+            con.executescript(
+                """
+                PRAGMA journal_mode = WAL;
+
+                CREATE TABLE IF NOT EXISTS tasks (
+                    task_id TEXT PRIMARY KEY,
+                    runtime TEXT NOT NULL,
+                    workdir_alias TEXT NOT NULL,
+                    workdir_slot INTEGER NOT NULL,
+                    relative_cwd TEXT NOT NULL,
+                    profile TEXT NOT NULL,
+                    requested_model TEXT,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    started_at TEXT,
+                    updated_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    deadline_at TEXT,
+                    continue_from_task_id TEXT,
+                    correlation_id TEXT,
+                    idempotency_key TEXT,
+                    request_fingerprint TEXT,
+                    native_session_id TEXT,
+                    native_turn_id TEXT,
+                    final_response TEXT,
+                    result_storage TEXT NOT NULL DEFAULT 'inline',
+                    result_size_bytes INTEGER,
+                    result_sha256 TEXT,
+                    manifest_json TEXT,
+                    manifest_sha256 TEXT,
+                    error_code TEXT,
+                    error_message TEXT,
+                    pending_request_id TEXT,
+                    event_count INTEGER NOT NULL DEFAULT 0
+                );
+
+                CREATE TABLE IF NOT EXISTS events (
+                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+                    event_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS events_task_cursor
+                ON events(task_id, event_id);
+
+                CREATE INDEX IF NOT EXISTS tasks_alias_cursor_projection
+                ON tasks(workdir_alias, created_at DESC, task_id DESC, status);
+
+                -- Protocol v2 ownership is separate from historical v1 tasks.
+                -- No existing task is silently adopted by any Core.
+                CREATE TABLE IF NOT EXISTS core_task_owners (
+                    task_id TEXT PRIMARY KEY REFERENCES tasks(task_id) ON DELETE CASCADE,
+                    core_id TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS core_task_owners_by_core
+                ON core_task_owners(core_id, task_id);
+
+                -- Signed v2 mutating requests must not replay after Bridge restart.
+                CREATE TABLE IF NOT EXISTS core_nonce_claims (
+                    core_id TEXT NOT NULL,
+                    key_id TEXT NOT NULL,
+                    nonce TEXT NOT NULL,
+                    expires_at REAL NOT NULL,
+                    PRIMARY KEY (core_id, key_id, nonce)
+                );
+                CREATE INDEX IF NOT EXISTS core_nonce_expiration
+                ON core_nonce_claims(expires_at);
+
+                CREATE TABLE IF NOT EXISTS pending_requests (
+                    request_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+                    kind TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT,
+                    resolved_at TEXT,
+                    resolution_json TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS pending_requests_task
+                ON pending_requests(task_id, status);
+
+                -- Private-only keyed identity of approval requests, never
+                -- projected into public MCP payloads or task event streams.
+                CREATE TABLE IF NOT EXISTS approval_audit_key (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                    secret BLOB NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS approval_audit (
+                    request_id TEXT PRIMARY KEY
+                        REFERENCES pending_requests(request_id) ON DELETE CASCADE,
+                    task_id TEXT NOT NULL,
+                    fingerprint TEXT NOT NULL,
+                    action_kind TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    resolved_at TEXT,
+                    outcome TEXT
+                );
+                CREATE INDEX IF NOT EXISTS approval_audit_task
+                ON approval_audit(task_id, created_at);
+
+                CREATE TRIGGER IF NOT EXISTS approval_audit_mark_stale
+                AFTER UPDATE OF status ON pending_requests
+                WHEN NEW.status = 'stale'
+                BEGIN
+                    UPDATE approval_audit
+                    SET resolved_at = NEW.resolved_at, outcome = 'stale'
+                    WHERE request_id = NEW.request_id;
+                END;
+
+                CREATE TABLE IF NOT EXISTS runtime_capabilities (
+                    runtime_id TEXT NOT NULL,
+                    profile_fingerprint TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    PRIMARY KEY (runtime_id, profile_fingerprint)
+                );
+                """
+            )
+            columns = {row[1] for row in con.execute("PRAGMA table_info(tasks)").fetchall()}
+            task_migrations = {
+                "deadline_at": "ALTER TABLE tasks ADD COLUMN deadline_at TEXT",
+                "correlation_id": "ALTER TABLE tasks ADD COLUMN correlation_id TEXT",
+                "idempotency_key": "ALTER TABLE tasks ADD COLUMN idempotency_key TEXT",
+                "request_fingerprint": "ALTER TABLE tasks ADD COLUMN request_fingerprint TEXT",
+                "result_storage": (
+                    "ALTER TABLE tasks ADD COLUMN result_storage TEXT NOT NULL DEFAULT 'inline'"
+                ),
+                "result_size_bytes": "ALTER TABLE tasks ADD COLUMN result_size_bytes INTEGER",
+                "result_sha256": "ALTER TABLE tasks ADD COLUMN result_sha256 TEXT",
+                "manifest_json": "ALTER TABLE tasks ADD COLUMN manifest_json TEXT",
+                "manifest_sha256": "ALTER TABLE tasks ADD COLUMN manifest_sha256 TEXT",
+                "requested_model": "ALTER TABLE tasks ADD COLUMN requested_model TEXT",
+            }
+            for column, statement in task_migrations.items():
+                if column not in columns:
+                    con.execute(statement)
+            if "event_count" not in columns:
+                con.execute("ALTER TABLE tasks ADD COLUMN event_count INTEGER NOT NULL DEFAULT 0")
+                con.execute(
+                    """
+                    UPDATE tasks
+                    SET event_count = (
+                        SELECT COUNT(*) FROM events WHERE events.task_id = tasks.task_id
+                    )
+                    """
+                )
+
+            con.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS tasks_idempotency_key
+                ON tasks(idempotency_key)
+                WHERE idempotency_key IS NOT NULL
+                """
+            )
+            request_columns = {
+                row[1] for row in con.execute("PRAGMA table_info(pending_requests)").fetchall()
+            }
+            if "expires_at" not in request_columns:
+                con.execute("ALTER TABLE pending_requests ADD COLUMN expires_at TEXT")
+            con.execute(
+                "INSERT OR IGNORE INTO approval_audit_key(singleton, secret) VALUES (1, ?)",
+                (secrets.token_bytes(32),),
+            )
+            audit_key = con.execute(
+                "SELECT secret FROM approval_audit_key WHERE singleton = 1"
+            ).fetchone()
+            if (
+                audit_key is None
+                or not isinstance(audit_key["secret"], bytes)
+                or len(audit_key["secret"]) != 32
+            ):
+                raise BridgeError("PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid")
+            self._approval_audit_key = audit_key["secret"]
+
+    def private_approval_fingerprint(self, task_id: str, original: dict[str, Any]) -> str:
+        """HMAC original provider attributes, never exposing host path strings.
+
+        The key is stored only in the owner-private 0600 SQLite database and
+        remains stable across Bridge restarts. A fingerprint is *not* approval
+        authority, only a private correlation/audit identity.
+        """
+        if not isinstance(task_id, str) or not task_id or not isinstance(original, dict):
+            raise BridgeError("PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid")
+        try:
+            encoded = json.dumps(
+                original, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
+            ).encode("utf-8")
+        except (ValueError, TypeError, UnicodeError):
+            raise BridgeError(
+                "PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid"
+            ) from None
+        return hmac.new(
+            self._approval_audit_key,
+            task_id.encode("utf-8") + b"\0" + encoded,
+            hashlib.sha256,
+        ).hexdigest()
+
+    def list_core_tasks(
+        self,
+        *,
+        core_id: str,
+        workdir_alias: str,
+        status: str,
+        limit: int,
+        policy_revision: str,
+        grant_key_id: str = "",
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """Return a bounded, redacted keyset page for one signed Core scope."""
+        from .core_grants import _id
+
+        _id(core_id)
+        if not isinstance(workdir_alias, str) or not re.fullmatch(
+            r"[A-Za-z][A-Za-z0-9_-]{0,31}", workdir_alias
+        ):
+            raise BridgeError("INVALID_REQUEST", "workdir is invalid")
+        if not isinstance(status, str) or status not in {"active", "terminal", "all"}:
+            raise BridgeError("INVALID_REQUEST", "task status filter is invalid")
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise BridgeError("INVALID_LIMIT", "task limit must be between 1 and 100")
+        if not isinstance(policy_revision, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", policy_revision
+        ):
+            raise BridgeError("CORE_NOT_AUTHORIZED", "Core capability is not authorized")
+
+        after: tuple[str, str] | None = None
+        if cursor is not None:
+            after = self._decode_task_cursor(
+                cursor,
+                core_id=core_id,
+                workdir_alias=workdir_alias,
+                status=status,
+                policy_revision=policy_revision,
+                grant_key_id=grant_key_id,
+            )
+
+        active = tuple(
+            item.value
+            for item in (
+                TaskStatus.QUEUED,
+                TaskStatus.STARTING,
+                TaskStatus.RUNNING,
+                TaskStatus.WAITING_FOR_APPROVAL,
+                TaskStatus.WAITING_FOR_QUESTION,
+            )
+        )
+        terminal = tuple(item.value for item in TERMINAL_STATUSES)
+        selected = (
+            active
+            if status == "active"
+            else terminal
+            if status == "terminal"
+            else tuple(item.value for item in TaskStatus)
+        )
+        clauses = ["owner.core_id = ?", "tasks.workdir_alias = ?"]
+        values: list[Any] = [core_id, workdir_alias]
+        clauses.append("tasks.status IN (" + ",".join("?" for _ in selected) + ")")
+        values.extend(selected)
+        if after is not None:
+            clauses.append("(tasks.created_at, tasks.task_id) < (?, ?)")
+            values.extend(after)
+        values.append(limit + 1)
+        with self._connect() as con:
+            rows = con.execute(
+                """
+                SELECT tasks.task_id, tasks.runtime, tasks.workdir_alias, tasks.status,
+                       tasks.created_at, tasks.updated_at, tasks.completed_at,
+                       tasks.correlation_id,
+                       (SELECT pending_requests.kind FROM pending_requests
+                        WHERE pending_requests.task_id = tasks.task_id
+                          AND pending_requests.status = 'pending'
+                        ORDER BY pending_requests.created_at DESC,
+                                 pending_requests.request_id DESC LIMIT 1) AS pending_kind
+                FROM tasks INDEXED BY tasks_alias_cursor_projection
+                JOIN core_task_owners AS owner ON owner.task_id = tasks.task_id
+                WHERE """
+                + " AND ".join(clauses)
+                + "\n"
+                "ORDER BY tasks.created_at DESC, tasks.task_id DESC LIMIT ?",
+                values,
+            ).fetchall()
+        more = len(rows) > limit
+        rows = rows[:limit]
+        tasks = [
+            {
+                "task_id": row["task_id"],
+                "runtime": row["runtime"],
+                "workdir": row["workdir_alias"],
+                "status": row["status"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "completed_at": row["completed_at"],
+                "pending_interaction": row["pending_kind"]
+                if row["pending_kind"] in {"approval", "question"}
+                else None,
+                # Opaque caller text has no general secret-safety guarantee.
+                "correlation_id": None,
+            }
+            for row in rows
+        ]
+        next_cursor = None
+        if more and rows:
+            last = rows[-1]
+            next_cursor = self._encode_task_cursor(
+                {
+                    "core_id": core_id,
+                    "workdir": workdir_alias,
+                    "status": status,
+                    "policy_revision": policy_revision,
+                    "grant_key_id": grant_key_id,
+                    "created_at": last["created_at"],
+                    "task_id": last["task_id"],
+                }
+            )
+        return {"tasks": tasks, "next_cursor": next_cursor}
+
+    def _encode_task_cursor(self, payload: dict[str, str]) -> str:
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        signature = hmac.new(
+            self._approval_audit_key, b"task-list\0" + raw, hashlib.sha256
+        ).digest()
+        return base64.urlsafe_b64encode(raw + signature).rstrip(b"=").decode("ascii")
+
+    def _decode_task_cursor(
+        self,
+        cursor: str,
+        *,
+        core_id: str,
+        workdir_alias: str,
+        status: str,
+        policy_revision: str,
+        grant_key_id: str = "",
+    ) -> tuple[str, str]:
+        try:
+            if not isinstance(cursor, str) or not 1 <= len(cursor) <= 2048:
+                raise ValueError
+            if re.fullmatch(r"[A-Za-z0-9_-]+", cursor) is None:
+                raise ValueError
+            encoded = cursor.encode("ascii")
+            raw_and_mac = base64.urlsafe_b64decode(encoded + b"=" * (-len(encoded) % 4))
+            if len(raw_and_mac) <= 32:
+                raise ValueError
+            raw, signature = raw_and_mac[:-32], raw_and_mac[-32:]
+            expected = hmac.new(
+                self._approval_audit_key, b"task-list\0" + raw, hashlib.sha256
+            ).digest()
+            if not hmac.compare_digest(signature, expected):
+                raise ValueError
+            payload = json.loads(raw)
+            expected_fields = {
+                "core_id",
+                "workdir",
+                "status",
+                "policy_revision",
+                "grant_key_id",
+                "created_at",
+                "task_id",
+            }
+            if not isinstance(payload, dict) or set(payload) != expected_fields:
+                raise ValueError
+            if (
+                payload["core_id"],
+                payload["workdir"],
+                payload["status"],
+                payload["policy_revision"],
+                payload["grant_key_id"],
+            ) != (core_id, workdir_alias, status, policy_revision, grant_key_id):
+                raise ValueError
+            if not all(
+                isinstance(payload[key], str) and payload[key] for key in ("created_at", "task_id")
+            ):
+                raise ValueError
+            return payload["created_at"], payload["task_id"]
+        except (
+            UnicodeError,
+            ValueError,
+            TypeError,
+            json.JSONDecodeError,
+            KeyError,
+            AttributeError,
+        ):
+            raise BridgeError("INVALID_CURSOR", "task cursor is invalid or out of scope") from None
+
+    def load_runtime_capabilities(self, runtime_id: str, fingerprint: str) -> dict[str, Any] | None:
+        with self._connect() as con:
+            row = con.execute(
+                """SELECT payload_json FROM runtime_capabilities
+                   WHERE runtime_id = ? AND profile_fingerprint = ?""",
+                (runtime_id, fingerprint),
+            ).fetchone()
+        if row is None or len(row["payload_json"].encode("utf-8")) > 2048:
+            return None
+        try:
+            payload = json.loads(row["payload_json"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def save_runtime_capabilities(
+        self, runtime_id: str, fingerprint: str, payload: dict[str, Any]
+    ) -> None:
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        if len(encoded.encode("utf-8")) > 2048:
+            raise ValueError("runtime capability snapshot exceeds 2048 bytes")
+        with self._connect() as con:
+            con.execute(
+                """DELETE FROM runtime_capabilities
+                   WHERE runtime_id = ? AND profile_fingerprint != ?""",
+                (runtime_id, fingerprint),
+            )
+            con.execute(
+                """INSERT INTO runtime_capabilities(runtime_id, profile_fingerprint, payload_json)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(runtime_id, profile_fingerprint)
+                   DO UPDATE SET payload_json = excluded.payload_json""",
+                (runtime_id, fingerprint, encoded),
+            )
+
+    def create_task(
+        self,
+        *,
+        task_id: str,
+        runtime: str,
+        workdir_alias: str,
+        workdir_slot: int,
+        relative_cwd: str,
+        profile: str,
+        continue_from_task_id: str | None,
+        requested_model: str | None = None,
+        deadline_at: str | None = None,
+        correlation_id: str | None = None,
+        idempotency_key: str | None = None,
+        request_fingerprint: str | None = None,
+        manifest_json: str | None = None,
+        manifest_sha256: str | None = None,
+        max_active_tasks: int | None = None,
+        owner_core_id: str | None = None,
+    ) -> TaskRecord:
+        if owner_core_id is not None:
+            from .core_grants import _id
+
+            _id(owner_core_id)
+        now = utc_now()
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            if max_active_tasks is not None:
+                terminal = tuple(status.value for status in TERMINAL_STATUSES)
+                placeholders = ",".join("?" for _ in terminal)
+                active = con.execute(
+                    f"SELECT COUNT(*) AS n FROM tasks WHERE status NOT IN ({placeholders})",
+                    terminal,
+                ).fetchone()
+                if int(active["n"]) >= max_active_tasks:
+                    raise BridgeError("AGENT_TASK_LIMIT_REACHED", "too many active agent tasks")
+            try:
+                con.execute(
+                    """
+                    INSERT INTO tasks (
+                        task_id, runtime, workdir_alias, workdir_slot, relative_cwd,
+                        profile, requested_model, status, created_at, updated_at, deadline_at,
+                        continue_from_task_id, correlation_id, idempotency_key,
+                        request_fingerprint, manifest_json, manifest_sha256
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        task_id,
+                        runtime,
+                        workdir_alias,
+                        workdir_slot,
+                        relative_cwd,
+                        profile,
+                        requested_model,
+                        TaskStatus.QUEUED.value,
+                        now,
+                        now,
+                        deadline_at,
+                        continue_from_task_id,
+                        correlation_id,
+                        idempotency_key,
+                        request_fingerprint,
+                        manifest_json,
+                        manifest_sha256,
+                    ),
+                )
+                if owner_core_id is not None:
+                    # The task and originating Core commit or fail together.
+                    con.execute(
+                        "INSERT INTO core_task_owners(task_id, core_id) VALUES (?, ?)",
+                        (task_id, owner_core_id),
+                    )
+            except sqlite3.IntegrityError as exc:
+                if idempotency_key is not None:
+                    existing = con.execute(
+                        "SELECT task_id FROM tasks WHERE idempotency_key = ?",
+                        (idempotency_key,),
+                    ).fetchone()
+                    if existing is not None:
+                        raise BridgeError(
+                            "AGENT_IDEMPOTENCY_CONFLICT",
+                            "idempotency key already belongs to another task",
+                        ) from exc
+                raise BridgeError("AGENT_TASK_EXISTS", f"task already exists: {task_id}") from exc
+        return self.get_task(task_id)
+
+    def get_task_by_idempotency_key(self, idempotency_key: str) -> TaskRecord | None:
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT * FROM tasks WHERE idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+        return None if row is None else _task_from_row(row)
+
+    def get_task(self, task_id: str) -> TaskRecord:
+        with self._connect() as con:
+            row = con.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        if row is None:
+            raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {task_id}")
+        return _task_from_row(row)
+
+    def claim_core_nonce(
+        self,
+        core_id: str,
+        key_id: str,
+        nonce: str,
+        expires_at: float,
+        now: float,
+    ) -> bool:
+        """Durably claim a signed v2 nonce; only the first claimant wins.
+
+        The insert and expired-entry garbage collection use one SQLite
+        write transaction. A Bridge restart never clears still-valid claims.
+        Expired proofs cannot pass the verifier's timestamp check.
+        """
+        from .core_grants import _NONCE, _id
+
+        _id(core_id)
+        _id(key_id)
+        if not isinstance(nonce, str) or not _NONCE.fullmatch(nonce):
+            raise ValueError("invalid Core nonce")
+        if (
+            type(expires_at) not in (int, float)
+            or type(now) not in (int, float)
+            or not math.isfinite(expires_at)
+            or not math.isfinite(now)
+            or expires_at < now
+        ):
+            raise ValueError("invalid nonce validity window")
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            con.execute("DELETE FROM core_nonce_claims WHERE expires_at < ?", (now,))
+            count = con.execute("SELECT COUNT(*) AS n FROM core_nonce_claims").fetchone()
+            if int(count["n"]) >= 65_536:
+                return False
+            inserted = con.execute(
+                """
+                INSERT OR IGNORE INTO core_nonce_claims(core_id, key_id, nonce, expires_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (core_id, key_id, nonce, expires_at),
+            )
+            return inserted.rowcount == 1
+
+    def require_core_task_owner(self, task_id: str, *, core_id: str, workdir_alias: str) -> None:
+        """Atomically check a v2 task's immutable Core + workdir binding.
+
+        Historical v1 rows have no owner entry and are *never* accessible
+        through a v2 Core. Unknown task, another Core, and another workdir
+        produce the same redacted denial to avoid task-existence disclosure.
+        """
+        from .core_grants import _id
+
+        _id(core_id)
+        with self._connect() as con:
+            exists = con.execute(
+                """
+                SELECT 1 FROM core_task_owners AS owner
+                JOIN tasks ON tasks.task_id = owner.task_id
+                WHERE owner.task_id = ? AND owner.core_id = ?
+                  AND tasks.workdir_alias = ?
+                """,
+                (task_id, core_id, workdir_alias),
+            ).fetchone()
+        if exists is None:
+            raise BridgeError("CORE_TASK_NOT_FOUND", "Core task is not available")
+
+    def transition_task(
+        self,
+        task_id: str,
+        target: TaskStatus | str,
+        *,
+        pending_request_id: str | None | object = _UNSET,
+        native_session_id: str | None | object = _UNSET,
+        native_turn_id: str | None | object = _UNSET,
+        final_response: str | None | object = _UNSET,
+        result_storage: str | object = _UNSET,
+        result_size_bytes: int | None | object = _UNSET,
+        result_sha256: str | None | object = _UNSET,
+        error_code: str | None | object = _UNSET,
+        error_message: str | None | object = _UNSET,
+    ) -> TaskRecord:
+        target_status = TaskStatus(target)
+        now = utc_now()
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            row = con.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+            if row is None:
+                raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {task_id}")
+            current = TaskStatus(row["status"])
+            validate_transition(current, target_status)
+
+            values: dict[str, Any] = {"status": target_status.value, "updated_at": now}
+            if current is TaskStatus.QUEUED and target_status is TaskStatus.STARTING:
+                values["started_at"] = now
+            if target_status in TERMINAL_STATUSES:
+                values["completed_at"] = now
+                values["pending_request_id"] = None
+                if row["pending_request_id"] is not None:
+                    con.execute(
+                        """
+                        UPDATE pending_requests
+                        SET status = ?, resolved_at = ?
+                        WHERE request_id = ? AND status = ?
+                        """,
+                        (
+                            RequestStatus.STALE.value,
+                            now,
+                            row["pending_request_id"],
+                            RequestStatus.PENDING.value,
+                        ),
+                    )
+
+            for key, value in {
+                "pending_request_id": pending_request_id,
+                "native_session_id": native_session_id,
+                "native_turn_id": native_turn_id,
+                "final_response": final_response,
+                "result_storage": result_storage,
+                "result_size_bytes": result_size_bytes,
+                "result_sha256": result_sha256,
+                "error_code": error_code,
+                "error_message": error_message,
+            }.items():
+                if value is not _UNSET and not (
+                    key == "pending_request_id" and target_status in TERMINAL_STATUSES
+                ):
+                    values[key] = value
+
+            assignments = ", ".join(f"{key} = ?" for key in values)
+            con.execute(
+                f"UPDATE tasks SET {assignments} WHERE task_id = ?",
+                (*values.values(), task_id),
+            )
+        return self.get_task(task_id)
+
+    def set_native_ids(
+        self,
+        task_id: str,
+        *,
+        native_session_id: str | None = None,
+        native_turn_id: str | None = None,
+    ) -> TaskRecord:
+        now = utc_now()
+        with self._connect() as con:
+            row = con.execute("SELECT task_id FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+            if row is None:
+                raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {task_id}")
+            con.execute(
+                """
+                UPDATE tasks
+                SET native_session_id = COALESCE(?, native_session_id),
+                    native_turn_id = COALESCE(?, native_turn_id),
+                    updated_at = ?
+                WHERE task_id = ?
+                """,
+                (native_session_id, native_turn_id, now, task_id),
+            )
+        return self.get_task(task_id)
+
+    def append_event(
+        self,
+        task_id: str,
+        event_type: str,
+        payload: dict[str, Any],
+        *,
+        max_events_per_task: int | None = None,
+    ) -> BridgeEvent:
+        now = utc_now()
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            task_row = con.execute(
+                "SELECT correlation_id FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            if task_row is None:
+                raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {task_id}")
+            if max_events_per_task is None:
+                updated = con.execute(
+                    "UPDATE tasks SET event_count = event_count + 1 WHERE task_id = ?",
+                    (task_id,),
+                )
+            else:
+                updated = con.execute(
+                    """
+                    UPDATE tasks
+                    SET event_count = event_count + 1
+                    WHERE task_id = ? AND event_count < ?
+                    """,
+                    (task_id, max_events_per_task),
+                )
+                if updated.rowcount != 1:
+                    raise BridgeError("AGENT_EVENT_LIMIT_REACHED", "agent event limit reached")
+            cur = con.execute(
+                """
+                INSERT INTO events(task_id, event_type, payload_json, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (task_id, event_type, encoded, now),
+            )
+            event_id = int(cur.lastrowid)
+        return BridgeEvent(
+            event_id=event_id,
+            task_id=task_id,
+            correlation_id=task_row["correlation_id"],
+            event_type=event_type,
+            payload=payload,
+            created_at=now,
+        )
+
+    def count_events(self, task_id: str) -> int:
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT COUNT(*) AS n FROM events WHERE task_id = ?", (task_id,)
+            ).fetchone()
+        return int(row["n"])
+
+    def list_events(
+        self, task_id: str, *, after_event_id: int = 0, limit: int = 100
+    ) -> list[BridgeEvent]:
+        task = self.get_task(task_id)
+        with self._connect() as con:
+            rows = con.execute(
+                """
+                SELECT * FROM events
+                WHERE task_id = ? AND event_id > ?
+                ORDER BY event_id ASC
+                LIMIT ?
+                """,
+                (task_id, after_event_id, limit),
+            ).fetchall()
+        return [
+            BridgeEvent(
+                event_id=row["event_id"],
+                task_id=row["task_id"],
+                correlation_id=task.correlation_id,
+                event_type=row["event_type"],
+                payload=json.loads(row["payload_json"]),
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+
+    def create_pending_request(
+        self,
+        *,
+        task_id: str,
+        request_id: str,
+        kind: str,
+        payload: dict[str, Any],
+        waiting_status: TaskStatus,
+        expires_at: str | None = None,
+        private_fingerprint: str | None = None,
+    ) -> PendingRequest:
+        now = utc_now()
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        if private_fingerprint is not None and (
+            kind != "approval"
+            or not isinstance(private_fingerprint, str)
+            or len(private_fingerprint) != 64
+            or any(ch not in "0123456789abcdef" for ch in private_fingerprint)
+        ):
+            raise BridgeError("PRIVATE_AUDIT_UNAVAILABLE", "private approval audit is invalid")
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            task = con.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+            if task is None:
+                raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {task_id}")
+            if task["pending_request_id"] is not None:
+                raise BridgeError("REQUEST_PENDING", "task already has a pending request")
+            validate_transition(task["status"], waiting_status)
+            try:
+                con.execute(
+                    """
+                    INSERT INTO pending_requests(
+                        request_id, task_id, kind, status, payload_json, created_at, expires_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        request_id,
+                        task_id,
+                        kind,
+                        RequestStatus.PENDING.value,
+                        encoded,
+                        now,
+                        expires_at,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise BridgeError(
+                    "REQUEST_EXISTS", f"request already exists: {request_id}"
+                ) from exc
+            if private_fingerprint is not None:
+                category = payload.get("category")
+                action_kind = (
+                    category
+                    if isinstance(category, str)
+                    and category
+                    in {"command", "file_change", "file_changes", "provider_permission", "mcp"}
+                    else "other"
+                )
+                con.execute(
+                    """INSERT INTO approval_audit(
+                        request_id, task_id, fingerprint, action_kind, created_at
+                    ) VALUES (?, ?, ?, ?, ?)""",
+                    (request_id, task_id, private_fingerprint, action_kind, now),
+                )
+            con.execute(
+                """
+                UPDATE tasks
+                SET status = ?, pending_request_id = ?, updated_at = ?
+                WHERE task_id = ?
+                """,
+                (waiting_status.value, request_id, now, task_id),
+            )
+        return self.get_request(request_id)
+
+    def get_request(self, request_id: str) -> PendingRequest:
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT * FROM pending_requests WHERE request_id = ?", (request_id,)
+            ).fetchone()
+        if row is None:
+            raise BridgeError("REQUEST_NOT_FOUND", f"unknown request: {request_id}")
+        return _request_from_row(row)
+
+    def resolve_request(self, request_id: str, resolution: dict[str, Any]) -> PendingRequest:
+        now = utc_now()
+        encoded = json.dumps(resolution, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            req = con.execute(
+                "SELECT * FROM pending_requests WHERE request_id = ?", (request_id,)
+            ).fetchone()
+            if req is None:
+                raise BridgeError("REQUEST_NOT_FOUND", f"unknown request: {request_id}")
+            if req["status"] != RequestStatus.PENDING.value:
+                raise BridgeError("REQUEST_ALREADY_RESOLVED", "request is no longer pending")
+            task = con.execute(
+                "SELECT * FROM tasks WHERE task_id = ?", (req["task_id"],)
+            ).fetchone()
+            if task is None:
+                raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {req['task_id']}")
+            if task["pending_request_id"] != request_id:
+                raise BridgeError("REQUEST_STALE", "request is no longer active for the task")
+            validate_transition(task["status"], TaskStatus.RUNNING)
+            request_update = con.execute(
+                """
+                UPDATE pending_requests
+                SET status = ?, resolved_at = ?, resolution_json = ?
+                WHERE request_id = ? AND status = ?
+                """,
+                (
+                    RequestStatus.RESOLVED.value,
+                    now,
+                    encoded,
+                    request_id,
+                    RequestStatus.PENDING.value,
+                ),
+            )
+            if request_update.rowcount != 1:
+                raise BridgeError("REQUEST_ALREADY_RESOLVED", "request is no longer pending")
+            task_update = con.execute(
+                """
+                UPDATE tasks
+                SET status = ?, pending_request_id = NULL, updated_at = ?
+                WHERE task_id = ? AND pending_request_id = ?
+                """,
+                (TaskStatus.RUNNING.value, now, req["task_id"], request_id),
+            )
+            if task_update.rowcount != 1:
+                raise BridgeError("REQUEST_STALE", "request is no longer active for the task")
+            outcome = resolution.get("decision")
+            if outcome not in {"approve_once", "approve_session", "deny", "cancel_task"}:
+                outcome = "acp-option" if "option_id" in resolution else "other"
+            con.execute(
+                """UPDATE approval_audit SET resolved_at = ?, outcome = ?
+                WHERE request_id = ?""",
+                (now, outcome, request_id),
+            )
+        return self.get_request(request_id)
+
+    def count_nonterminal_tasks(self) -> int:
+        terminal = tuple(status.value for status in TERMINAL_STATUSES)
+        placeholders = ",".join("?" for _ in terminal)
+        with self._connect() as con:
+            row = con.execute(
+                f"SELECT COUNT(*) AS n FROM tasks WHERE status NOT IN ({placeholders})",
+                terminal,
+            ).fetchone()
+        return int(row["n"])
+
+    def list_nonterminal_tasks(self) -> list[TaskRecord]:
+        terminal = tuple(status.value for status in TERMINAL_STATUSES)
+        placeholders = ",".join("?" for _ in terminal)
+        with self._connect() as con:
+            rows = con.execute(
+                f"""
+                SELECT * FROM tasks
+                WHERE status NOT IN ({placeholders})
+                ORDER BY created_at ASC
+                """,
+                terminal,
+            ).fetchall()
+        return [_task_from_row(row) for row in rows]
+
+    def list_terminal_before(self, cutoff: str) -> list[TaskRecord]:
+        terminal = tuple(status.value for status in TERMINAL_STATUSES)
+        placeholders = ",".join("?" for _ in terminal)
+        with self._connect() as con:
+            rows = con.execute(
+                f"""
+                SELECT * FROM tasks
+                WHERE status IN ({placeholders})
+                  AND completed_at IS NOT NULL
+                  AND completed_at < ?
+                ORDER BY completed_at ASC
+                """,
+                (*terminal, cutoff),
+            ).fetchall()
+        return [_task_from_row(row) for row in rows]
+
+    def delete_tasks(self, task_ids: list[str]) -> int:
+        if not task_ids:
+            return 0
+        placeholders = ",".join("?" for _ in task_ids)
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            deleted = con.execute(
+                f"DELETE FROM tasks WHERE task_id IN ({placeholders})",
+                tuple(task_ids),
+            )
+        return int(deleted.rowcount)
+
+    def abandon_pending_request(self, task_id: str) -> str | None:
+        """Atomically stale a provider-cleared request and resume its task."""
+        now = utc_now()
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            task = con.execute(
+                "SELECT status, pending_request_id FROM tasks WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            if task is None:
+                raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {task_id}")
+            request_id = task["pending_request_id"]
+            if request_id is None:
+                return None
+            if TaskStatus(task["status"]) not in (
+                TaskStatus.WAITING_FOR_APPROVAL,
+                TaskStatus.WAITING_FOR_QUESTION,
+            ):
+                raise BridgeError("REQUEST_STALE", "task is not waiting for provider input")
+            con.execute(
+                """
+                UPDATE pending_requests
+                SET status = ?, resolved_at = ?
+                WHERE request_id = ? AND status = ?
+                """,
+                (
+                    RequestStatus.STALE.value,
+                    now,
+                    request_id,
+                    RequestStatus.PENDING.value,
+                ),
+            )
+            con.execute(
+                """
+                UPDATE tasks
+                SET status = ?, pending_request_id = NULL, updated_at = ?
+                WHERE task_id = ? AND pending_request_id = ?
+                """,
+                (TaskStatus.RUNNING.value, now, task_id, request_id),
+            )
+            return str(request_id)
+
+    def stale_task_request(self, task_id: str) -> None:
+        now = utc_now()
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            task = con.execute(
+                "SELECT pending_request_id FROM tasks WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            if task is None:
+                raise BridgeError("AGENT_TASK_NOT_FOUND", f"unknown task: {task_id}")
+            request_id = task["pending_request_id"]
+            if request_id is not None:
+                con.execute(
+                    """
+                    UPDATE pending_requests
+                    SET status = ?, resolved_at = ?
+                    WHERE request_id = ? AND status = ?
+                    """,
+                    (
+                        RequestStatus.STALE.value,
+                        now,
+                        request_id,
+                        RequestStatus.PENDING.value,
+                    ),
+                )
+                con.execute(
+                    """
+                    UPDATE tasks
+                    SET pending_request_id = NULL, updated_at = ?
+                    WHERE task_id = ? AND pending_request_id = ?
+                    """,
+                    (now, task_id, request_id),
+                )
+
+    def interrupt_nonterminal_tasks(self) -> int:
+        now = utc_now()
+        terminal = tuple(status.value for status in TERMINAL_STATUSES)
+        placeholders = ",".join("?" for _ in terminal)
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            rows = con.execute(
+                f"SELECT task_id FROM tasks WHERE status NOT IN ({placeholders})", terminal
+            ).fetchall()
+            task_ids = [row["task_id"] for row in rows]
+            if task_ids:
+                id_placeholders = ",".join("?" for _ in task_ids)
+                con.execute(
+                    f"""
+                    UPDATE tasks
+                    SET status = ?, completed_at = ?, updated_at = ?,
+                        pending_request_id = NULL,
+                        error_code = COALESCE(error_code, 'BRIDGE_RESTARTED'),
+                        error_message = COALESCE(
+                            error_message,
+                            'bridge restarted while task was active'
+                        )
+                    WHERE task_id IN ({id_placeholders})
+                    """,
+                    (TaskStatus.INTERRUPTED.value, now, now, *task_ids),
+                )
+                con.execute(
+                    f"""
+                    UPDATE pending_requests
+                    SET status = ?, resolved_at = ?
+                    WHERE task_id IN ({id_placeholders}) AND status = ?
+                    """,
+                    (RequestStatus.STALE.value, now, *task_ids, RequestStatus.PENDING.value),
+                )
+        return len(task_ids)
+
+
+def _task_from_row(row: sqlite3.Row) -> TaskRecord:
+    return TaskRecord(
+        task_id=row["task_id"],
+        runtime=row["runtime"],
+        workdir_alias=row["workdir_alias"],
+        workdir_slot=row["workdir_slot"],
+        relative_cwd=row["relative_cwd"],
+        profile=row["profile"],
+        requested_model=row["requested_model"],
+        status=row["status"],
+        created_at=row["created_at"],
+        started_at=row["started_at"],
+        updated_at=row["updated_at"],
+        completed_at=row["completed_at"],
+        deadline_at=row["deadline_at"],
+        continue_from_task_id=row["continue_from_task_id"],
+        correlation_id=row["correlation_id"],
+        idempotency_key=row["idempotency_key"],
+        request_fingerprint=row["request_fingerprint"],
+        native_session_id=row["native_session_id"],
+        native_turn_id=row["native_turn_id"],
+        final_response=row["final_response"],
+        result_storage=row["result_storage"] or "inline",
+        result_size_bytes=row["result_size_bytes"],
+        result_sha256=row["result_sha256"],
+        manifest=json.loads(row["manifest_json"]) if row["manifest_json"] else None,
+        manifest_sha256=row["manifest_sha256"],
+        error_code=row["error_code"],
+        error_message=row["error_message"],
+        pending_request_id=row["pending_request_id"],
+    )
+
+
+def _request_from_row(row: sqlite3.Row) -> PendingRequest:
+    return PendingRequest(
+        request_id=row["request_id"],
+        task_id=row["task_id"],
+        kind=row["kind"],
+        status=row["status"],
+        payload=json.loads(row["payload_json"]),
+        created_at=row["created_at"],
+        expires_at=row["expires_at"],
+        resolved_at=row["resolved_at"],
+        resolution=json.loads(row["resolution_json"]) if row["resolution_json"] else None,
+    )

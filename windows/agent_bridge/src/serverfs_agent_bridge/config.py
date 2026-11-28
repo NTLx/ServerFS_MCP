@@ -1,0 +1,814 @@
+"""Configuration loader for the standalone Agent Bridge."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit
+
+from . import lease_identity
+from .models import ACP_PROFILE_ID_RE, KNOWN_RUNTIME_NAMES, AcpProfile, AgentMode
+from .policy import PolicyRegistry, RepoActionPolicy, WorkdirAgentPolicy
+
+_CONFIG_KEYS = frozenset(
+    {
+        "socket_path",
+        "protocol_mode",
+        "bridge_id",
+        "core_grants_enabled",
+        "state_dir",
+        "lock_dir",
+        "lease_key",
+        "allowed_peer_uid",
+        "allowed_peer_gid",
+        "allowed_peer_sid",
+        "enable_fake_runtime",
+        "limits",
+        "codex",
+        "claude",
+        "qoder",
+        "acp_profiles",
+        "jev",
+        "proxy",
+        "workdirs",
+    }
+)
+_WORKDIR_KEYS = frozenset(
+    {
+        "slot",
+        "alias",
+        "host_path",
+        "read_only",
+        "agent_mode",
+        "agent_runtimes",
+        "repo_ops_enabled",
+        "repo_actions",
+    }
+)
+_REPO_ACTION_KEYS = frozenset(
+    {"argv", "mutates", "argument", "integrity", "kind", "repository", "github_cli"}
+)
+_MAX_REPO_ACTIONS = 16
+_CLAUDE_KEYS = frozenset(
+    {
+        "enabled",
+        "claude_bin",
+        "use_proxy",
+        "probe_timeout_seconds",
+        "event_idle_timeout_seconds",
+    }
+)
+_CODEX_KEYS = frozenset(
+    {
+        "enabled",
+        "autostart",
+        "codex_home",
+        "codex_bin",
+        "use_proxy",
+        "request_timeout_seconds",
+        "event_idle_timeout_seconds",
+        "max_message_bytes",
+    }
+)
+_QODER_KEYS = frozenset(
+    {
+        "enabled",
+        "qoder_bin",
+        "use_proxy",
+        "probe_timeout_seconds",
+        "event_idle_timeout_seconds",
+    }
+)
+_JEV_KEYS = frozenset({"api_key", "use_proxy"})
+_PROXY_KEYS = frozenset({"url", "authenticated"})
+_LIMIT_KEYS = frozenset(
+    {
+        "task_timeout_seconds",
+        "interaction_timeout_seconds",
+        "max_active_tasks",
+        "retention_seconds",
+        "result_spool_threshold_bytes",
+    }
+)
+_MAX_SPOOLED_RESULT_BYTES = 8 * 1024 * 1024
+_MAX_ACP_PROFILES = 16
+_MAX_ACP_ARGS = 32
+_MAX_ACP_ARG_LENGTH = 4096
+_MAX_ACP_PROFILE_BYTES = 64 * 1024
+_ACP_PROFILE_KEYS = frozenset(
+    {"id", "command", "args", "use_proxy", "probe_timeout_seconds", "shutdown_timeout_seconds"}
+)
+_ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+_LEASE_KEY_SLOT = "slot"
+_LEASE_KEY_ALIAS = "alias"
+_LEASE_KEYS = frozenset({_LEASE_KEY_SLOT, _LEASE_KEY_ALIAS})
+
+
+def _workdir_slot(item: dict[str, Any], lease_key: str) -> int | None:
+    """The numeric slot of one workdir entry, or None when the deployment keys leases by alias.
+
+    The choice is a single explicit switch for the whole config, never a per-entry accident, and it
+    defaults to the legacy layout. The ServerFS reader and the Bridge derive lease artifact names
+    independently, so a deployment whose two sides disagree would lock two different files and still
+    report success: a Compose deployment always carries slots, a native deployment never does, and
+    one config cannot mix the two (§5.3).
+    """
+    raw = item.get("slot")
+    if lease_key == _LEASE_KEY_ALIAS:
+        if raw is not None:
+            raise ValueError("workdir.slot is not used when lease_key is alias")
+        return None
+    slot = _strict_int(raw, "workdir.slot")
+    if not 1 <= slot <= lease_identity.MAX_WORKDIR_SLOTS:
+        raise ValueError("workdir.slot must be between 1 and 16")
+    return slot
+
+
+def _default_codex_home() -> Path:
+    configured = os.environ.get("CODEX_HOME")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".codex"
+
+
+@dataclass(frozen=True)
+class CodexSettings:
+    enabled: bool = False
+    autostart: bool = False
+    codex_home: Path = field(default_factory=_default_codex_home)
+    codex_bin: str = "codex"
+    #: Whether this runtime's network-owning child receives the Agent proxy (§7.2). Non-secret
+    #: routing policy only: the endpoint itself arrives over the private bootstrap channel and is
+    #: never part of this document. Defaults False so a Linux config that predates the field keeps
+    #: its current behaviour exactly.
+    use_proxy: bool = False
+    request_timeout_seconds: float = 10.0
+    event_idle_timeout_seconds: float | None = None
+    max_message_bytes: int = 128 * 1024 * 1024
+
+    @property
+    def control_socket(self) -> Path:
+        return self.codex_home / "app-server-control" / "app-server-control.sock"
+
+
+@dataclass(frozen=True)
+class ClaudeSettings:
+    enabled: bool = False
+    claude_bin: str = "claude"
+    #: See CodexSettings.use_proxy. False unless a deployment explicitly opts in.
+    use_proxy: bool = False
+    probe_timeout_seconds: float = 5.0
+    event_idle_timeout_seconds: float | None = None
+
+
+@dataclass(frozen=True)
+class QoderSettings:
+    enabled: bool = False
+    qoder_bin: str = "qodercli"
+    #: See CodexSettings.use_proxy. False unless a deployment explicitly opts in.
+    use_proxy: bool = False
+    probe_timeout_seconds: float = 5.0
+    event_idle_timeout_seconds: float | None = None
+
+
+def _load_acp_profiles(value: Any) -> tuple[AcpProfile, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("acp_profiles must be an array")
+    if len(value) > _MAX_ACP_PROFILES:
+        raise ValueError("acp_profiles must not contain more than 16 profiles")
+    profiles: list[AcpProfile] = []
+    ids: set[str] = set()
+    total_size = 0
+    for entry in value:
+        if not isinstance(entry, dict):
+            raise ValueError("acp_profiles entries must be objects")
+        _reject_unknown_keys(entry, _ACP_PROFILE_KEYS, "ACP profile")
+        profile_id = _strict_string(entry.get("id"), "acp_profiles.id")
+        if ACP_PROFILE_ID_RE.fullmatch(profile_id) is None or profile_id in KNOWN_RUNTIME_NAMES:
+            raise ValueError("acp_profiles.id has an invalid or reserved format")
+        if profile_id in ids:
+            raise ValueError(f"duplicate ACP profile id: {profile_id}")
+        ids.add(profile_id)
+        command = _strict_string(entry.get("command"), "acp_profiles.command")
+        command_path = Path(command)
+        if not command_path.is_absolute() or "\x00" in command:
+            raise ValueError("acp_profiles.command must be an absolute executable path")
+        try:
+            command_path.stat()
+        except OSError as exc:
+            raise ValueError("acp_profiles.command must be an absolute executable path") from exc
+        if not command_path.is_file() or not os.access(command_path, os.X_OK):
+            raise ValueError("acp_profiles.command must be a regular executable file")
+        args = entry.get("args", [])
+        if not isinstance(args, list) or len(args) > _MAX_ACP_ARGS:
+            raise ValueError("acp_profiles.args must be an array of at most 32 strings")
+        if any(
+            not isinstance(arg, str) or "\x00" in arg or len(arg) > _MAX_ACP_ARG_LENGTH
+            for arg in args
+        ):
+            raise ValueError("acp_profiles.args entries must be bounded strings")
+        probe = _strict_positive_number(
+            entry.get("probe_timeout_seconds", 5), "acp_profiles.probe_timeout_seconds"
+        )
+        shutdown = _strict_positive_number(
+            entry.get("shutdown_timeout_seconds", 5), "acp_profiles.shutdown_timeout_seconds"
+        )
+        if probe > 60 or shutdown > 60:
+            raise ValueError("ACP probe and shutdown timeouts must not exceed 60 seconds")
+        total_size += len(json.dumps(entry, ensure_ascii=True, separators=(",", ":")).encode())
+        profiles.append(
+            AcpProfile(
+                profile_id,
+                str(command_path),
+                tuple(args),
+                _strict_bool(entry.get("use_proxy", False), "acp_profiles.use_proxy"),
+                probe,
+                shutdown,
+            )
+        )
+    if total_size > _MAX_ACP_PROFILE_BYTES:
+        raise ValueError("encoded ACP profiles must not exceed 65536 bytes")
+    return tuple(profiles)
+
+
+def _load_repo_actions(
+    value: Any,
+    *,
+    enabled: bool,
+    read_only: bool,
+) -> tuple[RepoActionPolicy, ...]:
+    if value is None:
+        value = {}
+    if not isinstance(value, dict):
+        raise ValueError("workdir.repo_actions must be an object")
+    if len(value) > _MAX_REPO_ACTIONS:
+        raise ValueError(f"workdir.repo_actions must contain at most {_MAX_REPO_ACTIONS} actions")
+    if not enabled and value:
+        raise ValueError("workdir.repo_actions requires repo_ops_enabled=true")
+    actions: list[RepoActionPolicy] = []
+    for name in sorted(value):
+        entry = value[name]
+        if not isinstance(name, str) or not isinstance(entry, dict):
+            raise ValueError("workdir.repo_actions entries must be named objects")
+        _reject_unknown_keys(entry, _REPO_ACTION_KEYS, f"repo action {name}")
+        kind = entry.get("kind", "command")
+        argv_value = entry.get("argv", [] if kind != "command" else None)
+        if not isinstance(argv_value, list) or (kind == "command" and not argv_value):
+            raise ValueError(f"repo action {name}.argv must be a non-empty array")
+        argv: list[str] = []
+        for item in argv_value:
+            argv.append(_strict_string(item, f"repo action {name}.argv entry"))
+        mutates = _strict_bool(entry.get("mutates", False), f"repo action {name}.mutates")
+        argument = _strict_string(entry.get("argument", "none"), f"repo action {name}.argument")
+        if argument not in {"none", "path", "basename", "release_tag"}:
+            raise ValueError(
+                f"repo action {name}.argument must be none, path, basename or release_tag"
+            )
+        integrity_value = entry.get("integrity")
+        if not isinstance(integrity_value, dict) or not integrity_value:
+            raise ValueError(f"repo action {name}.integrity must be a non-empty object")
+        integrity: list[tuple[str, str]] = []
+        for path in sorted(integrity_value):
+            digest = integrity_value[path]
+            if not isinstance(path, str) or not isinstance(digest, str):
+                raise ValueError(f"repo action {name}.integrity must map paths to sha256 strings")
+            integrity.append((path, digest))
+        action = RepoActionPolicy(
+            name=name,
+            argv=tuple(argv),
+            mutates=mutates,
+            argument=argument,
+            integrity=tuple(integrity),
+            kind=kind,
+            repository=entry.get("repository"),
+            github_cli=entry.get("github_cli", "gh"),
+        )
+        if read_only:
+            raise ValueError("read-only workdir cannot configure repo actions")
+        actions.append(action)
+    return tuple(actions)
+
+
+@dataclass(frozen=True)
+class LifecycleLimits:
+    task_timeout_seconds: int = 7200
+    interaction_timeout_seconds: int = 1800
+    max_active_tasks: int = 4
+    retention_seconds: int = 168 * 60 * 60
+    result_spool_threshold_bytes: int = 262_144
+
+
+@dataclass(frozen=True)
+class SharedProxySettings:
+    url: str = field(repr=False)
+    authenticated: bool = False
+
+
+@dataclass(frozen=True)
+class JevSettings:
+    api_key: str | None = field(default=None, repr=False)
+    use_proxy: bool = False
+
+    @property
+    def enabled(self) -> bool:
+        return self.api_key is not None
+
+
+@dataclass(frozen=True)
+class BridgeConfig:
+    socket_path: Path
+    state_dir: Path
+    lock_dir: Path
+    allowed_peer_uid: int | None
+    allowed_peer_gid: int | None
+    allowed_peer_sid: str | None
+    enable_fake_runtime: bool
+    limits: LifecycleLimits
+    codex: CodexSettings
+    claude: ClaudeSettings
+    qoder: QoderSettings
+    acp_profiles: tuple[AcpProfile, ...]
+    jev: JevSettings
+    proxy: SharedProxySettings | None
+    policies: PolicyRegistry
+    protocol_mode: str = "v1"
+    bridge_id: str | None = None
+    lease_key: str = _LEASE_KEY_SLOT
+    core_grants_enabled: bool = False
+
+    @classmethod
+    def load(cls, path: Path) -> BridgeConfig:
+        if sys.platform != "win32":
+            raise ValueError("Windows Bridge configuration requires Windows")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("bridge config root must be an object")
+        _reject_unknown_keys(data, _CONFIG_KEYS, "bridge config")
+
+        core_grants_enabled = _strict_bool(
+            data.get("core_grants_enabled", False), "core_grants_enabled"
+        )
+        protocol_mode = _strict_string(data.get("protocol_mode", "v1"), "protocol_mode")
+        if protocol_mode not in {"v1", "v2"}:
+            raise ValueError("protocol_mode must be v1 or v2")
+        bridge_id = data.get("bridge_id")
+        if protocol_mode == "v2":
+            raise ValueError("protocol_mode v2 is supported only on POSIX platforms")
+        elif core_grants_enabled:
+            if bridge_id is None:
+                raise ValueError("Bridge v2 requires a separate nondefault bridge_id")
+            bridge_id = _strict_string(bridge_id, "bridge_id")
+            if (
+                bridge_id == "default"
+                or re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?", bridge_id) is None
+            ):
+                raise ValueError("Bridge v2 bridge_id is invalid")
+            if any(key not in data for key in ("socket_path", "state_dir", "lock_dir")):
+                raise ValueError("Bridge v2 requires explicit independent endpoint and state")
+            legacy_endpoint, legacy_state, legacy_locks = _default_paths()
+            for key, legacy in (
+                ("socket_path", legacy_endpoint),
+                ("state_dir", legacy_state),
+                ("lock_dir", legacy_locks),
+            ):
+                proposed = _strict_string(data[key], key)
+                normalized = os.path.normcase(os.path.normpath(os.path.expanduser(proposed)))
+                default = os.path.normcase(os.path.normpath(os.path.expanduser(str(legacy))))
+                if normalized == default:
+                    raise ValueError("Bridge v2 must not reuse a default v1 owner resource")
+        elif bridge_id is not None:
+            raise ValueError("bridge_id requires protocol_mode v2 or Windows core grants")
+
+        lease_key = _strict_string(data.get("lease_key", _LEASE_KEY_SLOT), "lease_key")
+        if lease_key not in _LEASE_KEYS:
+            raise ValueError("lease_key must be slot or alias")
+
+        policies: list[WorkdirAgentPolicy] = []
+        workdirs = data.get("workdirs", [])
+        if not isinstance(workdirs, list):
+            raise ValueError("workdirs must be an array")
+        for item in workdirs:
+            if not isinstance(item, dict):
+                raise ValueError("workdirs entries must be objects")
+            _reject_unknown_keys(item, _WORKDIR_KEYS, "workdir")
+            slot = _workdir_slot(item, lease_key)
+            alias = _strict_string(item.get("alias"), "workdir.alias")
+            if _ALIAS_RE.fullmatch(alias) is None:
+                raise ValueError("workdir.alias has an invalid format")
+            host_path = Path(
+                _strict_string(item.get("host_path"), "workdir.host_path")
+            ).expanduser()
+            if not host_path.is_absolute():
+                raise ValueError("workdir.host_path must be absolute")
+            try:
+                host_path = host_path.resolve(strict=True)
+            except OSError as exc:
+                raise ValueError("workdir.host_path must exist") from exc
+            if not host_path.is_dir():
+                raise ValueError("workdir.host_path must be a directory")
+
+            mode_value = item.get("agent_mode", AgentMode.DISABLED.value)
+            mode = AgentMode(_strict_string(mode_value, "workdir.agent_mode"))
+            runtimes_value = item.get("agent_runtimes", [])
+            if not isinstance(runtimes_value, list):
+                raise ValueError("workdir.agent_runtimes must be an array")
+            runtimes: list[str] = []
+            for runtime in runtimes_value:
+                runtime_name = _strict_string(runtime, "workdir.agent_runtimes entry")
+                if runtime_name not in KNOWN_RUNTIME_NAMES:
+                    raise ValueError(f"unknown agent runtime: {runtime_name}")
+                if runtime_name in runtimes:
+                    raise ValueError(f"duplicate agent runtime: {runtime_name}")
+                runtimes.append(runtime_name)
+            if mode is AgentMode.DISABLED and runtimes:
+                raise ValueError("disabled agent mode cannot allow runtimes")
+            read_only = _strict_bool(item.get("read_only", True), "workdir.read_only")
+            repo_ops_enabled = _strict_bool(
+                item.get("repo_ops_enabled", False), "workdir.repo_ops_enabled"
+            )
+            repo_actions = _load_repo_actions(
+                item.get("repo_actions"),
+                enabled=repo_ops_enabled,
+                read_only=read_only,
+            )
+            if mode is AgentMode.WORKSPACE_WRITE and read_only:
+                raise ValueError("workspace-write agent mode requires a writable workdir")
+            policies.append(
+                WorkdirAgentPolicy(
+                    slot=slot,
+                    alias=alias,
+                    host_path=host_path,
+                    mode=mode,
+                    runtimes=frozenset(runtimes),
+                    read_only=read_only,
+                    repo_ops_enabled=repo_ops_enabled,
+                    repo_actions=repo_actions,
+                )
+            )
+
+        enable_fake_runtime = _strict_bool(
+            data.get("enable_fake_runtime", False), "enable_fake_runtime"
+        )
+        if not enable_fake_runtime and any("fake" in policy.runtimes for policy in policies):
+            raise ValueError("fake runtime is allowlisted but enable_fake_runtime is false")
+
+        limits = _load_lifecycle_limits(data.get("limits"))
+        codex = _load_codex_settings(data.get("codex"))
+        claude = _load_claude_settings(data.get("claude"))
+        qoder = _load_qoder_settings(data.get("qoder"))
+        acp_profiles = _load_acp_profiles(data.get("acp_profiles"))
+        acp_runtime_names = {profile.runtime_id for profile in acp_profiles}
+        if len(acp_runtime_names) != len(acp_profiles):
+            raise ValueError("duplicate ACP runtime id")
+        for policy in policies:
+            for runtime in policy.runtimes:
+                if runtime.startswith("acp-") and runtime not in acp_runtime_names:
+                    raise ValueError(f"ACP runtime is not configured: {runtime}")
+                if runtime.startswith("acp-") and policy.mode is not AgentMode.WORKSPACE_WRITE:
+                    raise ValueError("ACP runtime requires agent_mode=workspace-write")
+        jev = _load_jev_settings(data.get("jev"))
+        proxy = _load_proxy_settings(data.get("proxy"))
+        codex_policies = [policy for policy in policies if "codex" in policy.runtimes]
+        if not codex.enabled and codex_policies:
+            raise ValueError("codex runtime is allowlisted but codex.enabled is false")
+        if any(policy.mode is not AgentMode.WORKSPACE_WRITE for policy in codex_policies):
+            raise ValueError(
+                "codex native mode requires agent_mode=workspace-write "
+                "for every allowlisted workdir"
+            )
+
+        claude_policies = [policy for policy in policies if "claude" in policy.runtimes]
+        if not claude.enabled and claude_policies:
+            raise ValueError("claude runtime is allowlisted but claude.enabled is false")
+        if any(policy.mode is not AgentMode.WORKSPACE_WRITE for policy in claude_policies):
+            raise ValueError(
+                "claude native mode requires agent_mode=workspace-write "
+                "for every allowlisted workdir"
+            )
+
+        qoder_policies = [policy for policy in policies if "qoder" in policy.runtimes]
+        if not qoder.enabled and qoder_policies:
+            raise ValueError("qoder runtime is allowlisted but qoder.enabled is false")
+        if any(policy.mode is not AgentMode.WORKSPACE_WRITE for policy in qoder_policies):
+            raise ValueError(
+                "qoder native mode requires agent_mode=workspace-write "
+                "for every allowlisted workdir"
+            )
+
+        agent_proxy_enabled = codex.use_proxy or claude.use_proxy or qoder.use_proxy
+        agent_proxy_enabled = agent_proxy_enabled or any(
+            profile.use_proxy for profile in acp_profiles
+        )
+        # Agent proxy material may arrive later through the private supervised bootstrap channel
+        # (the Windows v0.11 contract), so BridgeConfig must not require a persisted endpoint.
+        # Linux's renderer does require one before launch. Jev has no bootstrap-specific transport:
+        # when explicitly proxied, its endpoint must already be present in this private config.
+        if jev.use_proxy and proxy is None:
+            raise ValueError("proxy configuration is required when Jev proxy is enabled")
+        if agent_proxy_enabled and proxy is not None and proxy.authenticated:
+            raise ValueError("Agent runtime proxy must be credentialless")
+
+        endpoint, default_state_dir, default_lock_dir = _default_paths()
+        return cls(
+            socket_path=_config_path(data.get("socket_path", endpoint), "socket_path"),
+            state_dir=_config_path(
+                data.get("state_dir", default_state_dir),
+                "state_dir",
+                expand_user=True,
+            ),
+            lock_dir=_config_path(data.get("lock_dir", default_lock_dir), "lock_dir"),
+            allowed_peer_uid=_optional_int(data.get("allowed_peer_uid")),
+            allowed_peer_gid=_optional_int(data.get("allowed_peer_gid")),
+            allowed_peer_sid=_optional_string(data.get("allowed_peer_sid")),
+            enable_fake_runtime=enable_fake_runtime,
+            limits=limits,
+            codex=codex,
+            claude=claude,
+            qoder=qoder,
+            acp_profiles=acp_profiles,
+            jev=jev,
+            proxy=proxy,
+            policies=PolicyRegistry(policies),
+            protocol_mode=protocol_mode,
+            bridge_id=bridge_id,
+            lease_key=lease_key,
+            core_grants_enabled=core_grants_enabled,
+        )
+
+
+def _load_lifecycle_limits(value: Any) -> LifecycleLimits:
+    if value is None:
+        return LifecycleLimits()
+    if not isinstance(value, dict):
+        raise ValueError("limits must be an object")
+    _reject_unknown_keys(value, _LIMIT_KEYS, "limits")
+
+    defaults = LifecycleLimits()
+    parsed: dict[str, int] = {}
+    for key in _LIMIT_KEYS:
+        raw = value.get(key, getattr(defaults, key))
+        parsed[key] = _strict_positive_int(raw, f"limits.{key}")
+    if parsed["result_spool_threshold_bytes"] > _MAX_SPOOLED_RESULT_BYTES:
+        raise ValueError("limits.result_spool_threshold_bytes must not exceed 8388608")
+    return LifecycleLimits(**parsed)
+
+
+def _load_jev_settings(value: Any) -> JevSettings:
+    if value is None:
+        return JevSettings()
+    if not isinstance(value, dict):
+        raise ValueError("jev must be an object")
+    _reject_unknown_keys(value, _JEV_KEYS, "jev")
+
+    use_proxy = _strict_bool(value.get("use_proxy", False), "jev.use_proxy")
+    raw = value.get("api_key")
+    if raw is None:
+        return JevSettings(use_proxy=use_proxy)
+    if not isinstance(raw, str):
+        raise ValueError("jev.api_key must be a string")
+    api_key = raw.strip()
+    if not api_key:
+        return JevSettings(use_proxy=use_proxy)
+    if not api_key.isascii() or any(char.isspace() or ord(char) < 32 for char in api_key):
+        raise ValueError("jev.api_key has an invalid format")
+    return JevSettings(api_key=api_key, use_proxy=use_proxy)
+
+
+def _load_proxy_settings(value: Any) -> SharedProxySettings | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("proxy must be an object")
+    _reject_unknown_keys(value, _PROXY_KEYS, "proxy")
+    url = _strict_string(value.get("url"), "proxy.url")
+    authenticated = _strict_bool(value.get("authenticated", False), "proxy.authenticated")
+    if "\x00" in url or any(char.isspace() for char in url):
+        raise ValueError("proxy.url has an invalid format")
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError as exc:
+        raise ValueError("proxy.url has an invalid format") from exc
+    if (
+        parts.scheme != "http"
+        or not parts.hostname
+        or port is None
+        or not 1 <= port <= 65535
+        or parts.path not in ("", "/")
+        or parts.query
+        or parts.fragment
+    ):
+        raise ValueError("proxy.url has an invalid format")
+    has_userinfo = parts.username is not None
+    if authenticated != has_userinfo:
+        raise ValueError("proxy.authenticated does not match proxy.url")
+    return SharedProxySettings(url=url, authenticated=authenticated)
+
+
+def _load_claude_settings(value: Any) -> ClaudeSettings:
+    if value is None:
+        return ClaudeSettings()
+    if not isinstance(value, dict):
+        raise ValueError("claude must be an object")
+    _reject_unknown_keys(value, _CLAUDE_KEYS, "claude")
+
+    enabled = _strict_bool(value.get("enabled", False), "claude.enabled")
+    claude_bin = _strict_string(value.get("claude_bin", "claude"), "claude.claude_bin")
+    if any(char in claude_bin for char in ("\x00", "\n", "\r")):
+        raise ValueError("claude.claude_bin contains an invalid character")
+    probe_timeout = _strict_positive_number(
+        value.get("probe_timeout_seconds", 5.0),
+        "claude.probe_timeout_seconds",
+    )
+    event_idle_timeout_value = value.get("event_idle_timeout_seconds")
+    event_idle_timeout = (
+        None
+        if event_idle_timeout_value is None
+        else _strict_positive_number(
+            event_idle_timeout_value,
+            "claude.event_idle_timeout_seconds",
+        )
+    )
+    return ClaudeSettings(
+        enabled=enabled,
+        claude_bin=claude_bin,
+        use_proxy=_strict_bool(value.get("use_proxy", False), "claude.use_proxy"),
+        probe_timeout_seconds=probe_timeout,
+        event_idle_timeout_seconds=event_idle_timeout,
+    )
+
+
+def _load_qoder_settings(value: Any) -> QoderSettings:
+    if value is None:
+        return QoderSettings()
+    if not isinstance(value, dict):
+        raise ValueError("qoder must be an object")
+    _reject_unknown_keys(value, _QODER_KEYS, "qoder")
+
+    enabled = _strict_bool(value.get("enabled", False), "qoder.enabled")
+    qoder_bin = _strict_string(value.get("qoder_bin", "qodercli"), "qoder.qoder_bin")
+    if any(char in qoder_bin for char in ("\x00", "\n", "\r")):
+        raise ValueError("qoder.qoder_bin contains an invalid character")
+    probe_timeout = _strict_positive_number(
+        value.get("probe_timeout_seconds", 5.0),
+        "qoder.probe_timeout_seconds",
+    )
+    event_idle_timeout_value = value.get("event_idle_timeout_seconds")
+    event_idle_timeout = (
+        None
+        if event_idle_timeout_value is None
+        else _strict_positive_number(
+            event_idle_timeout_value,
+            "qoder.event_idle_timeout_seconds",
+        )
+    )
+    return QoderSettings(
+        enabled=enabled,
+        qoder_bin=qoder_bin,
+        use_proxy=_strict_bool(value.get("use_proxy", False), "qoder.use_proxy"),
+        probe_timeout_seconds=probe_timeout,
+        event_idle_timeout_seconds=event_idle_timeout,
+    )
+
+
+def _load_codex_settings(value: Any) -> CodexSettings:
+    if value is None:
+        return CodexSettings()
+    if not isinstance(value, dict):
+        raise ValueError("codex must be an object")
+    _reject_unknown_keys(value, _CODEX_KEYS, "codex")
+
+    enabled = _strict_bool(value.get("enabled", False), "codex.enabled")
+    autostart = _strict_bool(value.get("autostart", False), "codex.autostart")
+    if autostart and not enabled:
+        raise ValueError("codex.autostart requires codex.enabled=true")
+
+    home_value = value.get("codex_home", str(_default_codex_home()))
+    codex_home = _config_path(home_value, "codex.codex_home", expand_user=True)
+    if enabled:
+        try:
+            home_stat = codex_home.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError("codex.codex_home must exist when Codex is enabled") from exc
+        if not home_stat.is_dir():
+            raise ValueError("codex.codex_home must be a directory")
+        codex_home = home_stat
+
+    codex_bin = _strict_string(value.get("codex_bin", "codex"), "codex.codex_bin")
+    if any(char in codex_bin for char in ("\x00", "\n", "\r")):
+        raise ValueError("codex.codex_bin contains an invalid character")
+
+    request_timeout = _strict_positive_number(
+        value.get("request_timeout_seconds", 10.0),
+        "codex.request_timeout_seconds",
+    )
+    event_idle_timeout_value = value.get("event_idle_timeout_seconds")
+    event_idle_timeout = (
+        None
+        if event_idle_timeout_value is None
+        else _strict_positive_number(
+            event_idle_timeout_value,
+            "codex.event_idle_timeout_seconds",
+        )
+    )
+    max_message_bytes = _strict_int(
+        value.get("max_message_bytes", 128 * 1024 * 1024),
+        "codex.max_message_bytes",
+    )
+    if max_message_bytes < 1024:
+        raise ValueError("codex.max_message_bytes must be at least 1024")
+
+    return CodexSettings(
+        enabled=enabled,
+        autostart=autostart,
+        codex_home=codex_home,
+        codex_bin=codex_bin,
+        use_proxy=_strict_bool(value.get("use_proxy", False), "codex.use_proxy"),
+        request_timeout_seconds=request_timeout,
+        event_idle_timeout_seconds=event_idle_timeout,
+        max_message_bytes=max_message_bytes,
+    )
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return _strict_int(value, "peer credential")
+
+
+def _reject_unknown_keys(data: dict[str, Any], allowed: frozenset[str], label: str) -> None:
+    unknown = set(data) - allowed
+    if unknown:
+        raise ValueError(f"unknown {label} field: {sorted(unknown)[0]}")
+
+
+def _strict_string(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{label} must be a non-empty string")
+    return value
+
+
+def _strict_bool(value: Any, label: str) -> bool:
+    if type(value) is not bool:
+        raise ValueError(f"{label} must be a JSON boolean")
+    return value
+
+
+def _strict_int(value: Any, label: str) -> int:
+    if type(value) is not int:
+        raise ValueError(f"{label} must be a JSON integer")
+    if value < 0:
+        raise ValueError(f"{label} must not be negative")
+    return value
+
+
+def _strict_positive_int(value: Any, label: str) -> int:
+    parsed = _strict_int(value, label)
+    if parsed < 1:
+        raise ValueError(f"{label} must be a positive integer")
+    return parsed
+
+
+def _strict_positive_number(value: Any, label: str) -> float:
+    import math
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a JSON number")
+    number = float(value)
+    if not math.isfinite(number) or not number > 0:
+        raise ValueError(f"{label} must be a finite positive number")
+    return number
+
+
+def _default_paths() -> tuple[str, str, str]:
+    """Windows endpoint and state defaults, unchanged from v0.26.0."""
+    from .data_home import bridge_data_home
+    from .local_ipc import derive_pipe_name
+    from .windows_security import current_user_sid
+
+    home = bridge_data_home()
+    return (derive_pipe_name(current_user_sid()), str(home / "state"), str(home / "locks"))
+
+
+def _optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError("allowed_peer_sid must be a non-empty string or null")
+    return value
+
+
+def _config_path(value: Any, label: str, *, expand_user: bool = False) -> Path:
+    path = Path(_strict_string(value, label))
+    if expand_user:
+        path = path.expanduser()
+    if not path.is_absolute():
+        raise ValueError(f"{label} must be absolute")
+    return path

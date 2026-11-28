@@ -1,0 +1,28 @@
+[Unit]
+Description=ServerFS Agent Bridge (user service)
+Documentation=https://github.com/NTLx/ServerFS_MCP
+After=default.target
+
+[Service]
+Type=simple
+
+# Intentionally user-scoped: no User=, Group=, SupplementaryGroups=,
+# privileged ExecStartPre= or system-owned paths.
+WorkingDirectory=%h/.local/share/serverfs-agent-bridge/current
+
+# Runtime directories are persistent host paths because Docker bind mounts
+# track directory inodes. Never delete/recreate these directories on restart.
+ExecStartPre=/usr/bin/install -d -m 0750 %h/.local/share/serverfs-agent-bridge/runtime/socket %h/.local/share/serverfs-agent-bridge/runtime/locks
+
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-%h/.config/serverfs-agent-bridge/provider.env
+
+ExecStart=%h/.local/share/serverfs-agent-bridge/current/.venv/bin/serverfs-agent-bridge --config %h/.config/serverfs-agent-bridge/config.json
+
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=45s
+KillMode=control-group
+
+[Install]
+WantedBy=default.target

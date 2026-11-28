@@ -24,7 +24,7 @@ def test_registry_manifest_is_valid():
 
 
 def test_dockerfile_bootstraps_read_only_disabled_slots():
-    dockerfile = (MANIFEST_PATH.parents[0] / "Dockerfile").read_text(encoding="utf-8")
+    dockerfile = (MANIFEST_PATH.parents[0] / "linux/Dockerfile").read_text(encoding="utf-8")
     assert "for slot in $(seq -w 1 16)" in dockerfile
     assert 'touch "/workdirs/${slot}/.serverfs-disabled"' in dockerfile
     assert 'chown -R 10001:10001 "/workdirs/${slot}"' in dockerfile

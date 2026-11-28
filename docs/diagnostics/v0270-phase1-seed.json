@@ -1,0 +1,23 @@
+{
+  "baseline": "fd1019498b281cdeb8c5805242f1a71222f5eebd",
+  "platforms": {
+    "linux": {
+      "files": 731,
+      "bytes": 8044622,
+      "source_blob_checks": 731
+    },
+    "macos": {
+      "files": 742,
+      "bytes": 8233530,
+      "source_blob_checks": 742
+    },
+    "windows": {
+      "files": 856,
+      "bytes": 9329666,
+      "source_blob_checks": 856
+    }
+  },
+  "status": "seeded only; build, pruning, independent runtime and Gate A not verified",
+  "root_preserved": true,
+  "limitations": "Common baseline source/test modules temporarily duplicated within each candidate. Platform-specific native assets selected. Root packaging, CI, distribution and remaining test/import ownership must be migrated. Linux/Windows manifest macOS force-include is not yet removed."
+}

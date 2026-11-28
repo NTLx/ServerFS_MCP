@@ -1,0 +1,3001 @@
+{
+  "baseline": "fd1019498b281cdeb8c5805242f1a71222f5eebd",
+  "deleted": [
+    {
+      "removed": "linux/agent_bridge/src/serverfs_agent_bridge/macos_owned_config.py",
+      "retained": "macos/agent_bridge/src/serverfs_agent_bridge/macos_owned_config.py",
+      "sha256": "f43a088c7068d943e5f26127c50afe133f32df2bfb662f11df889c17cbdb4e0c"
+    },
+    {
+      "removed": "linux/agent_bridge/src/serverfs_agent_bridge/platform_seams.py",
+      "retained": "agent_bridge/src/serverfs_agent_bridge/platform_seams.py",
+      "sha256": "e78b464aa0cc76118ce4f88ad354305504114766a360f3a9540c998ab351e38a"
+    },
+    {
+      "removed": "linux/agent_bridge/src/serverfs_agent_bridge/windows_ipc.py",
+      "retained": "windows/agent_bridge/src/serverfs_agent_bridge/windows_ipc.py",
+      "sha256": "8980d986c1ec2b12c08a1c2659e49474d64700f020beb3516dc12ea6f44c4ce2"
+    },
+    {
+      "removed": "linux/agent_bridge/src/serverfs_agent_bridge/windows_lease.py",
+      "retained": "windows/agent_bridge/src/serverfs_agent_bridge/windows_lease.py",
+      "sha256": "8d8b6f5d9736d2c108cf412f778617dcf7e5a586c7887b39fc829cff277667c3"
+    },
+    {
+      "removed": "linux/agent_bridge/src/serverfs_agent_bridge/windows_pipe.py",
+      "retained": "windows/agent_bridge/src/serverfs_agent_bridge/windows_pipe.py",
+      "sha256": "a548bfab70be136881899360537c180ed6f19555318c4a3cca7cfe8cec05807c"
+    },
+    {
+      "removed": "linux/agent_bridge/tests/pipe_support.py",
+      "retained": "windows/agent_bridge/tests/pipe_support.py",
+      "sha256": "f7503517c64e6390cd1f9a6f391edca3dff8d5cced5aef06588665c7a73bc8ae"
+    },
+    {
+      "removed": "linux/tests/test_core_bridge_v2_interop_macos.py",
+      "retained": "macos/tests/test_core_bridge_v2_interop_macos.py",
+      "sha256": "bb9b43bfed93beb115e30d97ea5c7c9fbfdc2bbf8cc033b49fb3e8d7ff1eabb1"
+    },
+    {
+      "removed": "linux/tests/test_core_bridge_v2_native_startup_macos.py",
+      "retained": "macos/tests/test_core_bridge_v2_native_startup_macos.py",
+      "sha256": "1bf8818f3cc9a66f0fc9625722fe5e36801974cc4d7b5b462218ffc9dea85fa7"
+    },
+    {
+      "removed": "linux/tests/test_core_bridge_v2_restart_rotation_macos.py",
+      "retained": "macos/tests/test_core_bridge_v2_restart_rotation_macos.py",
+      "sha256": "4b0d5505bbfb1f74ec81c5806943acc84b73504059668542dd66f05e7f7381ba"
+    },
+    {
+      "removed": "linux/tests/test_darwin_backend.py",
+      "retained": "macos/tests/test_darwin_backend.py",
+      "sha256": "43a1891e50f0c927addfdd863cc2c1fcb1858f2bac8c4396b178b827ac0128ac"
+    },
+    {
+      "removed": "linux/tests/test_darwin_bridge_policy.py",
+      "retained": "macos/tests/test_darwin_bridge_policy.py",
+      "sha256": "07e807dea43d895c7323325256fa894c4d4041177336ba57301ffa021a12243f"
+    },
+    {
+      "removed": "linux/tests/test_darwin_cli.py",
+      "retained": "macos/tests/test_darwin_cli.py",
+      "sha256": "bbd431cff48c987ba65b0efd746ac287f040bb30c8bf07c5e1006592d49d9d98"
+    },
+    {
+      "removed": "linux/tests/test_darwin_cloudflare_service.py",
+      "retained": "macos/tests/test_darwin_cloudflare_service.py",
+      "sha256": "9129aa2bc603a600eb58a412b531a7b4bb725baa69bfaa2eee3067475bc9248e"
+    },
+    {
+      "removed": "linux/tests/test_darwin_file_ingress.py",
+      "retained": "macos/tests/test_darwin_file_ingress.py",
+      "sha256": "e14e42b72b909e2cd160f51899753f9a689b9d2ffcf11e04ad2407549ea5c75a"
+    },
+    {
+      "removed": "linux/tests/test_darwin_lifecycle.py",
+      "retained": "macos/tests/test_darwin_lifecycle.py",
+      "sha256": "db83b5f6898e749b470a8cf3850c401f351366e60a917d81a5b18222afdd6680"
+    },
+    {
+      "removed": "linux/tests/test_darwin_native_stdio.py",
+      "retained": "macos/tests/test_darwin_native_stdio.py",
+      "sha256": "38847599a4e4b8ba6931ddf14bb90930ac2b61775617535d8a4ba4cd5d0b8bd6"
+    },
+    {
+      "removed": "linux/tests/test_darwin_service.py",
+      "retained": "macos/tests/test_darwin_service.py",
+      "sha256": "79f25f79e215b9fe4b2307b8ea571d0d18a09e65fdb8e62d3e919d6561c3c064"
+    },
+    {
+      "removed": "linux/tests/test_darwin_service_lifecycle.py",
+      "retained": "macos/tests/test_darwin_service_lifecycle.py",
+      "sha256": "d0fc9ab8750ce817781e52632ed6d686e1e8e20a6919a9abfa448e613ba99b6e"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_bridge_identity.py",
+      "retained": "macos/tests/test_darwin_v0250_bridge_identity.py",
+      "sha256": "04b02c5ecdf4fe8b9028be8298a7bbcb1469d7340f3452e4841ad6338f23ac40"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_bridge_lifecycle.py",
+      "retained": "macos/tests/test_darwin_v0250_bridge_lifecycle.py",
+      "sha256": "83035ec666df31533f1a2e4721b0227f41b9c2a4dec6d8aef231757fd9c5bb09"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_candidate_source_gate.py",
+      "retained": "macos/tests/test_darwin_v0250_candidate_source_gate.py",
+      "sha256": "9d5f5d21675b571bec03961e6d4e8ebd121f25567cbde17be9e3f61e0d2eb6cb"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_connector_id_stage_cli.py",
+      "retained": "macos/tests/test_darwin_v0250_connector_id_stage_cli.py",
+      "sha256": "b7cf1ad4d8bac00dbfe41560a312fc933eaaad729a57cc78c880b78840333509"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_connector_lifecycle.py",
+      "retained": "macos/tests/test_darwin_v0250_connector_lifecycle.py",
+      "sha256": "e2ba93002fa5f0cf0418ac0bf2fe86d3250afa41328a021460f8c14da0f05c31"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_connector_staging.py",
+      "retained": "macos/tests/test_darwin_v0250_connector_staging.py",
+      "sha256": "c626a6fb587bc7f4e70bd24b6ceaae1e2c12b1d1ca19b1b02311b49d8deb6284"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_core_lifecycle.py",
+      "retained": "macos/tests/test_darwin_v0250_core_lifecycle.py",
+      "sha256": "ad805ad955ac16649d5c09ef7bdbb76ffbf2de6fe77de46575f7155188455c3a"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_core_staging.py",
+      "retained": "macos/tests/test_darwin_v0250_core_staging.py",
+      "sha256": "0d6e9bee0501fde353e57cee5a4d18b51ee5066bc6360b22188d83c040d97a2a"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_installed_wheel_socket_budget.py",
+      "retained": "macos/tests/test_darwin_v0250_installed_wheel_socket_budget.py",
+      "sha256": "e8acd809e6cd9c906f0c8670beea8b3ead719a581f422ef3f4c7aa86526fa003"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_installed_wheel_three_process_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_installed_wheel_three_process_macos.py",
+      "sha256": "167c5407931de22ccbbb58845879e8f9d33f23a18c9f994235d53a8be8dccff8"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_instance_runtime.py",
+      "retained": "macos/tests/test_darwin_v0250_instance_runtime.py",
+      "sha256": "2443e69382ec9896db088d47c1a0eebfcec12f7cfbd2d74612699791e5cf91c4"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_instances.py",
+      "retained": "macos/tests/test_darwin_v0250_instances.py",
+      "sha256": "203dfab94df689cc76e88e34a2ad70d13bdf6bf83f6709d6af1d275fedb7a7fe"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_legacy_group_guard.py",
+      "retained": "macos/tests/test_darwin_v0250_legacy_group_guard.py",
+      "sha256": "d66c35ca2d0fbf65cf6086979bc23246562a9aa61846740b2bcc88257946fa87"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_multi_connector_acceptance_source.py",
+      "retained": "macos/tests/test_darwin_v0250_multi_connector_acceptance_source.py",
+      "sha256": "eb8b8db5d41ed128cbf5b7321acd675608715f4b1e76ddf6bf9630e2e6bde7c5"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_named_connector_keepalive_source.py",
+      "retained": "macos/tests/test_darwin_v0250_named_connector_keepalive_source.py",
+      "sha256": "05c67ebed46b676f8dbe8a0074d487fb312ff844e4cd3b2f3356bbac56f7f9a6"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_named_core_keepalive_live_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_named_core_keepalive_live_macos.py",
+      "sha256": "6dd29bfbacd9e82610108432b867cb9b5baa2bd4cfc6a14604f3a1c0dadb7848"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_native_validation.py",
+      "retained": "macos/tests/test_darwin_v0250_native_validation.py",
+      "sha256": "4185866c8ce323af033417a5d7514fb1ac8975a843ce0b37ffe47b29b1d4b1f6"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_openai_connector_ids.py",
+      "retained": "macos/tests/test_darwin_v0250_openai_connector_ids.py",
+      "sha256": "04dd3fa41f89afb6a18a665171ae526a94d33748c65750a775de784efc6c8151"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_openai_http_staging.py",
+      "retained": "macos/tests/test_darwin_v0250_openai_http_staging.py",
+      "sha256": "e485bcde77366fec044644d9ccd21b707961331eecbe5a50c14f1e88da65b5e0"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_owned_dynamic_keys.py",
+      "retained": "macos/tests/test_darwin_v0250_owned_dynamic_keys.py",
+      "sha256": "7db78ea83b79cf86bb19567eadde1fc6764615aa709ddc609898cf417562918a"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_owned_lifecycle.py",
+      "retained": "macos/tests/test_darwin_v0250_owned_lifecycle.py",
+      "sha256": "f3db6d5f6aa9426698a9ab0980db0202a221c6b6fb2be19e4bc6913bdc4b9189"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_owned_runtime.py",
+      "retained": "macos/tests/test_darwin_v0250_owned_runtime.py",
+      "sha256": "7270c49468c6249a608012ceee37a4d06b017d39ad07dc648c21e257a3776214"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_owned_staging.py",
+      "retained": "macos/tests/test_darwin_v0250_owned_staging.py",
+      "sha256": "973695e69400a36428f7541d0fe6065809e5cf2345c584a3e471579f28143970"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_owned_unstage.py",
+      "retained": "macos/tests/test_darwin_v0250_owned_unstage.py",
+      "sha256": "89e1c828f9a5a254f09102f8832fc1c1f21464fba9abf53b8ad7dc646faa677a"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_parallel_core_e2e.py",
+      "retained": "macos/tests/test_darwin_v0250_parallel_core_e2e.py",
+      "sha256": "cf28e19534c1f73c9bcbccebf5c40092858ad44416f8d3567765c1a25bb479d3"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_agent_adapter.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_agent_adapter.py",
+      "sha256": "5331469ef1bb474972616aa0f7ba10e535ec0422deccdb63d502ee46bf6e133e"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_agent_factory.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_agent_factory.py",
+      "sha256": "0c3c324041ee73e89553da941020697f187c3389b7308cbbd33ef6477d052b77"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_agent_factory_ipc_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_agent_factory_ipc_macos.py",
+      "sha256": "8c8958315db2027d0f9062e14a33b872cdb6896b994945038b320d97d5de3f19"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_binding.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_binding.py",
+      "sha256": "f6b57326847ac25f7a63d061f039ee7737f3eddb93fcbf7efc4c17137561a365"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_binding_private.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_binding_private.py",
+      "sha256": "9559cb95945cd8b15658575eeb0e2ad62c71fcd1849d608730dce90ebf100bf8"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_cli_serve.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_cli_serve.py",
+      "sha256": "67699e966b6df05669d1eb28719dc265ca3c608c944dfba057562f6209db4aef"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_core_bootstrap.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_core_bootstrap.py",
+      "sha256": "19219c51dea0da58e37d73f616c5284fcafb606345ec8e7babf8587fb4f4a908"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_interpreter_pin.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_interpreter_pin.py",
+      "sha256": "801df7b2fd8a29d94b2fd559f0aedc58e9d28e1629af51a2b0827240100c6e8c"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_lifecycle.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_lifecycle.py",
+      "sha256": "d3e251ce2ea5a0d8c08a8e34374f3d3e42dcd483727aeedf027fd062c726b114"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_manifest.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_manifest.py",
+      "sha256": "bfbe9c62ffd9e9ac616869fbc29b32a40cac85afb7a9c7327585e203771a9453"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_native_live_preflight_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_native_live_preflight_macos.py",
+      "sha256": "99580701a7e3d525d29f6ad13de34aa0b37f471def1d6dfe72af79a0296982c5"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_native_signed_gate_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_native_signed_gate_macos.py",
+      "sha256": "711760b3e34c2fbfb66046f5b497070d2ee75c2ab63f06134441a36c83d4caf7"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_native_versioned_source.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_native_versioned_source.py",
+      "sha256": "98b07d49db3bb83a6b1fe91b35316ae1518ec5493d51593444f5e4be9686adad"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_owner_process_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_owner_process_macos.py",
+      "sha256": "0ec882a7b347032ac8ac5ae20597889e1101d34d8c3e2b236eb5e66da321f50e"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_owner_writer_preflight.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_owner_writer_preflight.py",
+      "sha256": "811879ad35fe63d96a0b7ba0400e3b198cee34792d5a32b363026f38a6657df8"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_port_inventory.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_port_inventory.py",
+      "sha256": "648f582cacb358b73b2275594241a21835144ec96b7af1236e496f54b3b2f708"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_preflight_ipc_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_preflight_ipc_macos.py",
+      "sha256": "f0e6482c6f6c613bc2bb340ddaf7f735a45adf8391bf788257dd752292e13553"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_private_ipc_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_private_ipc_macos.py",
+      "sha256": "032db6c5741d03ac3703f12e733989f225f3941f9c4cf9935520ebd68b913708"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_readiness.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_readiness.py",
+      "sha256": "46400fa8070d227c135d4ef0527bfa66692a3ab73bffc82122efa6c273c15152"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_release_source.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_release_source.py",
+      "sha256": "ba2489458b5a0216fa08d62426cee74a47f9cae8c4a910d59175de960d86dfcc"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_runtime_install.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_runtime_install.py",
+      "sha256": "8f58647fe48f42cce4af8bf4a4a0725d5a04ebf35ba559c8ef2f9d3c23993e59"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_runtime_verify.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_runtime_verify.py",
+      "sha256": "4dfad38c10a344f73662694f2cfd442c60e6a0d35d47ff1bd8cacc54a5ec2920"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_smappservice_live_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_smappservice_live_macos.py",
+      "sha256": "92ce2ab28c46613a024044616ccadd269f3fa08fdcf496db746126bcfca8f979"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_smappservice_safety.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_smappservice_safety.py",
+      "sha256": "d812e7a43c7b1cf91aa776da565a9bafcf9aeb5749bca4b443371a4c3d85e873"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_staging.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_staging.py",
+      "sha256": "a1fb7a7858a8c462d9bb336836de6712b16e010fc73423f97c56f8b7d09da9ac"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_swift_gate.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_swift_gate.py",
+      "sha256": "59fae73667507f4a1aec8f28cf7d7ac94007092aa0307473142f373b884b8df1"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_swift_gate_paths.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_swift_gate_paths.py",
+      "sha256": "640d09b9cf0a986c35994360742be2cee4e5c7bad1c39389f0fc76f13b1570ac"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_two_core_http_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_two_core_http_macos.py",
+      "sha256": "14b47497b32b4e0735fb4823fdad4cd362f573e90314f6a65095e2586738de57"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_shared_unstage.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_unstage.py",
+      "sha256": "5a4c4a14400e0baa912a1ac356c178c45941380e662ade6b13d10433970f2a55"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_wheel_archive_gate.py",
+      "retained": "macos/tests/test_darwin_v0250_wheel_archive_gate.py",
+      "sha256": "51b0f22ac2cc0f6916ef1dc31c07eaecf0cd09cb3d9d3a821ac592fe9a7ba3d2"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v0250_wheel_offline_preflight.py",
+      "retained": "macos/tests/test_darwin_v0250_wheel_offline_preflight.py",
+      "sha256": "dc992a1407410ff5865477830b14806321cedc7deaddb8ed1cb8e6f345efbffe"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v026_owned_v2_binding.py",
+      "retained": "macos/tests/test_darwin_v026_owned_v2_binding.py",
+      "sha256": "4310efe17d9547d28b2c322db81bb7d8870c454f069bd59c441167eb89162084"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v026_shared_multi_agent_adapter.py",
+      "retained": "macos/tests/test_darwin_v026_shared_multi_agent_adapter.py",
+      "sha256": "2aaf140e52f79a12f96beb2e2c71dcc4218a26d3b3a1499dcbab56dbedd344b6"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v026_shared_qoder_diagnostics_macos.py",
+      "retained": "macos/tests/test_darwin_v026_shared_qoder_diagnostics_macos.py",
+      "sha256": "98ad9427d5424f7b2684e2bc2d9563e3b2583b59f14c562d97c6d0ed6325254d"
+    },
+    {
+      "removed": "linux/tests/test_darwin_v026_shared_real_agent_acceptance_macos.py",
+      "retained": "macos/tests/test_darwin_v026_shared_real_agent_acceptance_macos.py",
+      "sha256": "69350e124f6335976b633fd3a6099190f52ac71cee13bd29d87944de06d38dac"
+    },
+    {
+      "removed": "linux/tests/test_macos_owned_runtime_acceptance_diagnostics.py",
+      "retained": "macos/tests/test_macos_owned_runtime_acceptance_diagnostics.py",
+      "sha256": "c75b81cfca4f25b7c13970c2d1a91b4a68f794e8072c2d51850534e89f71e2f4"
+    },
+    {
+      "removed": "linux/tests/test_native_windows.py",
+      "retained": "windows/tests/test_native_windows.py",
+      "sha256": "329fed0b520b07e6e61387776d79be9540c7600f64334a8f823ddcf8e2a3d7f5"
+    },
+    {
+      "removed": "linux/tests/test_runtime_policy_roundtrip.py",
+      "retained": "windows/tests/test_runtime_policy_roundtrip.py",
+      "sha256": "5d2f02c0761179ea6086dfb9660af5659f25e30cc3e5d53dd121ecb1f539ddaf"
+    },
+    {
+      "removed": "linux/tests/test_windows_agent_lease.py",
+      "retained": "windows/tests/test_windows_agent_lease.py",
+      "sha256": "dbfc9e97ade04a8e36ffef36b26e2b7c2077ece7dd1c79e07c7a2cfcdd557086"
+    },
+    {
+      "removed": "linux/tests/test_windows_agent_pipe.py",
+      "retained": "windows/tests/test_windows_agent_pipe.py",
+      "sha256": "8e1d3695c2c047504c1af70913546cdcb8af20e6d3df9106ccc94b69b9d16d03"
+    },
+    {
+      "removed": "linux/tests/test_windows_backend.py",
+      "retained": "windows/tests/test_windows_backend.py",
+      "sha256": "9daed23aaff789a8e3aa54ce1441e17629efed4e6997cea4af60545385f20a60"
+    },
+    {
+      "removed": "linux/tests/test_windows_bridge_control.py",
+      "retained": "windows/tests/test_windows_bridge_control.py",
+      "sha256": "2de721d0d4ad831d0f52d8ee2549facf9c868148394dfe2de5202c921d70d1a2"
+    },
+    {
+      "removed": "linux/tests/test_windows_bridge_generation_ipc.py",
+      "retained": "windows/tests/test_windows_bridge_generation_ipc.py",
+      "sha256": "e83481849f3da5c17f8095389df8fd8a6191e59c2cb7f19e9209db9a4543afc1"
+    },
+    {
+      "removed": "linux/tests/test_windows_bridge_owner.py",
+      "retained": "windows/tests/test_windows_bridge_owner.py",
+      "sha256": "d6299d0f044f597a078725ff5cd8b9ad578249743f720d8f1c94e2ba0d3b100c"
+    },
+    {
+      "removed": "linux/tests/test_windows_bridge_runtime_topology.py",
+      "retained": "windows/tests/test_windows_bridge_runtime_topology.py",
+      "sha256": "7fd169137bcdecfaa8c181f63110afa85955d0fe650d1e4f1cef72f3366b5a32"
+    },
+    {
+      "removed": "linux/tests/test_windows_bridge_service.py",
+      "retained": "windows/tests/test_windows_bridge_service.py",
+      "sha256": "a9892dac6598aee160f97f21c338dde846d75525df8d9d6bcf9d10fea30a7c72"
+    },
+    {
+      "removed": "linux/tests/test_windows_bridge_task_spec.py",
+      "retained": "windows/tests/test_windows_bridge_task_spec.py",
+      "sha256": "290c828d6e9c6fd7435a14654fc955813627b4ff383491f5a0337a01e0c21793"
+    },
+    {
+      "removed": "linux/tests/test_windows_cloudflare_acl_native.py",
+      "retained": "windows/tests/test_windows_cloudflare_acl_native.py",
+      "sha256": "79ebd64bc8f55b05b30500aa0202eba6b3ed91c6d96fa8f437d542165ffd1226"
+    },
+    {
+      "removed": "linux/tests/test_windows_cloudflare_config.py",
+      "retained": "windows/tests/test_windows_cloudflare_config.py",
+      "sha256": "0e593f42cb068033d16d4bd355e4faffdbfee467ec1196cce211ff38a06275a0"
+    },
+    {
+      "removed": "linux/tests/test_windows_cloudflare_connector.py",
+      "retained": "windows/tests/test_windows_cloudflare_connector.py",
+      "sha256": "f4463e660b104e0433d7ae75934d9fee6be2027df39043a69f6324047856fd8f"
+    },
+    {
+      "removed": "linux/tests/test_windows_cloudflare_isolated_http.py",
+      "retained": "windows/tests/test_windows_cloudflare_isolated_http.py",
+      "sha256": "989c463c330ad8ab1b0a2b1c5136bba7b8e1912ae71513911a62f2521606c251"
+    },
+    {
+      "removed": "linux/tests/test_windows_cloudflare_parallel.py",
+      "retained": "windows/tests/test_windows_cloudflare_parallel.py",
+      "sha256": "98112a5ce55e4b6ab9eb80090a4b35b950d3f1e3716225e25a75c1d3dc02d817"
+    },
+    {
+      "removed": "linux/tests/test_windows_cloudflare_runtime.py",
+      "retained": "windows/tests/test_windows_cloudflare_runtime.py",
+      "sha256": "b47a7b35c71e6b2f9e254918314f89e3247c32f3f74f765bb3ccb55c8797aaab"
+    },
+    {
+      "removed": "linux/tests/test_windows_cloudflare_security.py",
+      "retained": "windows/tests/test_windows_cloudflare_security.py",
+      "sha256": "61d8e49b33602a554d70bfd744ff3e79fbc1630eb1f04914e4175baf7b5e1ef8"
+    },
+    {
+      "removed": "linux/tests/test_windows_cloudflare_service.py",
+      "retained": "windows/tests/test_windows_cloudflare_service.py",
+      "sha256": "fad14b704e874ff357abeef06fe342e846b349f404f7427e0fc72635311a6f9a"
+    },
+    {
+      "removed": "linux/tests/test_windows_component_active_lifecycle.py",
+      "retained": "windows/tests/test_windows_component_active_lifecycle.py",
+      "sha256": "f82bbea51aab121f8bb06e82049035a273828059c18faa2317240a8a8fd359af"
+    },
+    {
+      "removed": "linux/tests/test_windows_component_cli.py",
+      "retained": "windows/tests/test_windows_component_cli.py",
+      "sha256": "fbaaa7dc0b209959d1c1a97c662c3d24ae06155afb11056efb851c9e418e8f30"
+    },
+    {
+      "removed": "linux/tests/test_windows_connector_control.py",
+      "retained": "windows/tests/test_windows_connector_control.py",
+      "sha256": "694f9e9d34538ffee4afba59620c0c94b8cc7eb8708254471d61f85693d05acc"
+    },
+    {
+      "removed": "linux/tests/test_windows_connector_service.py",
+      "retained": "windows/tests/test_windows_connector_service.py",
+      "sha256": "572fc4b97ab2457bdaa10c0ceac001f7c15d75e7aac8299ec817950d5ac7e3d2"
+    },
+    {
+      "removed": "linux/tests/test_windows_connector_task_spec.py",
+      "retained": "windows/tests/test_windows_connector_task_spec.py",
+      "sha256": "d89025f6e64ea06a9d222e2057f184afad1bce6d0f3789ea25a70974c78c90e3"
+    },
+    {
+      "removed": "linux/tests/test_windows_core_control.py",
+      "retained": "windows/tests/test_windows_core_control.py",
+      "sha256": "3b11865f66b941a3bf6eccbd7c7ea0ec13ca0e694c02729b23071c281783f7cb"
+    },
+    {
+      "removed": "linux/tests/test_windows_core_listener.py",
+      "retained": "windows/tests/test_windows_core_listener.py",
+      "sha256": "42c094a28692ac37357e1ae819c623632a4805a7f68ec1ea234f42a02a26f357"
+    },
+    {
+      "removed": "linux/tests/test_windows_core_listener_native.py",
+      "retained": "windows/tests/test_windows_core_listener_native.py",
+      "sha256": "d112e722c144717f883c999a60b795b7efb3e02e1f95536ff402e4ca165e2666"
+    },
+    {
+      "removed": "linux/tests/test_windows_core_service.py",
+      "retained": "windows/tests/test_windows_core_service.py",
+      "sha256": "ee7f04ab6777141e6e1ec4c18b04367415013cb25aa64d9ddb3085fe3773d3d8"
+    },
+    {
+      "removed": "linux/tests/test_windows_core_task_spec.py",
+      "retained": "windows/tests/test_windows_core_task_spec.py",
+      "sha256": "07d5880baf865fa61d0f77f09c1ec3c905e376ba566e358e4a09ab5daa6519cd"
+    },
+    {
+      "removed": "linux/tests/test_windows_job.py",
+      "retained": "windows/tests/test_windows_job.py",
+      "sha256": "c1bbc7e2e23a7850eb6a1bbdf1f980ae594b351ab4b8d10e251772ce1cd9c71b"
+    },
+    {
+      "removed": "linux/tests/test_windows_job_cleanup.py",
+      "retained": "windows/tests/test_windows_job_cleanup.py",
+      "sha256": "e641ff2bce5fb4ef8d3dcb3de63937cec7f88c4788f64cd3de87cb8d9a45a13a"
+    },
+    {
+      "removed": "linux/tests/test_windows_mcp_agent_e2e.py",
+      "retained": "windows/tests/test_windows_mcp_agent_e2e.py",
+      "sha256": "fa3f599d6271efb6de26257569fa8573e693515b3c0ce1bb72cdec7d7aa327a0"
+    },
+    {
+      "removed": "linux/tests/test_windows_mcp_e2e.py",
+      "retained": "windows/tests/test_windows_mcp_e2e.py",
+      "sha256": "7cf2d38cbaaf485ce9e878ec39c850809ac9d6c98cf1ffe47ee58d748053fefe"
+    },
+    {
+      "removed": "linux/tests/test_windows_native_stdio.py",
+      "retained": "windows/tests/test_windows_native_stdio.py",
+      "sha256": "4114cc3af8c96286169503bdca1e8b7af0ae2f119d0fc1e991fdb0e5223c462a"
+    },
+    {
+      "removed": "linux/tests/test_windows_openai_connector.py",
+      "retained": "windows/tests/test_windows_openai_connector.py",
+      "sha256": "6d06f754bc7df47667d86b244e8be84798b8f93d7fb6f6d4e69d4e730fa9593d"
+    },
+    {
+      "removed": "linux/tests/test_windows_path_acceptance.py",
+      "retained": "windows/tests/test_windows_path_acceptance.py",
+      "sha256": "2b37faadebd7f4082af8f7b24014a44d4df1a6d4ef10c8c26c2624463b174b0d"
+    },
+    {
+      "removed": "linux/tests/test_windows_private_artifacts_native.py",
+      "retained": "windows/tests/test_windows_private_artifacts_native.py",
+      "sha256": "b9af6d4bd91d1ff6fe2862468d33f0c2d264dfb9f12f3842abcb2d0dbc0ed96f"
+    },
+    {
+      "removed": "linux/tests/test_windows_pythonw_process_attestation.py",
+      "retained": "windows/tests/test_windows_pythonw_process_attestation.py",
+      "sha256": "3c3de9e71a5eb841a31d177eca0acbff7d8112dec0b6aa3ea175884bd49e5ee9"
+    },
+    {
+      "removed": "linux/tests/test_windows_service.py",
+      "retained": "windows/tests/test_windows_service.py",
+      "sha256": "41b0dc51ab4250e9f1150a09736f8b5f00ada164868d40171e8335613d8ec849"
+    },
+    {
+      "removed": "linux/tests/test_windows_v026_named_proxy.py",
+      "retained": "windows/tests/test_windows_v026_named_proxy.py",
+      "sha256": "eaebd38dd6af8df7338aca45ec135f3821ca64782251a1ea3a17f2f315baa1e7"
+    },
+    {
+      "removed": "linux/tests/test_windows_v026_named_proxy_live.py",
+      "retained": "windows/tests/test_windows_v026_named_proxy_live.py",
+      "sha256": "943fb25845ccd8e22370443566f842408e3fba82bce873fd9cbacf6a95ede767"
+    },
+    {
+      "removed": "linux/tests/test_windows_v026_workdir_integrity.py",
+      "retained": "windows/tests/test_windows_v026_workdir_integrity.py",
+      "sha256": "21c9c39fd2bfb213c07765f866ba129c65bd6d2121c1a288d05041e1bcc4d522"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_bridge_resources.py",
+      "retained": "windows/tests/test_windows_v25_bridge_resources.py",
+      "sha256": "fb38158b2c40931f3670874fc6a16c6fc1278d7dc63fce153ee1d204abffe8fa"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_bridge_v2_cli.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_cli.py",
+      "sha256": "3f0e73f8b77b269c5563e6cb94eb9b1c27f02e39670da463a752e51b1ccb9881"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_bridge_v2_lease.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_lease.py",
+      "sha256": "66298f65f166f6f57b9c7a17bbeefd2e99b9477c2940dca688395af453051e85"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_bridge_v2_owner.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_owner.py",
+      "sha256": "802bd790ebaa74fc5ffce707ec04fc6e95b8eab80f2b22d3dba27d690731cfcc"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_bridge_v2_public_agent_tools.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_public_agent_tools.py",
+      "sha256": "6323aef66bdfaaaf536cef8749c2f3c49ec8201b03094cecb1fbb747d6db929d"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_bridge_v2_real_job.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_real_job.py",
+      "sha256": "939e6b54c062924e8c0cbd613aa062f34e1e51d39467ec070191336cf43d3672"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_bridge_v2_real_worker.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_real_worker.py",
+      "sha256": "1c767bf3e1ef817ad6e8c7d8366485f51c5cc7d91985ea85691a81ac1521eb03"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_bridge_v2_runtime.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_runtime.py",
+      "sha256": "d5c562335a42b93a1cd291c0e7028cfa4b14f2302d04e87769d98f7dc9425018"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_cloudflare_console_probe.py",
+      "retained": "windows/tests/test_windows_v25_cloudflare_console_probe.py",
+      "sha256": "3d5d058f9ccb6607a886dbe4c96351667c6671932f16cfa1ddb09548f26111ce"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_cloudflare_dual_route_contract.py",
+      "retained": "windows/tests/test_windows_v25_cloudflare_dual_route_contract.py",
+      "sha256": "dd97a5c69ce6c706ea1136600542c65345a9ecfe5904624c651e13b230be9680"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_cloudflare_quiescence.py",
+      "retained": "windows/tests/test_windows_v25_cloudflare_quiescence.py",
+      "sha256": "a403391dd4ef90b7dc00f08fd29f675fc43a30ec59b0b822516f5bbc23e84f3e"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_component_task_power_policy.py",
+      "retained": "windows/tests/test_windows_v25_component_task_power_policy.py",
+      "sha256": "5615917e34bb7626abb7e7ee3b2d4d59c6db11bdfc37d3ba3b5e107956a46e12"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_connector_id.py",
+      "retained": "windows/tests/test_windows_v25_connector_id.py",
+      "sha256": "f2febe578f1fa4c325a2789ffa221e93656bef81f0fb2069f743d61625948915"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_connector_provision.py",
+      "retained": "windows/tests/test_windows_v25_connector_provision.py",
+      "sha256": "3dac8ac7f08f68cc9b160fe49080a65a4b77bb229f4c788b90ecc38297fa2d51"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_connector_real_job_isolation.py",
+      "retained": "windows/tests/test_windows_v25_connector_real_job_isolation.py",
+      "sha256": "f070e073f244f942733c45331fb2795baf4410f6279f51383742298dd823b53f"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_core_bridge_binding.py",
+      "retained": "windows/tests/test_windows_v25_core_bridge_binding.py",
+      "sha256": "c501be13552ac2afb247a7dfeabdf5aee9e51df6d03b88c411fe7b337d0a9965"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_core_bridge_cli.py",
+      "retained": "windows/tests/test_windows_v25_core_bridge_cli.py",
+      "sha256": "cb27b4c83d3314712b782663ebb720f07ea47d8811de02b6da7d714de4e1ec8c"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_core_bridge_peer_owner.py",
+      "retained": "windows/tests/test_windows_v25_core_bridge_peer_owner.py",
+      "sha256": "afd8c7cdd69ef69817b1f40d1f47af73b2d808a792c4fd47ff4dc16472c9f753"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_core_bridge_runtime.py",
+      "retained": "windows/tests/test_windows_v25_core_bridge_runtime.py",
+      "sha256": "5579ead4d73ec2cadc098b1e8fc17cec22cd2d9e956c0aaf0a5d643096f0a314"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_core_bridge_workdir_parity.py",
+      "retained": "windows/tests/test_windows_v25_core_bridge_workdir_parity.py",
+      "sha256": "a4e6a79fc31e44b285c6346ca127a1d5024bf3b2a134ae65f5cc621ea1f74a87"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_default_bridge_claim_compat.py",
+      "retained": "windows/tests/test_windows_v25_default_bridge_claim_compat.py",
+      "sha256": "8861f90fbdd1879af01409aaeaac7385f1e57cb4612cb119b151d3498485afe5"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_dual_connector_real_job_isolation.py",
+      "retained": "windows/tests/test_windows_v25_dual_connector_real_job_isolation.py",
+      "sha256": "d5c5b5522e5c24505c5f16a43827d0f93edfd96f4b4a58ce8458ab0242904c41"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i10_durable_runner.py",
+      "retained": "windows/tests/test_windows_v25_i10_durable_runner.py",
+      "sha256": "bab26df23d2167c3c32f6579863355d16677c1e23e4d162eea7a181153e7c4fd"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i10_public_connector_retire_contract.py",
+      "retained": "windows/tests/test_windows_v25_i10_public_connector_retire_contract.py",
+      "sha256": "c1625c334f9bb872853c92f4c07c6b63be28223cb739ab05adf66edad9414153"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i10_same_core_public_bridge_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i10_same_core_public_bridge_smoke_contract.py",
+      "sha256": "83d04df9d342e6bf90608e27dd23e7beb37bedaaa68b76542d5a2db4e3efe9a7"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i10_same_core_public_connector_stage.py",
+      "retained": "windows/tests/test_windows_v25_i10_same_core_public_connector_stage.py",
+      "sha256": "b2bc4d70a2adf2139f4484ad96fe296d8ce5acdb5947b9a8294c163ee3c2fcde"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i11_real_claude_two_owner_history_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i11_real_claude_two_owner_history_readonly.py",
+      "sha256": "5ca0e5c91d821273827bc62ce32a00d53f9eb3629dae3871bbbef0727ce36eb9"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i11_two_owned_provider_no_model_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i11_two_owned_provider_no_model_smoke_contract.py",
+      "sha256": "50c69d097b843e89f54202e6f9851ca7779220da1506d98f7b2f912a3393f060"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i11_two_owned_provider_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i11_two_owned_provider_preflight.py",
+      "sha256": "d4e6ed834b0ece4807edd7b677d435bd634bb284f65084930190e24066349c4d"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i11_two_owned_provider_stage_contract.py",
+      "retained": "windows/tests/test_windows_v25_i11_two_owned_provider_stage_contract.py",
+      "sha256": "9f1ef77de2d457d556f8fe4b0b95499b3a36efd0000d40b93ce8d1427ba56bc4"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i11_two_owned_real_claude_task_isolation_contract.py",
+      "retained": "windows/tests/test_windows_v25_i11_two_owned_real_claude_task_isolation_contract.py",
+      "sha256": "3b2f1d2917ff6545cbd14d5c9e4f143ee95c0fc671d400df0380c656450889e7"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i12_two_owned_writable_file_isolation_contract.py",
+      "retained": "windows/tests/test_windows_v25_i12_two_owned_writable_file_isolation_contract.py",
+      "sha256": "75c86c63ea62e79789420ea65cbdb98545ea459fbc9320f6170fbe96c1b108fb"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i13_owned_repo_native_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_owned_repo_native_smoke_contract.py",
+      "sha256": "cd42d16d977d0b164fc01f66789b333d5da22688f61e00a24a30b4ead928b7f1"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i13_owned_repo_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i13_owned_repo_preflight.py",
+      "sha256": "e408896f2dc60bb65ebdaf9e4fbc596c2c2fb029692d7b16c654b7a8c83ea588"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i13_owned_repo_stage_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_owned_repo_stage_contract.py",
+      "sha256": "e04eed8dfe2c71220834ade0178e14db908ebe9c789bfcb9cd823edf7e64ff45"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i13_repo_v2_native_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_repo_v2_native_contract.py",
+      "sha256": "b9f53b80a856e3ecdfd88bb06ed5925b228240c28e79d937eed64d264a683618"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i13_repo_v2_release_audit.py",
+      "retained": "windows/tests/test_windows_v25_i13_repo_v2_release_audit.py",
+      "sha256": "32f55c1e5e0beaa1e79e52d333886e998281220974ecc7e82d6707f7f4c16c77"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i13_repo_v2_runner_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_repo_v2_runner_contract.py",
+      "sha256": "ba97cd5a9a30dea5dd22dfc32daef7dd3b74b15e8cc4f2a390f2ae15f49d85b0"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i13_single_bridge_activation_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_single_bridge_activation_contract.py",
+      "sha256": "62090c1282dfd2e750733b7738a80765fb863cc2bd99dae4744b3441308227b2"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i13_single_bridge_runner_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_single_bridge_runner_contract.py",
+      "sha256": "b078a28dfe1d1037ec69f774b4ee61574692290c3b469d5b9442e8037616346f"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i14_postflight_capture.py",
+      "retained": "windows/tests/test_windows_v25_i14_postflight_capture.py",
+      "sha256": "46bec30b386c69d4b1c4bb7740f58b74e1e11fe90cb91a0ac58ae4b8097b3328"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i14_public_runner_contract.py",
+      "retained": "windows/tests/test_windows_v25_i14_public_runner_contract.py",
+      "sha256": "ec824cf13c82bd786c48bbc3cc45c0bf06bfb87db4cb5cde5d0d8375d6076978"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i14_public_smoke_retirement_contract.py",
+      "retained": "windows/tests/test_windows_v25_i14_public_smoke_retirement_contract.py",
+      "sha256": "5bb947189b2752fdb24ac5be728e2e9af45382c72c15d8fd43aac86ec1a97c36"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i14_retirement_capture.py",
+      "retained": "windows/tests/test_windows_v25_i14_retirement_capture.py",
+      "sha256": "3be3af05b71ae3d1527418dcf268fc5b26f65723e38822eedc574928fe4c5f35"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i14_stage_state_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i14_stage_state_readonly.py",
+      "sha256": "0432b720349e538a4c0918af4741c33c273aa2b3b17790f2e2372ebe1bc96755"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i14_two_owned_repo_connector_stage.py",
+      "retained": "windows/tests/test_windows_v25_i14_two_owned_repo_connector_stage.py",
+      "sha256": "5d7be2a1773eec54591d92fe1b18dc1fa63eab0197c28f6e8da5b060fa13957c"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i1_fixture_scripts.py",
+      "retained": "windows/tests/test_windows_v25_i1_fixture_scripts.py",
+      "sha256": "993a709769206a61ed85e589a13967a20adcac1f3e1122947cd31a591fa9171e"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i1_mcp_sdk_client.py",
+      "retained": "windows/tests/test_windows_v25_i1_mcp_sdk_client.py",
+      "sha256": "501f9d0b222d0aef66ca7ed004e0b5bf5c64a4156d29d28989f6ea2b582ba50c"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i1_postfail_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i1_postfail_readonly.py",
+      "sha256": "8122f1e1ea62a76cb9b878b37c61732dacef9ea6ad07806b28920dc1e2666c96"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i1_resume.py",
+      "retained": "windows/tests/test_windows_v25_i1_resume.py",
+      "sha256": "94204b9847cfba9a812ecb62e662dad57aa3e77d94c15f63d087e87feb3b2b7c"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i2_live_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i2_live_smoke.py",
+      "sha256": "2ae7f0041d7fe8eca5727c3ae90287b3d373cc4161d79c3013e7d69b4eacc896"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i2_postfail_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i2_postfail_readonly.py",
+      "sha256": "2f39d7c9d3fa6705a32c62419fc6ec953ccf564dba056213eb9f45fd15d47b11"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i2_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i2_preflight.py",
+      "sha256": "cfd8a772f7f43ea2bb64cb6e669628591512a47660d613b0b6b65b6ca19afd2d"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i2_registration_gate_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i2_registration_gate_readonly.py",
+      "sha256": "33700e24832412876ee03b45a8141eadb292715df59db633c8a6119accead932"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i2_resume_registration.py",
+      "retained": "windows/tests/test_windows_v25_i2_resume_registration.py",
+      "sha256": "cd8ff5b724ff77efc2765fa330788204ee2e81d4da6ba045ec1865ff976dfce7"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i2_stage.py",
+      "retained": "windows/tests/test_windows_v25_i2_stage.py",
+      "sha256": "bbca23e61c45b356873208a6a8e1fae2034dfb3a78048e6cb10cd2baedf4ee24"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i3_independent_lifecycle_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i3_independent_lifecycle_smoke.py",
+      "sha256": "5f97dd3e0de1373a22ae7dc425c51a3ca79c566cfa36cedbfe08b4087d92de53"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i3_installed_nonce_replay_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i3_installed_nonce_replay_smoke.py",
+      "sha256": "de863453b59f015bef719db448d5b81439a643097e90893dd61a677d84f13194"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i3_private_hmac_rotation.py",
+      "retained": "windows/tests/test_windows_v25_i3_private_hmac_rotation.py",
+      "sha256": "96e13fd50a918da4653146fe9aef61a7e5a812230ba86dd85bf7d534e5c93689"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i3_private_rotation_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i3_private_rotation_readonly.py",
+      "sha256": "1b389dff95a346352fbd62e1351d95d6486cfe1f6e324b75db2ef49e45310a44"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i3_readonly_live_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i3_readonly_live_smoke.py",
+      "sha256": "17ba33eef90b742e599da04ad10f2b6172a44beaa2288be9ebb23af96f03a05c"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i3_readonly_stage.py",
+      "retained": "windows/tests/test_windows_v25_i3_readonly_stage.py",
+      "sha256": "f836a58a203cda2ca55e1f1b3e12c505290e58fbb2e8ee4a69b74ff68ce111f7"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i3_shared_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i3_shared_preflight.py",
+      "sha256": "7bb671448bca4730b62ccf952fca9a6bc920e05de661b92a3a8fb248f8f8bfdf"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i3_shared_readonly_policy.py",
+      "retained": "windows/tests/test_windows_v25_i3_shared_readonly_policy.py",
+      "sha256": "ff17d9fd4bb32aa4d7f47464da07ade741e03535adcf329df17fc8a06c34fe46"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i4_live_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i4_live_smoke.py",
+      "sha256": "f0120d0f1a77ac8fcc23302711dbc45da0abcedaca1f1fbe3d6f226aee02a5b7"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i4_postflight.py",
+      "retained": "windows/tests/test_windows_v25_i4_postflight.py",
+      "sha256": "3dbd8df06654c26fb969b4d078c420937d820b344afee9e59744c8a55c907d80"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i4_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i4_preflight.py",
+      "sha256": "50b5a9ff9ecadf2fb4794028195bb721f2516fbba5a8501b6c2aa9d827175a4d"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i4_stage.py",
+      "retained": "windows/tests/test_windows_v25_i4_stage.py",
+      "sha256": "093bb8152c68da2089ac3d304cbc083a2c5f0ae1db8f0acf9726bcca75b74b00"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i4_two_pair_file_isolation_contract.py",
+      "retained": "windows/tests/test_windows_v25_i4_two_pair_file_isolation_contract.py",
+      "sha256": "4410ce8f01749f748061fdc475243638aff1a7969094e218fc0f579051da54dd"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_bridge_postfail_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_bridge_postfail_readonly.py",
+      "sha256": "e53b7bc6007b7f5e21a1c64bea4604e2a32498249561d2e8608b160bf142e2d4"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_bridge_wheel_repair.py",
+      "retained": "windows/tests/test_windows_v25_i5_bridge_wheel_repair.py",
+      "sha256": "106d2894b500752fe69a233e689dca584c93005b10861b67bba37e9e0739d142"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_cancel_private_proof.py",
+      "retained": "windows/tests/test_windows_v25_i5_cancel_private_proof.py",
+      "sha256": "c761f933ea880367243cab293b776b3f330852f044e6eb6d35f5ba84135840d9"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_claude_canary.py",
+      "retained": "windows/tests/test_windows_v25_i5_claude_canary.py",
+      "sha256": "9096bcd11d7a26184404375b7041fd9e728feca729bdbc22ae8d7f65e391ba77"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_claude_options_diagnostic.py",
+      "retained": "windows/tests/test_windows_v25_i5_claude_options_diagnostic.py",
+      "sha256": "426b1dcf1457ef2c0b98af4d865d4f99627ba51d3ccb380de642a4d0f15f12d4"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_claude_provider_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i5_claude_provider_preflight.py",
+      "sha256": "2268314cc18c174576f811fe562de9da27daad33fdcdc0c6ae96fc7070863405"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_interactive_grant_upgrade.py",
+      "retained": "windows/tests/test_windows_v25_i5_interactive_grant_upgrade.py",
+      "sha256": "a29923507b7b75da58d3c9029e997b87d2a6116509f0501efb021ce619b60a70"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_legacy_overlap_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_legacy_overlap_readonly.py",
+      "sha256": "f3f29d773c410bda83bf4fec353f8556d2346effab14fb3e87c8b52507684272"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_owner_offline_rollback_faults.py",
+      "retained": "windows/tests/test_windows_v25_i5_owner_offline_rollback_faults.py",
+      "sha256": "dca15b35f890939fc836e02c257d1ecb3fe169bb188cdc186f1256696eb5b4d0"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_owner_offline_rollout_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_owner_offline_rollout_contract.py",
+      "sha256": "452a2ef8ff7d7058c1666b64cc568e77e1c1d925e1a8b4e7cf335b3f718aa2fb"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_owner_private_wheel_audit.py",
+      "retained": "windows/tests/test_windows_v25_i5_owner_private_wheel_audit.py",
+      "sha256": "c18316efd915b62f367500ff5d76ff550f1e402a212d28734e0bd63b42868f36"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_owner_seven_module_wheel_stage.py",
+      "retained": "windows/tests/test_windows_v25_i5_owner_seven_module_wheel_stage.py",
+      "sha256": "2adf0d5ec01922bb1e9b8bd6b377d0ad31b0f9184ad7d7ca228e745922cc09bc"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_partial_worker_refresh.py",
+      "retained": "windows/tests/test_windows_v25_i5_partial_worker_refresh.py",
+      "sha256": "fbce73c3ee0d13e1269cbdb3cc438f7d52dbc172948ef743c6123c6fd8571cd0"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_postfail_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_postfail_readonly.py",
+      "sha256": "6cc9a00af618d40886493418ac0dbe27dd4a177f7e8bad9b91ff81c4b290ca5f"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_private_module_inventory.py",
+      "retained": "windows/tests/test_windows_v25_i5_private_module_inventory.py",
+      "sha256": "f256c7fb829306f8443dd56765d9e692731655331f5c4446e4a021090663bbe5"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_protected_task_diff_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_protected_task_diff_readonly.py",
+      "sha256": "a026cc2946a9ad26d20921402944e9c0eeb19208e8f4724148d63c245c615386"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_provider_installed_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i5_provider_installed_smoke.py",
+      "sha256": "a53aa31af0438bd7c3243aa58414fd15d5d71a14a7466379eb6f4de9f40d1366"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_provider_shared_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i5_provider_shared_preflight.py",
+      "sha256": "d3dfea26adbb808aa98faa41b5df7c726240154fa43355b0701db2687e9f5467"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_provider_shared_stage.py",
+      "retained": "windows/tests/test_windows_v25_i5_provider_shared_stage.py",
+      "sha256": "7b2e56824ff30f2b65c6c477cb72c9c6f91ea2b42310da5c2fb8e84a1b370cdf"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_provider_state_worker_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_provider_state_worker_readonly.py",
+      "sha256": "ec7a0179d9109f4e6cc9315c5a61cfafa51e704a3b8db59b00b0169ddac0b271"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_public_connector_retire_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_public_connector_retire_contract.py",
+      "sha256": "63fd694dbb7b6f9319004e3ed96a23da6cc041fbe780791d32b9163908504412"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_public_connector_stage_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_public_connector_stage_contract.py",
+      "sha256": "799d37af2cb54de397a64ef7aa347f40e6e56ec093567aa93b7860871c6ee8f0"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_real_claude_approval_cancel_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_claude_approval_cancel_contract.py",
+      "sha256": "833734cdbe6fc574e845c48bebe58f0c1edeee0b4360964664c704a415c45bd0"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_real_claude_inflight_cancel.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_claude_inflight_cancel.py",
+      "sha256": "7d393e2e21676f99e0f7ca9f7aaba1d6f90a365c51eef3f834518dc4b05698e4"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_real_claude_question_cancel_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_claude_question_cancel_contract.py",
+      "sha256": "814e14ec6ba65bd043d470864b80bd4d4eee2429a7ee99cd97841214019992b0"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_real_claude_task_ownership.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_claude_task_ownership.py",
+      "sha256": "cf12e3f7543be44541242959eec60605829084164345c92cb8a261f86e9e92f4"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_real_provider_history_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_provider_history_readonly.py",
+      "sha256": "f9ec37003252922c4bce5209645a5894cb77c235f928bc676db11ae82e451b9c"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_real_stream_cancel_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_stream_cancel_contract.py",
+      "sha256": "b6a9f3f6b62e8825396ed79614353c8f59d2c762e3ca1731a74005865e163c52"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_real_stream_diagnostic.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_stream_diagnostic.py",
+      "sha256": "e97c8972aad4e4f3c13564bbce8fc92693824a21a7cdb966771d6ad302416a68"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_resume_core_policy.py",
+      "retained": "windows/tests/test_windows_v25_i5_resume_core_policy.py",
+      "sha256": "41cd1f80761de71507a7c9eb4d6fb7f8a8bea8fb7a8f6e9dc29f9ac2a3c091e6"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_scheduler_postfail_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_scheduler_postfail_readonly.py",
+      "sha256": "9e35ce5fd458c426d0d640405aa1e7e2252da3255d9e9af824ef9f2590b3750e"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_stream_privacy_refresh.py",
+      "retained": "windows/tests/test_windows_v25_i5_stream_privacy_refresh.py",
+      "sha256": "c4b482c9bf0a8fbb760762492621d598192f1faa5b1059651ceb3141c8179b40"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_text_emission_cancel_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_text_emission_cancel_contract.py",
+      "sha256": "b54506e4f983e60065a8a26cec26ee4bf61bb8db1ffb30d97330397d3d2659a2"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_two_core_public_bridge_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_two_core_public_bridge_smoke_contract.py",
+      "sha256": "4f53b268dcfa155dac36f9ac266cf6cf06ae48b674b25eea719239f1e0eca7a0"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_worker_race_refresh.py",
+      "retained": "windows/tests/test_windows_v25_i5_worker_race_refresh.py",
+      "sha256": "d4289b633037cfd7ef41cd0c665b08a78358dd6da3a333043df67fa7b0be72d5"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i5_worker_race_stress_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_worker_race_stress_contract.py",
+      "sha256": "e2042745f1c83fa38d80c54921a695bcb848563493296ed861bc1e4796d449e8"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i6_named_stage.py",
+      "retained": "windows/tests/test_windows_v25_i6_named_stage.py",
+      "sha256": "a5029678d5d9f2f2bb8a5ae065af20bd2817e58550be67934e40cc61b96bf0ad"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i7_connector_prepare.py",
+      "retained": "windows/tests/test_windows_v25_i7_connector_prepare.py",
+      "sha256": "80a6158fbe65e832769acff403ce6c1503d7929ea1d5ced7a88f7c53d62b0d1f"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i7_connectors_disabled_register.py",
+      "retained": "windows/tests/test_windows_v25_i7_connectors_disabled_register.py",
+      "sha256": "eee75b1b538e27fd828354426d8186c30fb9bdec59190c557a0d8cb89368c7aa"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i7_dual_real_cloudflare_live_canary.py",
+      "retained": "windows/tests/test_windows_v25_i7_dual_real_cloudflare_live_canary.py",
+      "sha256": "9bf9a52b87014b956b11867dc98ce2cc81585847be7e63009fd73715b28af6eb"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i7_installed_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i7_installed_smoke_contract.py",
+      "sha256": "297d43bb617c0283829c0bc89635052bbc471449cdec6f12953729431bac23bb"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i7_local_token_handoff.py",
+      "retained": "windows/tests/test_windows_v25_i7_local_token_handoff.py",
+      "sha256": "bfb365fe13054a2cc466ec145f5f7859ee567a146a8f8f46ac4c42c262fc8dc9"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i7_nonprod_core_stage.py",
+      "retained": "windows/tests/test_windows_v25_i7_nonprod_core_stage.py",
+      "sha256": "15e94af877961fd22713966bdc0aa0388a64cdf8809afe3eeda6b1e3d6e86f7a"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i7_public_dual_https_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i7_public_dual_https_smoke_contract.py",
+      "sha256": "ff9d70358526928874e9b25b077450b3be106fbe88106c800a43ca3f699f14eb"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i7_scheduler_offline_rollback_faults.py",
+      "retained": "windows/tests/test_windows_v25_i7_scheduler_offline_rollback_faults.py",
+      "sha256": "508aaf1a9d3826dc831556089ba85ab157e58ff60d0edcb204de435f13d9b728"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i7_scheduler_offline_rollout_contract.py",
+      "retained": "windows/tests/test_windows_v25_i7_scheduler_offline_rollout_contract.py",
+      "sha256": "50305369c57e2d9f078cd01b17d9174f3159fb5816d4d67c84a289b815b5b32a"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i7_scheduler_offline_wheel_stage.py",
+      "retained": "windows/tests/test_windows_v25_i7_scheduler_offline_wheel_stage.py",
+      "sha256": "5812ecde80eeb003c06447941d423622a21338a7693875e0cc12b42466cabf5b"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i8_real_wheel_crash_recovery_contract.py",
+      "retained": "windows/tests/test_windows_v25_i8_real_wheel_crash_recovery_contract.py",
+      "sha256": "7e3124c0349a179b2f808235f5b819bdf3b72a1432669eaf1e464f77d8ce9329"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i9_mid_uv_install_recovery_contract.py",
+      "retained": "windows/tests/test_windows_v25_i9_mid_uv_install_recovery_contract.py",
+      "sha256": "275b81b15ec296040b39fdb35d766c32212c2b40abe0d1d4782684bf90f08be0"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_i9_real_mid_uv_interruption_contract.py",
+      "retained": "windows/tests/test_windows_v25_i9_real_mid_uv_interruption_contract.py",
+      "sha256": "b3f7ff728158362c6d30db616a0a4e79b2c231baa99798702a23faa3217cf617"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_isolation.py",
+      "retained": "windows/tests/test_windows_v25_isolation.py",
+      "sha256": "5aec18e874711e50caea4b49f258e92b218867dee1c809611e0d447550ecd4a9"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_legacy_bridge_coexistence.py",
+      "retained": "windows/tests/test_windows_v25_legacy_bridge_coexistence.py",
+      "sha256": "d4041ee37871e2cf6c98bae82c599fead2f06e3128efcf15a5e26377a66de4dc"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_multi_connector.py",
+      "retained": "windows/tests/test_windows_v25_multi_connector.py",
+      "sha256": "647488da9162322cc510e05a435e998e7b1ef7e3a308c5d2abe4fa8902b3cc32"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_multi_instance.py",
+      "retained": "windows/tests/test_windows_v25_multi_instance.py",
+      "sha256": "fa342a6b597a653f1edb0ea10736b1d75905808b18a0e64ac4b26c5588114a0b"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_named_connector_scheduler.py",
+      "retained": "windows/tests/test_windows_v25_named_connector_scheduler.py",
+      "sha256": "3668407876e485282c722105fc0cc199666be7b319a59fe8449f358c9f129236"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_openai_bootstrap.py",
+      "retained": "windows/tests/test_windows_v25_openai_bootstrap.py",
+      "sha256": "fd9aecd6f86ee045b4e8a287e0299b41932bc75e7074bc4928341bac99cd5399"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_private_provision.py",
+      "retained": "windows/tests/test_windows_v25_private_provision.py",
+      "sha256": "dd63284cd20281bd86c88d8a42e1fca9877b6e25727cab0bef285c1033d64702"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_release_version_gate.py",
+      "retained": "windows/tests/test_windows_v25_release_version_gate.py",
+      "sha256": "bd1580476c2654dccd83cecc5324e7700be86926ca408cff9440afc8f0499770"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_runtime.py",
+      "retained": "windows/tests/test_windows_v25_runtime.py",
+      "sha256": "443d94032253472c1f1321795205b3ec91dc96230bcc059bb82665ffb13010ee"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_runtime_installer.py",
+      "retained": "windows/tests/test_windows_v25_runtime_installer.py",
+      "sha256": "7b66e65161dda3810b83d1fba4c28c046f6ab2a652e2fb8e9136174315b422e4"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_same_provider_connector_jobs.py",
+      "retained": "windows/tests/test_windows_v25_same_provider_connector_jobs.py",
+      "sha256": "3ea5c0b50a9ec5a28633ae5bb72cea0bbf5a61ff1417ee989374f98cfa926c82"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_same_provider_core_loss.py",
+      "retained": "windows/tests/test_windows_v25_same_provider_core_loss.py",
+      "sha256": "c36207270250de924ef8c6a953d8d74d346dc647346f3bfb9ae1678419fccdac"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_scheduler_installed_parity_audit.py",
+      "retained": "windows/tests/test_windows_v25_scheduler_installed_parity_audit.py",
+      "sha256": "befe2265b5e3bbd3f726452a32457554ec2e92bcf32164177e819d610e9d655d"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_shared_core_grants.py",
+      "retained": "windows/tests/test_windows_v25_shared_core_grants.py",
+      "sha256": "2f85ed8073088e850a33466e07738bb94d9f83378ca83a1e11a8ca5c03e6ae14"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_spec.py",
+      "retained": "windows/tests/test_windows_v25_spec.py",
+      "sha256": "68010bd15894ffa86aee500b010d827337b90c2da96c9f400f23c988f355bd4e"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_storage.py",
+      "retained": "windows/tests/test_windows_v25_storage.py",
+      "sha256": "17c35956dc5b318b0626944b8c08679db2b0cbb204dad13bb4bb632d6f823b00"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_tasks.py",
+      "retained": "windows/tests/test_windows_v25_tasks.py",
+      "sha256": "eea2e294955442f81c00317f05e79147392f12bc07e18a0cb24a492d76c91a1c"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_topology_a_public_host_contract.py",
+      "retained": "windows/tests/test_windows_v25_topology_a_public_host_contract.py",
+      "sha256": "856804a7edd5d34e67d54941a0ae8760933b9966defd11c832c73f3a7ad770a3"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_topology_c_http_bridge_isolation.py",
+      "retained": "windows/tests/test_windows_v25_topology_c_http_bridge_isolation.py",
+      "sha256": "52d0fb54747bcdf8c28c98927f49fd5d87148bf89f9923b8a276f415f96cfec8"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_topology_c_real_core_processes.py",
+      "retained": "windows/tests/test_windows_v25_topology_c_real_core_processes.py",
+      "sha256": "00a8e6f540385475dc4c4c5b7c16a088ce2faf8774ef4a30823709a2f4efdffb"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_two_independent_bridge_workers.py",
+      "retained": "windows/tests/test_windows_v25_two_independent_bridge_workers.py",
+      "sha256": "b084e6c9677c35b8096581443a3c7dc1bae5efebf64e8739fcf7f37e4179f70f"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_w2_four_component_scheduler_native.py",
+      "retained": "windows/tests/test_windows_v25_w2_four_component_scheduler_native.py",
+      "sha256": "252610f6f3bc82ed5a9bf5a83a52dd0706fe09ce7e4021262e4fea0ce4ab33a4"
+    },
+    {
+      "removed": "linux/tests/test_windows_v25_workdir_ownership.py",
+      "retained": "windows/tests/test_windows_v25_workdir_ownership.py",
+      "sha256": "c638b479bcea95f220e127a929401566b075d0f6987dde4cb6b7306a6183f7cf"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2_bridge_private_native.py",
+      "retained": "windows/tests/test_windows_w2_bridge_private_native.py",
+      "sha256": "d3b1d2eaccee73116d01c56e7fb7de4bdd794f6bd430a5935560deae41653d4a"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2_component_tasks_native.py",
+      "retained": "windows/tests/test_windows_w2_component_tasks_native.py",
+      "sha256": "2b5e3b890a53ad945fb4eb0b62d888c9b5995c3009298eef1bbc3c8500707f24"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2_import_native.py",
+      "retained": "windows/tests/test_windows_w2_import_native.py",
+      "sha256": "dc3ff8a93e2bd8ee3e2ae13602a3c2896fd056754616208183b442be7c7f0658"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2_job_isolation_native.py",
+      "retained": "windows/tests/test_windows_w2_job_isolation_native.py",
+      "sha256": "0327863f615e72996a03529953dc52b7b795633bef47959fbe589235b9d833a2"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2_private_publish_native.py",
+      "retained": "windows/tests/test_windows_w2_private_publish_native.py",
+      "sha256": "b6f002df738b8783d58738022d80e3b03a75307416e13cd538bbfd40a22d7157"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2_task_runtime_native.py",
+      "retained": "windows/tests/test_windows_w2_task_runtime_native.py",
+      "sha256": "1d05d7792ae8cd2d9b4efbf66b35fc88af33926e7a2535bdc5e7f59d4e3e6f1a"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2_task_scheduler_native.py",
+      "retained": "windows/tests/test_windows_w2_task_scheduler_native.py",
+      "sha256": "3604c2a3c5c3bb574850c4dd96c046c5b4f4fbf14c81497dacb61baf6fbffa94"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2g_import_gate.py",
+      "retained": "windows/tests/test_windows_w2g_import_gate.py",
+      "sha256": "b8975320b4f4aff353687aa2b67b78aa48df777f58d96545424fbc3836ae50c9"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2g_private_acl_native.py",
+      "retained": "windows/tests/test_windows_w2g_private_acl_native.py",
+      "sha256": "3bd88f965bae9e9c14b1942e35dedde22e45829be3c940dcedc57ed59923d1cc"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2g_resume_integrity.py",
+      "retained": "windows/tests/test_windows_w2g_resume_integrity.py",
+      "sha256": "043847b448ea7f8f50675a5dbce894742cba56bb514df6f5e4a61ee9987e3762"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2h_disabled_staging_contract.py",
+      "retained": "windows/tests/test_windows_w2h_disabled_staging_contract.py",
+      "sha256": "3d9dc9b45288317d8f2cba5d4f959f95adb10e891117b9425b381ae9d3884430"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2i_core_smoke_contract.py",
+      "retained": "windows/tests/test_windows_w2i_core_smoke_contract.py",
+      "sha256": "f5dd5ad303b496a03988635b0d9d314d3bd01a88ac4f8f38e6ffd8d260720da1"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2j_core_mutex_native.py",
+      "retained": "windows/tests/test_windows_w2j_core_mutex_native.py",
+      "sha256": "1ae9abb5f7c7c62f0d3f870809255304261aa6b2f1a349ee5c86da3c5c706e06"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2j_core_wheel_diff.py",
+      "retained": "windows/tests/test_windows_w2j_core_wheel_diff.py",
+      "sha256": "8034385fa39b032117b72462a1b0f191caf466475b47bd593061156797b29123"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2k_scheduler_normalization.py",
+      "retained": "windows/tests/test_windows_w2k_scheduler_normalization.py",
+      "sha256": "0a6677044f9269109a5ec1dc28d5cc905228d76a01765997dd8e2972c0a5f77b"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2l_core_readonly_evidence.py",
+      "retained": "windows/tests/test_windows_w2l_core_readonly_evidence.py",
+      "sha256": "7163b383215444e4fbf47a7d1da6f071398d1448ea3587c89976b2d2bb9c9df6"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2m_pythonw_image_proof.py",
+      "retained": "windows/tests/test_windows_w2m_pythonw_image_proof.py",
+      "sha256": "e46c7fd263cb96e00ff8df8a3995402c7be916671144f2219652ae9a015cbc76"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2n_pythonw_wheel_diff.py",
+      "retained": "windows/tests/test_windows_w2n_pythonw_wheel_diff.py",
+      "sha256": "deec5269888d661a08bea394b8469560b31fa4a65943545379577189a635ede3"
+    },
+    {
+      "removed": "linux/tests/test_windows_w2p_core_lifecycle_trace.py",
+      "retained": "windows/tests/test_windows_w2p_core_lifecycle_trace.py",
+      "sha256": "81f4fe46db36d59fafd189875486f07d9f5838db99571a9c9b80846ff2c3cbe4"
+    },
+    {
+      "removed": "macos/agent_bridge/src/serverfs_agent_bridge/linux_v0250_install.py",
+      "retained": "linux/agent_bridge/src/serverfs_agent_bridge/linux_v0250_install.py",
+      "sha256": "1234476d69448f0772f403f155cabf1191fa9c15454156f4f663e6d172b32887"
+    },
+    {
+      "removed": "macos/agent_bridge/src/serverfs_agent_bridge/linux_v0250_preflight.py",
+      "retained": "linux/agent_bridge/src/serverfs_agent_bridge/linux_v0250_preflight.py",
+      "sha256": "4a97b45970f2950f008aba6d10b3464b73414ac6fe281c9410d4f04c5c4558e6"
+    },
+    {
+      "removed": "macos/agent_bridge/src/serverfs_agent_bridge/linux_v0250_provision.py",
+      "retained": "linux/agent_bridge/src/serverfs_agent_bridge/linux_v0250_provision.py",
+      "sha256": "962950da6b06eba67d647a69b76cb694fd1700cf3330d6fe101e0ae2ca2f99bc"
+    },
+    {
+      "removed": "macos/agent_bridge/src/serverfs_agent_bridge/platform_seams.py",
+      "retained": "agent_bridge/src/serverfs_agent_bridge/platform_seams.py",
+      "sha256": "e78b464aa0cc76118ce4f88ad354305504114766a360f3a9540c998ab351e38a"
+    },
+    {
+      "removed": "macos/agent_bridge/src/serverfs_agent_bridge/windows_ipc.py",
+      "retained": "windows/agent_bridge/src/serverfs_agent_bridge/windows_ipc.py",
+      "sha256": "8980d986c1ec2b12c08a1c2659e49474d64700f020beb3516dc12ea6f44c4ce2"
+    },
+    {
+      "removed": "macos/agent_bridge/src/serverfs_agent_bridge/windows_lease.py",
+      "retained": "windows/agent_bridge/src/serverfs_agent_bridge/windows_lease.py",
+      "sha256": "8d8b6f5d9736d2c108cf412f778617dcf7e5a586c7887b39fc829cff277667c3"
+    },
+    {
+      "removed": "macos/agent_bridge/src/serverfs_agent_bridge/windows_pipe.py",
+      "retained": "windows/agent_bridge/src/serverfs_agent_bridge/windows_pipe.py",
+      "sha256": "a548bfab70be136881899360537c180ed6f19555318c4a3cca7cfe8cec05807c"
+    },
+    {
+      "removed": "macos/agent_bridge/tests/pipe_support.py",
+      "retained": "windows/agent_bridge/tests/pipe_support.py",
+      "sha256": "f7503517c64e6390cd1f9a6f391edca3dff8d5cced5aef06588665c7a73bc8ae"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_bridge_adapter.py",
+      "retained": "linux/tests/test_linux_v0250_bridge_adapter.py",
+      "sha256": "20f73b30b57ba09115ca7f5a0f39cb3cad08d06fd52eee1c8c180ce32a420da1"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_bridge_bootstrap.py",
+      "retained": "linux/tests/test_linux_v0250_bridge_bootstrap.py",
+      "sha256": "a2497c1d35c99cec9023838656ba7698ef53cc8c3ff5a1bd393159092474fa5c"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_bridge_gate.py",
+      "retained": "linux/tests/test_linux_v0250_bridge_gate.py",
+      "sha256": "68ec8d1f087c6036f0b3c7d09e65abf595982d734e08e3196db3a588ed707180"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_cloudflare_public.py",
+      "retained": "linux/tests/test_linux_v0250_cloudflare_public.py",
+      "sha256": "fcf096afe0e8b19aad4a2efb4055ab65bb650a483ab0bed96620cd5db3cda9bb"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_compose.py",
+      "retained": "linux/tests/test_linux_v0250_compose.py",
+      "sha256": "ff248e2ae528d9ea32e00b09238a66affd2085ccbda4ef156f81321bcb004acc"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_docker_e2e.py",
+      "retained": "linux/tests/test_linux_v0250_docker_e2e.py",
+      "sha256": "265a5340a3ed75aeab96864ec88a63dae04a376c357b52075cd1588050ca4919"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_dual_connector_lifecycle.py",
+      "retained": "linux/tests/test_linux_v0250_dual_connector_lifecycle.py",
+      "sha256": "1eed9bd79ebb0126c771e51034b789e0d78a80382dc86eb72081e8213818212c"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_file_only_docker.py",
+      "retained": "linux/tests/test_linux_v0250_file_only_docker.py",
+      "sha256": "eecfbb2a3b7b27fab1212bb2fa2f330aa6bfbe4b570b2a394d4876f492925e92"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_http_e2e.py",
+      "retained": "linux/tests/test_linux_v0250_http_e2e.py",
+      "sha256": "0973c8f9ca65b8d61fe03a7e256017813198333a9f8f1fa42410b553379d3a60"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_real_agent_docker.py",
+      "retained": "linux/tests/test_linux_v0250_real_agent_docker.py",
+      "sha256": "fd979645f8e63cbf0cecc021a4ef9c0a38f7e9b56e6233c2f072a3115bd6ad25"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_tunnel_runtime.py",
+      "retained": "linux/tests/test_linux_v0250_tunnel_runtime.py",
+      "sha256": "74c1d5fd74dd49bc87e50456fbd79d34aec5cd6a60652361a1f37568da41afbe"
+    },
+    {
+      "removed": "macos/tests/test_linux_v0250_writer_lease.py",
+      "retained": "linux/tests/test_linux_v0250_writer_lease.py",
+      "sha256": "45ebaf7a5b3e922705a91df2450af51b94f2afdc55efe0522f38740b11623adb"
+    },
+    {
+      "removed": "macos/tests/test_linux_v026_multi_alias_real_agent_docker.py",
+      "retained": "linux/tests/test_linux_v026_multi_alias_real_agent_docker.py",
+      "sha256": "eec9d5db6ea7dd9b65641c50821b22260616c89ac4aa627637fc69fb84958ca8"
+    },
+    {
+      "removed": "macos/tests/test_linux_v026_multi_bridge.py",
+      "retained": "linux/tests/test_linux_v026_multi_bridge.py",
+      "sha256": "92bf9a7eac2df1b9c51a101aafc5a8ceabef6d2cc6b88618e82b76b549614be0"
+    },
+    {
+      "removed": "macos/tests/test_native_windows.py",
+      "retained": "windows/tests/test_native_windows.py",
+      "sha256": "329fed0b520b07e6e61387776d79be9540c7600f64334a8f823ddcf8e2a3d7f5"
+    },
+    {
+      "removed": "macos/tests/test_runtime_policy_roundtrip.py",
+      "retained": "windows/tests/test_runtime_policy_roundtrip.py",
+      "sha256": "5d2f02c0761179ea6086dfb9660af5659f25e30cc3e5d53dd121ecb1f539ddaf"
+    },
+    {
+      "removed": "macos/tests/test_windows_agent_lease.py",
+      "retained": "windows/tests/test_windows_agent_lease.py",
+      "sha256": "dbfc9e97ade04a8e36ffef36b26e2b7c2077ece7dd1c79e07c7a2cfcdd557086"
+    },
+    {
+      "removed": "macos/tests/test_windows_agent_pipe.py",
+      "retained": "windows/tests/test_windows_agent_pipe.py",
+      "sha256": "8e1d3695c2c047504c1af70913546cdcb8af20e6d3df9106ccc94b69b9d16d03"
+    },
+    {
+      "removed": "macos/tests/test_windows_backend.py",
+      "retained": "windows/tests/test_windows_backend.py",
+      "sha256": "9daed23aaff789a8e3aa54ce1441e17629efed4e6997cea4af60545385f20a60"
+    },
+    {
+      "removed": "macos/tests/test_windows_bridge_control.py",
+      "retained": "windows/tests/test_windows_bridge_control.py",
+      "sha256": "2de721d0d4ad831d0f52d8ee2549facf9c868148394dfe2de5202c921d70d1a2"
+    },
+    {
+      "removed": "macos/tests/test_windows_bridge_generation_ipc.py",
+      "retained": "windows/tests/test_windows_bridge_generation_ipc.py",
+      "sha256": "e83481849f3da5c17f8095389df8fd8a6191e59c2cb7f19e9209db9a4543afc1"
+    },
+    {
+      "removed": "macos/tests/test_windows_bridge_owner.py",
+      "retained": "windows/tests/test_windows_bridge_owner.py",
+      "sha256": "d6299d0f044f597a078725ff5cd8b9ad578249743f720d8f1c94e2ba0d3b100c"
+    },
+    {
+      "removed": "macos/tests/test_windows_bridge_runtime_topology.py",
+      "retained": "windows/tests/test_windows_bridge_runtime_topology.py",
+      "sha256": "7fd169137bcdecfaa8c181f63110afa85955d0fe650d1e4f1cef72f3366b5a32"
+    },
+    {
+      "removed": "macos/tests/test_windows_bridge_service.py",
+      "retained": "windows/tests/test_windows_bridge_service.py",
+      "sha256": "a9892dac6598aee160f97f21c338dde846d75525df8d9d6bcf9d10fea30a7c72"
+    },
+    {
+      "removed": "macos/tests/test_windows_bridge_task_spec.py",
+      "retained": "windows/tests/test_windows_bridge_task_spec.py",
+      "sha256": "290c828d6e9c6fd7435a14654fc955813627b4ff383491f5a0337a01e0c21793"
+    },
+    {
+      "removed": "macos/tests/test_windows_cloudflare_acl_native.py",
+      "retained": "windows/tests/test_windows_cloudflare_acl_native.py",
+      "sha256": "79ebd64bc8f55b05b30500aa0202eba6b3ed91c6d96fa8f437d542165ffd1226"
+    },
+    {
+      "removed": "macos/tests/test_windows_cloudflare_config.py",
+      "retained": "windows/tests/test_windows_cloudflare_config.py",
+      "sha256": "0e593f42cb068033d16d4bd355e4faffdbfee467ec1196cce211ff38a06275a0"
+    },
+    {
+      "removed": "macos/tests/test_windows_cloudflare_connector.py",
+      "retained": "windows/tests/test_windows_cloudflare_connector.py",
+      "sha256": "f4463e660b104e0433d7ae75934d9fee6be2027df39043a69f6324047856fd8f"
+    },
+    {
+      "removed": "macos/tests/test_windows_cloudflare_isolated_http.py",
+      "retained": "windows/tests/test_windows_cloudflare_isolated_http.py",
+      "sha256": "989c463c330ad8ab1b0a2b1c5136bba7b8e1912ae71513911a62f2521606c251"
+    },
+    {
+      "removed": "macos/tests/test_windows_cloudflare_parallel.py",
+      "retained": "windows/tests/test_windows_cloudflare_parallel.py",
+      "sha256": "98112a5ce55e4b6ab9eb80090a4b35b950d3f1e3716225e25a75c1d3dc02d817"
+    },
+    {
+      "removed": "macos/tests/test_windows_cloudflare_runtime.py",
+      "retained": "windows/tests/test_windows_cloudflare_runtime.py",
+      "sha256": "b47a7b35c71e6b2f9e254918314f89e3247c32f3f74f765bb3ccb55c8797aaab"
+    },
+    {
+      "removed": "macos/tests/test_windows_cloudflare_security.py",
+      "retained": "windows/tests/test_windows_cloudflare_security.py",
+      "sha256": "61d8e49b33602a554d70bfd744ff3e79fbc1630eb1f04914e4175baf7b5e1ef8"
+    },
+    {
+      "removed": "macos/tests/test_windows_cloudflare_service.py",
+      "retained": "windows/tests/test_windows_cloudflare_service.py",
+      "sha256": "fad14b704e874ff357abeef06fe342e846b349f404f7427e0fc72635311a6f9a"
+    },
+    {
+      "removed": "macos/tests/test_windows_component_active_lifecycle.py",
+      "retained": "windows/tests/test_windows_component_active_lifecycle.py",
+      "sha256": "f82bbea51aab121f8bb06e82049035a273828059c18faa2317240a8a8fd359af"
+    },
+    {
+      "removed": "macos/tests/test_windows_component_cli.py",
+      "retained": "windows/tests/test_windows_component_cli.py",
+      "sha256": "fbaaa7dc0b209959d1c1a97c662c3d24ae06155afb11056efb851c9e418e8f30"
+    },
+    {
+      "removed": "macos/tests/test_windows_connector_control.py",
+      "retained": "windows/tests/test_windows_connector_control.py",
+      "sha256": "694f9e9d34538ffee4afba59620c0c94b8cc7eb8708254471d61f85693d05acc"
+    },
+    {
+      "removed": "macos/tests/test_windows_connector_service.py",
+      "retained": "windows/tests/test_windows_connector_service.py",
+      "sha256": "572fc4b97ab2457bdaa10c0ceac001f7c15d75e7aac8299ec817950d5ac7e3d2"
+    },
+    {
+      "removed": "macos/tests/test_windows_connector_task_spec.py",
+      "retained": "windows/tests/test_windows_connector_task_spec.py",
+      "sha256": "d89025f6e64ea06a9d222e2057f184afad1bce6d0f3789ea25a70974c78c90e3"
+    },
+    {
+      "removed": "macos/tests/test_windows_core_control.py",
+      "retained": "windows/tests/test_windows_core_control.py",
+      "sha256": "3b11865f66b941a3bf6eccbd7c7ea0ec13ca0e694c02729b23071c281783f7cb"
+    },
+    {
+      "removed": "macos/tests/test_windows_core_listener.py",
+      "retained": "windows/tests/test_windows_core_listener.py",
+      "sha256": "42c094a28692ac37357e1ae819c623632a4805a7f68ec1ea234f42a02a26f357"
+    },
+    {
+      "removed": "macos/tests/test_windows_core_listener_native.py",
+      "retained": "windows/tests/test_windows_core_listener_native.py",
+      "sha256": "d112e722c144717f883c999a60b795b7efb3e02e1f95536ff402e4ca165e2666"
+    },
+    {
+      "removed": "macos/tests/test_windows_core_service.py",
+      "retained": "windows/tests/test_windows_core_service.py",
+      "sha256": "ee7f04ab6777141e6e1ec4c18b04367415013cb25aa64d9ddb3085fe3773d3d8"
+    },
+    {
+      "removed": "macos/tests/test_windows_core_task_spec.py",
+      "retained": "windows/tests/test_windows_core_task_spec.py",
+      "sha256": "07d5880baf865fa61d0f77f09c1ec3c905e376ba566e358e4a09ab5daa6519cd"
+    },
+    {
+      "removed": "macos/tests/test_windows_job.py",
+      "retained": "windows/tests/test_windows_job.py",
+      "sha256": "c1bbc7e2e23a7850eb6a1bbdf1f980ae594b351ab4b8d10e251772ce1cd9c71b"
+    },
+    {
+      "removed": "macos/tests/test_windows_job_cleanup.py",
+      "retained": "windows/tests/test_windows_job_cleanup.py",
+      "sha256": "e641ff2bce5fb4ef8d3dcb3de63937cec7f88c4788f64cd3de87cb8d9a45a13a"
+    },
+    {
+      "removed": "macos/tests/test_windows_mcp_agent_e2e.py",
+      "retained": "windows/tests/test_windows_mcp_agent_e2e.py",
+      "sha256": "fa3f599d6271efb6de26257569fa8573e693515b3c0ce1bb72cdec7d7aa327a0"
+    },
+    {
+      "removed": "macos/tests/test_windows_mcp_e2e.py",
+      "retained": "windows/tests/test_windows_mcp_e2e.py",
+      "sha256": "7cf2d38cbaaf485ce9e878ec39c850809ac9d6c98cf1ffe47ee58d748053fefe"
+    },
+    {
+      "removed": "macos/tests/test_windows_native_stdio.py",
+      "retained": "windows/tests/test_windows_native_stdio.py",
+      "sha256": "4114cc3af8c96286169503bdca1e8b7af0ae2f119d0fc1e991fdb0e5223c462a"
+    },
+    {
+      "removed": "macos/tests/test_windows_openai_connector.py",
+      "retained": "windows/tests/test_windows_openai_connector.py",
+      "sha256": "6d06f754bc7df47667d86b244e8be84798b8f93d7fb6f6d4e69d4e730fa9593d"
+    },
+    {
+      "removed": "macos/tests/test_windows_path_acceptance.py",
+      "retained": "windows/tests/test_windows_path_acceptance.py",
+      "sha256": "2b37faadebd7f4082af8f7b24014a44d4df1a6d4ef10c8c26c2624463b174b0d"
+    },
+    {
+      "removed": "macos/tests/test_windows_private_artifacts_native.py",
+      "retained": "windows/tests/test_windows_private_artifacts_native.py",
+      "sha256": "b9af6d4bd91d1ff6fe2862468d33f0c2d264dfb9f12f3842abcb2d0dbc0ed96f"
+    },
+    {
+      "removed": "macos/tests/test_windows_pythonw_process_attestation.py",
+      "retained": "windows/tests/test_windows_pythonw_process_attestation.py",
+      "sha256": "3c3de9e71a5eb841a31d177eca0acbff7d8112dec0b6aa3ea175884bd49e5ee9"
+    },
+    {
+      "removed": "macos/tests/test_windows_service.py",
+      "retained": "windows/tests/test_windows_service.py",
+      "sha256": "41b0dc51ab4250e9f1150a09736f8b5f00ada164868d40171e8335613d8ec849"
+    },
+    {
+      "removed": "macos/tests/test_windows_v026_named_proxy.py",
+      "retained": "windows/tests/test_windows_v026_named_proxy.py",
+      "sha256": "eaebd38dd6af8df7338aca45ec135f3821ca64782251a1ea3a17f2f315baa1e7"
+    },
+    {
+      "removed": "macos/tests/test_windows_v026_named_proxy_live.py",
+      "retained": "windows/tests/test_windows_v026_named_proxy_live.py",
+      "sha256": "943fb25845ccd8e22370443566f842408e3fba82bce873fd9cbacf6a95ede767"
+    },
+    {
+      "removed": "macos/tests/test_windows_v026_workdir_integrity.py",
+      "retained": "windows/tests/test_windows_v026_workdir_integrity.py",
+      "sha256": "21c9c39fd2bfb213c07765f866ba129c65bd6d2121c1a288d05041e1bcc4d522"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_bridge_resources.py",
+      "retained": "windows/tests/test_windows_v25_bridge_resources.py",
+      "sha256": "fb38158b2c40931f3670874fc6a16c6fc1278d7dc63fce153ee1d204abffe8fa"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_bridge_v2_cli.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_cli.py",
+      "sha256": "3f0e73f8b77b269c5563e6cb94eb9b1c27f02e39670da463a752e51b1ccb9881"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_bridge_v2_lease.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_lease.py",
+      "sha256": "66298f65f166f6f57b9c7a17bbeefd2e99b9477c2940dca688395af453051e85"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_bridge_v2_owner.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_owner.py",
+      "sha256": "802bd790ebaa74fc5ffce707ec04fc6e95b8eab80f2b22d3dba27d690731cfcc"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_bridge_v2_public_agent_tools.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_public_agent_tools.py",
+      "sha256": "6323aef66bdfaaaf536cef8749c2f3c49ec8201b03094cecb1fbb747d6db929d"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_bridge_v2_real_job.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_real_job.py",
+      "sha256": "939e6b54c062924e8c0cbd613aa062f34e1e51d39467ec070191336cf43d3672"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_bridge_v2_real_worker.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_real_worker.py",
+      "sha256": "1c767bf3e1ef817ad6e8c7d8366485f51c5cc7d91985ea85691a81ac1521eb03"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_bridge_v2_runtime.py",
+      "retained": "windows/tests/test_windows_v25_bridge_v2_runtime.py",
+      "sha256": "d5c562335a42b93a1cd291c0e7028cfa4b14f2302d04e87769d98f7dc9425018"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_cloudflare_console_probe.py",
+      "retained": "windows/tests/test_windows_v25_cloudflare_console_probe.py",
+      "sha256": "3d5d058f9ccb6607a886dbe4c96351667c6671932f16cfa1ddb09548f26111ce"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_cloudflare_dual_route_contract.py",
+      "retained": "windows/tests/test_windows_v25_cloudflare_dual_route_contract.py",
+      "sha256": "dd97a5c69ce6c706ea1136600542c65345a9ecfe5904624c651e13b230be9680"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_cloudflare_quiescence.py",
+      "retained": "windows/tests/test_windows_v25_cloudflare_quiescence.py",
+      "sha256": "a403391dd4ef90b7dc00f08fd29f675fc43a30ec59b0b822516f5bbc23e84f3e"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_component_task_power_policy.py",
+      "retained": "windows/tests/test_windows_v25_component_task_power_policy.py",
+      "sha256": "5615917e34bb7626abb7e7ee3b2d4d59c6db11bdfc37d3ba3b5e107956a46e12"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_connector_id.py",
+      "retained": "windows/tests/test_windows_v25_connector_id.py",
+      "sha256": "f2febe578f1fa4c325a2789ffa221e93656bef81f0fb2069f743d61625948915"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_connector_provision.py",
+      "retained": "windows/tests/test_windows_v25_connector_provision.py",
+      "sha256": "3dac8ac7f08f68cc9b160fe49080a65a4b77bb229f4c788b90ecc38297fa2d51"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_connector_real_job_isolation.py",
+      "retained": "windows/tests/test_windows_v25_connector_real_job_isolation.py",
+      "sha256": "f070e073f244f942733c45331fb2795baf4410f6279f51383742298dd823b53f"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_core_bridge_binding.py",
+      "retained": "windows/tests/test_windows_v25_core_bridge_binding.py",
+      "sha256": "c501be13552ac2afb247a7dfeabdf5aee9e51df6d03b88c411fe7b337d0a9965"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_core_bridge_cli.py",
+      "retained": "windows/tests/test_windows_v25_core_bridge_cli.py",
+      "sha256": "cb27b4c83d3314712b782663ebb720f07ea47d8811de02b6da7d714de4e1ec8c"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_core_bridge_peer_owner.py",
+      "retained": "windows/tests/test_windows_v25_core_bridge_peer_owner.py",
+      "sha256": "afd8c7cdd69ef69817b1f40d1f47af73b2d808a792c4fd47ff4dc16472c9f753"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_core_bridge_runtime.py",
+      "retained": "windows/tests/test_windows_v25_core_bridge_runtime.py",
+      "sha256": "5579ead4d73ec2cadc098b1e8fc17cec22cd2d9e956c0aaf0a5d643096f0a314"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_core_bridge_workdir_parity.py",
+      "retained": "windows/tests/test_windows_v25_core_bridge_workdir_parity.py",
+      "sha256": "a4e6a79fc31e44b285c6346ca127a1d5024bf3b2a134ae65f5cc621ea1f74a87"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_default_bridge_claim_compat.py",
+      "retained": "windows/tests/test_windows_v25_default_bridge_claim_compat.py",
+      "sha256": "8861f90fbdd1879af01409aaeaac7385f1e57cb4612cb119b151d3498485afe5"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_dual_connector_real_job_isolation.py",
+      "retained": "windows/tests/test_windows_v25_dual_connector_real_job_isolation.py",
+      "sha256": "d5c5b5522e5c24505c5f16a43827d0f93edfd96f4b4a58ce8458ab0242904c41"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i10_durable_runner.py",
+      "retained": "windows/tests/test_windows_v25_i10_durable_runner.py",
+      "sha256": "bab26df23d2167c3c32f6579863355d16677c1e23e4d162eea7a181153e7c4fd"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i10_public_connector_retire_contract.py",
+      "retained": "windows/tests/test_windows_v25_i10_public_connector_retire_contract.py",
+      "sha256": "c1625c334f9bb872853c92f4c07c6b63be28223cb739ab05adf66edad9414153"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i10_same_core_public_bridge_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i10_same_core_public_bridge_smoke_contract.py",
+      "sha256": "83d04df9d342e6bf90608e27dd23e7beb37bedaaa68b76542d5a2db4e3efe9a7"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i10_same_core_public_connector_stage.py",
+      "retained": "windows/tests/test_windows_v25_i10_same_core_public_connector_stage.py",
+      "sha256": "b2bc4d70a2adf2139f4484ad96fe296d8ce5acdb5947b9a8294c163ee3c2fcde"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i11_real_claude_two_owner_history_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i11_real_claude_two_owner_history_readonly.py",
+      "sha256": "5ca0e5c91d821273827bc62ce32a00d53f9eb3629dae3871bbbef0727ce36eb9"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i11_two_owned_provider_no_model_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i11_two_owned_provider_no_model_smoke_contract.py",
+      "sha256": "50c69d097b843e89f54202e6f9851ca7779220da1506d98f7b2f912a3393f060"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i11_two_owned_provider_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i11_two_owned_provider_preflight.py",
+      "sha256": "d4e6ed834b0ece4807edd7b677d435bd634bb284f65084930190e24066349c4d"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i11_two_owned_provider_stage_contract.py",
+      "retained": "windows/tests/test_windows_v25_i11_two_owned_provider_stage_contract.py",
+      "sha256": "9f1ef77de2d457d556f8fe4b0b95499b3a36efd0000d40b93ce8d1427ba56bc4"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i11_two_owned_real_claude_task_isolation_contract.py",
+      "retained": "windows/tests/test_windows_v25_i11_two_owned_real_claude_task_isolation_contract.py",
+      "sha256": "3b2f1d2917ff6545cbd14d5c9e4f143ee95c0fc671d400df0380c656450889e7"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i12_two_owned_writable_file_isolation_contract.py",
+      "retained": "windows/tests/test_windows_v25_i12_two_owned_writable_file_isolation_contract.py",
+      "sha256": "75c86c63ea62e79789420ea65cbdb98545ea459fbc9320f6170fbe96c1b108fb"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i13_owned_repo_native_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_owned_repo_native_smoke_contract.py",
+      "sha256": "cd42d16d977d0b164fc01f66789b333d5da22688f61e00a24a30b4ead928b7f1"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i13_owned_repo_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i13_owned_repo_preflight.py",
+      "sha256": "e408896f2dc60bb65ebdaf9e4fbc596c2c2fb029692d7b16c654b7a8c83ea588"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i13_owned_repo_stage_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_owned_repo_stage_contract.py",
+      "sha256": "e04eed8dfe2c71220834ade0178e14db908ebe9c789bfcb9cd823edf7e64ff45"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i13_repo_v2_native_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_repo_v2_native_contract.py",
+      "sha256": "b9f53b80a856e3ecdfd88bb06ed5925b228240c28e79d937eed64d264a683618"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i13_repo_v2_release_audit.py",
+      "retained": "windows/tests/test_windows_v25_i13_repo_v2_release_audit.py",
+      "sha256": "32f55c1e5e0beaa1e79e52d333886e998281220974ecc7e82d6707f7f4c16c77"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i13_repo_v2_runner_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_repo_v2_runner_contract.py",
+      "sha256": "ba97cd5a9a30dea5dd22dfc32daef7dd3b74b15e8cc4f2a390f2ae15f49d85b0"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i13_single_bridge_activation_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_single_bridge_activation_contract.py",
+      "sha256": "62090c1282dfd2e750733b7738a80765fb863cc2bd99dae4744b3441308227b2"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i13_single_bridge_runner_contract.py",
+      "retained": "windows/tests/test_windows_v25_i13_single_bridge_runner_contract.py",
+      "sha256": "b078a28dfe1d1037ec69f774b4ee61574692290c3b469d5b9442e8037616346f"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i14_postflight_capture.py",
+      "retained": "windows/tests/test_windows_v25_i14_postflight_capture.py",
+      "sha256": "46bec30b386c69d4b1c4bb7740f58b74e1e11fe90cb91a0ac58ae4b8097b3328"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i14_public_runner_contract.py",
+      "retained": "windows/tests/test_windows_v25_i14_public_runner_contract.py",
+      "sha256": "ec824cf13c82bd786c48bbc3cc45c0bf06bfb87db4cb5cde5d0d8375d6076978"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i14_public_smoke_retirement_contract.py",
+      "retained": "windows/tests/test_windows_v25_i14_public_smoke_retirement_contract.py",
+      "sha256": "5bb947189b2752fdb24ac5be728e2e9af45382c72c15d8fd43aac86ec1a97c36"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i14_retirement_capture.py",
+      "retained": "windows/tests/test_windows_v25_i14_retirement_capture.py",
+      "sha256": "3be3af05b71ae3d1527418dcf268fc5b26f65723e38822eedc574928fe4c5f35"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i14_stage_state_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i14_stage_state_readonly.py",
+      "sha256": "0432b720349e538a4c0918af4741c33c273aa2b3b17790f2e2372ebe1bc96755"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i14_two_owned_repo_connector_stage.py",
+      "retained": "windows/tests/test_windows_v25_i14_two_owned_repo_connector_stage.py",
+      "sha256": "5d7be2a1773eec54591d92fe1b18dc1fa63eab0197c28f6e8da5b060fa13957c"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i1_fixture_scripts.py",
+      "retained": "windows/tests/test_windows_v25_i1_fixture_scripts.py",
+      "sha256": "993a709769206a61ed85e589a13967a20adcac1f3e1122947cd31a591fa9171e"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i1_mcp_sdk_client.py",
+      "retained": "windows/tests/test_windows_v25_i1_mcp_sdk_client.py",
+      "sha256": "501f9d0b222d0aef66ca7ed004e0b5bf5c64a4156d29d28989f6ea2b582ba50c"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i1_postfail_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i1_postfail_readonly.py",
+      "sha256": "8122f1e1ea62a76cb9b878b37c61732dacef9ea6ad07806b28920dc1e2666c96"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i1_resume.py",
+      "retained": "windows/tests/test_windows_v25_i1_resume.py",
+      "sha256": "94204b9847cfba9a812ecb62e662dad57aa3e77d94c15f63d087e87feb3b2b7c"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i2_live_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i2_live_smoke.py",
+      "sha256": "2ae7f0041d7fe8eca5727c3ae90287b3d373cc4161d79c3013e7d69b4eacc896"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i2_postfail_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i2_postfail_readonly.py",
+      "sha256": "2f39d7c9d3fa6705a32c62419fc6ec953ccf564dba056213eb9f45fd15d47b11"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i2_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i2_preflight.py",
+      "sha256": "cfd8a772f7f43ea2bb64cb6e669628591512a47660d613b0b6b65b6ca19afd2d"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i2_registration_gate_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i2_registration_gate_readonly.py",
+      "sha256": "33700e24832412876ee03b45a8141eadb292715df59db633c8a6119accead932"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i2_resume_registration.py",
+      "retained": "windows/tests/test_windows_v25_i2_resume_registration.py",
+      "sha256": "cd8ff5b724ff77efc2765fa330788204ee2e81d4da6ba045ec1865ff976dfce7"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i2_stage.py",
+      "retained": "windows/tests/test_windows_v25_i2_stage.py",
+      "sha256": "bbca23e61c45b356873208a6a8e1fae2034dfb3a78048e6cb10cd2baedf4ee24"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i3_independent_lifecycle_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i3_independent_lifecycle_smoke.py",
+      "sha256": "5f97dd3e0de1373a22ae7dc425c51a3ca79c566cfa36cedbfe08b4087d92de53"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i3_installed_nonce_replay_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i3_installed_nonce_replay_smoke.py",
+      "sha256": "de863453b59f015bef719db448d5b81439a643097e90893dd61a677d84f13194"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i3_private_hmac_rotation.py",
+      "retained": "windows/tests/test_windows_v25_i3_private_hmac_rotation.py",
+      "sha256": "96e13fd50a918da4653146fe9aef61a7e5a812230ba86dd85bf7d534e5c93689"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i3_private_rotation_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i3_private_rotation_readonly.py",
+      "sha256": "1b389dff95a346352fbd62e1351d95d6486cfe1f6e324b75db2ef49e45310a44"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i3_readonly_live_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i3_readonly_live_smoke.py",
+      "sha256": "17ba33eef90b742e599da04ad10f2b6172a44beaa2288be9ebb23af96f03a05c"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i3_readonly_stage.py",
+      "retained": "windows/tests/test_windows_v25_i3_readonly_stage.py",
+      "sha256": "f836a58a203cda2ca55e1f1b3e12c505290e58fbb2e8ee4a69b74ff68ce111f7"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i3_shared_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i3_shared_preflight.py",
+      "sha256": "7bb671448bca4730b62ccf952fca9a6bc920e05de661b92a3a8fb248f8f8bfdf"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i3_shared_readonly_policy.py",
+      "retained": "windows/tests/test_windows_v25_i3_shared_readonly_policy.py",
+      "sha256": "ff17d9fd4bb32aa4d7f47464da07ade741e03535adcf329df17fc8a06c34fe46"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i4_live_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i4_live_smoke.py",
+      "sha256": "f0120d0f1a77ac8fcc23302711dbc45da0abcedaca1f1fbe3d6f226aee02a5b7"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i4_postflight.py",
+      "retained": "windows/tests/test_windows_v25_i4_postflight.py",
+      "sha256": "3dbd8df06654c26fb969b4d078c420937d820b344afee9e59744c8a55c907d80"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i4_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i4_preflight.py",
+      "sha256": "50b5a9ff9ecadf2fb4794028195bb721f2516fbba5a8501b6c2aa9d827175a4d"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i4_stage.py",
+      "retained": "windows/tests/test_windows_v25_i4_stage.py",
+      "sha256": "093bb8152c68da2089ac3d304cbc083a2c5f0ae1db8f0acf9726bcca75b74b00"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i4_two_pair_file_isolation_contract.py",
+      "retained": "windows/tests/test_windows_v25_i4_two_pair_file_isolation_contract.py",
+      "sha256": "4410ce8f01749f748061fdc475243638aff1a7969094e218fc0f579051da54dd"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_bridge_postfail_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_bridge_postfail_readonly.py",
+      "sha256": "e53b7bc6007b7f5e21a1c64bea4604e2a32498249561d2e8608b160bf142e2d4"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_bridge_wheel_repair.py",
+      "retained": "windows/tests/test_windows_v25_i5_bridge_wheel_repair.py",
+      "sha256": "106d2894b500752fe69a233e689dca584c93005b10861b67bba37e9e0739d142"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_cancel_private_proof.py",
+      "retained": "windows/tests/test_windows_v25_i5_cancel_private_proof.py",
+      "sha256": "c761f933ea880367243cab293b776b3f330852f044e6eb6d35f5ba84135840d9"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_claude_canary.py",
+      "retained": "windows/tests/test_windows_v25_i5_claude_canary.py",
+      "sha256": "9096bcd11d7a26184404375b7041fd9e728feca729bdbc22ae8d7f65e391ba77"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_claude_options_diagnostic.py",
+      "retained": "windows/tests/test_windows_v25_i5_claude_options_diagnostic.py",
+      "sha256": "426b1dcf1457ef2c0b98af4d865d4f99627ba51d3ccb380de642a4d0f15f12d4"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_claude_provider_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i5_claude_provider_preflight.py",
+      "sha256": "2268314cc18c174576f811fe562de9da27daad33fdcdc0c6ae96fc7070863405"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_interactive_grant_upgrade.py",
+      "retained": "windows/tests/test_windows_v25_i5_interactive_grant_upgrade.py",
+      "sha256": "a29923507b7b75da58d3c9029e997b87d2a6116509f0501efb021ce619b60a70"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_legacy_overlap_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_legacy_overlap_readonly.py",
+      "sha256": "f3f29d773c410bda83bf4fec353f8556d2346effab14fb3e87c8b52507684272"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_owner_offline_rollback_faults.py",
+      "retained": "windows/tests/test_windows_v25_i5_owner_offline_rollback_faults.py",
+      "sha256": "dca15b35f890939fc836e02c257d1ecb3fe169bb188cdc186f1256696eb5b4d0"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_owner_offline_rollout_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_owner_offline_rollout_contract.py",
+      "sha256": "452a2ef8ff7d7058c1666b64cc568e77e1c1d925e1a8b4e7cf335b3f718aa2fb"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_owner_private_wheel_audit.py",
+      "retained": "windows/tests/test_windows_v25_i5_owner_private_wheel_audit.py",
+      "sha256": "c18316efd915b62f367500ff5d76ff550f1e402a212d28734e0bd63b42868f36"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_owner_seven_module_wheel_stage.py",
+      "retained": "windows/tests/test_windows_v25_i5_owner_seven_module_wheel_stage.py",
+      "sha256": "2adf0d5ec01922bb1e9b8bd6b377d0ad31b0f9184ad7d7ca228e745922cc09bc"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_partial_worker_refresh.py",
+      "retained": "windows/tests/test_windows_v25_i5_partial_worker_refresh.py",
+      "sha256": "fbce73c3ee0d13e1269cbdb3cc438f7d52dbc172948ef743c6123c6fd8571cd0"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_postfail_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_postfail_readonly.py",
+      "sha256": "6cc9a00af618d40886493418ac0dbe27dd4a177f7e8bad9b91ff81c4b290ca5f"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_private_module_inventory.py",
+      "retained": "windows/tests/test_windows_v25_i5_private_module_inventory.py",
+      "sha256": "f256c7fb829306f8443dd56765d9e692731655331f5c4446e4a021090663bbe5"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_protected_task_diff_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_protected_task_diff_readonly.py",
+      "sha256": "a026cc2946a9ad26d20921402944e9c0eeb19208e8f4724148d63c245c615386"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_provider_installed_smoke.py",
+      "retained": "windows/tests/test_windows_v25_i5_provider_installed_smoke.py",
+      "sha256": "a53aa31af0438bd7c3243aa58414fd15d5d71a14a7466379eb6f4de9f40d1366"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_provider_shared_preflight.py",
+      "retained": "windows/tests/test_windows_v25_i5_provider_shared_preflight.py",
+      "sha256": "d3dfea26adbb808aa98faa41b5df7c726240154fa43355b0701db2687e9f5467"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_provider_shared_stage.py",
+      "retained": "windows/tests/test_windows_v25_i5_provider_shared_stage.py",
+      "sha256": "7b2e56824ff30f2b65c6c477cb72c9c6f91ea2b42310da5c2fb8e84a1b370cdf"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_provider_state_worker_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_provider_state_worker_readonly.py",
+      "sha256": "ec7a0179d9109f4e6cc9315c5a61cfafa51e704a3b8db59b00b0169ddac0b271"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_public_connector_retire_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_public_connector_retire_contract.py",
+      "sha256": "63fd694dbb7b6f9319004e3ed96a23da6cc041fbe780791d32b9163908504412"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_public_connector_stage_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_public_connector_stage_contract.py",
+      "sha256": "799d37af2cb54de397a64ef7aa347f40e6e56ec093567aa93b7860871c6ee8f0"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_real_claude_approval_cancel_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_claude_approval_cancel_contract.py",
+      "sha256": "833734cdbe6fc574e845c48bebe58f0c1edeee0b4360964664c704a415c45bd0"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_real_claude_inflight_cancel.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_claude_inflight_cancel.py",
+      "sha256": "7d393e2e21676f99e0f7ca9f7aaba1d6f90a365c51eef3f834518dc4b05698e4"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_real_claude_question_cancel_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_claude_question_cancel_contract.py",
+      "sha256": "814e14ec6ba65bd043d470864b80bd4d4eee2429a7ee99cd97841214019992b0"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_real_claude_task_ownership.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_claude_task_ownership.py",
+      "sha256": "cf12e3f7543be44541242959eec60605829084164345c92cb8a261f86e9e92f4"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_real_provider_history_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_provider_history_readonly.py",
+      "sha256": "f9ec37003252922c4bce5209645a5894cb77c235f928bc676db11ae82e451b9c"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_real_stream_cancel_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_stream_cancel_contract.py",
+      "sha256": "b6a9f3f6b62e8825396ed79614353c8f59d2c762e3ca1731a74005865e163c52"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_real_stream_diagnostic.py",
+      "retained": "windows/tests/test_windows_v25_i5_real_stream_diagnostic.py",
+      "sha256": "e97c8972aad4e4f3c13564bbce8fc92693824a21a7cdb966771d6ad302416a68"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_resume_core_policy.py",
+      "retained": "windows/tests/test_windows_v25_i5_resume_core_policy.py",
+      "sha256": "41cd1f80761de71507a7c9eb4d6fb7f8a8bea8fb7a8f6e9dc29f9ac2a3c091e6"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_scheduler_postfail_readonly.py",
+      "retained": "windows/tests/test_windows_v25_i5_scheduler_postfail_readonly.py",
+      "sha256": "9e35ce5fd458c426d0d640405aa1e7e2252da3255d9e9af824ef9f2590b3750e"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_stream_privacy_refresh.py",
+      "retained": "windows/tests/test_windows_v25_i5_stream_privacy_refresh.py",
+      "sha256": "c4b482c9bf0a8fbb760762492621d598192f1faa5b1059651ceb3141c8179b40"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_text_emission_cancel_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_text_emission_cancel_contract.py",
+      "sha256": "b54506e4f983e60065a8a26cec26ee4bf61bb8db1ffb30d97330397d3d2659a2"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_two_core_public_bridge_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_two_core_public_bridge_smoke_contract.py",
+      "sha256": "4f53b268dcfa155dac36f9ac266cf6cf06ae48b674b25eea719239f1e0eca7a0"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_worker_race_refresh.py",
+      "retained": "windows/tests/test_windows_v25_i5_worker_race_refresh.py",
+      "sha256": "d4289b633037cfd7ef41cd0c665b08a78358dd6da3a333043df67fa7b0be72d5"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i5_worker_race_stress_contract.py",
+      "retained": "windows/tests/test_windows_v25_i5_worker_race_stress_contract.py",
+      "sha256": "e2042745f1c83fa38d80c54921a695bcb848563493296ed861bc1e4796d449e8"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i6_named_stage.py",
+      "retained": "windows/tests/test_windows_v25_i6_named_stage.py",
+      "sha256": "a5029678d5d9f2f2bb8a5ae065af20bd2817e58550be67934e40cc61b96bf0ad"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i7_connector_prepare.py",
+      "retained": "windows/tests/test_windows_v25_i7_connector_prepare.py",
+      "sha256": "80a6158fbe65e832769acff403ce6c1503d7929ea1d5ced7a88f7c53d62b0d1f"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i7_connectors_disabled_register.py",
+      "retained": "windows/tests/test_windows_v25_i7_connectors_disabled_register.py",
+      "sha256": "eee75b1b538e27fd828354426d8186c30fb9bdec59190c557a0d8cb89368c7aa"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i7_dual_real_cloudflare_live_canary.py",
+      "retained": "windows/tests/test_windows_v25_i7_dual_real_cloudflare_live_canary.py",
+      "sha256": "9bf9a52b87014b956b11867dc98ce2cc81585847be7e63009fd73715b28af6eb"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i7_installed_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i7_installed_smoke_contract.py",
+      "sha256": "297d43bb617c0283829c0bc89635052bbc471449cdec6f12953729431bac23bb"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i7_local_token_handoff.py",
+      "retained": "windows/tests/test_windows_v25_i7_local_token_handoff.py",
+      "sha256": "bfb365fe13054a2cc466ec145f5f7859ee567a146a8f8f46ac4c42c262fc8dc9"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i7_nonprod_core_stage.py",
+      "retained": "windows/tests/test_windows_v25_i7_nonprod_core_stage.py",
+      "sha256": "15e94af877961fd22713966bdc0aa0388a64cdf8809afe3eeda6b1e3d6e86f7a"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i7_public_dual_https_smoke_contract.py",
+      "retained": "windows/tests/test_windows_v25_i7_public_dual_https_smoke_contract.py",
+      "sha256": "ff9d70358526928874e9b25b077450b3be106fbe88106c800a43ca3f699f14eb"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i7_scheduler_offline_rollback_faults.py",
+      "retained": "windows/tests/test_windows_v25_i7_scheduler_offline_rollback_faults.py",
+      "sha256": "508aaf1a9d3826dc831556089ba85ab157e58ff60d0edcb204de435f13d9b728"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i7_scheduler_offline_rollout_contract.py",
+      "retained": "windows/tests/test_windows_v25_i7_scheduler_offline_rollout_contract.py",
+      "sha256": "50305369c57e2d9f078cd01b17d9174f3159fb5816d4d67c84a289b815b5b32a"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i7_scheduler_offline_wheel_stage.py",
+      "retained": "windows/tests/test_windows_v25_i7_scheduler_offline_wheel_stage.py",
+      "sha256": "5812ecde80eeb003c06447941d423622a21338a7693875e0cc12b42466cabf5b"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i8_real_wheel_crash_recovery_contract.py",
+      "retained": "windows/tests/test_windows_v25_i8_real_wheel_crash_recovery_contract.py",
+      "sha256": "7e3124c0349a179b2f808235f5b819bdf3b72a1432669eaf1e464f77d8ce9329"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i9_mid_uv_install_recovery_contract.py",
+      "retained": "windows/tests/test_windows_v25_i9_mid_uv_install_recovery_contract.py",
+      "sha256": "275b81b15ec296040b39fdb35d766c32212c2b40abe0d1d4782684bf90f08be0"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_i9_real_mid_uv_interruption_contract.py",
+      "retained": "windows/tests/test_windows_v25_i9_real_mid_uv_interruption_contract.py",
+      "sha256": "b3f7ff728158362c6d30db616a0a4e79b2c231baa99798702a23faa3217cf617"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_isolation.py",
+      "retained": "windows/tests/test_windows_v25_isolation.py",
+      "sha256": "5aec18e874711e50caea4b49f258e92b218867dee1c809611e0d447550ecd4a9"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_legacy_bridge_coexistence.py",
+      "retained": "windows/tests/test_windows_v25_legacy_bridge_coexistence.py",
+      "sha256": "d4041ee37871e2cf6c98bae82c599fead2f06e3128efcf15a5e26377a66de4dc"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_multi_connector.py",
+      "retained": "windows/tests/test_windows_v25_multi_connector.py",
+      "sha256": "647488da9162322cc510e05a435e998e7b1ef7e3a308c5d2abe4fa8902b3cc32"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_multi_instance.py",
+      "retained": "windows/tests/test_windows_v25_multi_instance.py",
+      "sha256": "fa342a6b597a653f1edb0ea10736b1d75905808b18a0e64ac4b26c5588114a0b"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_named_connector_scheduler.py",
+      "retained": "windows/tests/test_windows_v25_named_connector_scheduler.py",
+      "sha256": "3668407876e485282c722105fc0cc199666be7b319a59fe8449f358c9f129236"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_openai_bootstrap.py",
+      "retained": "windows/tests/test_windows_v25_openai_bootstrap.py",
+      "sha256": "fd9aecd6f86ee045b4e8a287e0299b41932bc75e7074bc4928341bac99cd5399"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_private_provision.py",
+      "retained": "windows/tests/test_windows_v25_private_provision.py",
+      "sha256": "dd63284cd20281bd86c88d8a42e1fca9877b6e25727cab0bef285c1033d64702"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_release_version_gate.py",
+      "retained": "windows/tests/test_windows_v25_release_version_gate.py",
+      "sha256": "bd1580476c2654dccd83cecc5324e7700be86926ca408cff9440afc8f0499770"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_runtime.py",
+      "retained": "windows/tests/test_windows_v25_runtime.py",
+      "sha256": "443d94032253472c1f1321795205b3ec91dc96230bcc059bb82665ffb13010ee"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_runtime_installer.py",
+      "retained": "windows/tests/test_windows_v25_runtime_installer.py",
+      "sha256": "7b66e65161dda3810b83d1fba4c28c046f6ab2a652e2fb8e9136174315b422e4"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_same_provider_connector_jobs.py",
+      "retained": "windows/tests/test_windows_v25_same_provider_connector_jobs.py",
+      "sha256": "3ea5c0b50a9ec5a28633ae5bb72cea0bbf5a61ff1417ee989374f98cfa926c82"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_same_provider_core_loss.py",
+      "retained": "windows/tests/test_windows_v25_same_provider_core_loss.py",
+      "sha256": "c36207270250de924ef8c6a953d8d74d346dc647346f3bfb9ae1678419fccdac"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_scheduler_installed_parity_audit.py",
+      "retained": "windows/tests/test_windows_v25_scheduler_installed_parity_audit.py",
+      "sha256": "befe2265b5e3bbd3f726452a32457554ec2e92bcf32164177e819d610e9d655d"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_shared_core_grants.py",
+      "retained": "windows/tests/test_windows_v25_shared_core_grants.py",
+      "sha256": "2f85ed8073088e850a33466e07738bb94d9f83378ca83a1e11a8ca5c03e6ae14"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_spec.py",
+      "retained": "windows/tests/test_windows_v25_spec.py",
+      "sha256": "68010bd15894ffa86aee500b010d827337b90c2da96c9f400f23c988f355bd4e"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_storage.py",
+      "retained": "windows/tests/test_windows_v25_storage.py",
+      "sha256": "17c35956dc5b318b0626944b8c08679db2b0cbb204dad13bb4bb632d6f823b00"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_tasks.py",
+      "retained": "windows/tests/test_windows_v25_tasks.py",
+      "sha256": "eea2e294955442f81c00317f05e79147392f12bc07e18a0cb24a492d76c91a1c"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_topology_a_public_host_contract.py",
+      "retained": "windows/tests/test_windows_v25_topology_a_public_host_contract.py",
+      "sha256": "856804a7edd5d34e67d54941a0ae8760933b9966defd11c832c73f3a7ad770a3"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_topology_c_http_bridge_isolation.py",
+      "retained": "windows/tests/test_windows_v25_topology_c_http_bridge_isolation.py",
+      "sha256": "52d0fb54747bcdf8c28c98927f49fd5d87148bf89f9923b8a276f415f96cfec8"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_topology_c_real_core_processes.py",
+      "retained": "windows/tests/test_windows_v25_topology_c_real_core_processes.py",
+      "sha256": "00a8e6f540385475dc4c4c5b7c16a088ce2faf8774ef4a30823709a2f4efdffb"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_two_independent_bridge_workers.py",
+      "retained": "windows/tests/test_windows_v25_two_independent_bridge_workers.py",
+      "sha256": "b084e6c9677c35b8096581443a3c7dc1bae5efebf64e8739fcf7f37e4179f70f"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_w2_four_component_scheduler_native.py",
+      "retained": "windows/tests/test_windows_v25_w2_four_component_scheduler_native.py",
+      "sha256": "252610f6f3bc82ed5a9bf5a83a52dd0706fe09ce7e4021262e4fea0ce4ab33a4"
+    },
+    {
+      "removed": "macos/tests/test_windows_v25_workdir_ownership.py",
+      "retained": "windows/tests/test_windows_v25_workdir_ownership.py",
+      "sha256": "c638b479bcea95f220e127a929401566b075d0f6987dde4cb6b7306a6183f7cf"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2_bridge_private_native.py",
+      "retained": "windows/tests/test_windows_w2_bridge_private_native.py",
+      "sha256": "d3b1d2eaccee73116d01c56e7fb7de4bdd794f6bd430a5935560deae41653d4a"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2_component_tasks_native.py",
+      "retained": "windows/tests/test_windows_w2_component_tasks_native.py",
+      "sha256": "2b5e3b890a53ad945fb4eb0b62d888c9b5995c3009298eef1bbc3c8500707f24"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2_import_native.py",
+      "retained": "windows/tests/test_windows_w2_import_native.py",
+      "sha256": "dc3ff8a93e2bd8ee3e2ae13602a3c2896fd056754616208183b442be7c7f0658"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2_job_isolation_native.py",
+      "retained": "windows/tests/test_windows_w2_job_isolation_native.py",
+      "sha256": "0327863f615e72996a03529953dc52b7b795633bef47959fbe589235b9d833a2"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2_private_publish_native.py",
+      "retained": "windows/tests/test_windows_w2_private_publish_native.py",
+      "sha256": "b6f002df738b8783d58738022d80e3b03a75307416e13cd538bbfd40a22d7157"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2_task_runtime_native.py",
+      "retained": "windows/tests/test_windows_w2_task_runtime_native.py",
+      "sha256": "1d05d7792ae8cd2d9b4efbf66b35fc88af33926e7a2535bdc5e7f59d4e3e6f1a"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2_task_scheduler_native.py",
+      "retained": "windows/tests/test_windows_w2_task_scheduler_native.py",
+      "sha256": "3604c2a3c5c3bb574850c4dd96c046c5b4f4fbf14c81497dacb61baf6fbffa94"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2g_import_gate.py",
+      "retained": "windows/tests/test_windows_w2g_import_gate.py",
+      "sha256": "b8975320b4f4aff353687aa2b67b78aa48df777f58d96545424fbc3836ae50c9"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2g_private_acl_native.py",
+      "retained": "windows/tests/test_windows_w2g_private_acl_native.py",
+      "sha256": "3bd88f965bae9e9c14b1942e35dedde22e45829be3c940dcedc57ed59923d1cc"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2g_resume_integrity.py",
+      "retained": "windows/tests/test_windows_w2g_resume_integrity.py",
+      "sha256": "043847b448ea7f8f50675a5dbce894742cba56bb514df6f5e4a61ee9987e3762"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2h_disabled_staging_contract.py",
+      "retained": "windows/tests/test_windows_w2h_disabled_staging_contract.py",
+      "sha256": "3d9dc9b45288317d8f2cba5d4f959f95adb10e891117b9425b381ae9d3884430"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2i_core_smoke_contract.py",
+      "retained": "windows/tests/test_windows_w2i_core_smoke_contract.py",
+      "sha256": "f5dd5ad303b496a03988635b0d9d314d3bd01a88ac4f8f38e6ffd8d260720da1"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2j_core_mutex_native.py",
+      "retained": "windows/tests/test_windows_w2j_core_mutex_native.py",
+      "sha256": "1ae9abb5f7c7c62f0d3f870809255304261aa6b2f1a349ee5c86da3c5c706e06"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2j_core_wheel_diff.py",
+      "retained": "windows/tests/test_windows_w2j_core_wheel_diff.py",
+      "sha256": "8034385fa39b032117b72462a1b0f191caf466475b47bd593061156797b29123"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2k_scheduler_normalization.py",
+      "retained": "windows/tests/test_windows_w2k_scheduler_normalization.py",
+      "sha256": "0a6677044f9269109a5ec1dc28d5cc905228d76a01765997dd8e2972c0a5f77b"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2l_core_readonly_evidence.py",
+      "retained": "windows/tests/test_windows_w2l_core_readonly_evidence.py",
+      "sha256": "7163b383215444e4fbf47a7d1da6f071398d1448ea3587c89976b2d2bb9c9df6"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2m_pythonw_image_proof.py",
+      "retained": "windows/tests/test_windows_w2m_pythonw_image_proof.py",
+      "sha256": "e46c7fd263cb96e00ff8df8a3995402c7be916671144f2219652ae9a015cbc76"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2n_pythonw_wheel_diff.py",
+      "retained": "windows/tests/test_windows_w2n_pythonw_wheel_diff.py",
+      "sha256": "deec5269888d661a08bea394b8469560b31fa4a65943545379577189a635ede3"
+    },
+    {
+      "removed": "macos/tests/test_windows_w2p_core_lifecycle_trace.py",
+      "retained": "windows/tests/test_windows_w2p_core_lifecycle_trace.py",
+      "sha256": "81f4fe46db36d59fafd189875486f07d9f5838db99571a9c9b80846ff2c3cbe4"
+    },
+    {
+      "removed": "windows/agent_bridge/src/serverfs_agent_bridge/linux_v0250_install.py",
+      "retained": "linux/agent_bridge/src/serverfs_agent_bridge/linux_v0250_install.py",
+      "sha256": "1234476d69448f0772f403f155cabf1191fa9c15454156f4f663e6d172b32887"
+    },
+    {
+      "removed": "windows/agent_bridge/src/serverfs_agent_bridge/linux_v0250_preflight.py",
+      "retained": "linux/agent_bridge/src/serverfs_agent_bridge/linux_v0250_preflight.py",
+      "sha256": "4a97b45970f2950f008aba6d10b3464b73414ac6fe281c9410d4f04c5c4558e6"
+    },
+    {
+      "removed": "windows/agent_bridge/src/serverfs_agent_bridge/linux_v0250_provision.py",
+      "retained": "linux/agent_bridge/src/serverfs_agent_bridge/linux_v0250_provision.py",
+      "sha256": "962950da6b06eba67d647a69b76cb694fd1700cf3330d6fe101e0ae2ca2f99bc"
+    },
+    {
+      "removed": "windows/agent_bridge/src/serverfs_agent_bridge/macos_owned_config.py",
+      "retained": "macos/agent_bridge/src/serverfs_agent_bridge/macos_owned_config.py",
+      "sha256": "f43a088c7068d943e5f26127c50afe133f32df2bfb662f11df889c17cbdb4e0c"
+    },
+    {
+      "removed": "windows/agent_bridge/src/serverfs_agent_bridge/platform_seams.py",
+      "retained": "agent_bridge/src/serverfs_agent_bridge/platform_seams.py",
+      "sha256": "e78b464aa0cc76118ce4f88ad354305504114766a360f3a9540c998ab351e38a"
+    },
+    {
+      "removed": "windows/tests/test_core_bridge_v2_interop_macos.py",
+      "retained": "macos/tests/test_core_bridge_v2_interop_macos.py",
+      "sha256": "bb9b43bfed93beb115e30d97ea5c7c9fbfdc2bbf8cc033b49fb3e8d7ff1eabb1"
+    },
+    {
+      "removed": "windows/tests/test_core_bridge_v2_native_startup_macos.py",
+      "retained": "macos/tests/test_core_bridge_v2_native_startup_macos.py",
+      "sha256": "1bf8818f3cc9a66f0fc9625722fe5e36801974cc4d7b5b462218ffc9dea85fa7"
+    },
+    {
+      "removed": "windows/tests/test_core_bridge_v2_restart_rotation_macos.py",
+      "retained": "macos/tests/test_core_bridge_v2_restart_rotation_macos.py",
+      "sha256": "4b0d5505bbfb1f74ec81c5806943acc84b73504059668542dd66f05e7f7381ba"
+    },
+    {
+      "removed": "windows/tests/test_darwin_backend.py",
+      "retained": "macos/tests/test_darwin_backend.py",
+      "sha256": "43a1891e50f0c927addfdd863cc2c1fcb1858f2bac8c4396b178b827ac0128ac"
+    },
+    {
+      "removed": "windows/tests/test_darwin_bridge_policy.py",
+      "retained": "macos/tests/test_darwin_bridge_policy.py",
+      "sha256": "07e807dea43d895c7323325256fa894c4d4041177336ba57301ffa021a12243f"
+    },
+    {
+      "removed": "windows/tests/test_darwin_cli.py",
+      "retained": "macos/tests/test_darwin_cli.py",
+      "sha256": "bbd431cff48c987ba65b0efd746ac287f040bb30c8bf07c5e1006592d49d9d98"
+    },
+    {
+      "removed": "windows/tests/test_darwin_cloudflare_service.py",
+      "retained": "macos/tests/test_darwin_cloudflare_service.py",
+      "sha256": "9129aa2bc603a600eb58a412b531a7b4bb725baa69bfaa2eee3067475bc9248e"
+    },
+    {
+      "removed": "windows/tests/test_darwin_file_ingress.py",
+      "retained": "macos/tests/test_darwin_file_ingress.py",
+      "sha256": "e14e42b72b909e2cd160f51899753f9a689b9d2ffcf11e04ad2407549ea5c75a"
+    },
+    {
+      "removed": "windows/tests/test_darwin_lifecycle.py",
+      "retained": "macos/tests/test_darwin_lifecycle.py",
+      "sha256": "db83b5f6898e749b470a8cf3850c401f351366e60a917d81a5b18222afdd6680"
+    },
+    {
+      "removed": "windows/tests/test_darwin_native_stdio.py",
+      "retained": "macos/tests/test_darwin_native_stdio.py",
+      "sha256": "38847599a4e4b8ba6931ddf14bb90930ac2b61775617535d8a4ba4cd5d0b8bd6"
+    },
+    {
+      "removed": "windows/tests/test_darwin_service.py",
+      "retained": "macos/tests/test_darwin_service.py",
+      "sha256": "79f25f79e215b9fe4b2307b8ea571d0d18a09e65fdb8e62d3e919d6561c3c064"
+    },
+    {
+      "removed": "windows/tests/test_darwin_service_lifecycle.py",
+      "retained": "macos/tests/test_darwin_service_lifecycle.py",
+      "sha256": "d0fc9ab8750ce817781e52632ed6d686e1e8e20a6919a9abfa448e613ba99b6e"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_bridge_identity.py",
+      "retained": "macos/tests/test_darwin_v0250_bridge_identity.py",
+      "sha256": "04b02c5ecdf4fe8b9028be8298a7bbcb1469d7340f3452e4841ad6338f23ac40"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_bridge_lifecycle.py",
+      "retained": "macos/tests/test_darwin_v0250_bridge_lifecycle.py",
+      "sha256": "83035ec666df31533f1a2e4721b0227f41b9c2a4dec6d8aef231757fd9c5bb09"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_candidate_source_gate.py",
+      "retained": "macos/tests/test_darwin_v0250_candidate_source_gate.py",
+      "sha256": "9d5f5d21675b571bec03961e6d4e8ebd121f25567cbde17be9e3f61e0d2eb6cb"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_connector_id_stage_cli.py",
+      "retained": "macos/tests/test_darwin_v0250_connector_id_stage_cli.py",
+      "sha256": "b7cf1ad4d8bac00dbfe41560a312fc933eaaad729a57cc78c880b78840333509"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_connector_lifecycle.py",
+      "retained": "macos/tests/test_darwin_v0250_connector_lifecycle.py",
+      "sha256": "e2ba93002fa5f0cf0418ac0bf2fe86d3250afa41328a021460f8c14da0f05c31"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_connector_staging.py",
+      "retained": "macos/tests/test_darwin_v0250_connector_staging.py",
+      "sha256": "c626a6fb587bc7f4e70bd24b6ceaae1e2c12b1d1ca19b1b02311b49d8deb6284"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_core_lifecycle.py",
+      "retained": "macos/tests/test_darwin_v0250_core_lifecycle.py",
+      "sha256": "ad805ad955ac16649d5c09ef7bdbb76ffbf2de6fe77de46575f7155188455c3a"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_core_staging.py",
+      "retained": "macos/tests/test_darwin_v0250_core_staging.py",
+      "sha256": "0d6e9bee0501fde353e57cee5a4d18b51ee5066bc6360b22188d83c040d97a2a"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_installed_wheel_socket_budget.py",
+      "retained": "macos/tests/test_darwin_v0250_installed_wheel_socket_budget.py",
+      "sha256": "e8acd809e6cd9c906f0c8670beea8b3ead719a581f422ef3f4c7aa86526fa003"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_installed_wheel_three_process_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_installed_wheel_three_process_macos.py",
+      "sha256": "167c5407931de22ccbbb58845879e8f9d33f23a18c9f994235d53a8be8dccff8"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_instance_runtime.py",
+      "retained": "macos/tests/test_darwin_v0250_instance_runtime.py",
+      "sha256": "2443e69382ec9896db088d47c1a0eebfcec12f7cfbd2d74612699791e5cf91c4"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_instances.py",
+      "retained": "macos/tests/test_darwin_v0250_instances.py",
+      "sha256": "203dfab94df689cc76e88e34a2ad70d13bdf6bf83f6709d6af1d275fedb7a7fe"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_legacy_group_guard.py",
+      "retained": "macos/tests/test_darwin_v0250_legacy_group_guard.py",
+      "sha256": "d66c35ca2d0fbf65cf6086979bc23246562a9aa61846740b2bcc88257946fa87"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_multi_connector_acceptance_source.py",
+      "retained": "macos/tests/test_darwin_v0250_multi_connector_acceptance_source.py",
+      "sha256": "eb8b8db5d41ed128cbf5b7321acd675608715f4b1e76ddf6bf9630e2e6bde7c5"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_named_connector_keepalive_source.py",
+      "retained": "macos/tests/test_darwin_v0250_named_connector_keepalive_source.py",
+      "sha256": "05c67ebed46b676f8dbe8a0074d487fb312ff844e4cd3b2f3356bbac56f7f9a6"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_named_core_keepalive_live_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_named_core_keepalive_live_macos.py",
+      "sha256": "6dd29bfbacd9e82610108432b867cb9b5baa2bd4cfc6a14604f3a1c0dadb7848"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_native_validation.py",
+      "retained": "macos/tests/test_darwin_v0250_native_validation.py",
+      "sha256": "4185866c8ce323af033417a5d7514fb1ac8975a843ce0b37ffe47b29b1d4b1f6"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_openai_connector_ids.py",
+      "retained": "macos/tests/test_darwin_v0250_openai_connector_ids.py",
+      "sha256": "04dd3fa41f89afb6a18a665171ae526a94d33748c65750a775de784efc6c8151"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_openai_http_staging.py",
+      "retained": "macos/tests/test_darwin_v0250_openai_http_staging.py",
+      "sha256": "e485bcde77366fec044644d9ccd21b707961331eecbe5a50c14f1e88da65b5e0"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_owned_dynamic_keys.py",
+      "retained": "macos/tests/test_darwin_v0250_owned_dynamic_keys.py",
+      "sha256": "7db78ea83b79cf86bb19567eadde1fc6764615aa709ddc609898cf417562918a"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_owned_lifecycle.py",
+      "retained": "macos/tests/test_darwin_v0250_owned_lifecycle.py",
+      "sha256": "f3db6d5f6aa9426698a9ab0980db0202a221c6b6fb2be19e4bc6913bdc4b9189"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_owned_runtime.py",
+      "retained": "macos/tests/test_darwin_v0250_owned_runtime.py",
+      "sha256": "7270c49468c6249a608012ceee37a4d06b017d39ad07dc648c21e257a3776214"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_owned_staging.py",
+      "retained": "macos/tests/test_darwin_v0250_owned_staging.py",
+      "sha256": "973695e69400a36428f7541d0fe6065809e5cf2345c584a3e471579f28143970"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_owned_unstage.py",
+      "retained": "macos/tests/test_darwin_v0250_owned_unstage.py",
+      "sha256": "89e1c828f9a5a254f09102f8832fc1c1f21464fba9abf53b8ad7dc646faa677a"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_parallel_core_e2e.py",
+      "retained": "macos/tests/test_darwin_v0250_parallel_core_e2e.py",
+      "sha256": "cf28e19534c1f73c9bcbccebf5c40092858ad44416f8d3567765c1a25bb479d3"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_agent_adapter.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_agent_adapter.py",
+      "sha256": "5331469ef1bb474972616aa0f7ba10e535ec0422deccdb63d502ee46bf6e133e"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_agent_factory.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_agent_factory.py",
+      "sha256": "0c3c324041ee73e89553da941020697f187c3389b7308cbbd33ef6477d052b77"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_agent_factory_ipc_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_agent_factory_ipc_macos.py",
+      "sha256": "8c8958315db2027d0f9062e14a33b872cdb6896b994945038b320d97d5de3f19"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_binding.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_binding.py",
+      "sha256": "f6b57326847ac25f7a63d061f039ee7737f3eddb93fcbf7efc4c17137561a365"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_binding_private.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_binding_private.py",
+      "sha256": "9559cb95945cd8b15658575eeb0e2ad62c71fcd1849d608730dce90ebf100bf8"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_cli_serve.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_cli_serve.py",
+      "sha256": "67699e966b6df05669d1eb28719dc265ca3c608c944dfba057562f6209db4aef"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_core_bootstrap.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_core_bootstrap.py",
+      "sha256": "19219c51dea0da58e37d73f616c5284fcafb606345ec8e7babf8587fb4f4a908"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_interpreter_pin.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_interpreter_pin.py",
+      "sha256": "801df7b2fd8a29d94b2fd559f0aedc58e9d28e1629af51a2b0827240100c6e8c"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_lifecycle.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_lifecycle.py",
+      "sha256": "d3e251ce2ea5a0d8c08a8e34374f3d3e42dcd483727aeedf027fd062c726b114"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_manifest.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_manifest.py",
+      "sha256": "bfbe9c62ffd9e9ac616869fbc29b32a40cac85afb7a9c7327585e203771a9453"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_native_live_preflight_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_native_live_preflight_macos.py",
+      "sha256": "99580701a7e3d525d29f6ad13de34aa0b37f471def1d6dfe72af79a0296982c5"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_native_signed_gate_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_native_signed_gate_macos.py",
+      "sha256": "711760b3e34c2fbfb66046f5b497070d2ee75c2ab63f06134441a36c83d4caf7"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_native_versioned_source.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_native_versioned_source.py",
+      "sha256": "98b07d49db3bb83a6b1fe91b35316ae1518ec5493d51593444f5e4be9686adad"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_owner_process_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_owner_process_macos.py",
+      "sha256": "0ec882a7b347032ac8ac5ae20597889e1101d34d8c3e2b236eb5e66da321f50e"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_owner_writer_preflight.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_owner_writer_preflight.py",
+      "sha256": "811879ad35fe63d96a0b7ba0400e3b198cee34792d5a32b363026f38a6657df8"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_port_inventory.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_port_inventory.py",
+      "sha256": "648f582cacb358b73b2275594241a21835144ec96b7af1236e496f54b3b2f708"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_preflight_ipc_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_preflight_ipc_macos.py",
+      "sha256": "f0e6482c6f6c613bc2bb340ddaf7f735a45adf8391bf788257dd752292e13553"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_private_ipc_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_private_ipc_macos.py",
+      "sha256": "032db6c5741d03ac3703f12e733989f225f3941f9c4cf9935520ebd68b913708"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_readiness.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_readiness.py",
+      "sha256": "46400fa8070d227c135d4ef0527bfa66692a3ab73bffc82122efa6c273c15152"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_release_source.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_release_source.py",
+      "sha256": "ba2489458b5a0216fa08d62426cee74a47f9cae8c4a910d59175de960d86dfcc"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_runtime_install.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_runtime_install.py",
+      "sha256": "8f58647fe48f42cce4af8bf4a4a0725d5a04ebf35ba559c8ef2f9d3c23993e59"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_runtime_verify.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_runtime_verify.py",
+      "sha256": "4dfad38c10a344f73662694f2cfd442c60e6a0d35d47ff1bd8cacc54a5ec2920"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_smappservice_live_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_smappservice_live_macos.py",
+      "sha256": "92ce2ab28c46613a024044616ccadd269f3fa08fdcf496db746126bcfca8f979"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_smappservice_safety.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_smappservice_safety.py",
+      "sha256": "d812e7a43c7b1cf91aa776da565a9bafcf9aeb5749bca4b443371a4c3d85e873"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_staging.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_staging.py",
+      "sha256": "a1fb7a7858a8c462d9bb336836de6712b16e010fc73423f97c56f8b7d09da9ac"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_swift_gate.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_swift_gate.py",
+      "sha256": "59fae73667507f4a1aec8f28cf7d7ac94007092aa0307473142f373b884b8df1"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_swift_gate_paths.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_swift_gate_paths.py",
+      "sha256": "640d09b9cf0a986c35994360742be2cee4e5c7bad1c39389f0fc76f13b1570ac"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_two_core_http_macos.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_two_core_http_macos.py",
+      "sha256": "14b47497b32b4e0735fb4823fdad4cd362f573e90314f6a65095e2586738de57"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_shared_unstage.py",
+      "retained": "macos/tests/test_darwin_v0250_shared_unstage.py",
+      "sha256": "5a4c4a14400e0baa912a1ac356c178c45941380e662ade6b13d10433970f2a55"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_wheel_archive_gate.py",
+      "retained": "macos/tests/test_darwin_v0250_wheel_archive_gate.py",
+      "sha256": "51b0f22ac2cc0f6916ef1dc31c07eaecf0cd09cb3d9d3a821ac592fe9a7ba3d2"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v0250_wheel_offline_preflight.py",
+      "retained": "macos/tests/test_darwin_v0250_wheel_offline_preflight.py",
+      "sha256": "dc992a1407410ff5865477830b14806321cedc7deaddb8ed1cb8e6f345efbffe"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v026_owned_v2_binding.py",
+      "retained": "macos/tests/test_darwin_v026_owned_v2_binding.py",
+      "sha256": "4310efe17d9547d28b2c322db81bb7d8870c454f069bd59c441167eb89162084"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v026_shared_multi_agent_adapter.py",
+      "retained": "macos/tests/test_darwin_v026_shared_multi_agent_adapter.py",
+      "sha256": "2aaf140e52f79a12f96beb2e2c71dcc4218a26d3b3a1499dcbab56dbedd344b6"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v026_shared_qoder_diagnostics_macos.py",
+      "retained": "macos/tests/test_darwin_v026_shared_qoder_diagnostics_macos.py",
+      "sha256": "98ad9427d5424f7b2684e2bc2d9563e3b2583b59f14c562d97c6d0ed6325254d"
+    },
+    {
+      "removed": "windows/tests/test_darwin_v026_shared_real_agent_acceptance_macos.py",
+      "retained": "macos/tests/test_darwin_v026_shared_real_agent_acceptance_macos.py",
+      "sha256": "69350e124f6335976b633fd3a6099190f52ac71cee13bd29d87944de06d38dac"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_bridge_adapter.py",
+      "retained": "linux/tests/test_linux_v0250_bridge_adapter.py",
+      "sha256": "20f73b30b57ba09115ca7f5a0f39cb3cad08d06fd52eee1c8c180ce32a420da1"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_bridge_bootstrap.py",
+      "retained": "linux/tests/test_linux_v0250_bridge_bootstrap.py",
+      "sha256": "a2497c1d35c99cec9023838656ba7698ef53cc8c3ff5a1bd393159092474fa5c"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_bridge_gate.py",
+      "retained": "linux/tests/test_linux_v0250_bridge_gate.py",
+      "sha256": "68ec8d1f087c6036f0b3c7d09e65abf595982d734e08e3196db3a588ed707180"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_cloudflare_public.py",
+      "retained": "linux/tests/test_linux_v0250_cloudflare_public.py",
+      "sha256": "fcf096afe0e8b19aad4a2efb4055ab65bb650a483ab0bed96620cd5db3cda9bb"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_compose.py",
+      "retained": "linux/tests/test_linux_v0250_compose.py",
+      "sha256": "ff248e2ae528d9ea32e00b09238a66affd2085ccbda4ef156f81321bcb004acc"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_docker_e2e.py",
+      "retained": "linux/tests/test_linux_v0250_docker_e2e.py",
+      "sha256": "265a5340a3ed75aeab96864ec88a63dae04a376c357b52075cd1588050ca4919"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_dual_connector_lifecycle.py",
+      "retained": "linux/tests/test_linux_v0250_dual_connector_lifecycle.py",
+      "sha256": "1eed9bd79ebb0126c771e51034b789e0d78a80382dc86eb72081e8213818212c"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_file_only_docker.py",
+      "retained": "linux/tests/test_linux_v0250_file_only_docker.py",
+      "sha256": "eecfbb2a3b7b27fab1212bb2fa2f330aa6bfbe4b570b2a394d4876f492925e92"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_http_e2e.py",
+      "retained": "linux/tests/test_linux_v0250_http_e2e.py",
+      "sha256": "0973c8f9ca65b8d61fe03a7e256017813198333a9f8f1fa42410b553379d3a60"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_real_agent_docker.py",
+      "retained": "linux/tests/test_linux_v0250_real_agent_docker.py",
+      "sha256": "fd979645f8e63cbf0cecc021a4ef9c0a38f7e9b56e6233c2f072a3115bd6ad25"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_tunnel_runtime.py",
+      "retained": "linux/tests/test_linux_v0250_tunnel_runtime.py",
+      "sha256": "74c1d5fd74dd49bc87e50456fbd79d34aec5cd6a60652361a1f37568da41afbe"
+    },
+    {
+      "removed": "windows/tests/test_linux_v0250_writer_lease.py",
+      "retained": "linux/tests/test_linux_v0250_writer_lease.py",
+      "sha256": "45ebaf7a5b3e922705a91df2450af51b94f2afdc55efe0522f38740b11623adb"
+    },
+    {
+      "removed": "windows/tests/test_linux_v026_multi_alias_real_agent_docker.py",
+      "retained": "linux/tests/test_linux_v026_multi_alias_real_agent_docker.py",
+      "sha256": "eec9d5db6ea7dd9b65641c50821b22260616c89ac4aa627637fc69fb84958ca8"
+    },
+    {
+      "removed": "windows/tests/test_linux_v026_multi_bridge.py",
+      "retained": "linux/tests/test_linux_v026_multi_bridge.py",
+      "sha256": "92bf9a7eac2df1b9c51a101aafc5a8ceabef6d2cc6b88618e82b76b549614be0"
+    },
+    {
+      "removed": "windows/tests/test_macos_owned_runtime_acceptance_diagnostics.py",
+      "retained": "macos/tests/test_macos_owned_runtime_acceptance_diagnostics.py",
+      "sha256": "c75b81cfca4f25b7c13970c2d1a91b4a68f794e8072c2d51850534e89f71e2f4"
+    }
+  ],
+  "limitations": "Direct import scan only; Core CLI/native caller pruning and actual platform tests remain required."
+}

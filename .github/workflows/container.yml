@@ -31,8 +31,11 @@ env:
 
 jobs:
   test:
-    name: Test
+    name: Linux Core test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: linux
 
     steps:
       - name: Checkout
@@ -59,10 +62,10 @@ jobs:
         run: uv sync --frozen
 
       - name: Validate Agent Skills and Plugin
-        run: uv run python deployment/plugin/package_plugin.py validate
+        run: uv run python ../deployment/plugin/package_plugin.py validate
 
       - name: Validate MCP Registry metadata (offline)
-        run: uv run python deployment/registry/validate.py
+        run: uv run python ../deployment/registry/validate.py
 
       - name: Validate Compose shapes
         shell: bash
@@ -95,14 +98,27 @@ jobs:
       - name: Ruff format
         run: uv run ruff format --check .
 
-      - name: Test
+      - name: Test Linux Core
         run: uv run pytest
+
+      - name: Test shared product distribution
+        run: >-
+          uv run pytest
+          ../tests/test_agent_skills.py
+          ../tests/test_registry_manifest.py
+          ../tests/test_release_metadata.py
+          ../tests/test_release_workflow.py
+          ../tests/test_wheel_release.py
+          ../tests/e2e/test_v026_site_static_acceptance.py
 
   mcp-conformance:
     name: MCP conformance
     needs:
       - test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: linux
 
     steps:
       - name: Checkout ServerFS
@@ -118,6 +134,7 @@ jobs:
 
       - name: Verify conformance revision
         shell: bash
+        working-directory: .
         run: |
           set -euo pipefail
           actual="$(git -C .mcp-conformance rev-parse HEAD)"
@@ -243,7 +260,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: agent_bridge
+        working-directory: linux/agent_bridge
 
     steps:
       - name: Checkout
@@ -276,6 +293,9 @@ jobs:
       - test
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: linux
 
     steps:
       - name: Checkout
@@ -289,8 +309,8 @@ jobs:
       - name: Build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./linux
+          file: ./linux/Dockerfile
           push: false
           load: true
           pull: true

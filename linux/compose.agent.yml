@@ -1,0 +1,84 @@
+# Legacy singleton host Bridge compatibility overlay; not the named v0.25.0 attachment.
+# For fresh named deployments use deployment/linux/README.md and select the signed
+# compose.bridge-v2.yml overlay after explicit owner/grant provisioning.
+# Apply this legacy overlay only after the corresponding singleton Bridge is installed,
+# configured and running; preserve the complete project/env/overlay selection.
+# Select the same private deployment env with --env-file for each Compose command.
+# Do not use an unscoped whole-project up to update an existing deployment.
+#
+# Base compose.yml remains Bridge-unaware and exposes 11 filesystem tools by default
+# (two additional binary tools when enabled). Agent and Repo Ops capabilities are
+# independent, per-workdir policies; the overlay alone does not authorize either.
+
+services:
+  serverfs-mcp:
+    environment:
+      SERVERFS_AGENT_BRIDGE_ENABLED: ${SERVERFS_AGENT_BRIDGE_ENABLED:-true}
+      SERVERFS_AGENT_BRIDGE_SOCKET: /run/serverfs-agent-bridge/bridge.sock
+      SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS: ${SERVERFS_AGENT_BRIDGE_TIMEOUT_SECONDS:-30}
+      SERVERFS_AGENT_LOCK_DIR: /run/serverfs-agent-locks
+      SERVERFS_AGENT_MODE: ${SERVERFS_AGENT_MODE:-disabled}
+      SERVERFS_AGENT_RUNTIMES: ${SERVERFS_AGENT_RUNTIMES:-}
+
+      WORKDIR_01_AGENT_MODE: ${WORKDIR_01_AGENT_MODE:-}
+      WORKDIR_01_AGENT_RUNTIMES: ${WORKDIR_01_AGENT_RUNTIMES:-}
+      WORKDIR_01_REPO_OPS_ENABLED: ${WORKDIR_01_REPO_OPS_ENABLED:-}
+      WORKDIR_02_AGENT_MODE: ${WORKDIR_02_AGENT_MODE:-}
+      WORKDIR_02_AGENT_RUNTIMES: ${WORKDIR_02_AGENT_RUNTIMES:-}
+      WORKDIR_02_REPO_OPS_ENABLED: ${WORKDIR_02_REPO_OPS_ENABLED:-}
+      WORKDIR_03_AGENT_MODE: ${WORKDIR_03_AGENT_MODE:-}
+      WORKDIR_03_AGENT_RUNTIMES: ${WORKDIR_03_AGENT_RUNTIMES:-}
+      WORKDIR_03_REPO_OPS_ENABLED: ${WORKDIR_03_REPO_OPS_ENABLED:-}
+      WORKDIR_04_AGENT_MODE: ${WORKDIR_04_AGENT_MODE:-}
+      WORKDIR_04_AGENT_RUNTIMES: ${WORKDIR_04_AGENT_RUNTIMES:-}
+      WORKDIR_04_REPO_OPS_ENABLED: ${WORKDIR_04_REPO_OPS_ENABLED:-}
+      WORKDIR_05_AGENT_MODE: ${WORKDIR_05_AGENT_MODE:-}
+      WORKDIR_05_AGENT_RUNTIMES: ${WORKDIR_05_AGENT_RUNTIMES:-}
+      WORKDIR_05_REPO_OPS_ENABLED: ${WORKDIR_05_REPO_OPS_ENABLED:-}
+      WORKDIR_06_AGENT_MODE: ${WORKDIR_06_AGENT_MODE:-}
+      WORKDIR_06_AGENT_RUNTIMES: ${WORKDIR_06_AGENT_RUNTIMES:-}
+      WORKDIR_06_REPO_OPS_ENABLED: ${WORKDIR_06_REPO_OPS_ENABLED:-}
+      WORKDIR_07_AGENT_MODE: ${WORKDIR_07_AGENT_MODE:-}
+      WORKDIR_07_AGENT_RUNTIMES: ${WORKDIR_07_AGENT_RUNTIMES:-}
+      WORKDIR_07_REPO_OPS_ENABLED: ${WORKDIR_07_REPO_OPS_ENABLED:-}
+      WORKDIR_08_AGENT_MODE: ${WORKDIR_08_AGENT_MODE:-}
+      WORKDIR_08_AGENT_RUNTIMES: ${WORKDIR_08_AGENT_RUNTIMES:-}
+      WORKDIR_08_REPO_OPS_ENABLED: ${WORKDIR_08_REPO_OPS_ENABLED:-}
+      WORKDIR_09_AGENT_MODE: ${WORKDIR_09_AGENT_MODE:-}
+      WORKDIR_09_AGENT_RUNTIMES: ${WORKDIR_09_AGENT_RUNTIMES:-}
+      WORKDIR_09_REPO_OPS_ENABLED: ${WORKDIR_09_REPO_OPS_ENABLED:-}
+      WORKDIR_10_AGENT_MODE: ${WORKDIR_10_AGENT_MODE:-}
+      WORKDIR_10_AGENT_RUNTIMES: ${WORKDIR_10_AGENT_RUNTIMES:-}
+      WORKDIR_10_REPO_OPS_ENABLED: ${WORKDIR_10_REPO_OPS_ENABLED:-}
+      WORKDIR_11_AGENT_MODE: ${WORKDIR_11_AGENT_MODE:-}
+      WORKDIR_11_AGENT_RUNTIMES: ${WORKDIR_11_AGENT_RUNTIMES:-}
+      WORKDIR_11_REPO_OPS_ENABLED: ${WORKDIR_11_REPO_OPS_ENABLED:-}
+      WORKDIR_12_AGENT_MODE: ${WORKDIR_12_AGENT_MODE:-}
+      WORKDIR_12_AGENT_RUNTIMES: ${WORKDIR_12_AGENT_RUNTIMES:-}
+      WORKDIR_12_REPO_OPS_ENABLED: ${WORKDIR_12_REPO_OPS_ENABLED:-}
+      WORKDIR_13_AGENT_MODE: ${WORKDIR_13_AGENT_MODE:-}
+      WORKDIR_13_AGENT_RUNTIMES: ${WORKDIR_13_AGENT_RUNTIMES:-}
+      WORKDIR_13_REPO_OPS_ENABLED: ${WORKDIR_13_REPO_OPS_ENABLED:-}
+      WORKDIR_14_AGENT_MODE: ${WORKDIR_14_AGENT_MODE:-}
+      WORKDIR_14_AGENT_RUNTIMES: ${WORKDIR_14_AGENT_RUNTIMES:-}
+      WORKDIR_14_REPO_OPS_ENABLED: ${WORKDIR_14_REPO_OPS_ENABLED:-}
+      WORKDIR_15_AGENT_MODE: ${WORKDIR_15_AGENT_MODE:-}
+      WORKDIR_15_AGENT_RUNTIMES: ${WORKDIR_15_AGENT_RUNTIMES:-}
+      WORKDIR_15_REPO_OPS_ENABLED: ${WORKDIR_15_REPO_OPS_ENABLED:-}
+      WORKDIR_16_AGENT_MODE: ${WORKDIR_16_AGENT_MODE:-}
+      WORKDIR_16_AGENT_RUNTIMES: ${WORKDIR_16_AGENT_RUNTIMES:-}
+      WORKDIR_16_REPO_OPS_ENABLED: ${WORKDIR_16_REPO_OPS_ENABLED:-}
+
+    volumes:
+      - type: bind
+        source: ${SERVERFS_AGENT_BRIDGE_HOST_SOCKET_DIR}
+        target: /run/serverfs-agent-bridge
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SERVERFS_AGENT_LOCK_HOST_DIR}
+        target: /run/serverfs-agent-locks
+        read_only: true
+        bind:
+          create_host_path: false

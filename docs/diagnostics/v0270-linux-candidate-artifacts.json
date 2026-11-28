@@ -1,0 +1,39 @@
+{
+  "scope": "Linux independent offline wheel contexts and execution/import from extracted archives",
+  "results": [
+    {
+      "package": "serverfs_mcp",
+      "wheel": "serverfs_mcp-0.26.0-py3-none-any.whl",
+      "version": "0.26.0",
+      "sha256": "1064c6b9d2b0008c1f8a23b15973eae12a35bf13991d24f7fc246a38a0030f10",
+      "members": 64,
+      "lock_check": "pass",
+      "wheel_build": "pass",
+      "foreign_named_runtime_members": 0,
+      "extracted_wheel_contract": {
+        "variants": 12,
+        "tools": 28,
+        "sdk": "2.3.0",
+        "exact_schema_parity": true
+      }
+    },
+    {
+      "package": "serverfs_agent_bridge",
+      "wheel": "serverfs_agent_bridge-0.26.0-py3-none-any.whl",
+      "version": "0.26.0",
+      "sha256": "ef71868f218c2d708c9091352b79cffa141ff27576f865617d11b34a36246665",
+      "members": 49,
+      "lock_check": "pass",
+      "wheel_build": "pass",
+      "foreign_named_runtime_members": 0,
+      "extracted_wheel_import": {
+        "native_imports": "pass"
+      }
+    }
+  ],
+  "limitations": [
+    "Wheel code executed with locked existing dependencies, not a clean installation.",
+    "Foreign member check identifies known module names; not a proof of all residual branches.",
+    "No Docker image, native host deployment, provider, or full Gate A acceptance."
+  ]
+}

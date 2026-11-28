@@ -1,0 +1,8 @@
+{
+  "syntax_parsed": {
+    "linux": 292,
+    "macos": 422,
+    "windows": 678
+  },
+  "scope": "Python 3.12 AST only; no native imports or runtime acceptance"
+}

@@ -1,0 +1,404 @@
+"""Windows Job Object containment for the Bridge process tree (v0.11 Phase D, §9, §15 D6).
+
+A narrow helper over four Win32 calls: ``CreateJobObjectW``, ``SetInformationJobObject`` with
+``JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE``, ``AssignProcessToJobObject``, and ``CloseHandle``.
+
+Why the Bridge needs containment: the Bridge spawns provider children, and those children spawn
+their own. If the supervisor dies abnormally, nothing in that tree closes the pipe or releases the
+lease, and a provider process can survive holding a writer lease — which would leave the workdir
+permanently ``WORKDIR_BUSY`` with no live owner to explain it. Kill-on-close makes the OS the
+reaper: the last handle to the job closes, and the tree goes with it.
+
+Two boundaries are deliberate and are what keep this from becoming a process hijack:
+
+- **The Bridge is the only member.** The tunnel-client and the ServerFS stdio child are explicitly
+  not assigned: they are not Bridge-owned, and a job that reached them could kill the operator's
+  own MCP session. Provider descendants need no explicit handling — a child created by a process in
+  a job is in that job unless it asks to break away, so containment extends naturally while
+  staying owned.
+- **Assignment failure fails closed.** If ``AssignProcessToJobObject`` fails — a nested-job
+  restriction, a privilege boundary, an already-assigned process — an Agent-enabled startup aborts.
+  Continuing would mean running the Bridge with the containment the operator was promised, and
+  losing it silently at exactly the moment it matters.
+
+A job may also be **named**, and for the Agent supervisor it must be: the name is the containment
+*barrier*. A job object is destroyed once its last handle closes, and closing it is what delivers
+kill-on-close to every member, so finding the name free is evidence that the previous generation's
+containment object — the thing that actually held the provider tree — no longer exists and its
+members have been ordered to stop. That is the difference between inferring
+containment from a *different* kernel object and reading it off the one that did the containing.
+A name that is already taken means the previous object is still there, and the caller must fail
+closed rather than join it.
+
+Nothing here is Windows-Secret or requires elevation: ``CreateJobObjectW`` and process assignment
+are available to an ordinary user process for its own children. Measured: creating a ``Global\\``
+named job succeeds from a medium-integrity token that does *not* hold ``SeCreateGlobalPrivilege``.
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+from typing import Any
+
+#: Only meaningful on Windows; the module imports cleanly elsewhere so shared code can be tested.
+WINDOWS = sys.platform == "win32"
+
+
+class JobObjectError(Exception):
+    """Job Object containment could not be established; the caller must fail closed.
+
+    The message names the failure class only. A raw handle or Win32 error text is never included,
+    because supervisor diagnostics are operator-visible and this is not a place to leak internals.
+    """
+
+
+class WindowsJob:
+    """A kill-on-close job holding the Bridge process tree.
+
+    Used as a context manager so the handle cannot leak on an exception path: leaving the process
+    is the normal case and must still close the job, because closing it is what guarantees the tree
+    is gone.
+
+    ``name`` is optional because most uses want an anonymous job. The Agent supervisor always names
+    it, with the identity the Named Pipe is derived from, because a *fresh* named job is the
+    containment barrier described in the module docstring.
+    """
+
+    def __init__(self, name: str | None = None) -> None:
+        self._name = name
+        self._handle: int | None = None
+        self._closed = False
+
+    # -- construction ---------------------------------------------------
+
+    def open(self) -> None:
+        """Create the job and arm kill-on-close. Idempotent.
+
+        Any underlying failure is translated to ``JobObjectError`` so the caller has one error type
+        to handle. Letting a raw ``OSError`` escape here would reach the supervisor outside its
+        redacted handler, which is the difference between "exit 2 with a failure class" and a
+        traceback in operator-visible stderr.
+        """
+        if self._handle is not None:
+            return
+        try:
+            self._handle = _create_kill_on_close_job(self._name)
+        except JobObjectError:
+            raise
+        except OSError as exc:
+            raise JobObjectError(
+                f"the containment job could not be created ({type(exc).__name__})"
+            ) from exc
+        self._closed = False
+
+    def assign(self, process: subprocess.Popen[Any]) -> None:
+        """Place one already-started process in this job.
+
+        The process must be started suspended and resumed by the caller if a race-free assignment is
+        wanted; this helper does not do that, because the supervisor's startup order (§15 D5) spawns
+        the Bridge and assigns immediately, and a Bridge that has not yet bound its pipe cannot have
+        served anything.
+        """
+        if self._handle is None:
+            raise JobObjectError("the job object is not open")
+        try:
+            _assign_process(self._handle, process)
+        except JobObjectError:
+            raise
+        except OSError as exc:
+            raise JobObjectError(
+                f"the Bridge process could not be assigned ({type(exc).__name__})"
+            ) from exc
+
+    def resume(self, process: subprocess.Popen[Any]) -> None:
+        """Resume a child created with ``CREATE_SUSPENDED`` after assignment.
+
+        Suspending before assignment closes the only process-creation race that matters here: a
+        launcher such as a venv/uv ``python.exe`` must not be able to create the real Bridge before
+        the launcher itself is inside the Job. Once resumed, every descendant inherits containment.
+        """
+        if self._handle is None:
+            raise JobObjectError("the job object is not open")
+        try:
+            _resume_process(process)
+        except JobObjectError:
+            raise
+        except OSError as exc:
+            raise JobObjectError(
+                f"the Bridge process could not be resumed ({type(exc).__name__})"
+            ) from exc
+
+    def close(self) -> None:
+        """Close the job handle. On Windows this is the kill: the tree dies with the handle."""
+        if self._handle is None or self._closed:
+            return
+        _close_handle(self._handle)
+        self._handle = None
+        self._closed = True
+
+    def contains_pid(self, pid: int) -> bool:
+        """Prove one pipe server belongs to this exact held Job generation.
+
+        A Windows venv python.exe may launch the actual interpreter as a child,
+        so comparing the pipe server PID with Popen.pid is insufficient. Query
+        kernel Job membership instead; never infer it from SID or a PID tree.
+        """
+        if self._handle is None or self._closed:
+            raise JobObjectError("the owner Job is not open")
+        if type(pid) is not int or pid <= 0:
+            raise JobObjectError("the pipe server process id is invalid")
+        return _process_in_job(self._handle, pid)
+
+    @property
+    def is_open(self) -> bool:
+        return self._handle is not None and not self._closed
+
+    def __enter__(self) -> WindowsJob:
+        self.open()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+
+# -- Win32 surface ------------------------------------------------------
+# Loaded lazily and only on Windows so this module stays importable (and unit-testable) elsewhere.
+
+_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+#: PROCESS_SET_QUOTA | PROCESS_TERMINATE, plus the standard right set, needed to assign a process.
+_PROCESS_ALL_ACCESS = 0x1F0FFF
+#: Returned by ``CreateJobObjectW`` — alongside a usable handle — when the name is already taken.
+_ERROR_ALREADY_EXISTS = 183
+
+# BOOLEAN(1) + padding + two LARGE_INTEGERs + four DWORDs; see JOBOBJECT_EXTENDED_LIMIT_INFORMATION.
+_EXTENDED_LIMIT_SIZE = 144 + 8
+
+
+def _kernel32() -> Any:
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+    kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    kernel32.SetInformationJobObject.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    ]
+    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+    kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    return kernel32
+
+
+def _create_kill_on_close_job(name: str | None = None) -> int:
+    """Create a job object armed with ``JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE``.
+
+    Every other limit field is left zero, which means "no further limit applies" — in particular no
+    active-process or memory cap, so containment constrains the process *tree* without constraining
+    what the Bridge is allowed to use.
+
+    A named job that already exists is a refusal, not a join. ``ERROR_ALREADY_EXISTS`` is reported
+    alongside a *usable* handle to the existing object, so the check has to happen before anything
+    is done with it and the handle has to be closed on that path -- an open handle would keep the
+    old object alive, which is the very thing the caller is trying to rule out.
+    """
+    import ctypes
+
+    kernel32 = _kernel32()
+    ctypes.set_last_error(0)
+    handle = kernel32.CreateJobObjectW(None, name)
+    if not handle:
+        raise JobObjectError("the job object could not be created")
+    if name is not None and ctypes.get_last_error() == _ERROR_ALREADY_EXISTS:
+        _close_handle(int(handle))
+        raise JobObjectError(
+            "a job object of this name already exists, so it cannot be shown that the previous "
+            "generation's execution has stopped"
+        )
+
+    class _BasicLimit(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_int64),
+            ("PerJobUserTimeLimit", ctypes.c_int64),
+            ("LimitFlags", ctypes.c_uint32),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", ctypes.c_uint32),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", ctypes.c_uint32),
+            ("SchedulingClass", ctypes.c_uint32),
+        ]
+
+    class _IoCounters(ctypes.Structure):
+        _fields_ = [
+            ("ReadOperationCount", ctypes.c_uint64),
+            ("WriteOperationCount", ctypes.c_uint64),
+            ("OtherOperationCount", ctypes.c_uint64),
+            ("ReadTransferCount", ctypes.c_uint64),
+            ("WriteTransferCount", ctypes.c_uint64),
+            ("OtherTransferCount", ctypes.c_uint64),
+        ]
+
+    class _ExtendedLimitInfo(ctypes.Structure):
+        _fields_ = [
+            ("BasicLimitInformation", _BasicLimit),
+            ("IoInfo", _IoCounters),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    info = _ExtendedLimitInfo()
+    info.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    if not kernel32.SetInformationJobObject(
+        handle, _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, ctypes.byref(info), ctypes.sizeof(info)
+    ):
+        kernel32.CloseHandle(handle)
+        raise JobObjectError("kill-on-close could not be configured on the job object")
+    return int(handle)
+
+
+def _process_in_job(job_handle: int, pid: int) -> bool:
+    """Use Windows IsProcessInJob on a held process handle, never a PID guess."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = _kernel32()
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.IsProcessInJob.restype = wintypes.BOOL
+    kernel32.IsProcessInJob.argtypes = [
+        wintypes.HANDLE,
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.BOOL),
+    ]
+    process = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not process:
+        raise JobObjectError("the pipe server process cannot be inspected")
+    try:
+        member = wintypes.BOOL()
+        if not kernel32.IsProcessInJob(process, job_handle, ctypes.byref(member)):
+            raise JobObjectError("the pipe server Job membership is unverified")
+        return bool(member.value)
+    finally:
+        kernel32.CloseHandle(process)
+
+
+def _assign_process(handle: int, process: subprocess.Popen[Any]) -> None:
+    kernel32 = _kernel32()
+    # CPython's Windows Popen exposes the process handle as ``_handle``; there is no public
+    # accessor. ``_winapi`` is consulted as the documented fallback so this keeps working if the
+    # private name ever moves. A pid is required for that fallback, so its absence is not fatal.
+    #
+    # The fallback opens its OWN handle and must therefore close it on both paths: leaking one per
+    # assignment would slowly exhaust this process's handle budget across repeated startups.
+    target = getattr(process, "_handle", None)
+    opened_here = False
+    if target is None:
+        pid = getattr(process, "pid", None)
+        if isinstance(pid, int) and pid > 0:
+            try:
+                import _winapi
+
+                target = _winapi.OpenProcess(_PROCESS_ALL_ACCESS, False, pid)
+                opened_here = target is not None
+            except (ImportError, OSError):
+                target = None
+    try:
+        if target is None or int(target) == 0:
+            raise JobObjectError("the child process has no usable handle to assign")
+        if not kernel32.AssignProcessToJobObject(handle, int(target)):
+            # A nested-job restriction or a privilege boundary lands here. Agent-enabled startup
+            # must fail closed rather than run the Bridge unconstrained (§15 D6).
+            raise JobObjectError("the Bridge process could not be assigned to the job object")
+    finally:
+        if opened_here and target is not None:
+            _close_handle(int(target))
+
+
+def _resume_process(process: subprocess.Popen[Any]) -> None:
+    """Resume every initial thread owned by a newly suspended process."""
+    import ctypes
+    from ctypes import wintypes
+
+    pid = getattr(process, "pid", None)
+    if not isinstance(pid, int) or pid <= 0:
+        raise JobObjectError("the suspended Bridge process has no usable pid")
+
+    TH32CS_SNAPTHREAD = 0x00000004
+    THREAD_SUSPEND_RESUME = 0x0002
+    INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+    ERROR_NO_MORE_FILES = 18
+    RESUME_FAILED = 0xFFFFFFFF
+
+    class _ThreadEntry32(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ThreadID", wintypes.DWORD),
+            ("th32OwnerProcessID", wintypes.DWORD),
+            ("tpBasePri", wintypes.LONG),
+            ("tpDeltaPri", wintypes.LONG),
+            ("dwFlags", wintypes.DWORD),
+        ]
+
+    kernel32 = _kernel32()
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.Thread32First.restype = wintypes.BOOL
+    kernel32.Thread32First.argtypes = [wintypes.HANDLE, ctypes.POINTER(_ThreadEntry32)]
+    kernel32.Thread32Next.restype = wintypes.BOOL
+    kernel32.Thread32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(_ThreadEntry32)]
+    kernel32.OpenThread.restype = wintypes.HANDLE
+    kernel32.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.ResumeThread.restype = wintypes.DWORD
+    kernel32.ResumeThread.argtypes = [wintypes.HANDLE]
+
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)
+    if not snapshot or int(snapshot) == INVALID_HANDLE_VALUE:
+        raise JobObjectError("the suspended Bridge thread snapshot could not be created")
+    resumed = 0
+    try:
+        entry = _ThreadEntry32()
+        entry.dwSize = ctypes.sizeof(_ThreadEntry32)
+        if not kernel32.Thread32First(snapshot, ctypes.byref(entry)):
+            error = ctypes.get_last_error()
+            if error != ERROR_NO_MORE_FILES:
+                raise JobObjectError("the suspended Bridge threads could not be enumerated")
+        else:
+            while True:
+                if int(entry.th32OwnerProcessID) == pid:
+                    thread = kernel32.OpenThread(THREAD_SUSPEND_RESUME, False, entry.th32ThreadID)
+                    if not thread:
+                        raise JobObjectError("the suspended Bridge thread could not be opened")
+                    try:
+                        if kernel32.ResumeThread(thread) == RESUME_FAILED:
+                            raise JobObjectError("the suspended Bridge thread could not be resumed")
+                        resumed += 1
+                    finally:
+                        kernel32.CloseHandle(thread)
+                if kernel32.Thread32Next(snapshot, ctypes.byref(entry)):
+                    continue
+                error = ctypes.get_last_error()
+                if error != ERROR_NO_MORE_FILES:
+                    raise JobObjectError("the suspended Bridge threads could not be enumerated")
+                break
+    finally:
+        kernel32.CloseHandle(snapshot)
+    if resumed == 0:
+        raise JobObjectError("the suspended Bridge process exposed no resumable thread")
+
+
+def _close_handle(handle: int) -> None:
+    _kernel32().CloseHandle(handle)
+
+
+__all__ = ["WINDOWS", "JobObjectError", "WindowsJob"]

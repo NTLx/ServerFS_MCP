@@ -1,0 +1,281 @@
+"""Tunnel-only HTTP proxy configuration and launcher contract."""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from platform_contract import linux_only
+from serverfs_mcp.tunnel_bootstrap import TESTED_TUNNEL_CLIENT_VERSION
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_LAUNCHER = _REPO_ROOT / "deployment" / "tunnel" / "tunnel-launcher.sh"
+
+
+def _run_launcher(
+    tmp_path: Path, *, args: tuple[str, ...] = (), **proxy_env: str
+) -> subprocess.CompletedProcess[str]:
+    mock_client = tmp_path / "tunnel-client"
+    mock_client.write_text(
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "${CONTROL_PLANE_HTTP_PROXY-<unset>}" > "$PROXY_RESULT"\n'
+        'printf \'%s\\n\' "$@" > "$ARGS_RESULT"\n',
+        encoding="utf-8",
+    )
+    mock_client.chmod(0o755)
+
+    launcher = tmp_path / "launcher.sh"
+    launcher.write_text(
+        _LAUNCHER.read_text(encoding="utf-8").replace(
+            "exec /usr/bin/tunnel-client run",
+            'exec "$MOCK_TUNNEL_CLIENT" run',
+        ),
+        encoding="utf-8",
+    )
+
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("SERVERFS_PROXY_")
+        and key != "SERVERFS_OPENAI_TUNNEL_USE_PROXY"
+        and key != "CONTROL_PLANE_HTTP_PROXY"
+    }
+    env.update(
+        {
+            "PROXY_RESULT": str(tmp_path / "proxy-result"),
+            "ARGS_RESULT": str(tmp_path / "args-result"),
+            "MOCK_TUNNEL_CLIENT": str(mock_client),
+            **proxy_env,
+        }
+    )
+    return subprocess.run(
+        ["/bin/sh", str(launcher), *args],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
+def test_proxy_disabled_unsets_derived_value_and_runs_tunnel(tmp_path: Path) -> None:
+    result = _run_launcher(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "proxy-result").read_text(encoding="utf-8").strip() == "<unset>"
+    assert (tmp_path / "args-result").read_text(encoding="utf-8").strip() == "run"
+
+
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
+def test_explicit_proxy_false_is_direct_even_when_proxy_fields_exist(tmp_path: Path) -> None:
+    result = _run_launcher(
+        tmp_path,
+        SERVERFS_OPENAI_TUNNEL_USE_PROXY="false",
+        SERVERFS_PROXY_HOST="proxy.internal",
+        SERVERFS_PROXY_PORT="7890",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "proxy-result").read_text(encoding="utf-8").strip() == "<unset>"
+
+
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
+@pytest.mark.parametrize("proxy_enabled", ["true", "false"])
+def test_proxy_launcher_preserves_explicit_http_args(tmp_path: Path, proxy_enabled: str) -> None:
+    args = (
+        "--mcp.server-url",
+        "url=http://serverfs-mcp:8000/mcp",
+        "--mcp.extra-headers",
+        "Authorization: file:/run/secrets/serverfs-core-bearer",
+    )
+    result = _run_launcher(
+        tmp_path,
+        args=args,
+        SERVERFS_OPENAI_TUNNEL_USE_PROXY=proxy_enabled,
+        SERVERFS_PROXY_HOST="proxy.internal",
+        SERVERFS_PROXY_PORT="7890",
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "args-result").read_text().splitlines() == ["run", *args]
+    expected = "http://proxy.internal:7890" if proxy_enabled == "true" else "<unset>"
+    assert (tmp_path / "proxy-result").read_text().strip() == expected
+
+
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
+def test_explicit_proxy_true_requires_endpoint(tmp_path: Path) -> None:
+    result = _run_launcher(tmp_path, SERVERFS_OPENAI_TUNNEL_USE_PROXY="true")
+
+    assert result.returncode == 2
+    assert "HOST/PORT are required" in result.stderr
+
+
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
+def test_invalid_proxy_switch_fails_redacted(tmp_path: Path) -> None:
+    result = _run_launcher(
+        tmp_path,
+        SERVERFS_OPENAI_TUNNEL_USE_PROXY="maybe-secret-sentinel",
+        SERVERFS_PROXY_PASSWORD="secret-sentinel",
+    )
+
+    assert result.returncode == 2
+    assert "must be true or false" in result.stderr
+    assert "secret-sentinel" not in result.stderr
+
+
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
+def test_proxy_without_authentication_has_no_userinfo(tmp_path: Path) -> None:
+    result = _run_launcher(
+        tmp_path,
+        SERVERFS_OPENAI_TUNNEL_USE_PROXY="true",
+        SERVERFS_PROXY_HOST="proxy.internal",
+        SERVERFS_PROXY_PORT="0080",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "proxy-result").read_text(encoding="utf-8").strip() == (
+        "http://proxy.internal:80"
+    )
+
+
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
+def test_proxy_auth_percent_encodes_reserved_characters_and_spaces(tmp_path: Path) -> None:
+    result = _run_launcher(
+        tmp_path,
+        SERVERFS_PROXY_HOST="proxy.internal",
+        SERVERFS_PROXY_PORT="7890",
+        SERVERFS_PROXY_USERNAME="a@:/% b",
+        SERVERFS_PROXY_PASSWORD="p@:/% x",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "proxy-result").read_text(encoding="utf-8").strip() == (
+        "http://%61%40%3a%2f%25%20%62:%70%40%3a%2f%25%20%78@proxy.internal:7890"
+    )
+
+
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
+def test_proxy_username_enables_authentication_with_empty_password(tmp_path: Path) -> None:
+    result = _run_launcher(
+        tmp_path,
+        SERVERFS_PROXY_HOST="proxy.internal",
+        SERVERFS_PROXY_PORT="7890",
+        SERVERFS_PROXY_USERNAME="user",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "proxy-result").read_text(encoding="utf-8").strip() == (
+        "http://%75%73%65%72:@proxy.internal:7890"
+    )
+
+
+@linux_only("the tunnel launcher under test is a POSIX /bin/sh script")
+@pytest.mark.parametrize(
+    ("proxy_env", "message"),
+    [
+        ({"SERVERFS_PROXY_PORT": "80"}, "PORT requires HOST"),
+        ({"SERVERFS_PROXY_USERNAME": "user"}, "USERNAME requires HOST"),
+        ({"SERVERFS_PROXY_PASSWORD": "secret"}, "PASSWORD requires HOST"),
+        ({"SERVERFS_PROXY_HOST": "proxy.internal"}, "HOST requires PORT"),
+        (
+            {"SERVERFS_PROXY_HOST": "proxy.internal", "SERVERFS_PROXY_PORT": "0"},
+            "PORT must be an integer",
+        ),
+        (
+            {"SERVERFS_PROXY_HOST": "proxy.internal", "SERVERFS_PROXY_PORT": "65536"},
+            "PORT must be an integer",
+        ),
+        (
+            {"SERVERFS_PROXY_HOST": "proxy.internal", "SERVERFS_PROXY_PORT": "abc"},
+            "PORT must be an integer",
+        ),
+        (
+            {
+                "SERVERFS_PROXY_HOST": "proxy.internal",
+                "SERVERFS_PROXY_PORT": "80",
+                "SERVERFS_PROXY_PASSWORD": "secret-value",
+            },
+            "PASSWORD requires USERNAME",
+        ),
+    ],
+)
+def test_invalid_proxy_configuration_fails_without_echoing_values(
+    tmp_path: Path, proxy_env: dict[str, str], message: str
+) -> None:
+    result = _run_launcher(tmp_path, **proxy_env)
+
+    assert result.returncode == 2
+    assert message in result.stderr
+    assert "secret-value" not in result.stderr
+
+
+def test_compose_scopes_proxy_environment_to_openai_tunnel() -> None:
+    compose = (_REPO_ROOT / "compose.yml").read_text(encoding="utf-8")
+    server = compose.split("  serverfs-mcp:\n", 1)[1].split("  serverfs-file-ingress:\n", 1)[0]
+    ingress = compose.split("  serverfs-file-ingress:\n", 1)[1].split("  openai-tunnel:\n", 1)[0]
+    tunnel = compose.split("  openai-tunnel:\n", 1)[1].split("\n\nnetworks:\n", 1)[0]
+
+    for variable in (
+        "SERVERFS_OPENAI_TUNNEL_USE_PROXY",
+        "SERVERFS_PROXY_HOST",
+        "SERVERFS_PROXY_PORT",
+        "SERVERFS_PROXY_USERNAME",
+        "SERVERFS_PROXY_PASSWORD",
+    ):
+        assert variable not in server
+        assert variable not in ingress
+        assert variable in tunnel
+    assert "CONTROL_PLANE_HTTP_PROXY" not in compose
+    assert re.search(r"https?://[^/\s]+@[^/\s]+", compose) is None
+    assert "tunnel-launcher.sh:ro" in tunnel
+    assert 'entrypoint: ["/bin/sh", "/opt/serverfs/tunnel-launcher.sh"]' in tunnel
+
+
+def test_openai_tunnel_healthcheck_uses_readiness_probe() -> None:
+    compose = (_REPO_ROOT / "compose.yml").read_text(encoding="utf-8")
+    tunnel = compose.split("  openai-tunnel:\n", 1)[1].split("\n\nnetworks:\n", 1)[0]
+
+    assert "healthcheck:" in tunnel
+    assert '"CMD-SHELL"' in tunnel
+    assert "port=$${HEALTH_LISTEN_ADDR##*:}" in tunnel
+    assert "/usr/bin/tunnel-client health" in tunnel
+    assert "--require-control-plane-poll" in tunnel
+    assert "HEALTH_LISTEN_ADDR: ${HEALTH_LISTEN_ADDR:-:8080}" in tunnel
+    assert "ports:" not in tunnel
+    assert '      - "8080"' in tunnel
+
+
+def test_oauth_overlay_scopes_trusted_auth_origins_to_openai_tunnel() -> None:
+    overlay = (_REPO_ROOT / "compose.oauth.yml").read_text(encoding="utf-8")
+    env_example = (_REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert overlay.count("      MCP_OAUTH_TRUSTED_ORIGINS:") == 1
+    tunnel = overlay.split("  openai-tunnel:\n", 1)[1].split("\n  serverfs-mcp:\n", 1)[0]
+    assert "MCP_OAUTH_TRUSTED_ORIGINS:" in tunnel
+    assert env_example.count("MCP_OAUTH_TRUSTED_ORIGINS=") == 1
+
+
+def test_tunnel_image_examples_track_tested_native_version() -> None:
+    compose = (_REPO_ROOT / "compose.yml").read_text(encoding="utf-8")
+    env_example = (_REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    image = f"ghcr.io/openai/tunnel-client:{TESTED_TUNNEL_CLIENT_VERSION}"
+
+    assert f"${{OPENAI_TUNNEL_IMAGE:-{image}}}" in compose
+    assert f"OPENAI_TUNNEL_IMAGE={image}" in env_example
+
+
+def test_env_example_documents_only_project_proxy_inputs() -> None:
+    env_example = (_REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert "CONTROL_PLANE_HTTP_PROXY=" not in env_example
+    assert env_example.count("SERVERFS_OPENAI_TUNNEL_USE_PROXY=false") == 1
+    for variable in (
+        "SERVERFS_PROXY_HOST=",
+        "SERVERFS_PROXY_PORT=",
+        "SERVERFS_PROXY_USERNAME=",
+        "SERVERFS_PROXY_PASSWORD=",
+    ):
+        assert env_example.count(variable) == 1

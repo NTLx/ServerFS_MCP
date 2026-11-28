@@ -1,0 +1,45 @@
+{
+  "baseline": "fd1019498b281cdeb8c5805242f1a71222f5eebd",
+  "source_validation": {
+    "linux": {
+      "parsed_modules": 680,
+      "unchanged_dispatch_methods": [
+        "_dispatch",
+        "_dispatch_raw",
+        "_dispatch_v2"
+      ]
+    },
+    "macos": {
+      "parsed_modules": 680,
+      "unchanged_dispatch_methods": [
+        "_dispatch",
+        "_dispatch_raw",
+        "_dispatch_v2"
+      ]
+    },
+    "windows": {
+      "parsed_modules": 683,
+      "unchanged_dispatch_methods": [
+        "_dispatch",
+        "_dispatch_core",
+        "_dispatch_raw"
+      ]
+    }
+  },
+  "linux_checks": [
+    "real Linux v1 UDS",
+    "private socket mode",
+    "owned socket cleanup",
+    "wrong measured UID refused before dispatch",
+    "real signed-v2 UDS and actual nonce store",
+    "signed nonce replay denied",
+    "invalid HMAC denied",
+    "v1 fallback denied on v2 endpoint",
+    "nonce replay denied after reopening durable store"
+  ],
+  "limitations": [
+    "Linux listener and SQLite store are real; service/provider is a minimal fixture.",
+    "macOS and Windows dispatch equivalence is static, not native acceptance.",
+    "Not a full pytest, wheel, deployment, or Gate A result."
+  ]
+}

@@ -133,6 +133,19 @@ def test_pages_preview_manifest_is_machine_readable_and_validation_only() -> Non
     assert "${{" not in manifest.split("run: |", 1)[1]
 
 
+def test_linux_ci_and_publication_use_the_same_platform_local_context() -> None:
+    container = text("container.yml")
+    assert container.count("working-directory: linux\n") == 3
+    assert "working-directory: linux/agent_bridge\n" in container
+    for workflow in ("container.yml", "container-publish.yml"):
+        source = text(workflow)
+        assert "context: ./linux\n" in source
+        assert "file: ./linux/Dockerfile\n" in source
+        assert "context: .\n" not in source
+    assert "../deployment/registry/validate.py" in container
+    assert "../tests/test_release_workflow.py" in container
+
+
 def test_stable_container_publish_verifies_tag_points_to_candidate_sha() -> None:
     publish = text("container-publish.yml")
     assert "workflow_call:" in on_block("container-publish.yml")

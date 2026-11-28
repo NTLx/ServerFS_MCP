@@ -1,0 +1,11 @@
+services:
+  serverfs-mcp:
+    ports:
+      - "${SERVERFS_HTTP_PUBLISH_HOST:-127.0.0.1}:${SERVERFS_HTTP_PUBLISH_PORT:-8000}:${SERVERFS_HTTP_PORT:-8000}"
+
+  # Generic HTTP is independent of OpenAI. The base compose.yml intentionally
+  # keeps the historical Tunnel-on-by-default behavior; this override makes the
+  # Tunnel opt-in only for generic HTTP deployments. Enable it explicitly with
+  # `--profile openai-tunnel` when both ingress paths are desired.
+  openai-tunnel:
+    profiles: ["openai-tunnel"]

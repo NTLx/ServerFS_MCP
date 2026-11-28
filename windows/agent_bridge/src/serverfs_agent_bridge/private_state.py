@@ -1,0 +1,321 @@
+"""Windows private-state authorization.
+
+Keep the existing caller-specific error vocabulary and state layout.
+Verify native owner SID, DACL and reparse state; never repair an existing unsafe ACL.
+"""
+
+from __future__ import annotations
+
+import os
+import stat
+from dataclasses import dataclass
+from pathlib import Path
+
+from .errors import BridgeError
+
+WINDOWS = True  # Local compatibility flag for remaining callers.
+
+__all__ = [
+    "DirectoryMessages",
+    "WINDOWS",
+    "apply_private_file_mode",
+    "ensure_private_directory",
+    "ensure_private_file",
+    "ensure_private_file_handle",
+    "open_flags",
+    "opened_file_is_private",
+    "require_regular_file",
+    "state_entry_is_regular",
+    "verify_private_file",
+]
+
+
+@dataclass(frozen=True)
+class DirectoryMessages:
+    """The frozen failure vocabulary of one state directory."""
+
+    not_a_directory: str
+    not_owned: str
+    private_mode: str | None = None
+    shared_mode: str | None = None
+    group_change_failed: str | None = None
+
+
+def open_flags(access: str, *, create: bool = False, exclusive: bool = False) -> int:
+    """The flags every Bridge state open shares, spelled the way this platform spells them.
+
+    POSIX refuses an inherited or executed-over handle with ``O_CLOEXEC`` and a followed link
+    with ``O_NOFOLLOW``; neither name exists on Windows, where the equivalent of the first is
+    ``O_NOINHERIT`` and the second is the path check beside the open (§28). Call sites ask for
+    an access mode instead of OR-ing platform constants, which is what §24 asks for.
+    """
+    mode = {"read": os.O_RDONLY, "write": os.O_WRONLY, "read-write": os.O_RDWR}[access]
+    flags = (
+        mode
+        | getattr(os, "O_NOINHERIT", 0)
+    )
+    if create:
+        flags |= os.O_CREAT
+    if exclusive:
+        flags |= os.O_EXCL
+    return flags
+
+
+def apply_private_file_mode(fd: int, *, mode: int, shared_gid: int | None = None) -> None:
+    """Apply the private mode to an open descriptor.
+
+    Windows has no per-descriptor mode: the object inherited its DACL from the protected state
+    directory at creation, and that inheritance is what §29 relies on for the SQLite
+    ``-wal``/``-shm`` companions. The DACL and reparse checks therefore run on the path.
+    """
+
+
+def ensure_private_file_handle(fd: int, *, mode: int, shared_gid: int | None = None) -> None:
+    """Confirm a freshly opened descriptor is a regular file and apply its private mode."""
+    opened = os.fstat(fd)
+    if not stat.S_ISREG(opened.st_mode):
+        raise ValueError("private state path must be a regular file")
+    apply_private_file_mode(fd, mode=mode, shared_gid=shared_gid)
+
+
+def ensure_private_directory(
+    path: Path,
+    *,
+    mode: int,
+    messages: DirectoryMessages,
+    shared_gid: int | None = None,
+    parents: bool = False,
+) -> None:
+    """Create one Bridge state directory, or verify the one that already exists."""
+    _windows_ensure_directory(path, shared_gid=shared_gid, messages=messages, parents=parents)
+
+
+def _windows_ensure_directory(
+    path: Path,
+    *,
+    shared_gid: int | None,
+    messages: DirectoryMessages,
+    parents: bool,
+) -> None:
+    from . import windows_security
+
+    if shared_gid is not None:
+        raise BridgeError(
+            "BRIDGE_PLATFORM_UNSUPPORTED",
+            "group-readable private state is a POSIX mechanism; Windows state is protected by "
+            "an explicit owner DACL",
+        )
+    expected_owner_sid = windows_security.current_token_owner_sid()
+    expected_trustee_sid = windows_security.current_user_sid()
+    # The DACL names the Bridge user alone (§6.1); object ownership is left to the Windows
+    # default (the token owner) and verified against that field separately.
+    sddl = windows_security.private_state_sddl(expected_trustee_sid)
+    if parents:
+        _windows_create_ancestors(path, sddl=sddl, messages=messages)
+    _windows_refuse_reparse(path, messages.not_a_directory)
+    # ``False`` means the directory was already there, which §25 makes a verification-only
+    # case: an inherited descriptor is acceptable on an object we did not create, as long as
+    # it grants nobody but the Bridge user.
+    created = windows_security.create_private_directory(path, sddl)
+    _assert_windows_private(
+        windows_security.read_object_security(path),
+        expected_owner_sid,
+        expected_trustee_sid,
+        protected=created,
+    )
+    try:
+        stat_result = path.stat()
+    except OSError as exc:
+        raise ValueError(messages.not_a_directory) from exc
+    if not stat.S_ISDIR(stat_result.st_mode):
+        raise ValueError(messages.not_a_directory)
+
+
+def _windows_create_ancestors(path: Path, *, sddl: str, messages: DirectoryMessages) -> None:
+    """Create every missing component with the same protected descriptor.
+
+    A parent created with the default descriptor would leave an inheritable grant in place for
+    everything below it, so the whole tree the Bridge creates gets the same explicit DACL.
+    """
+    from . import windows_security
+
+    missing: list[Path] = []
+    current = path.parent
+    while True:
+        # Reparpose is asked before existence, for the same reason as everywhere else: a dangling
+        # reparse parent reports exists() == False and would otherwise be classified as merely
+        # missing. It would then be walked *past* as if it were an ordinary absent component, and
+        # the walk would stop one level higher — anchoring the Bridge's own tree inside somebody
+        # else's directory, which is precisely the §28 junction case this loop exists to catch.
+        _windows_refuse_reparse(current, messages.not_a_directory)
+        if current.exists():
+            # The walk stops at the first directory that already exists, and that directory is
+            # exactly where a pre-planted junction can hide (§28): every component created below
+            # it would land inside somebody else's tree, so the Bridge's own root is refused.
+            break
+        missing.append(current)
+        parent = current.parent
+        if parent == current:
+            raise ValueError(messages.not_a_directory)
+        current = parent
+    for directory in reversed(missing):
+        _windows_refuse_reparse(directory, messages.not_a_directory)
+        windows_security.create_private_directory(directory, sddl)
+
+
+def _windows_refuse_reparse(path: Path, not_a_directory: str) -> None:
+    """Refuse a reparse point at ``path``, including one that dangles.
+
+    The order is the whole point: ``is_reparse_point`` is asked first and nothing is gated behind
+    ``exists()``. ``Path.exists()`` *follows* a link, so a dangling symlink — one whose target is
+    absent — reports False while ``lstat`` still carries the reparse tag. A conjunction or an
+    ``exists()`` pre-check therefore classifies exactly the cheapest object an attacker can plant,
+    and the one that leaves no visible trace, as "nothing there". ``is_reparse_point`` already
+    answers all three cases correctly: a genuinely absent path is False because ``lstat`` raises
+    ``FileNotFoundError``, an existing reparse point is True, and an inspection failure is refused
+    closed by raising.
+    """
+    from . import windows_security
+
+    if windows_security.is_reparse_point(path):
+        raise BridgeError("PRIVATE_STATE_UNSAFE", f"{not_a_directory} (reparse point)")
+
+
+def _assert_windows_private(
+    security, expected_owner_sid: str, expected_trustee_sid: str, *, protected: bool
+) -> None:
+    """§27: present, explicit where we created it, and granting the Bridge user and nobody else.
+
+    Two identity fields, because Windows carries two: ``expected_owner_sid`` is what Windows
+    assigns newly created objects to (the token owner — the user on a normal token, the
+    Administrators group on an elevated one), while ``expected_trustee_sid`` is the Bridge
+    user the explicit DACL must name. Conflating them would widen the DACL from
+    "Bridge user alone" to "the token owner" on exactly the deployments where those differ.
+    """
+    from . import windows_security
+
+    if not security.dacl_present:
+        raise BridgeError("PRIVATE_STATE_UNSAFE", "state object has no explicit DACL")
+    if protected and not security.dacl_protected:
+        raise BridgeError("PRIVATE_STATE_UNSAFE", "state object inherits an unexpected DACL")
+    if security.owner_sid != expected_owner_sid:
+        raise BridgeError("PRIVATE_STATE_UNSAFE", "state object has another owner")
+    banned = security.broad_trustee()
+    if banned is not None:
+        raise BridgeError("PRIVATE_STATE_UNSAFE", f"state DACL grants access to {banned}")
+    for ace in security.aces:
+        if ace["type"] != windows_security.ACE_ACCESS_ALLOWED:
+            raise BridgeError("PRIVATE_STATE_UNSAFE", "state DACL contains a non-allow ACE")
+        if ace["sid"] == expected_trustee_sid or ace["sid"] in windows_security.SYSTEM_TRUSTEES:
+            continue
+        raise BridgeError("PRIVATE_STATE_UNSAFE", "state DACL grants another trustee")
+    if not security.grants(expected_trustee_sid):
+        raise BridgeError("PRIVATE_STATE_UNSAFE", "state DACL does not grant the Bridge user")
+
+
+def ensure_private_file(
+    path: Path, *, mode: int, not_regular: str, shared_gid: int | None = None
+) -> None:
+    """Create one private state file, or apply the contract to the one that already exists.
+
+    A *directory* that already exists is verified and never re-secured (§25), but a state file
+    is created idempotently because a Bridge restart legitimately re-opens its own lease and
+    lock files — the same asymmetry the Linux contract has always had.
+    """
+    from . import windows_security
+
+    if shared_gid is not None:
+        raise BridgeError(
+            "BRIDGE_PLATFORM_UNSUPPORTED",
+            "group-readable private state is a POSIX mechanism",
+        )
+    expected_owner_sid = windows_security.current_token_owner_sid()
+    expected_trustee_sid = windows_security.current_user_sid()
+    _windows_refuse_reparse(path, not_regular)
+    existed = path.exists()
+    windows_security.create_private_file(
+        path, windows_security.private_state_sddl(expected_trustee_sid)
+    )
+    _assert_windows_private(
+        windows_security.read_object_security(path),
+        expected_owner_sid,
+        expected_trustee_sid,
+        protected=not existed,
+    )
+
+
+def require_regular_file(path: Path, *, not_regular: str) -> None:
+    """Confirm a path the Bridge will use is a real regular file, not a link or reparse point."""
+    from . import windows_security
+
+    if windows_security.is_reparse_point(path):
+        raise BridgeError("PRIVATE_STATE_UNSAFE", f"{not_regular} (reparse point)")
+    if not path.exists():
+        return
+    if path.is_dir():
+        raise ValueError(not_regular)
+
+
+def protect_existing_file(path: Path, *, mode: int, not_private: str) -> None:
+    """Apply the file contract to an object the Bridge did not create (SQLite sidecars, §29).
+
+    The Linux contract has always been to repair the mode of its own database files, so that
+    is what this does there. Windows cannot repair without becoming the thing §25 forbids, so
+    the sidecar's inherited owner SID and DACL are verified instead and anything unexpected is
+    refused.
+    """
+    # A reparse point is refused before existence is consulted, so a dangling one cannot be
+    # mistaken for a sidecar that is merely not there yet (§28, and the same ordering the
+    # directory and renderer paths use).
+    from . import windows_security
+
+    if windows_security.is_reparse_point(path):
+        raise BridgeError("PRIVATE_STATE_UNSAFE", "state database sidecar (reparse point)")
+    if not path.exists():
+        return
+    verify_private_file(
+        path,
+        not_regular="state database sidecar must be a regular file",
+        not_private=not_private,
+    )
+
+
+def verify_private_file(path: Path, *, not_regular: str, not_private: str) -> None:
+    """Re-validate an object the Bridge did not necessarily create (SQLite sidecars, §29)."""
+    from . import windows_security
+
+    expected_owner_sid = windows_security.current_token_owner_sid()
+    expected_trustee_sid = windows_security.current_user_sid()
+    _windows_refuse_reparse(path, not_regular)
+    _assert_windows_private(
+        windows_security.read_object_security(path),
+        expected_owner_sid,
+        expected_trustee_sid,
+        protected=False,
+    )
+
+
+def opened_file_is_private(path: Path, opened: os.stat_result) -> bool:
+    """Whether a descriptor the caller just opened is its own private regular file.
+
+    POSIX reads that answer from the descriptor itself — owner UID and mode bits are what the
+    kernel recorded, and ``O_NOFOLLOW`` already refused a link at the open. A Windows ``fstat``
+    carries no ACL, and Python has no ``O_NOFOLLOW`` there, so the path beside the descriptor
+    is verified instead: owner SID, protected DACL and the reparse tag (§28, §29).
+    """
+    if not stat.S_ISREG(opened.st_mode):
+        return False
+    try:
+        verify_private_file(
+            path, not_regular="state file is unsafe", not_private="state file is unsafe"
+        )
+    except (BridgeError, ValueError):
+        return False
+    return True
+
+
+def state_entry_is_regular(stat_result: os.stat_result) -> bool:
+    """Whether an ``lstat`` of a state path names a real file, not a link or reparse point."""
+    from . import windows_security
+
+    return windows_security.regular_entry(stat_result)

@@ -1,0 +1,743 @@
+{
+  "baseline": "fd1019498b281cdeb8c5805242f1a71222f5eebd",
+  "blocked": {
+    "linux/src/serverfs_mcp/agent_core_grant_client.py": [
+      "original or owner differs"
+    ],
+    "linux/src/serverfs_mcp/darwin_bridge_policy.py": [
+      "linux/src/serverfs_mcp/darwin_service.py"
+    ],
+    "linux/src/serverfs_mcp/darwin_libc.py": [
+      "linux/src/serverfs_mcp/native_tunnel.py"
+    ],
+    "linux/src/serverfs_mcp/darwin_lifecycle.py": [
+      "linux/src/serverfs_mcp/darwin_bridge_policy.py"
+    ],
+    "linux/src/serverfs_mcp/darwin_platform.py": [
+      "linux/src/serverfs_mcp/native_tunnel.py"
+    ],
+    "linux/src/serverfs_mcp/darwin_service.py": [
+      "linux/src/serverfs_mcp/native_tunnel.py",
+      "linux/tests/test_native_tunnel.py"
+    ],
+    "linux/src/serverfs_mcp/darwin_shared_agent_adapter.py": [
+      "linux/tests/test_agent_tools.py"
+    ],
+    "linux/src/serverfs_mcp/native_lifecycle.py": [
+      "linux/src/serverfs_mcp/supervisor.py"
+    ],
+    "linux/src/serverfs_mcp/windows_cloudflare_config.py": [
+      "linux/src/serverfs_mcp/windows_service.py"
+    ],
+    "linux/src/serverfs_mcp/windows_cloudflare_runtime.py": [
+      "linux/src/serverfs_mcp/windows_service.py"
+    ],
+    "linux/src/serverfs_mcp/windows_cloudflare_security.py": [
+      "linux/src/serverfs_mcp/windows_cloudflare_config.py"
+    ],
+    "linux/src/serverfs_mcp/windows_job.py": [
+      "linux/src/serverfs_mcp/supervisor.py"
+    ],
+    "linux/src/serverfs_mcp/windows_lease.py": [
+      "linux/agent_bridge/tests/conftest.py",
+      "linux/agent_bridge/tests/test_qoder_adapter.py"
+    ],
+    "linux/src/serverfs_mcp/windows_process.py": [
+      "linux/src/serverfs_mcp/windows_service.py"
+    ],
+    "linux/src/serverfs_mcp/windows_service.py": [
+      "linux/src/serverfs_mcp/service_observability.py"
+    ],
+    "macos/src/serverfs_mcp/agent_core_grant_client.py": [
+      "original or owner differs"
+    ],
+    "macos/src/serverfs_mcp/linux_backend.py": [
+      "macos/src/serverfs_mcp/darwin_backend.py",
+      "macos/tests/test_backends.py",
+      "macos/tests/test_import_safety.py"
+    ],
+    "macos/src/serverfs_mcp/native_lifecycle.py": [
+      "macos/src/serverfs_mcp/supervisor.py",
+      "macos/tests/test_d9_native_lifecycle.py",
+      "macos/tests/test_native_lifecycle_ownership.py"
+    ],
+    "macos/src/serverfs_mcp/windows_agent_pipe.py": [
+      "macos/src/serverfs_mcp/agent_doctor.py",
+      "macos/src/serverfs_mcp/native_endpoint.py"
+    ],
+    "macos/src/serverfs_mcp/windows_cloudflare_config.py": [
+      "macos/src/serverfs_mcp/windows_cloudflare_parallel.py",
+      "macos/src/serverfs_mcp/windows_service.py"
+    ],
+    "macos/src/serverfs_mcp/windows_cloudflare_parallel.py": [
+      "macos/src/serverfs_mcp/cli.py"
+    ],
+    "macos/src/serverfs_mcp/windows_cloudflare_runtime.py": [
+      "macos/src/serverfs_mcp/windows_cloudflare_parallel.py",
+      "macos/src/serverfs_mcp/windows_service.py"
+    ],
+    "macos/src/serverfs_mcp/windows_cloudflare_security.py": [
+      "macos/src/serverfs_mcp/windows_cloudflare_parallel.py"
+    ],
+    "macos/src/serverfs_mcp/windows_job.py": [
+      "macos/src/serverfs_mcp/supervisor.py",
+      "macos/tests/test_d9_native_lifecycle.py",
+      "macos/tests/test_supervisor_agent.py"
+    ],
+    "macos/src/serverfs_mcp/windows_lease.py": [
+      "macos/agent_bridge/tests/conftest.py",
+      "macos/agent_bridge/tests/test_qoder_adapter.py"
+    ],
+    "macos/src/serverfs_mcp/windows_process.py": [
+      "macos/src/serverfs_mcp/windows_cloudflare_parallel.py",
+      "macos/src/serverfs_mcp/windows_service.py"
+    ],
+    "macos/src/serverfs_mcp/windows_service.py": [
+      "macos/src/serverfs_mcp/cli.py",
+      "macos/src/serverfs_mcp/service_observability.py",
+      "macos/tests/test_service_observability.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_bridge_policy.py": [
+      "windows/src/serverfs_mcp/agent_doctor.py",
+      "windows/src/serverfs_mcp/cli.py",
+      "windows/tests/test_native_repo_ops.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_instance_bridge_identity.py": [
+      "windows/src/serverfs_mcp/cli.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_instance_owned_binding.py": [
+      "windows/src/serverfs_mcp/cli.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_instance_owned_staging.py": [
+      "windows/src/serverfs_mcp/darwin_instance_owned_binding.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_instance_runtime.py": [
+      "windows/src/serverfs_mcp/darwin_instance_bridge_identity.py",
+      "windows/src/serverfs_mcp/darwin_instance_owned_binding.py",
+      "windows/src/serverfs_mcp/darwin_instance_shared_manifest.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_instance_shared_binding.py": [
+      "windows/src/serverfs_mcp/darwin_instance_shared_manifest.py",
+      "windows/src/serverfs_mcp/darwin_shared_core_bootstrap.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_instance_shared_manifest.py": [
+      "windows/src/serverfs_mcp/cli.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_instances.py": [
+      "windows/src/serverfs_mcp/cli.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_libc.py": [
+      "windows/src/serverfs_mcp/cli.py",
+      "windows/src/serverfs_mcp/doctor.py",
+      "windows/src/serverfs_mcp/native_endpoint.py",
+      "windows/src/serverfs_mcp/native_tunnel.py",
+      "windows/tests/test_cli.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_lifecycle.py": [
+      "windows/src/serverfs_mcp/darwin_bridge_policy.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_owned_bridge_supervisor.py": [
+      "windows/src/serverfs_mcp/darwin_instance_owned_binding.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_owned_v2_agent_adapter.py": [
+      "windows/src/serverfs_mcp/darwin_owned_v2_agent_factory.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_owned_v2_agent_factory.py": [
+      "windows/src/serverfs_mcp/cli.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_owned_v2_binding.py": [
+      "windows/src/serverfs_mcp/darwin_owned_v2_agent_factory.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_owned_v2_bootstrap.py": [
+      "windows/src/serverfs_mcp/darwin_owned_v2_agent_factory.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_platform.py": [
+      "windows/src/serverfs_mcp/cli.py",
+      "windows/src/serverfs_mcp/doctor.py",
+      "windows/src/serverfs_mcp/native_tunnel.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_service.py": [
+      "windows/src/serverfs_mcp/cli.py",
+      "windows/src/serverfs_mcp/doctor.py",
+      "windows/src/serverfs_mcp/native_tunnel.py",
+      "windows/tests/test_native_repo_ops.py",
+      "windows/tests/test_native_tunnel.py",
+      "windows/tests/test_service_observability.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_shared_agent_adapter.py": [
+      "windows/tests/test_agent_tools.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_shared_agent_factory.py": [
+      "windows/src/serverfs_mcp/cli.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_shared_binding_private.py": [
+      "windows/src/serverfs_mcp/darwin_instance_bridge_identity.py",
+      "windows/src/serverfs_mcp/darwin_instance_shared_manifest.py",
+      "windows/src/serverfs_mcp/darwin_shared_core_bootstrap.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_shared_bridge_readiness.py": [
+      "windows/src/serverfs_mcp/darwin_owned_v2_agent_factory.py",
+      "windows/src/serverfs_mcp/darwin_shared_core_bootstrap.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_shared_core_bootstrap.py": [
+      "windows/src/serverfs_mcp/cli.py"
+    ],
+    "windows/src/serverfs_mcp/darwin_shared_multi_agent_adapter.py": [
+      "windows/src/serverfs_mcp/darwin_shared_agent_factory.py"
+    ],
+    "windows/src/serverfs_mcp/linux_backend.py": [
+      "windows/native/windows/src/read.rs",
+      "windows/src/serverfs_mcp/windows_backend.py",
+      "windows/tests/test_backends.py",
+      "windows/tests/test_import_safety.py"
+    ]
+  },
+  "removed": [
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_backend.py",
+      "path": "linux/src/serverfs_mcp/darwin_backend.py",
+      "sha256": "516bd6d83b2f54c8a38f10afb256cc8c9cc9556bd2aee5c0c4a2bf3942d673d8"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_bridge_identity.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_bridge_identity.py",
+      "sha256": "c7b685fc31b3edd3ef4a8fba557a41803a2b1930723328f5911f2d76b70e81bf"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_cli.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_cli.py",
+      "sha256": "4c248aa7e24f87aabc154f71ec337946f72517fca6b9e022057e8b6b93bd7212"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_owned_binding.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_owned_binding.py",
+      "sha256": "a2de254362b3cb9f02bc31833bbd32dc774cde7335745452544fecc1268927b1"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_owned_lifecycle.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_owned_lifecycle.py",
+      "sha256": "47af32289306938ea2f4dc05c21a46e98fb1f7c159363dfc36bd345901ca9e6f"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_owned_runtime.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_owned_runtime.py",
+      "sha256": "4d57497fb13fecb9a4de7400be765a3935d95cc599bec5b455d006294e66706b"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_owned_staging.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_owned_staging.py",
+      "sha256": "3ad56461d6bc3f5a6ae0c36a6cce4e54a306c5aa6e50f41a871b404e45fb84a7"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_owned_unstage.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_owned_unstage.py",
+      "sha256": "77527f43b5e6ceae505d2e586f05be35556d8300f0f2d94a7029fe89aac0351c"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_runtime.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_runtime.py",
+      "sha256": "d531835fd302e0052b0786fc98bc78fcaaae4bf6c2afee33343a0d6841dac72b"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_shared_binding.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_shared_binding.py",
+      "sha256": "cd344b37540d7f0769c0140fda6cd82f7ef6a48f8d5088eee2219ea6c26ab1fe"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_shared_lifecycle.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_shared_lifecycle.py",
+      "sha256": "db9ec0f81888116cb449c64d1545f87a24ca7c8d6265df542f322b3d4679d869"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_shared_manifest.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_shared_manifest.py",
+      "sha256": "91b7c51848cb1276c6d13aae5b8401a76062f4d86359394a9af309c68fa8a67d"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_shared_staging.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_shared_staging.py",
+      "sha256": "51a380c1410e0b33651dadc18c9536006258f5462b7446b1135334817c8b1c5c"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_shared_unstage.py",
+      "path": "linux/src/serverfs_mcp/darwin_instance_shared_unstage.py",
+      "sha256": "9c07fcc22031660c3ea0d04050b1d07bcfbe1108605551855ce4ce65e6bdb166"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instances.py",
+      "path": "linux/src/serverfs_mcp/darwin_instances.py",
+      "sha256": "b0f1986548f377a47ddcbb94cf88b47ebfa50d4aa135209b0e63cd89477b89a1"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_owned_bridge_supervisor.py",
+      "path": "linux/src/serverfs_mcp/darwin_owned_bridge_supervisor.py",
+      "sha256": "0467f89ab1dc342d9a4a1a7cbe5606c83e897e4af050dbacf64ffc31b9b4215b"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_owned_v2_agent_adapter.py",
+      "path": "linux/src/serverfs_mcp/darwin_owned_v2_agent_adapter.py",
+      "sha256": "31477d76cd558c456723a4b8da75cbc10f9c1d4d2cd893d6a292e8c50154ab32"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_owned_v2_agent_factory.py",
+      "path": "linux/src/serverfs_mcp/darwin_owned_v2_agent_factory.py",
+      "sha256": "76a604ccead878ed6254f039c718973ca7a39dc7bb9d25777ce407217de2409e"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_owned_v2_binding.py",
+      "path": "linux/src/serverfs_mcp/darwin_owned_v2_binding.py",
+      "sha256": "d74f88a44446413bf4d100550f5c16f3718030c58e5f96a5d6d0cf61588725eb"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_owned_v2_bootstrap.py",
+      "path": "linux/src/serverfs_mcp/darwin_owned_v2_bootstrap.py",
+      "sha256": "784b9aa2e82713f5c00c4b9a76f266fb86ebfb40d278cc4f2b21f7c2e0bbea95"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_shared_agent_factory.py",
+      "path": "linux/src/serverfs_mcp/darwin_shared_agent_factory.py",
+      "sha256": "b2aa2984f1c64f83244efde17d77f06a1407df2f20f74a0d4ea6c212e79b72f9"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_shared_binding_private.py",
+      "path": "linux/src/serverfs_mcp/darwin_shared_binding_private.py",
+      "sha256": "6c9ccee0844c11018951f68934c48497d4c00da091e6301f60e6a89b7f099584"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_shared_bridge_readiness.py",
+      "path": "linux/src/serverfs_mcp/darwin_shared_bridge_readiness.py",
+      "sha256": "a6d4f17b3c3f305dab826b3c2ad97d85ed035f27755ddb73ad04474a839129e9"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_shared_core_bootstrap.py",
+      "path": "linux/src/serverfs_mcp/darwin_shared_core_bootstrap.py",
+      "sha256": "7cc800294d5a31bb481644d2c26e475c244970fb60a8a5f2ac4f577ff910b43f"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_shared_multi_agent_adapter.py",
+      "path": "linux/src/serverfs_mcp/darwin_shared_multi_agent_adapter.py",
+      "sha256": "0685ca539070ae8c87b2753779b1895222daae6a9e7c65b3594442838b46141f"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_shared_release_source.py",
+      "path": "linux/src/serverfs_mcp/darwin_shared_release_source.py",
+      "sha256": "4902732b8824015e0bb6593cdb37d6690d4989e4ff51e8f61ac7b0ba10eb5d7b"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_shared_runtime.py",
+      "path": "linux/src/serverfs_mcp/darwin_shared_runtime.py",
+      "sha256": "c1ff6ca60adfb8e819fbea892b0b7bf54734efa521332ef23dba923877327796"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_agent_pipe.py",
+      "path": "linux/src/serverfs_mcp/windows_agent_pipe.py",
+      "sha256": "19b0337f571e75a41b31f1cb0aefe25f761dfbaebea6dfade3d75f4b76d69b6a"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_backend.py",
+      "path": "linux/src/serverfs_mcp/windows_backend.py",
+      "sha256": "ba07ddf99623b9f576584bafca60a6ac81ef57e1c55b3c5c2d08f0cbc6289032"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_bridge_control.py",
+      "path": "linux/src/serverfs_mcp/windows_bridge_control.py",
+      "sha256": "b05a8999d87401daf9858ca3064289db9764da9c15974b86cd378ae0e00d4fee"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_bridge_owner.py",
+      "path": "linux/src/serverfs_mcp/windows_bridge_owner.py",
+      "sha256": "de3474e25567d8bd5664a4cd365cc2c597db515f0cff2f78bdc248a25a29be07"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_bridge_service.py",
+      "path": "linux/src/serverfs_mcp/windows_bridge_service.py",
+      "sha256": "d2458583edf8e392590839a2242481f925e86e0e0ad57f9218f1c26bdc029886"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_bridge_task_spec.py",
+      "path": "linux/src/serverfs_mcp/windows_bridge_task_spec.py",
+      "sha256": "ffa6c937ac15155d866026aa2c20050fab4faeef4017d7d8713822db56bd40ce"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_cloudflare_connector.py",
+      "path": "linux/src/serverfs_mcp/windows_cloudflare_connector.py",
+      "sha256": "4c9850a6d0be3ab24b979fa90e4386de931e850e58de1d2a9f18276609ad0c3f"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_cloudflare_parallel.py",
+      "path": "linux/src/serverfs_mcp/windows_cloudflare_parallel.py",
+      "sha256": "bb90890b0ab23aee388b9badb3eba2db00b8ffc0aff0f23bc1c6d77f3cd35551"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_component_cli.py",
+      "path": "linux/src/serverfs_mcp/windows_component_cli.py",
+      "sha256": "7ff80ab27de90044835cf51a30727c6e1a943637a0b57b102635a05d16f4ce65"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_component_task.py",
+      "path": "linux/src/serverfs_mcp/windows_component_task.py",
+      "sha256": "4948f346f2ae869e50813efc53a12119d9a1ff8060a8235bb2a2dac81bb84af6"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_connector_control.py",
+      "path": "linux/src/serverfs_mcp/windows_connector_control.py",
+      "sha256": "28dbb0842f090757be523a1524e94a4224eafefb5db2cb2bb2d3af43a0e20cd1"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_connector_service.py",
+      "path": "linux/src/serverfs_mcp/windows_connector_service.py",
+      "sha256": "cd0aa8e3c93e3ccf3d6b168f2b4e10e666afb410a16df449f591b4393b05f523"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_connector_task_spec.py",
+      "path": "linux/src/serverfs_mcp/windows_connector_task_spec.py",
+      "sha256": "34cc11782faf316553536b01cbec2f956388e0cc9e9215ba9c675d1bfffca786"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_core_control.py",
+      "path": "linux/src/serverfs_mcp/windows_core_control.py",
+      "sha256": "ddc2b34a8d0163aa4e66f934ca48a7a3732647e8a2162c997f1fb0b9bbe2c5a0"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_core_listener.py",
+      "path": "linux/src/serverfs_mcp/windows_core_listener.py",
+      "sha256": "aef643a969803dbe7c0aabb31643980cf92d9c48723395d4bf293fd1941731cd"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_core_service.py",
+      "path": "linux/src/serverfs_mcp/windows_core_service.py",
+      "sha256": "dcf5bf16d336f1b07e6b4e4d42722c6d47b746b270d543244dc7b8b8ed7efcc9"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_core_task_spec.py",
+      "path": "linux/src/serverfs_mcp/windows_core_task_spec.py",
+      "sha256": "2b818ff48afc50e2560cdc30b5364fbaa2c5918fa17dc071584823dc33b6b27b"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_openai_connector.py",
+      "path": "linux/src/serverfs_mcp/windows_openai_connector.py",
+      "sha256": "3a4f72ac07686fca7eab1ef928afd94e0860741113ef40c7d6651736f485ce0b"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_private_artifacts.py",
+      "path": "linux/src/serverfs_mcp/windows_private_artifacts.py",
+      "sha256": "c6e07c0a2e5a3e9c0e4d7783914f88a682da419ec4a48f24284ac334a9958d01"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/__init__.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/__init__.py",
+      "sha256": "8c1187e8ed7f134aaccfc8801045543d7ad1a1050ecc0aa913a6880c31ac8e0e"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/bridge_peer_job.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/bridge_peer_job.py",
+      "sha256": "5c65050597e04b7d350d73a6fff9f104d6b21258a9833b8a2b4c4caa3d02897f"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/bridge_resources.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/bridge_resources.py",
+      "sha256": "984edb8631498bf7e7958283e3fc4685ad552c8ea7313dfedc0c0d7523740446"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/bridge_v2_owner.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/bridge_v2_owner.py",
+      "sha256": "bb1cbac58673ab395445e48d527fb0bb49dfe96c176da5e026915fc8c516618f"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/cli.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/cli.py",
+      "sha256": "613d1f28016013d12246c78d68b717395037bd8438cdacec7407bbc8df1dcb8a"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/core_bridge_binding.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/core_bridge_binding.py",
+      "sha256": "47c7c32187a299afb50d356d9ac1918c54a92ac4022f1cec8ca8838efdd6d374"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/isolation.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/isolation.py",
+      "sha256": "714b6807059a7ac714a7e4a4f4ae7faab855753753b92efd9299bf840fe3d630"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/legacy_bridge_ownership.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/legacy_bridge_ownership.py",
+      "sha256": "99f605790d347597bd8ba2aca3fbfd883874f1ae08db3a39ba6123a8f89c70e4"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/named_agent_proxy.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/named_agent_proxy.py",
+      "sha256": "460c2c1e4ddccce4e0a1300f0de0fe2b2a16d9b0eb14b9ccc38e5b70ac248508"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/readiness.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/readiness.py",
+      "sha256": "85789f85d19a7b702c281dc9da0199ff65c8d618eff9696f05dbe5314cf88167"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/runtime.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/runtime.py",
+      "sha256": "6ee2ab75d7cd68beea7b20e9aab5a8a74390c36caf5995c6de0d1f4d794c1568"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/shared_core_grants.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/shared_core_grants.py",
+      "sha256": "a2e2ee2c64cd48ee02b3e9fee389ade33b7c827e8da6b131c012168ec9e9e784"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/spec.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/spec.py",
+      "sha256": "4690897dd05618791dbbbdf1fd0a9054c0c6e02761d09a887dadf93debb8c51f"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/storage.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/storage.py",
+      "sha256": "1cedfa7a4e256ac13351cc27d7d87668ac3dbcb405c4af813529ac693f37cc59"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/tasks.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/tasks.py",
+      "sha256": "ed244d2fa6bf64ba3b40961ff79aae389a67e1da01c570d9e9ebed6f2d099671"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/workdir_ownership.py",
+      "path": "linux/src/serverfs_mcp/windows_v25/workdir_ownership.py",
+      "sha256": "36256ee51effebab4663dd1a0db09a503d86fd443d463769cf3b5ffd0f98666f"
+    },
+    {
+      "owner": "linux/src/serverfs_mcp/linux_v0250_bridge_adapter.py",
+      "path": "macos/src/serverfs_mcp/linux_v0250_bridge_adapter.py",
+      "sha256": "66b139e1acb3c2a3c16fcb04a9fcef28092a8115185431c0cc767a7919916030"
+    },
+    {
+      "owner": "linux/src/serverfs_mcp/linux_v0250_core_binding.py",
+      "path": "macos/src/serverfs_mcp/linux_v0250_core_binding.py",
+      "sha256": "23075693a464a1da4e4348d7328d6bc0c14b5ac7b9f42b3235e97d1f3e8b6c30"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_backend.py",
+      "path": "macos/src/serverfs_mcp/windows_backend.py",
+      "sha256": "ba07ddf99623b9f576584bafca60a6ac81ef57e1c55b3c5c2d08f0cbc6289032"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_bridge_control.py",
+      "path": "macos/src/serverfs_mcp/windows_bridge_control.py",
+      "sha256": "b05a8999d87401daf9858ca3064289db9764da9c15974b86cd378ae0e00d4fee"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_bridge_owner.py",
+      "path": "macos/src/serverfs_mcp/windows_bridge_owner.py",
+      "sha256": "de3474e25567d8bd5664a4cd365cc2c597db515f0cff2f78bdc248a25a29be07"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_bridge_service.py",
+      "path": "macos/src/serverfs_mcp/windows_bridge_service.py",
+      "sha256": "d2458583edf8e392590839a2242481f925e86e0e0ad57f9218f1c26bdc029886"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_bridge_task_spec.py",
+      "path": "macos/src/serverfs_mcp/windows_bridge_task_spec.py",
+      "sha256": "ffa6c937ac15155d866026aa2c20050fab4faeef4017d7d8713822db56bd40ce"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_cloudflare_connector.py",
+      "path": "macos/src/serverfs_mcp/windows_cloudflare_connector.py",
+      "sha256": "4c9850a6d0be3ab24b979fa90e4386de931e850e58de1d2a9f18276609ad0c3f"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_component_cli.py",
+      "path": "macos/src/serverfs_mcp/windows_component_cli.py",
+      "sha256": "7ff80ab27de90044835cf51a30727c6e1a943637a0b57b102635a05d16f4ce65"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_component_task.py",
+      "path": "macos/src/serverfs_mcp/windows_component_task.py",
+      "sha256": "4948f346f2ae869e50813efc53a12119d9a1ff8060a8235bb2a2dac81bb84af6"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_connector_control.py",
+      "path": "macos/src/serverfs_mcp/windows_connector_control.py",
+      "sha256": "28dbb0842f090757be523a1524e94a4224eafefb5db2cb2bb2d3af43a0e20cd1"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_connector_service.py",
+      "path": "macos/src/serverfs_mcp/windows_connector_service.py",
+      "sha256": "cd0aa8e3c93e3ccf3d6b168f2b4e10e666afb410a16df449f591b4393b05f523"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_connector_task_spec.py",
+      "path": "macos/src/serverfs_mcp/windows_connector_task_spec.py",
+      "sha256": "34cc11782faf316553536b01cbec2f956388e0cc9e9215ba9c675d1bfffca786"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_core_control.py",
+      "path": "macos/src/serverfs_mcp/windows_core_control.py",
+      "sha256": "ddc2b34a8d0163aa4e66f934ca48a7a3732647e8a2162c997f1fb0b9bbe2c5a0"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_core_listener.py",
+      "path": "macos/src/serverfs_mcp/windows_core_listener.py",
+      "sha256": "aef643a969803dbe7c0aabb31643980cf92d9c48723395d4bf293fd1941731cd"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_core_service.py",
+      "path": "macos/src/serverfs_mcp/windows_core_service.py",
+      "sha256": "dcf5bf16d336f1b07e6b4e4d42722c6d47b746b270d543244dc7b8b8ed7efcc9"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_core_task_spec.py",
+      "path": "macos/src/serverfs_mcp/windows_core_task_spec.py",
+      "sha256": "2b818ff48afc50e2560cdc30b5364fbaa2c5918fa17dc071584823dc33b6b27b"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_openai_connector.py",
+      "path": "macos/src/serverfs_mcp/windows_openai_connector.py",
+      "sha256": "3a4f72ac07686fca7eab1ef928afd94e0860741113ef40c7d6651736f485ce0b"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_private_artifacts.py",
+      "path": "macos/src/serverfs_mcp/windows_private_artifacts.py",
+      "sha256": "c6e07c0a2e5a3e9c0e4d7783914f88a682da419ec4a48f24284ac334a9958d01"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/__init__.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/__init__.py",
+      "sha256": "8c1187e8ed7f134aaccfc8801045543d7ad1a1050ecc0aa913a6880c31ac8e0e"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/bridge_peer_job.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/bridge_peer_job.py",
+      "sha256": "5c65050597e04b7d350d73a6fff9f104d6b21258a9833b8a2b4c4caa3d02897f"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/bridge_resources.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/bridge_resources.py",
+      "sha256": "984edb8631498bf7e7958283e3fc4685ad552c8ea7313dfedc0c0d7523740446"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/bridge_v2_owner.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/bridge_v2_owner.py",
+      "sha256": "bb1cbac58673ab395445e48d527fb0bb49dfe96c176da5e026915fc8c516618f"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/cli.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/cli.py",
+      "sha256": "613d1f28016013d12246c78d68b717395037bd8438cdacec7407bbc8df1dcb8a"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/core_bridge_binding.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/core_bridge_binding.py",
+      "sha256": "47c7c32187a299afb50d356d9ac1918c54a92ac4022f1cec8ca8838efdd6d374"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/isolation.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/isolation.py",
+      "sha256": "714b6807059a7ac714a7e4a4f4ae7faab855753753b92efd9299bf840fe3d630"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/legacy_bridge_ownership.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/legacy_bridge_ownership.py",
+      "sha256": "99f605790d347597bd8ba2aca3fbfd883874f1ae08db3a39ba6123a8f89c70e4"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/named_agent_proxy.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/named_agent_proxy.py",
+      "sha256": "460c2c1e4ddccce4e0a1300f0de0fe2b2a16d9b0eb14b9ccc38e5b70ac248508"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/readiness.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/readiness.py",
+      "sha256": "85789f85d19a7b702c281dc9da0199ff65c8d618eff9696f05dbe5314cf88167"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/runtime.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/runtime.py",
+      "sha256": "6ee2ab75d7cd68beea7b20e9aab5a8a74390c36caf5995c6de0d1f4d794c1568"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/shared_core_grants.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/shared_core_grants.py",
+      "sha256": "a2e2ee2c64cd48ee02b3e9fee389ade33b7c827e8da6b131c012168ec9e9e784"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/spec.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/spec.py",
+      "sha256": "4690897dd05618791dbbbdf1fd0a9054c0c6e02761d09a887dadf93debb8c51f"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/storage.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/storage.py",
+      "sha256": "1cedfa7a4e256ac13351cc27d7d87668ac3dbcb405c4af813529ac693f37cc59"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/tasks.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/tasks.py",
+      "sha256": "ed244d2fa6bf64ba3b40961ff79aae389a67e1da01c570d9e9ebed6f2d099671"
+    },
+    {
+      "owner": "windows/src/serverfs_mcp/windows_v25/workdir_ownership.py",
+      "path": "macos/src/serverfs_mcp/windows_v25/workdir_ownership.py",
+      "sha256": "36256ee51effebab4663dd1a0db09a503d86fd443d463769cf3b5ffd0f98666f"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_backend.py",
+      "path": "windows/src/serverfs_mcp/darwin_backend.py",
+      "sha256": "516bd6d83b2f54c8a38f10afb256cc8c9cc9556bd2aee5c0c4a2bf3942d673d8"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_cli.py",
+      "path": "windows/src/serverfs_mcp/darwin_instance_cli.py",
+      "sha256": "4c248aa7e24f87aabc154f71ec337946f72517fca6b9e022057e8b6b93bd7212"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_owned_lifecycle.py",
+      "path": "windows/src/serverfs_mcp/darwin_instance_owned_lifecycle.py",
+      "sha256": "47af32289306938ea2f4dc05c21a46e98fb1f7c159363dfc36bd345901ca9e6f"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_owned_runtime.py",
+      "path": "windows/src/serverfs_mcp/darwin_instance_owned_runtime.py",
+      "sha256": "4d57497fb13fecb9a4de7400be765a3935d95cc599bec5b455d006294e66706b"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_owned_unstage.py",
+      "path": "windows/src/serverfs_mcp/darwin_instance_owned_unstage.py",
+      "sha256": "77527f43b5e6ceae505d2e586f05be35556d8300f0f2d94a7029fe89aac0351c"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_shared_lifecycle.py",
+      "path": "windows/src/serverfs_mcp/darwin_instance_shared_lifecycle.py",
+      "sha256": "db9ec0f81888116cb449c64d1545f87a24ca7c8d6265df542f322b3d4679d869"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_shared_staging.py",
+      "path": "windows/src/serverfs_mcp/darwin_instance_shared_staging.py",
+      "sha256": "51a380c1410e0b33651dadc18c9536006258f5462b7446b1135334817c8b1c5c"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_instance_shared_unstage.py",
+      "path": "windows/src/serverfs_mcp/darwin_instance_shared_unstage.py",
+      "sha256": "9c07fcc22031660c3ea0d04050b1d07bcfbe1108605551855ce4ce65e6bdb166"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_shared_release_source.py",
+      "path": "windows/src/serverfs_mcp/darwin_shared_release_source.py",
+      "sha256": "4902732b8824015e0bb6593cdb37d6690d4989e4ff51e8f61ac7b0ba10eb5d7b"
+    },
+    {
+      "owner": "macos/src/serverfs_mcp/darwin_shared_runtime.py",
+      "path": "windows/src/serverfs_mcp/darwin_shared_runtime.py",
+      "sha256": "c1ff6ca60adfb8e819fbea892b0b7bf54734efa521332ef23dba923877327796"
+    },
+    {
+      "owner": "linux/src/serverfs_mcp/linux_v0250_bridge_adapter.py",
+      "path": "windows/src/serverfs_mcp/linux_v0250_bridge_adapter.py",
+      "sha256": "66b139e1acb3c2a3c16fcb04a9fcef28092a8115185431c0cc767a7919916030"
+    },
+    {
+      "owner": "linux/src/serverfs_mcp/linux_v0250_core_binding.py",
+      "path": "windows/src/serverfs_mcp/linux_v0250_core_binding.py",
+      "sha256": "23075693a464a1da4e4348d7328d6bc0c14b5ac7b9f42b3235e97d1f3e8b6c30"
+    }
+  ],
+  "scope": "Exact foreign Core source copies only; conservative reference scan"
+}

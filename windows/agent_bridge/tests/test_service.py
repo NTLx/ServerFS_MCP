@@ -1,0 +1,2030 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+import serverfs_agent_bridge.service as service_module
+from platform_contract import WINDOWS
+from serverfs_agent_bridge.adapters import FakeAdapter
+from serverfs_agent_bridge.adapters.acp import AcpAdapter
+from serverfs_agent_bridge.adapters.base import AdapterResult, ReconcileResult
+from serverfs_agent_bridge.errors import BridgeError
+from serverfs_agent_bridge.lease_identity import alias_lease_id, slot_lease_id
+from serverfs_agent_bridge.leases import LeaseManager
+from serverfs_agent_bridge.models import AcpProfile, AgentMode, ReconciliationStatus
+from serverfs_agent_bridge.policy import PolicyRegistry, WorkdirAgentPolicy
+from serverfs_agent_bridge.service import (
+    BridgeLimits,
+    BridgeService,
+    _redact_embedded_workdir,
+)
+from serverfs_agent_bridge.store import TaskStore
+
+# The service contract is portable since Phase C: the lease has a Windows backend and private state
+# has a Windows descriptor, so the same lifecycle assertions run on both. The lease key follows the
+# platform's own deployment shape (§5.3), which is what the artifacts are pre-created for.
+REPO_LEASE_ID = alias_lease_id("repo") if WINDOWS else slot_lease_id(1)
+
+
+def make_service(tmp_path: Path) -> BridgeService:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    policy = WorkdirAgentPolicy(
+        slot=None if WINDOWS else 1,
+        alias="repo",
+        host_path=repo,
+        mode=AgentMode.WORKSPACE_WRITE,
+        runtimes=frozenset({"fake"}),
+        read_only=False,
+    )
+    fake = FakeAdapter()
+    return BridgeService(
+        store=TaskStore(tmp_path / "state"),
+        policies=PolicyRegistry([policy]),
+        adapters={"fake": fake},
+        lease_manager=LeaseManager(tmp_path / "locks", lease_ids=[policy.lease_id]),
+    )
+
+
+def make_service_with_limits(tmp_path: Path, limits: BridgeLimits) -> BridgeService:
+    service = make_service(tmp_path)
+    service.limits = limits
+    return service
+
+
+class FakePreflight:
+    def __init__(self, *, fail: bool = False, fail_approval: bool = False) -> None:
+        self.fail = fail
+        self.fail_approval = fail_approval
+        self.calls: list[dict] = []
+        self.approval_calls: list[dict] = []
+        self.model_calls: list[dict] = []
+        self.closed = False
+
+    async def evaluate(self, **kwargs) -> dict:
+        self.calls.append(kwargs)
+        if self.fail:
+            raise RuntimeError("preflight unavailable")
+        return {
+            "status": "completed",
+            "model": "jev-1.13.0",
+            "answers": {
+                "single_objective": 0.9,
+                "route_recommendation": {
+                    "choice": "codex",
+                    "confidence": 0.8,
+                    "probabilities": {
+                        "direct_serverfs_tool": 0.05,
+                        "codex": 0.8,
+                        "claude": 0.1,
+                        "human_review": 0.05,
+                    },
+                },
+            },
+        }
+
+    async def advise_model(self, **kwargs) -> dict:
+        self.model_calls.append(kwargs)
+        return {
+            "status": "completed",
+            "advisor_model": "jev-1.13.0",
+            "recommended_model": "fast-model",
+            "confidence": 0.8,
+            "probabilities": {"fast-model": 0.8, "deep-model": 0.2},
+            "automatic": False,
+        }
+
+    async def advise_approval(self, **kwargs) -> dict:
+        self.approval_calls.append(kwargs)
+        if self.fail_approval:
+            raise RuntimeError("approval advisor unavailable")
+        return {
+            "status": "completed",
+            "model": "jev-1.13.0",
+            "answers": {
+                "necessary_for_objective": 0.9,
+                "scope_bounded": 0.85,
+                "destructive_or_irreversible": 0.1,
+                "sensitive_access": 0.05,
+                "external_side_effect": 0.05,
+                "recommendation": {
+                    "choice": "approve_once",
+                    "confidence": 0.9,
+                    "probabilities": {
+                        "approve_once": 0.9,
+                        "approve_session": 0.03,
+                        "deny": 0.02,
+                        "cancel_task": 0.01,
+                        "review_carefully": 0.04,
+                    },
+                },
+            },
+            "recommended_decision_available": True,
+            "automatic": False,
+        }
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class CatalogFakeAdapter(FakeAdapter):
+    async def list_models(self) -> dict:
+        return {
+            "runtime": "fake",
+            "status": "ok",
+            "scope": "runtime_catalog",
+            "source": "fake",
+            "models": [
+                {"id": "fast-model", "enabled": True},
+                {"id": "deep-model", "enabled": True},
+            ],
+        }
+
+
+class ModelOverrideFakeAdapter(FakeAdapter):
+    async def probe(self):
+        from dataclasses import replace
+
+        return replace(await super().probe(), model_override=True)
+
+
+async def wait_for_status(service: BridgeService, task_id: str, *statuses: str) -> dict:
+    for _ in range(500):
+        task = service.get_task(task_id)
+        if task["status"] in statuses:
+            return task
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"task did not reach {statuses}: {service.get_task(task_id)}")
+
+
+@pytest.mark.asyncio
+async def test_acp_stop_unknown_releases_writer_lease_but_keeps_recovery_guard(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from serverfs_agent_bridge.adapters import acp as acp_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    policy = WorkdirAgentPolicy(
+        slot=None if WINDOWS else 1,
+        alias="repo",
+        host_path=repo,
+        mode=AgentMode.WORKSPACE_WRITE,
+        runtimes=frozenset({"acp-fixture"}),
+        read_only=False,
+    )
+    fixture = Path(__file__).parent / "fixtures" / "acp_stdio_agent.py"
+    adapter = AcpAdapter(
+        AcpProfile(
+            "fixture",
+            sys.executable,
+            (str(fixture), "normal"),
+            probe_timeout_seconds=0.5,
+            shutdown_timeout_seconds=0.5,
+        )
+    )
+    service = BridgeService(
+        store=TaskStore(tmp_path / "state"),
+        policies=PolicyRegistry([policy]),
+        adapters={"acp-fixture": adapter},
+        lease_manager=LeaseManager(tmp_path / "locks", lease_ids=[policy.lease_id]),
+        limits=BridgeLimits(task_timeout_seconds=3),
+    )
+
+    real_stop = acp_module.stop_acp_child
+
+    async def stop_unproven(child, timeout: float) -> bool:
+        # Let the fixture process exit cleanly, then simulate the seam withholding proof.
+        await real_stop(child, timeout)
+        return False
+
+    monkeypatch.setattr(acp_module, "stop_acp_child", stop_unproven)
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="acp-fixture",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="complete deterministically",
+        )
+        task = await asyncio.wait_for(
+            wait_for_status(service, submitted["task_id"], "failed", "interrupted"),
+            timeout=2.0,
+        )
+        assert task["error_code"] == "AGENT_PROVIDER_STOP_UNKNOWN"
+        assert service.guard_manager.read(policy.lease_id) is not None
+
+        async def wait_for_released_lease() -> None:
+            deadline = asyncio.get_running_loop().time() + 1.0
+            while True:
+                try:
+                    lease = service.lease_manager.acquire_exclusive(policy.lease_id)
+                except BridgeError:
+                    if asyncio.get_running_loop().time() >= deadline:
+                        raise AssertionError("writer lease was not released") from None
+                    await asyncio.sleep(0.01)
+                else:
+                    lease.release()
+                    return
+
+        await asyncio.wait_for(wait_for_released_lease(), timeout=1.1)
+        with pytest.raises(BridgeError) as blocked:
+            await asyncio.wait_for(
+                service.submit_task(
+                    runtime="acp-fixture",
+                    workdir="repo",
+                    path="",
+                    profile="workspace-write",
+                    prompt="must remain blocked",
+                ),
+                timeout=1.0,
+            )
+        assert blocked.value.code == "WORKDIR_RECOVERY_REQUIRED"
+        assert service.guard_manager.read(policy.lease_id) is not None
+    finally:
+        await asyncio.wait_for(service.close(), timeout=2.0)
+
+
+@pytest.mark.asyncio
+async def test_submit_returns_before_completion_and_finishes(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:hello",
+    )
+    assert submitted["status"] == "queued"
+
+    task = await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert task["final_response"] == "hello"
+    assert service.store.get_task(submitted["task_id"]).native_session_id
+    assert "native_session_id" not in task
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_diagnostics_terminal_matches_metric_and_idempotent_retry(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    boundaries: list[tuple[str, float, float]] = []
+    seal_boundaries: list[float] = []
+    original_record = service._diagnostic_record
+    original_diagnostic_call = service._diagnostic_call
+
+    def capture_record(task_id, kind, started, ended, **fields):
+        boundaries.append((kind, started, ended))
+        original_record(task_id, kind, started, ended, **fields)
+
+    def capture_diagnostic_call(method, *args, **kwargs):
+        if method == "seal_task":
+            seal_boundaries.append(kwargs["completed_at"])
+        return original_diagnostic_call(method, *args, **kwargs)
+
+    service._diagnostic_record = capture_record
+    service._diagnostic_call = capture_diagnostic_call
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:diagnostic",
+        idempotency_key="diagnostic-idempotency",
+    )
+    task_id = submitted["task_id"]
+    await wait_for_status(service, task_id, "succeeded")
+    initial = service.diagnostic_recorder.task_projection(task_id)
+    operations = len(initial["operations"])
+    repeated = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:diagnostic",
+        idempotency_key="diagnostic-idempotency",
+    )
+    assert repeated["task_id"] == task_id
+    assert len(service.diagnostic_recorder.task_projection(task_id)["operations"]) == operations
+    assert initial["terminal_seal"]["outcome"] == "succeeded"
+    kinds = [operation["kind"] for operation in initial["operations"]]
+    runtime_index = kinds.index("agent.runtime_start")
+    execution_index = kinds.index("agent.execution")
+    finalization_index = kinds.index("agent.finalization")
+    assert runtime_index < execution_index < finalization_index
+    assert initial["operations"][finalization_index]["duration_seconds"] >= 0
+    captured = {kind: (started, ended) for kind, started, ended in boundaries}
+    assert captured["agent.runtime_start"][1] == captured["agent.execution"][0]
+    assert captured["agent.execution"][1] == captured["agent.finalization"][0]
+    assert initial["terminal_seal"]["terminal_completed_at"] == seal_boundaries[0]
+    counters = service.observation_metrics.counters
+    assert any(
+        labels[0] == ("outcome", "succeeded")
+        for (name, labels) in counters
+        if name == "serverfs_agent_tasks_total"
+    )
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_bookkeeping_is_cleared_for_many_terminal_tasks(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    for index in range(30):
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt=f"complete:{index}",
+        )
+        await wait_for_status(service, submitted["task_id"], "succeeded")
+        assert not service._diagnostic_sequences
+        assert not service._diagnostic_queued_at
+        assert not service._diagnostic_execution_started
+        assert not service._diagnostic_wait_started
+    assert service.diagnostic_recorder.snapshot()["terminal_task_count"] == 30
+    await service.close()
+
+
+def test_rejected_diagnostic_record_does_not_advance_service_sequence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = make_service(tmp_path)
+    monkeypatch.setattr(service.diagnostic_recorder, "record", lambda *_args: False)
+    for _index in range(1000):
+        service._diagnostic_record("active-task", "agent.execution", 0.0, 0.1)
+        assert service._diagnostic_sequences.get("active-task", 0) == 0
+    assert len(service._diagnostic_sequences) == 0
+
+
+@pytest.mark.asyncio
+async def test_startup_reconciliation_records_restarted_diagnostic_activity(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path)
+    task_id = "preexisting-task"
+    service.store.create_task(
+        task_id=task_id,
+        runtime="fake",
+        workdir_alias="repo",
+        workdir_slot=1,
+        relative_cwd="",
+        profile="review",
+        continue_from_task_id=None,
+    )
+    await service.start()
+    projection = service.diagnostic_recorder.task_projection(task_id)
+    assert projection["completeness"] == "restarted"
+    assert projection["terminal_seal"]["outcome"] == "interrupted"
+    assert [op["kind"] for op in projection["operations"]] == ["agent.recovery"]
+    assert projection["operations"][0]["outcome"] == "success"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_observability_projection_exceptions_do_not_change_task_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = make_service(tmp_path)
+
+    def fail_projection(*args, **kwargs):
+        raise RuntimeError("injected projection failure")
+
+    monkeypatch.setattr(service.observation_metrics, "observe_terminal", fail_projection)
+    monkeypatch.setattr(service.diagnostic_recorder, "record", fail_projection)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake", workdir="repo", path="", profile="review", prompt="complete:still-ok"
+    )
+    task = await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert task["status"] == "succeeded"
+    assert service.store.get_task(submitted["task_id"]).status == "succeeded"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_identity_stays_bridge_local(tmp_path: Path) -> None:
+    class ContextCaptureAdapter(FakeAdapter):
+        context_repr = ""
+
+        async def run_task(self, context):
+            self.context_repr = repr(context.__dict__)
+            return await super().run_task(context)
+
+    service = make_service(tmp_path)
+    adapter = ContextCaptureAdapter()
+    service.adapters = {"fake": adapter}
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake", workdir="repo", path="", profile="review", prompt="complete:private"
+    )
+    task = await wait_for_status(service, submitted["task_id"], "succeeded")
+    context = service.diagnostic_recorder._slots[submitted["task_id"]].context
+    visible = repr(task) + repr(service.store.list_events(submitted["task_id"], limit=100))
+    with service.store._connect() as connection:
+        manifest = connection.execute(
+            "SELECT manifest_json FROM tasks WHERE task_id = ?", (submitted["task_id"],)
+        ).fetchone()["manifest_json"]
+    visible += repr(manifest)
+    visible += adapter.context_repr
+    visible += repr(service.get_task(submitted["task_id"]))
+    durable_bytes = b"".join(
+        path.read_bytes() for path in service.store.state_dir.iterdir() if path.is_file()
+    )
+    for diagnostic_id in (context.trace_id, context.root_span_id):
+        assert diagnostic_id not in visible
+        assert diagnostic_id.encode() not in durable_bytes
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_identity_is_absent_from_durable_pending_interaction(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake", workdir="repo", path="", profile="review", prompt="question:private"
+    )
+    task = await wait_for_status(service, submitted["task_id"], "waiting_for_question")
+    context = service.diagnostic_recorder._slots[submitted["task_id"]].context
+    pending = task["pending_request"]
+    state_bytes = b"".join(
+        path.read_bytes() for path in service.store.state_dir.iterdir() if path.is_file()
+    )
+    assert pending["kind"] == "question"
+    for diagnostic_id in (context.trace_id, context.root_span_id):
+        assert diagnostic_id not in repr(pending)
+        assert diagnostic_id.encode() not in state_bytes
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_list_models_with_optional_jev_advice_is_pre_submit_only(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.adapters["fake"] = CatalogFakeAdapter()
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+    try:
+        discovery = await service.list_models(runtime="fake")
+        assert [item["id"] for item in discovery["models"]] == ["fast-model", "deep-model"]
+        assert "model_advice" not in discovery
+        assert preflight.model_calls == []
+
+        advised = await service.list_models(
+            runtime="fake",
+            workdir="repo",
+            task_prompt="complete:hello",
+            path="",
+            profile="review",
+        )
+        assert advised["model_advice"]["recommended_model"] == "fast-model"
+        assert advised["model_advice"]["automatic"] is False
+        assert len(preflight.model_calls) == 1
+        assert service.store.list_nonterminal_tasks() == []
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_requested_model_is_persisted_and_part_of_idempotency(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.adapters["fake"] = ModelOverrideFakeAdapter()
+    await service.start()
+    try:
+        first = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:model",
+            model="model-a",
+            idempotency_key="model-key",
+        )
+        repeated = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:model",
+            model="model-a",
+            idempotency_key="model-key",
+        )
+        assert repeated["task_id"] == first["task_id"]
+        task = service.get_task(first["task_id"])
+        assert task["requested_model"] == "model-a"
+        assert task["manifest"]["model"] == {"requested": "model-a"}
+        with pytest.raises(BridgeError) as exc:
+            await service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="review",
+                prompt="complete:model",
+                model="model-b",
+                idempotency_key="model-key",
+            )
+        assert exc.value.code == "AGENT_IDEMPOTENCY_CONFLICT"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_submit_rejects_model_when_runtime_does_not_support_override(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        with pytest.raises(BridgeError) as exc:
+            await service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="workspace-write",
+                prompt="complete:model",
+                model="model-a",
+            )
+        assert exc.value.to_dict() == {
+            "code": "AGENT_MODEL_OVERRIDE_UNSUPPORTED",
+            "message": "runtime does not support model override",
+        }
+        assert service.store.list_nonterminal_tasks() == []
+
+        accepted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:no-override",
+            model=None,
+        )
+        assert accepted["status"] == "queued"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_submit_rejects_invalid_model_identifiers(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        for model in ("", " model", "model ", "bad\nmodel", "x" * 513):
+            with pytest.raises(BridgeError) as exc:
+                await service.submit_task(
+                    runtime="fake",
+                    workdir="repo",
+                    path="",
+                    profile="review",
+                    prompt="complete:hello",
+                    model=model,
+                )
+            assert exc.value.code == "INVALID_REQUEST"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_idempotent_submit_recovers_original_task_without_repeating_preflight(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path)
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+    try:
+        first = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:hello",
+            correlation_id="trace-1",
+            idempotency_key="submit-1",
+        )
+        second = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:hello",
+            correlation_id="trace-1",
+            idempotency_key="submit-1",
+        )
+
+        assert second["task_id"] == first["task_id"]
+        assert second["idempotency_key"] == "submit-1"
+        assert len(preflight.calls) == 1
+        done = await wait_for_status(service, first["task_id"], "succeeded")
+        assert done["idempotency_key"] == "submit-1"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_idempotent_submit_rejects_conflicting_reuse(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:first",
+            idempotency_key="submit-1",
+        )
+        with pytest.raises(BridgeError) as exc:
+            await service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="review",
+                prompt="complete:different",
+                idempotency_key="submit-1",
+            )
+        assert exc.value.code == "AGENT_IDEMPOTENCY_CONFLICT"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_idempotent_retry_normalizes_equivalent_relative_paths(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        first = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:path-normalized",
+            idempotency_key="path-normalized-1",
+        )
+        second = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path=".",
+            profile="review",
+            prompt="complete:path-normalized",
+            idempotency_key="path-normalized-1",
+        )
+        assert second["task_id"] == first["task_id"]
+        assert service.store.get_task(first["task_id"]).relative_cwd == ""
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_idempotent_retry_recovers_after_continuation_source_is_gone(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        base = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="review",
+            prompt="complete:base",
+        )
+        await wait_for_status(service, base["task_id"], "succeeded")
+        child_args = {
+            "runtime": "fake",
+            "workdir": "repo",
+            "path": "",
+            "profile": "review",
+            "prompt": "complete:child",
+            "continue_from_task_id": base["task_id"],
+            "idempotency_key": "continuation-retry-1",
+        }
+        child = await service.submit_task(**child_args)
+        await wait_for_status(service, child["task_id"], "succeeded")
+        assert service.store.delete_tasks([base["task_id"]]) == 1
+
+        recovered = await service.submit_task(**child_args)
+        assert recovered["task_id"] == child["task_id"]
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_idempotent_submissions_start_one_provider_turn(tmp_path: Path) -> None:
+    class CountingSlowProbeAdapter(FakeAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.runs = 0
+
+        async def probe(self):
+            await asyncio.sleep(0.01)
+            return await super().probe()
+
+        async def run_task(self, context):
+            self.runs += 1
+            return await super().run_task(context)
+
+    service = make_service(tmp_path)
+    adapter = CountingSlowProbeAdapter()
+    service.adapters = {"fake": adapter}
+    await service.start()
+    try:
+        first, second = await asyncio.gather(
+            service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="review",
+                prompt="complete:one",
+                idempotency_key="concurrent-1",
+            ),
+            service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="review",
+                prompt="complete:one",
+                idempotency_key="concurrent-1",
+            ),
+        )
+        assert first["task_id"] == second["task_id"]
+        await wait_for_status(service, first["task_id"], "succeeded")
+        assert adapter.runs == 1
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_expired_response_terminalizes_interaction_before_watchdog_fires(
+    tmp_path: Path,
+) -> None:
+    service = make_service_with_limits(
+        tmp_path,
+        BridgeLimits(task_timeout_seconds=60, interaction_timeout_seconds=30),
+    )
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="approval:danger",
+        )
+        waiting = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request_id = waiting["pending_request"]["request_id"]
+        with service.store._connect() as con:
+            con.execute(
+                "UPDATE pending_requests SET expires_at = ? WHERE request_id = ?",
+                ("2000-01-01T00:00:00Z", request_id),
+            )
+
+        with pytest.raises(BridgeError) as late:
+            await service.respond_approval(
+                task_id=submitted["task_id"],
+                request_id=request_id,
+                decision="approve_once",
+            )
+        assert late.value.code == "REQUEST_STALE"
+        interrupted = await wait_for_status(service, submitted["task_id"], "interrupted")
+        assert interrupted["error_code"] == "AGENT_INTERACTION_TIMED_OUT"
+        assert service.store.get_request(request_id).status == "stale"
+        timeout_trace = service.diagnostic_recorder.task_projection(submitted["task_id"])
+        assert timeout_trace["terminal_seal"]["outcome"] == "interrupted"
+        assert timeout_trace["operations"][-1]["kind"] == "agent.waiting_external"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_interaction_timeout_interrupts_task_and_releases_writer_lease(
+    tmp_path: Path,
+) -> None:
+    service = make_service_with_limits(
+        tmp_path,
+        BridgeLimits(task_timeout_seconds=30, interaction_timeout_seconds=1),
+    )
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="approval:danger",
+        )
+        waiting = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request_id = waiting["pending_request"]["request_id"]
+
+        interrupted = await wait_for_status(service, submitted["task_id"], "interrupted")
+        assert interrupted["error_code"] == "AGENT_INTERACTION_TIMED_OUT"
+        assert service.store.get_request(request_id).status == "stale"
+
+        adapter = service.adapters["fake"]
+        for _ in range(200):
+            if submitted["task_id"] in adapter._cancelled:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("provider cancel was not attempted after interaction timeout")
+
+        for _ in range(200):
+            try:
+                lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
+            except BridgeError as exc:
+                assert exc.code == "WORKDIR_BUSY"
+                await asyncio.sleep(0.01)
+                continue
+            lease.release()
+            break
+        else:
+            raise AssertionError("writer lease was not released after interaction timeout")
+        assert service.guard_manager.read(REPO_LEASE_ID) is None
+
+        with pytest.raises(BridgeError) as late:
+            await service.respond_approval(
+                task_id=submitted["task_id"],
+                request_id=request_id,
+                decision="approve_once",
+            )
+        assert late.value.code in {"REQUEST_STALE", "REQUEST_ALREADY_RESOLVED"}
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_optional_preflight_is_advisory_and_recorded(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:hello",
+    )
+
+    assert submitted["preflight"]["status"] == "completed"
+    assert submitted["routing_advice"] == {
+        "status": "completed",
+        "model": "jev-1.13.0",
+        "requested_runtime": "fake",
+        "recommendation": {
+            "choice": "codex",
+            "confidence": 0.8,
+            "probabilities": {
+                "direct_serverfs_tool": 0.05,
+                "codex": 0.8,
+                "claude": 0.1,
+                "human_review": 0.05,
+            },
+        },
+        "matches_requested_runtime": False,
+        "automatic": False,
+    }
+    assert preflight.calls == [
+        {
+            "runtime": "fake",
+            "workdir": "repo",
+            "path": "",
+            "profile": "review",
+            "prompt": "complete:hello",
+            "is_continuation": False,
+        }
+    ]
+    events = service.read_events(submitted["task_id"], limit=20)["events"]
+    assert any(event["event_type"] == "task.preflight" for event in events)
+    assert any(event["event_type"] == "task.routing_advice" for event in events)
+    assert preflight.approval_calls == []
+    task = await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert task["final_response"] == "hello"
+
+    await service.close()
+    assert preflight.closed is True
+
+
+@pytest.mark.asyncio
+async def test_preflight_failure_fails_open(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.preflight = FakePreflight(fail=True)
+    await service.start()
+
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:still-runs",
+    )
+
+    assert submitted["preflight"] == {"status": "unavailable"}
+    assert submitted["routing_advice"] == {"status": "unavailable"}
+    task = await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert task["final_response"] == "still-runs"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_approval_round_trip(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="approval:pytest",
+    )
+    task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+    request = task["pending_request"]
+    assert request["kind"] == "approval"
+    advice = request["payload"]["approval_advice"]
+    assert advice["status"] == "completed"
+    assert advice["automatic"] is False
+    assert advice["cached"] is False
+    assert advice["answers"]["recommendation"]["choice"] == "approve_once"
+    assert preflight.approval_calls == [
+        {
+            "runtime": "fake",
+            "workdir": "repo",
+            "path": "",
+            "profile": "workspace-write",
+            "prompt": "approval:pytest",
+            "approval": {
+                "category": "command",
+                "title": "Fake command approval",
+                "command_display": "pytest",
+                "available_decisions": [
+                    "approve_once",
+                    "approve_session",
+                    "deny",
+                    "cancel_task",
+                ],
+            },
+        }
+    ]
+    events = service.read_events(submitted["task_id"], limit=30)["events"]
+    assert any(event["event_type"] == "approval.advice" for event in events)
+
+    await service.respond_approval(
+        task_id=task["task_id"],
+        request_id=request["request_id"],
+        decision="approve_once",
+    )
+    finished = await wait_for_status(service, task["task_id"], "succeeded")
+    assert finished["final_response"] == "approval=approve_once"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_v026_acp_opaque_options_remain_human_decided(tmp_path: Path) -> None:
+    class OpaqueOptionAdapter(FakeAdapter):
+        async def run_task(self, context):
+            choice = await context.request_approval(
+                {
+                    "category": "provider_permission",
+                    "title": "ACP permission choice",
+                    "response_options": [
+                        {"option_id": "allow-once", "label": "Allow once", "kind": "allow_once"},
+                        {"option_id": "reject", "label": "Reject", "kind": "reject_once"},
+                    ],
+                }
+            )
+            return AdapterResult(final_response=choice["option_id"])
+
+    service = make_service(tmp_path)
+    service.adapters["fake"] = OpaqueOptionAdapter()
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="complete:acp-options",
+        )
+        task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request = task["pending_request"]
+        assert "scope_status" not in request["payload"]
+        await service.respond_approval(
+            task_id=submitted["task_id"],
+            request_id=request["request_id"],
+            option_id="allow-once",
+        )
+        done = await wait_for_status(service, submitted["task_id"], "succeeded")
+        assert done["final_response"] == "allow-once"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_acp_option_selection_requires_exact_single_offered_option(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="approval:permission",
+        )
+        task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request = task["pending_request"]
+        payload = dict(request["payload"])
+        payload.pop("available_decisions", None)
+        payload["response_options"] = [
+            {"option_id": "opaque-allow", "label": "Allow", "kind": "allow_once"},
+            {"option_id": "opaque-reject", "label": "Reject", "kind": "reject_always"},
+        ]
+        with service.store._connect() as con:
+            con.execute(
+                "UPDATE pending_requests SET payload_json = ? WHERE request_id = ?",
+                (json.dumps(payload), request["request_id"]),
+            )
+        base = {"task_id": submitted["task_id"], "request_id": request["request_id"]}
+        for args, expected in [
+            ({}, "INVALID_APPROVAL_DECISION"),
+            ({"option_id": "forged"}, "PERMISSION_OUTSIDE_POLICY"),
+            ({"option_id": "opaque-allow", "decision": "deny"}, "INVALID_APPROVAL_DECISION"),
+        ]:
+            with pytest.raises(BridgeError) as error:
+                await service.respond_approval(**base, **args)
+            assert error.value.code == expected
+        await service.respond_approval(**base, option_id="opaque-reject")
+        assert service.store.get_request(request["request_id"]).resolution == {
+            "option_id": "opaque-reject"
+        }
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_acp_cancel_task_cancels_pending_interaction(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    try:
+        submitted = await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="approval:permission",
+        )
+        task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+        request = task["pending_request"]
+        payload = dict(request["payload"])
+        payload["response_options"] = [
+            {"option_id": "opaque", "label": "Allow", "kind": "allow_once"}
+        ]
+        with service.store._connect() as con:
+            con.execute(
+                "UPDATE pending_requests SET payload_json = ? WHERE request_id = ?",
+                (json.dumps(payload), request["request_id"]),
+            )
+        await service.respond_approval(
+            task_id=submitted["task_id"],
+            request_id=request["request_id"],
+            decision="cancel_task",
+        )
+        assert service.get_task(submitted["task_id"])["status"] == "cancelled"
+        assert service.store.get_request(request["request_id"]).resolution == {
+            "decision": "cancel_task"
+        }
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_cancel_task_approval_uses_terminal_cancel_semantics(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="approval:pytest",
+    )
+    waiting = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+    request = waiting["pending_request"]
+
+    resolved = await service.respond_approval(
+        task_id=submitted["task_id"],
+        request_id=request["request_id"],
+        decision="cancel_task",
+    )
+    assert resolved["resolved"] is True
+    assert service.get_task(submitted["task_id"])["status"] == "cancelled"
+
+    for _ in range(200):
+        if submitted["task_id"] not in service._background:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("approval-driven cancellation did not finish background cleanup")
+
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
+    lease.release()
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_identical_approval_advice_is_cached_per_task(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="approval-twice:pytest",
+    )
+    first = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+    first_request = first["pending_request"]
+    assert first_request["payload"]["approval_advice"]["cached"] is False
+
+    await service.respond_approval(
+        task_id=submitted["task_id"],
+        request_id=first_request["request_id"],
+        decision="approve_once",
+    )
+
+    second = None
+    for _ in range(500):
+        current = service.get_task(submitted["task_id"])
+        pending = current.get("pending_request")
+        if (
+            current["status"] == "waiting_for_approval"
+            and isinstance(pending, dict)
+            and pending["request_id"] != first_request["request_id"]
+        ):
+            second = current
+            break
+        await asyncio.sleep(0.01)
+    assert second is not None
+    second_request = second["pending_request"]
+    assert second_request["payload"]["approval_advice"]["cached"] is True
+    assert len(preflight.approval_calls) == 1
+
+    await service.respond_approval(
+        task_id=submitted["task_id"],
+        request_id=second_request["request_id"],
+        decision="approve_once",
+    )
+    finished = await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert finished["final_response"] == "approvals=approve_once,approve_once"
+    projection = service.diagnostic_recorder.task_projection(submitted["task_id"])
+    assert sum(op["kind"] == "agent.waiting_external" for op in projection["operations"]) == 2
+    assert sum(op["kind"] == "agent.execution" for op in projection["operations"]) == 3
+    assert submitted["task_id"] not in service._approval_advice_cache
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_distinct_outside_targets_do_not_share_approval_advice(tmp_path: Path) -> None:
+    class TwoTargetAdapter(FakeAdapter):
+        async def run_task(self, context):
+            for name in ("outside-a", "outside-b"):
+                await context.request_approval(
+                    {
+                        "category": "file_changes",
+                        "title": "Review write target",
+                        "tool_input": {"path": str(tmp_path / name)},
+                        "available_decisions": ["approve_once", "deny", "cancel_task"],
+                    }
+                )
+            return AdapterResult(final_response="two targets")
+
+    service = make_service(tmp_path)
+    service.adapters["fake"] = TwoTargetAdapter()
+    preflight = FakePreflight()
+    service.preflight = preflight
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="complete:two-targets",
+    )
+    task_id = submitted["task_id"]
+    first = await wait_for_status(service, task_id, "waiting_for_approval")
+    first_request = first["pending_request"]
+    assert first_request["payload"]["tool_input"]["path"] == "<outside-workdir>"
+    assert first_request["payload"]["approval_advice"]["cached"] is False
+    assert first_request["payload"]["scope_status"] == "outside_workdir_write_blocked"
+    with pytest.raises(BridgeError, match="outside-workdir write"):
+        await service.respond_approval(
+            task_id=task_id,
+            request_id=first_request["request_id"],
+            decision="approve_once",
+        )
+    await service.respond_approval(
+        task_id=task_id,
+        request_id=first_request["request_id"],
+        decision="deny",
+    )
+    second = None
+    for _ in range(500):
+        current = service.get_task(task_id)
+        pending = current.get("pending_request")
+        if (
+            current["status"] == "waiting_for_approval"
+            and isinstance(pending, dict)
+            and pending["request_id"] != first_request["request_id"]
+        ):
+            second = pending
+            break
+        await asyncio.sleep(0.01)
+    assert second is not None
+    assert second["payload"]["tool_input"]["path"] == "<outside-workdir>"
+    assert second["payload"]["approval_advice"]["cached"] is False
+    assert len(preflight.approval_calls) == 2
+
+    with service.store._connect() as con:
+        audit = con.execute(
+            "SELECT fingerprint, action_kind, outcome FROM approval_audit WHERE task_id = ?",
+            (task_id,),
+        ).fetchall()
+    assert len(audit) == 2
+    assert len({row["fingerprint"] for row in audit}) == 2
+    assert {row["action_kind"] for row in audit} == {"file_changes"}
+    assert {row["outcome"] for row in audit} == {"deny", None}
+    assert str(tmp_path) not in str(tuple(tuple(row) for row in audit))
+    assert "private" not in second["payload"]
+    original = {
+        "category": "file_changes",
+        "title": "Review write target",
+        "tool_input": {"path": str(tmp_path / "outside-a")},
+        "available_decisions": ["approve_once", "deny", "cancel_task"],
+    }
+    assert service.store.private_approval_fingerprint(task_id, original) == (
+        TaskStore(service.store.state_dir).private_approval_fingerprint(task_id, original)
+    )
+
+    await service.respond_approval(
+        task_id=task_id,
+        request_id=second["request_id"],
+        decision="deny",
+    )
+    await wait_for_status(service, task_id, "succeeded")
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_approval_advisor_failure_fails_open(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.preflight = FakePreflight(fail_approval=True)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="approval:pytest",
+    )
+
+    task = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+    advice = task["pending_request"]["payload"]["approval_advice"]
+    assert advice == {
+        "status": "unavailable",
+        "automatic": False,
+        "cached": False,
+    }
+
+    await service.respond_approval(
+        task_id=task["task_id"],
+        request_id=task["pending_request"]["request_id"],
+        decision="deny",
+    )
+    finished = await wait_for_status(service, task["task_id"], "succeeded")
+    assert finished["final_response"] == "approval=deny"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_question_round_trip(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="question:Which?",
+    )
+    task = await wait_for_status(service, submitted["task_id"], "waiting_for_question")
+    request = task["pending_request"]
+
+    await service.answer_question(
+        task_id=task["task_id"],
+        request_id=request["request_id"],
+        answers=[
+            {
+                "question_id": "q1",
+                "selected_option_ids": ["b"],
+            }
+        ],
+    )
+    finished = await wait_for_status(service, task["task_id"], "succeeded")
+    assert '"b"' in finished["final_response"]
+    projection = service.diagnostic_recorder.task_projection(task["task_id"])
+    waiting = [op for op in projection["operations"] if op["kind"] == "agent.waiting_external"]
+    assert len(waiting) == 1
+    assert waiting[0]["interaction_class"] == "question"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_workspace_write_busy_is_rejected_at_submit(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    first = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="wait:",
+    )
+    await wait_for_status(service, first["task_id"], "running")
+
+    with pytest.raises(BridgeError) as exc:
+        await service.submit_task(
+            runtime="fake",
+            workdir="repo",
+            path="",
+            profile="workspace-write",
+            prompt="complete:second",
+        )
+    assert exc.value.code == "WORKDIR_BUSY"
+    assert len(service.diagnostic_recorder._slots) == 1
+    assert (
+        sum(
+            value
+            for (name, labels), value in service.observation_metrics.counters.items()
+            if name == "serverfs_agent_lease_acquisitions_total"
+            and dict(labels)["outcome"] == "busy"
+        )
+        == 1
+    )
+    first_trace = service.diagnostic_recorder.task_projection(first["task_id"])
+    assert first_trace["rollups"]["acquired_lease_wait_seconds"] > 0
+
+    await service.cancel_task(first["task_id"])
+    await wait_for_status(service, first["task_id"], "cancelled")
+    for _ in range(200):
+        if first["task_id"] not in service._background:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("cancelled task background cleanup did not finish")
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
+    lease.release()
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_continuation_reuses_native_session_but_gets_new_task(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    first = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:first",
+    )
+    await wait_for_status(service, first["task_id"], "succeeded")
+
+    second = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="complete:second",
+        continue_from_task_id=first["task_id"],
+    )
+    second_done = await wait_for_status(service, second["task_id"], "succeeded")
+    assert second["task_id"] != first["task_id"]
+    first_native_id = service.store.get_task(first["task_id"]).native_session_id
+    second_native_id = service.store.get_task(second["task_id"]).native_session_id
+    assert second_native_id == first_native_id
+    assert "native_session_id" not in second_done
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_bridge_shutdown_marks_active_task_interrupted(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="wait:",
+    )
+    await wait_for_status(service, submitted["task_id"], "running")
+    await service.close()
+    task = service.get_task(submitted["task_id"])
+    assert task["status"] == "interrupted"
+    assert task["error_code"] == "BRIDGE_SHUTDOWN"
+
+
+@pytest.mark.asyncio
+async def test_cancel_waiting_task_stales_request(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="approval:danger",
+    )
+    waiting = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+    request_id = waiting["pending_request"]["request_id"]
+
+    await service.cancel_task(submitted["task_id"])
+    await wait_for_status(service, submitted["task_id"], "cancelled")
+    projection = service.diagnostic_recorder.task_projection(submitted["task_id"])
+    assert projection["terminal_seal"]["outcome"] == "cancelled"
+    assert projection["operations"][-1]["kind"] == "agent.waiting_external"
+    assert sum(op["kind"] == "agent.waiting_external" for op in projection["operations"]) == 1
+    assert service.store.get_request(request_id).status == "stale"
+    assert not service._pending_waiters
+    await service.cancel_task(submitted["task_id"])
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_approval_is_rejected_without_second_resolution(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="approval:danger",
+    )
+    waiting = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+    request_id = waiting["pending_request"]["request_id"]
+
+    await service.respond_approval(
+        task_id=submitted["task_id"], request_id=request_id, decision="approve_once"
+    )
+    with pytest.raises(BridgeError) as exc:
+        await service.respond_approval(
+            task_id=submitted["task_id"], request_id=request_id, decision="approve_once"
+        )
+    assert exc.value.code == "REQUEST_ALREADY_RESOLVED"
+    await wait_for_status(service, submitted["task_id"], "succeeded")
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_message_steers_fake_task(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="steer:",
+    )
+    await wait_for_status(service, submitted["task_id"], "running")
+    await service.send_message(task_id=submitted["task_id"], message="focus on tests")
+    finished = await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert finished["final_response"] == "steered=focus on tests"
+    assert service.store.list_events(submitted["task_id"], limit=20)[2].event_type == "user.message"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_message_limit_is_enforced_by_service(tmp_path: Path) -> None:
+    service = make_service_with_limits(tmp_path, BridgeLimits(max_message_bytes=3))
+    await service.start()
+    with pytest.raises(BridgeError) as exc:
+        await service.send_message(task_id="missing", message="four")
+    assert exc.value.code == "AGENT_MESSAGE_TOO_LARGE"
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_provider_exception_fails_task(tmp_path: Path) -> None:
+    class FailingAdapter(FakeAdapter):
+        async def run_task(self, context):
+            raise RuntimeError("provider failure")
+
+    service = make_service(tmp_path)
+    service.adapters = {"fake": FailingAdapter()}
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="complete:never",
+    )
+    failed = await wait_for_status(service, submitted["task_id"], "failed")
+    assert failed["error_code"] == "AGENT_PROVIDER_ERROR"
+    failure_trace = service.diagnostic_recorder.task_projection(submitted["task_id"])
+    assert failure_trace["terminal_seal"]["outcome"] == "failed"
+    assert failure_trace["operations"][-1]["kind"] == "agent.execution"
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
+    lease.release()
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_close_before_background_start_interrupts_and_releases_lease(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="wait:",
+    )
+    await service.close()
+    assert service.store.get_task(submitted["task_id"]).status == "interrupted"
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
+    lease.release()
+
+
+@pytest.mark.asyncio
+async def test_cancel_is_terminal_before_slow_provider_cleanup_releases_lease(
+    tmp_path: Path,
+) -> None:
+    class SlowCancelAdapter(FakeAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.release = asyncio.Event()
+
+        async def run_task(self, context):
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await self.release.wait()
+                return AdapterResult(final_response="late")
+
+    service = make_service(tmp_path)
+    adapter = SlowCancelAdapter()
+    service.adapters = {"fake": adapter}
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="wait:",
+    )
+    await wait_for_status(service, submitted["task_id"], "running")
+
+    cancelled = await service.cancel_task(submitted["task_id"])
+    assert cancelled["status"] == "cancelled"
+    assert service.get_task(submitted["task_id"])["status"] == "cancelled"
+    cancel_trace = service.diagnostic_recorder.task_projection(submitted["task_id"])
+    assert cancel_trace["terminal_seal"]["outcome"] == "cancelled"
+    assert cancel_trace["operations"][-1]["kind"] == "agent.execution"
+
+    with pytest.raises(BridgeError) as busy:
+        service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
+    assert busy.value.code == "WORKDIR_BUSY"
+
+    adapter.release.set()
+    for _ in range(200):
+        if submitted["task_id"] not in service._background:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("cancelled task background cleanup did not finish")
+
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
+    lease.release()
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_cancel_provider_interrupt_is_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class HangingCancelAdapter(FakeAdapter):
+        async def run_task(self, context):
+            await asyncio.Event().wait()
+
+        async def cancel(self, task_id: str) -> None:
+            del task_id
+            await asyncio.Event().wait()
+
+    monkeypatch.setattr(service_module, "_PROVIDER_CANCEL_TIMEOUT_SECONDS", 0.01)
+    service = make_service(tmp_path)
+    service.adapters = {"fake": HangingCancelAdapter()}
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="wait:",
+    )
+    await wait_for_status(service, submitted["task_id"], "running")
+
+    started = asyncio.get_running_loop().time()
+    cancelled = await service.cancel_task(submitted["task_id"])
+    elapsed = asyncio.get_running_loop().time() - started
+    assert cancelled["status"] == "cancelled"
+    assert elapsed < 0.5
+
+    for _ in range(200):
+        if submitted["task_id"] not in service._background:
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("bounded provider cancel did not finish background cleanup")
+
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
+    lease.release()
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_is_interrupted_even_if_adapter_swallows_cancel(
+    tmp_path: Path,
+) -> None:
+    class SwallowCancelAdapter(FakeAdapter):
+        async def run_task(self, context):
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                return AdapterResult(final_response="late")
+
+    service = make_service(tmp_path)
+    service.adapters = {"fake": SwallowCancelAdapter()}
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="wait:",
+    )
+    await wait_for_status(service, submitted["task_id"], "running")
+    await service.close()
+    assert service.store.get_task(submitted["task_id"]).status == "interrupted"
+    lease = service.lease_manager.acquire_exclusive(REPO_LEASE_ID)
+    lease.release()
+
+
+@pytest.mark.asyncio
+async def test_pending_request_payload_and_final_response_redact_host_root(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    root = service.policies.get("repo").host_path
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt=f"approval:{root}/secret.txt",
+    )
+    waiting = await wait_for_status(service, submitted["task_id"], "waiting_for_approval")
+    payload = waiting["pending_request"]["payload"]
+    assert str(root) not in str(payload)
+    assert payload["command_display"] == "secret.txt"
+    await service.respond_approval(
+        task_id=submitted["task_id"],
+        request_id=waiting["pending_request"]["request_id"],
+        decision="approve_once",
+    )
+    await wait_for_status(service, submitted["task_id"], "succeeded")
+    final = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt=f"complete:{root}/result.txt",
+    )
+    final_task = await wait_for_status(service, final["task_id"], "succeeded")
+    assert final_task["final_response"] == "<workdir>/result.txt"
+    assert str(root) not in str(final_task)
+
+    sibling = root.parent / f"{root.name}2" / "notes.txt"
+    sibling_task = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt=f"complete:{sibling}",
+    )
+    sibling_done = await wait_for_status(service, sibling_task["task_id"], "succeeded")
+    assert sibling_done["final_response"] == "<outside-workdir>"
+    assert str(root.parent) not in str(sibling_done)
+
+    prose = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt=f"complete:failed at {root}/trace.log",
+    )
+    prose_done = await wait_for_status(service, prose["task_id"], "succeeded")
+    assert prose_done["final_response"] == "failed at <workdir>/trace.log"
+    assert str(root) not in str(prose_done)
+
+    sibling_prose = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt=f"complete:see {sibling} for details",
+    )
+    sibling_prose_done = await wait_for_status(service, sibling_prose["task_id"], "succeeded")
+    assert sibling_prose_done["final_response"] == "see <outside-workdir> for details"
+    assert str(root.parent) not in str(sibling_prose_done)
+
+    service._append_event(
+        final["task_id"],
+        "provider.path",
+        {
+            "cwd": str(root),
+            "changes": [
+                {"path": str(root / "inside.txt")},
+                {"path": str(root.parent / "outside.txt")},
+            ],
+        },
+    )
+    events = service.read_events(final["task_id"])["events"]
+    provider_event = next(event for event in events if event["event_type"] == "provider.path")
+    assert provider_event["payload"]["cwd"] == "."
+    assert provider_event["payload"]["changes"] == [
+        {"path": "inside.txt"},
+        {"path": "<outside-workdir>"},
+    ]
+    assert str(root) not in str(provider_event)
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_provider_bridge_error_message_redacts_host_paths(tmp_path: Path) -> None:
+    class ErrorAdapter(FakeAdapter):
+        async def run_task(self, context):
+            raise BridgeError(
+                "AGENT_PROVIDER_ERROR",
+                f"provider failed at {context.workdir_root}/secret.txt",
+            )
+
+    service = make_service(tmp_path)
+    root = service.policies.get("repo").host_path
+    service.adapters = {"fake": ErrorAdapter()}
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="review",
+        prompt="fail",
+    )
+    failed = await wait_for_status(service, submitted["task_id"], "failed")
+    assert failed["error_code"] == "AGENT_PROVIDER_ERROR"
+    assert failed["error_message"] == "provider failed at <workdir>/secret.txt"
+    assert str(root) not in str(failed)
+    await service.close()
+
+
+def test_embedded_workdir_redaction_token_boundaries(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    sibling = tmp_path / "repo2"
+    sibling.mkdir()
+
+    def redact(value: str) -> str:
+        return _redact_embedded_workdir(root, value)
+
+    # Whole-token workdir references keep the display form.
+    assert redact(f"failed at {root}/trace.log") == "failed at <workdir>/trace.log"
+    assert redact(f"failed at {root}") == "failed at <workdir>"
+
+    # A sibling directory is a different path and must not leak the host root.
+    assert redact(f"see {sibling} for details") == "see <outside-workdir> for details"
+    assert redact(f"see '{sibling}/a.txt' now") == "see '<outside-workdir>' now"
+
+    # Several tokens in one string are resolved independently.
+    assert (
+        redact(f"first {root}/a.txt then {sibling}/b.txt")
+        == "first <workdir>/a.txt then <outside-workdir>"
+    )
+
+    # Punctuation abutting a path is prose and survives redaction.
+    assert redact(f"see {sibling}/notes.txt.") == "see <outside-workdir>."
+    assert redact(f"see {sibling}/notes.txt! ok") == "see <outside-workdir>! ok"
+
+    # Text without a workdir reference is returned unchanged.
+    assert redact("nothing to redact here") == "nothing to redact here"
+
+
+def test_effective_provider_active_only_tightens_an_unknown() -> None:
+    """Phase F: the adapter owns provider semantics, the supervisor owns OS liveness.
+
+    Qoder answers `None` because its SDK cannot say whether the old process is alive, and it must
+    not be made to guess -- fabricating OS state in a provider adapter would put containment
+    knowledge in the wrong layer and would have to be repeated for every runtime. The supervisor
+    knows, because it holds the per-user lifecycle lease *and* created the SID-scoped named Job
+    Object rather than finding one, which is what shows the previous containment object is gone.
+    Only startup reconciliation combines the two, and only in one direction.
+    """
+    from serverfs_agent_bridge.adapters.base import ReconcileResult
+    from serverfs_agent_bridge.models import ReconciliationStatus
+
+    unknown = ReconcileResult(
+        status=ReconciliationStatus.SESSION_RESUMABLE, provider_active=None, detail=""
+    )
+    # Proven containment turns an unknown into inactive; without the proof it stays unknown.
+    assert (
+        service_module.effective_provider_active(unknown, prior_bridge_execution_stopped=True)
+        is False
+    )
+    assert (
+        service_module.effective_provider_active(unknown, prior_bridge_execution_stopped=False)
+        is None
+    )
+
+    # An adapter that says the provider is active is never overridden, in either direction.
+    active = ReconcileResult(
+        status=ReconciliationStatus.REATTACHED, provider_active=True, detail=""
+    )
+    assert (
+        service_module.effective_provider_active(active, prior_bridge_execution_stopped=True)
+        is True
+    )
+    inactive = ReconcileResult(
+        status=ReconciliationStatus.NOT_RECOVERABLE, provider_active=False, detail=""
+    )
+    assert (
+        service_module.effective_provider_active(inactive, prior_bridge_execution_stopped=False)
+        is False
+    )
+
+
+class _UnknownLivenessFake(FakeAdapter):
+    """A runtime that cannot report whether its previous process is still alive.
+
+    Qoder's shape, and the honest one for any SDK that does not expose OS liveness: the answer is
+    ``SESSION_RESUMABLE`` with ``provider_active=None``. That is exactly the state a guard decision
+    cannot be made from on its own, which is why the supervisor's containment proof exists.
+    """
+
+    provider_active: bool | None = None
+
+    async def reconcile_task(self, task) -> ReconcileResult:
+        return ReconcileResult(
+            status=ReconciliationStatus.SESSION_RESUMABLE,
+            provider_active=self.provider_active,
+            detail="the test runtime cannot report whether its previous process is alive",
+        )
+
+
+async def _terminal_task_with_a_stale_guard(
+    tmp_path: Path, *, provider_active: bool | None
+) -> tuple[BridgeService, str]:
+    """Model the crash window that the non-terminal scan cannot see.
+
+    Reachable in production: the task is transitioned to a terminal status *before* the service's
+    own ``finally`` unlinks the guard, so a crash between the two leaves a completed task with a
+    guard still standing. The first scan walks non-terminal tasks only, so this state falls through
+    to the guard scan -- which is the path under test.
+    """
+    service = make_service(tmp_path)
+    fake = _UnknownLivenessFake()
+    fake.provider_active = provider_active
+    service.adapters["fake"] = fake
+    await service.start()
+    submitted = await service.submit_task(
+        runtime="fake",
+        workdir="repo",
+        path="",
+        profile="workspace-write",
+        prompt="complete:hello",
+    )
+    await wait_for_status(service, submitted["task_id"], "succeeded")
+    assert service.guard_manager.read(REPO_LEASE_ID) is None, (
+        "the normal completion path should already have cleared the guard"
+    )
+    service.guard_manager.create(
+        lease_id=REPO_LEASE_ID,
+        task_id=submitted["task_id"],
+        runtime="fake",
+        workdir_alias="repo",
+        correlation_id=None,
+    )
+    return service, submitted["task_id"]
+
+
+@pytest.mark.asyncio
+async def test_a_stale_guard_on_a_terminal_task_is_cleared_with_containment_proof(
+    tmp_path: Path,
+) -> None:
+    """Without this, a crash in that window wedges the workdir permanently.
+
+    The task never appears in the non-terminal scan again, so the guard scan is its only chance --
+    and a provider that answers "unknown" would keep the guard forever without the proof.
+    """
+    service, _task_id = await _terminal_task_with_a_stale_guard(tmp_path, provider_active=None)
+    try:
+        service._prior_bridge_execution_stopped = True
+        await service._reconcile_startup()
+        assert service.guard_manager.read(REPO_LEASE_ID) is None
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_the_same_stale_guard_survives_without_the_containment_proof(
+    tmp_path: Path,
+) -> None:
+    """The other half of the rule: an unknown provider keeps the workdir closed.
+
+    Asserted through the public consequence rather than the guard file alone, because "the guard is
+    still there" and "the workdir is still refused" are different claims and only the second is the
+    contract.
+    """
+    service, _task_id = await _terminal_task_with_a_stale_guard(tmp_path, provider_active=None)
+    try:
+        service._prior_bridge_execution_stopped = False
+        await service._reconcile_startup()
+        assert service.guard_manager.read(REPO_LEASE_ID) is not None
+        with pytest.raises(BridgeError) as blocked:
+            await service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="workspace-write",
+                prompt="complete:hello",
+            )
+        assert blocked.value.code == "WORKDIR_RECOVERY_REQUIRED"
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_the_proof_never_overrides_an_adapter_that_reports_the_provider_active(
+    tmp_path: Path,
+) -> None:
+    """Containment is only allowed to turn an *unknown* into inactive.
+
+    A runtime that says a provider is still alive outranks the supervisor's inference: the
+    supervisor knows the old Job is gone, not that this particular provider was in it.
+    """
+    service, _task_id = await _terminal_task_with_a_stale_guard(tmp_path, provider_active=True)
+    try:
+        service._prior_bridge_execution_stopped = True
+        await service._reconcile_startup()
+        assert service.guard_manager.read(REPO_LEASE_ID) is not None
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_a_live_submission_is_conservative_even_with_the_startup_proof(
+    tmp_path: Path,
+) -> None:
+    """The proof is a startup fact, and it must not leak into the live path.
+
+    ``_prior_bridge_execution_stopped`` stays true for the whole life of the process, so a live
+    submit that consulted it would clear a guard for a provider that nothing has shown to have
+    stopped -- the
+    exact over-reach the proof was designed to avoid. This fails if the call site ever passes it.
+    """
+    service, _task_id = await _terminal_task_with_a_stale_guard(tmp_path, provider_active=None)
+    try:
+        service._prior_bridge_execution_stopped = True
+        with pytest.raises(BridgeError) as blocked:
+            await service.submit_task(
+                runtime="fake",
+                workdir="repo",
+                path="",
+                profile="workspace-write",
+                prompt="complete:hello",
+            )
+        assert blocked.value.code == "WORKDIR_RECOVERY_REQUIRED"
+        assert service.guard_manager.read(REPO_LEASE_ID) is not None
+    finally:
+        await service.close()

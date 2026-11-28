@@ -1,0 +1,34 @@
+.env
+# Real native deployment config (machine-specific paths); template is serverfs.toml.example
+serverfs.toml
+.venv/
+.venv-wheel/
+.uv-tmp/
+.npm-cache/
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+.astro/
+dist/
+build/
+*.egg-info/
+
+# Rust build output for the Windows native kernel
+native/windows/target/
+native/windows/pyd-staging/
+.venv-clean/
+scratchpad/
+.venv-abi*/
+.serverfs-auth-state/
+
+# 本机启动脚本与 Bridge 配置（含机器路径）
+run-serverfs.sh
+agent-bridge.config.json
+
+# 本地 AI Agent / 调试辅助文件
+.claude/
+.workbuddy/memory/
+.remember/
+debug.log

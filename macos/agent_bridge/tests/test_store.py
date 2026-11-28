@@ -1,0 +1,289 @@
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import pytest
+
+from platform_contract import linux_only
+from serverfs_agent_bridge.errors import BridgeError
+from serverfs_agent_bridge.models import TaskStatus
+from serverfs_agent_bridge.store import TaskStore
+
+
+def make_task(store: TaskStore, task_id: str = "agt_test"):
+    return store.create_task(
+        task_id=task_id,
+        runtime="fake",
+        workdir_alias="repo",
+        workdir_slot=1,
+        relative_cwd="",
+        profile="review",
+        continue_from_task_id=None,
+    )
+
+
+def test_task_persists_across_store_instances(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    make_task(store)
+    store.transition_task("agt_test", TaskStatus.STARTING)
+    store.transition_task("agt_test", TaskStatus.RUNNING)
+
+    reopened = TaskStore(tmp_path / "state")
+    assert reopened.get_task("agt_test").status == "running"
+
+
+def test_request_resolution_is_compare_and_set(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    make_task(store)
+    store.transition_task("agt_test", TaskStatus.STARTING)
+    store.transition_task("agt_test", TaskStatus.RUNNING)
+    store.create_pending_request(
+        task_id="agt_test",
+        request_id="req_test",
+        kind="approval",
+        payload={"available_decisions": ["approve_once"]},
+        waiting_status=TaskStatus.WAITING_FOR_APPROVAL,
+    )
+
+    store.resolve_request("req_test", {"decision": "approve_once"})
+    assert store.get_task("agt_test").status == "running"
+
+    with pytest.raises(BridgeError) as exc:
+        store.resolve_request("req_test", {"decision": "approve_once"})
+    assert exc.value.code == "REQUEST_ALREADY_RESOLVED"
+
+
+def test_concurrent_request_resolution_has_one_winner(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    make_task(store)
+    store.transition_task("agt_test", TaskStatus.STARTING)
+    store.transition_task("agt_test", TaskStatus.RUNNING)
+    store.create_pending_request(
+        task_id="agt_test",
+        request_id="req_test",
+        kind="approval",
+        payload={},
+        waiting_status=TaskStatus.WAITING_FOR_APPROVAL,
+    )
+
+    def resolve() -> str:
+        try:
+            store.resolve_request("req_test", {"decision": "approve_once"})
+        except BridgeError as exc:
+            return exc.code
+        return "ok"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: resolve(), range(2)))
+    assert sorted(results) == ["REQUEST_ALREADY_RESOLVED", "ok"]
+
+
+def test_restart_interrupts_nonterminal_and_stales_request(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    make_task(store)
+    store.transition_task("agt_test", TaskStatus.STARTING)
+    store.transition_task("agt_test", TaskStatus.RUNNING)
+    store.create_pending_request(
+        task_id="agt_test",
+        request_id="req_test",
+        kind="question",
+        payload={"questions": []},
+        waiting_status=TaskStatus.WAITING_FOR_QUESTION,
+    )
+
+    assert store.interrupt_nonterminal_tasks() == 1
+    task = store.get_task("agt_test")
+    request = store.get_request("req_test")
+    assert task.status == "interrupted"
+    assert task.pending_request_id is None
+    assert request.status == "stale"
+
+
+def test_provider_can_atomically_abandon_pending_request(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    make_task(store)
+    store.transition_task("agt_test", TaskStatus.STARTING)
+    store.transition_task("agt_test", TaskStatus.RUNNING)
+    store.create_pending_request(
+        task_id="agt_test",
+        request_id="req_native",
+        kind="approval",
+        payload={},
+        waiting_status=TaskStatus.WAITING_FOR_APPROVAL,
+    )
+
+    assert store.abandon_pending_request("agt_test") == "req_native"
+    assert store.get_task("agt_test").status == "running"
+    assert store.get_task("agt_test").pending_request_id is None
+    assert store.get_request("req_native").status == "stale"
+    assert store.abandon_pending_request("agt_test") is None
+
+
+def test_event_cursor(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    make_task(store)
+    first = store.append_event("agt_test", "task.started", {})
+    second = store.append_event("agt_test", "agent.message", {"text": "done"})
+    events = store.list_events("agt_test", after_event_id=first.event_id, limit=10)
+    assert [event.event_id for event in events] == [second.event_id]
+
+
+@linux_only("the mode bits this test asserts are POSIX private-state semantics")
+def test_state_database_and_wal_sidecars_are_private(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    store = TaskStore(state_dir)
+    make_task(store)
+
+    assert state_dir.stat().st_mode & 0o777 == 0o700
+    for path in state_dir.iterdir():
+        assert path.stat().st_mode & 0o777 == 0o600
+
+
+@linux_only("mode bits refuse an existing public dir; POSIX records them, NTFS does not")
+def test_existing_non_private_state_dir_fails_without_chmod(tmp_path: Path) -> None:
+    state_dir = tmp_path / "public"
+    state_dir.mkdir()
+    state_dir.chmod(0o755)
+    with pytest.raises(ValueError, match="mode 0700"):
+        TaskStore(state_dir)
+    assert state_dir.stat().st_mode & 0o777 == 0o755
+
+
+def test_terminal_transition_stales_pending_request_atomically(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    make_task(store)
+    store.transition_task("agt_test", TaskStatus.STARTING)
+    store.transition_task("agt_test", TaskStatus.RUNNING)
+    store.create_pending_request(
+        task_id="agt_test",
+        request_id="req_test",
+        kind="approval",
+        payload={},
+        waiting_status=TaskStatus.WAITING_FOR_APPROVAL,
+    )
+
+    store.transition_task("agt_test", TaskStatus.CANCELLED)
+
+    assert store.get_task("agt_test").pending_request_id is None
+    assert store.get_request("req_test").status == "stale"
+    with pytest.raises(BridgeError) as exc:
+        store.resolve_request("req_test", {"decision": "approve_once"})
+    assert exc.value.code == "REQUEST_ALREADY_RESOLVED"
+
+
+def test_active_task_limit_is_checked_inside_sqlite_transaction(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    store = TaskStore(state_dir)
+
+    def create(task_id: str) -> str:
+        try:
+            store.create_task(
+                task_id=task_id,
+                runtime="fake",
+                workdir_alias="repo",
+                workdir_slot=1,
+                relative_cwd="",
+                profile="review",
+                continue_from_task_id=None,
+                max_active_tasks=1,
+            )
+        except BridgeError as exc:
+            return exc.code
+        return "ok"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(create, ["agt_one", "agt_two"]))
+
+    assert sorted(results) == ["AGENT_TASK_LIMIT_REACHED", "ok"]
+
+
+def test_event_limit_is_enforced_by_atomic_task_counter(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    make_task(store)
+    store.append_event("agt_test", "one", {}, max_events_per_task=2)
+    store.append_event("agt_test", "two", {}, max_events_per_task=2)
+    with pytest.raises(BridgeError) as exc:
+        store.append_event("agt_test", "three", {}, max_events_per_task=2)
+    assert exc.value.code == "AGENT_EVENT_LIMIT_REACHED"
+    assert len(store.list_events("agt_test", limit=10)) == 2
+
+
+def test_idempotency_key_is_unique_and_retrievable(tmp_path: Path) -> None:
+    store = TaskStore(tmp_path / "state")
+    first = store.create_task(
+        task_id="agt_one",
+        runtime="fake",
+        workdir_alias="repo",
+        workdir_slot=1,
+        relative_cwd="",
+        profile="review",
+        continue_from_task_id=None,
+        idempotency_key="submit-1",
+        request_fingerprint="fingerprint-1",
+    )
+
+    recovered = store.get_task_by_idempotency_key("submit-1")
+    assert recovered is not None
+    assert recovered.task_id == first.task_id
+    assert recovered.idempotency_key == "submit-1"
+    assert recovered.request_fingerprint == "fingerprint-1"
+
+    with pytest.raises(BridgeError) as exc:
+        store.create_task(
+            task_id="agt_two",
+            runtime="fake",
+            workdir_alias="repo",
+            workdir_slot=1,
+            relative_cwd="",
+            profile="review",
+            continue_from_task_id=None,
+            idempotency_key="submit-1",
+            request_fingerprint="fingerprint-1",
+        )
+    assert exc.value.code == "AGENT_IDEMPOTENCY_CONFLICT"
+
+
+def test_existing_database_migrates_idempotency_columns(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    store = TaskStore(state_dir)
+    make_task(store)
+
+    reopened = TaskStore(state_dir)
+    task = reopened.get_task("agt_test")
+    assert task.idempotency_key is None
+    assert task.request_fingerprint is None
+
+
+def test_existing_database_migrates_pending_request_expiry_and_capability_table(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    store = TaskStore(state_dir)
+    with store._connect() as con:
+        con.execute("ALTER TABLE pending_requests DROP COLUMN expires_at")
+
+    reopened = TaskStore(state_dir)
+    with reopened._connect() as con:
+        columns = {row[1] for row in con.execute("PRAGMA table_info(pending_requests)")}
+        tables = {
+            row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+    assert "expires_at" in columns
+    assert "runtime_capabilities" in tables
+
+
+def test_runtime_capability_snapshot_read_write_is_bounded_and_replaces_old_fingerprint(
+    tmp_path: Path,
+) -> None:
+    store = TaskStore(tmp_path / "state")
+    first = {"protocol_version": 1, "load_session": True}
+    second = {"protocol_version": 2, "load_session": False}
+    store.save_runtime_capabilities("acp-one", "fingerprint-a", first)
+    assert store.load_runtime_capabilities("acp-one", "fingerprint-a") == first
+    assert store.load_runtime_capabilities("acp-one", "fingerprint-b") is None
+    store.save_runtime_capabilities("acp-one", "fingerprint-b", second)
+    assert store.load_runtime_capabilities("acp-one", "fingerprint-a") is None
+    assert store.load_runtime_capabilities("acp-one", "fingerprint-b") == second
+    with pytest.raises(ValueError, match="exceeds 2048 bytes"):
+        store.save_runtime_capabilities("acp-one", "fingerprint-c", {"data": "x" * 2049})

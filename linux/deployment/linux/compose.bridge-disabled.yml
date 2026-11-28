@@ -1,0 +1,8 @@
+# File-only named Core: Bridge is disabled and no socket is mounted.
+# Choose this OR compose.bridge-v2.yml with a provisioned, validated signed grant.
+# Never enable Bridge by editing this overlay or combine both Bridge overlays.
+services:
+  serverfs-mcp:
+    environment:
+      SERVERFS_AGENT_BRIDGE_ENABLED: "false"
+      SERVERFS_AGENT_MODE: disabled

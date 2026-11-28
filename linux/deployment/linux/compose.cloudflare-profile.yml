@@ -1,0 +1,4 @@
+# Apply alongside compose.cloudflare.yml when Cloudflare ingress is selected.
+services:
+  cloudflared:
+    profiles: ["cloudflare"]

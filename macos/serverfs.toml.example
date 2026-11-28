@@ -1,0 +1,96 @@
+# ServerFS — native macOS / Windows policy
+# Copy to a private TOML; replace ALL active example paths before use.
+# Local stdio: serverfs serve --config /absolute/path/serverfs.toml
+# Read-only diagnosis: serverfs doctor --config /absolute/path/serverfs.toml
+# For named persistent HTTP, follow deployment/macos/README.md or
+# docs/deployment/windows/v0250-native-operations.md. TOML is Core policy, not a
+# service manifest, Connector credential or signed Bridge grant.
+# Keep all credentials, private service state and provider tokens outside
+# exposed workdirs. Never put secrets in TOML.
+
+[server]
+log_level = "INFO" # DEBUG / INFO / WARNING / ERROR; logs to stderr
+
+# Shared native filesystem defaults (not per-workdir overrides).
+# Native TOML supports only these keys in [defaults]. Unlike Linux env slots,
+# it has no per-workdir hidden/size/binary overrides or deny-rule bypass.
+[defaults]
+max_read_bytes = 524288
+max_read_lines = 500
+max_write_bytes = 1048576
+allow_hidden = false
+binary_transfer_enabled = false
+max_binary_transfer_bytes = 8388608
+
+# Each workdir has a unique alias: letter first, letters/digits/_/-, <=32.
+# Use an existing absolute native path without '..' or redirected components.
+# On macOS replace Windows examples with /Users/... APFS directories.
+# read_only defaults true. OS permissions still apply.
+
+[[workdirs]]
+alias = "docs"
+path = "D:\\agent-data\\docs"
+description = "Documentation tree, offered read-only"
+read_only = true
+
+# Optional writable scratch example; remove this whole block if not needed.
+[[workdirs]]
+alias = "workspace"
+path = "D:\\agent-data\\workspace"
+description = "Writable scratch area for agent tasks"
+read_only = false
+
+# Optional Repo Ops: set repo_ops_enabled = true on a selected [[workdirs]]
+# entry. Read-only permits inspection, not mutations. Agent may stay disabled.
+# Use an authorized Bridge; named actions require writable policy, integrity
+# pins and a writer lease. See the Repo Ops guide.
+
+# Optional Agent delegation. Uncomment only the required settings and add
+# the matching workdir below. A native or ACP runtime needs workspace-write
+# and read_only=false. Bridge is a separately installed distribution;
+# follow the platform's owned/shared deployment path for its runtime/grants.
+# macOS Shared Core supports one bound Agent workdir and no Repo Ops.
+#
+# [agent]
+# enabled = true
+# task_timeout_seconds = 7200
+# interaction_timeout_seconds = 1800
+# max_active_tasks = 4
+# retention_seconds = 604800
+#
+# [agent.proxy]
+# enabled = false
+# source = "env"
+#
+# The proxy URL comes from SERVERFS_AGENT_PROXY_URL, not TOML.
+# Provider executables and credentials stay in host-native private state.
+# Enable only the specific provider and its actual trusted executable.
+# [agent.codex]
+# enabled = false
+# codex_bin = "codex"
+# use_proxy = true
+#
+# [agent.claude]
+# enabled = false
+# claude_bin = "claude"
+# use_proxy = false
+#
+# [agent.qoder]
+# enabled = false
+# qoder_bin = "qodercli"
+# use_proxy = false
+#
+# ACP profiles fix executable and argv; callers cannot override them.
+# No Registry Agent is installed automatically.
+# [[agent.acp_profiles]]
+# id = "opencode"
+# command = "/absolute/path/to/opencode"
+# args = ["acp"]
+# use_proxy = false
+#
+# [[workdirs]]
+# alias = "project"
+# path = "D:\\agent-data\\project"
+# read_only = false
+# agent_mode = "workspace-write"
+# agent_runtimes = ["acp-opencode"]
