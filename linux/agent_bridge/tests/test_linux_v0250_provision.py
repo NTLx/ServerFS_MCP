@@ -1576,3 +1576,151 @@ def _exercise_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch, *, 
     assert binding_path.read_bytes() == binding_bytes
     assert (root / "config.json").read_bytes() == config_bytes
     print(f"systemd release acceptance cleaned: bridge_id={bridge_id} unit={unit}")
+
+
+@pytest.mark.skipif(
+    os.environ.get("SERVERFS_LINUX_REAL_CLAUDE_ACCEPT") != "1",
+    reason="explicit isolated real Claude provider diagnostic required",
+)
+def test_installed_linux_signed_v2_real_claude_diagnostic(tmp_path, monkeypatch):
+    """One text-only provider call via installed Bridge; never use a production unit."""
+    import hashlib
+    import secrets
+
+    assert os.getuid() != 0
+    real_home = Path(os.environ["HOME"]).resolve(strict=True)
+    assert real_home.stat().st_uid == os.getuid()
+    uv = shutil.which("uv")
+    claude = shutil.which("claude")
+    assert uv and claude, "required installed uv/Claude CLI unavailable"
+    manifest, initial_root, work, config_path = _fixture(tmp_path, monkeypatch)
+    bridge_id = "p" + uuid.uuid4().hex[:10]
+    root = initial_root.parent / bridge_id
+    assert not root.exists() and not root.is_symlink()
+    manifest.update(bridge_id=bridge_id, root=str(root))
+    document = json.loads(config_path.read_text(encoding="utf-8"))
+    document.update(
+        bridge_id=bridge_id,
+        socket_path=str(root / "bridge/run/bridge.sock"),
+        state_dir=str(root / "bridge/state"),
+        lock_dir=str(root / "bridge/locks"),
+        claude={"enabled": True, "claude_bin": str(Path(claude).resolve(strict=True))},
+    )
+    document.pop("codex")
+    document["workdirs"][0]["agent_runtimes"] = ["claude"]
+    config_path.write_text(json.dumps(document), encoding="utf-8")
+    manifest["core"]["methods"] = ["bridge.ping", "task.submit", "task.get", "task.list"]
+    provision(manifest)
+    monkeypatch.setenv("UV_CACHE_DIR", os.environ.get("UV_CACHE_DIR", str(real_home / ".cache/uv")))
+    monkeypatch.setenv("UV_PYTHON", str(Path(sys._base_executable).resolve(strict=True)))
+    installed = installer.stage(
+        bridge_id, "provider-candidate", ROOT / "agent_bridge", Path(uv), offline=True
+    )
+    executable = installed / ".venv/bin/serverfs-agent-bridge"
+    binding_path = root / "core-bindings/core-blue/core-bridge-binding.json"
+    binding_bytes = binding_path.read_bytes()
+    binding = json.loads(binding_bytes)
+    config_bytes = (root / "config.json").read_bytes()
+    socket_path = root / "bridge/run/bridge.sock"
+    client = CoreBridgeClientV2(
+        socket_path,
+        bridge_id=bridge_id,
+        core_id=binding["core_id"],
+        key_id=binding["key_id"],
+        secret=bytes.fromhex(binding["secret_hex"]),
+        workdir_alias=binding["workdir_alias"],
+        policy_revision=binding["policy_revision"],
+        timeout_seconds=3,
+    )
+    # Keep the account's native provider login context. Do not inspect or
+    # serialize credentials. The workdir and Bridge state are disposable.
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("SERVERFS_", "CONTROL_PLANE_", "PYTHON", "UV_PROJECT"))
+        and key not in {"VIRTUAL_ENV", "CONDA_PREFIX", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"}
+    }
+    env.update(HOME=str(real_home), PYTHONUNBUFFERED="1")
+    marker = "SF_V27_" + secrets.token_hex(12)
+
+    def run_selected(task_id=None):
+        process = subprocess.Popen(
+            [str(executable), "--config", str(root / "config.json")],
+            cwd=work,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+        async def exercise():
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                try:
+                    assert await client.call("bridge.ping", {}) == {"status": "ok"}
+                    break
+                except CoreBridgeUnavailable:
+                    assert process.poll() is None, "disposable provider Bridge exited"
+                    await asyncio.sleep(0.1)
+            else:
+                pytest.fail("signed provider Bridge did not become ready")
+            target = task_id
+            if target is None:
+                submitted = await client.call(
+                    "task.submit",
+                    {
+                        "runtime": "claude",
+                        "path": ".",
+                        "profile": "workspace-write",
+                        "prompt": (
+                            f"Return exactly {marker}. Text only. Do not use tools, read or "
+                            "write files, run commands, access other systems, or request "
+                            "approvals. Stop after replying."
+                        ),
+                    },
+                )
+                target = submitted["task_id"]
+            deadline = time.monotonic() + 100
+            while time.monotonic() < deadline:
+                row = await client.call("task.get", {"task_id": target})
+                state = row["status"]
+                if state == "succeeded":
+                    response = row["final_response"]
+                    assert isinstance(response, str) and response.strip() == marker, (
+                        "provider marker mismatch"
+                    )
+                    raw = response.encode()
+                    result = row["result"]
+                    assert result["storage"] == "inline"
+                    assert result["size_bytes"] == len(raw)
+                    assert result["sha256"] == hashlib.sha256(raw).hexdigest()
+                    assert row["final_response_truncated"] is False
+                    return target
+                assert state in {"queued", "running"}, f"provider stopped: {state}"
+                await asyncio.sleep(0.5)
+            pytest.fail("real provider did not complete before diagnostic deadline")
+
+        try:
+            return asyncio.run(exercise())
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    # This process group was created exclusively for this fixture.
+                    assert os.getpgid(process.pid) == process.pid
+                    import signal
+
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=5)
+                    pytest.fail("provider Bridge did not shut down gracefully")
+            assert process.returncode == 0
+            assert not socket_path.exists()
+
+    task_id = run_selected()
+    assert run_selected(task_id) == task_id
+    assert not list(work.iterdir()), "provider modified disposable workdir"
+    assert binding_path.read_bytes() == binding_bytes
+    assert (root / "config.json").read_bytes() == config_bytes
+    print("LINUX_REAL_CLAUDE_SIGNED_V2_DIAGNOSTIC_PASS", flush=True)

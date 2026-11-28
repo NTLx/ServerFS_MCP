@@ -24,9 +24,11 @@ import signal
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import tomllib
+import zipfile
 from collections.abc import Callable
 from contextlib import ExitStack
 from pathlib import Path
@@ -312,6 +314,118 @@ def _start_test_owner(
     )
     stack.callback(_stop, child)
     return child, log
+
+
+def _installed_historical_bridge_pair(source: Path, scratch: Path, uv: str) -> tuple[Path, Path]:
+    """Build exact historical and candidate wheel inputs, never a mutable checkout."""
+    baseline = "fd1019498b281cdeb8c5805242f1a71222f5eebd"
+    candidate = os.environ["SERVERFS_V27_SMAPP_CANDIDATE_SHA"]
+    assert re.fullmatch(r"[0-9a-f]{40}", candidate)
+    repo = source.parent
+    env = {
+        "HOME": str(Path.home()),
+        "PATH": os.defpath,
+        "UV_OFFLINE": "1",
+        "UV_LINK_MODE": "copy",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+
+    def run(*args: str, cwd: Path) -> str:
+        result = subprocess.run(
+            list(args),
+            cwd=cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        assert result.returncode == 0, "exact installed Bridge build/probe failed"
+        return result.stdout.strip()
+
+    assert run("git", "rev-parse", "HEAD", cwd=repo) == candidate
+    outputs = []
+    for name, tree in (
+        ("historical", f"{baseline}:agent_bridge"),
+        ("candidate", f"{candidate}:macos/agent_bridge"),
+    ):
+        target = scratch / name
+        target.mkdir(mode=0o700)
+        archive = target / "source.tar"
+        run("git", "archive", "--output", str(archive), tree, cwd=repo)
+        project = target / "source"
+        project.mkdir(mode=0o700)
+        with tarfile.open(archive) as stream:
+            assert all(m.isfile() or m.isdir() for m in stream.getmembers())
+            stream.extractall(project, filter="data")
+        wheels = target / "wheels"
+        requirements = target / "requirements.txt"
+        venv = target / "venv"
+        run(uv, "build", "--offline", "--wheel", "--out-dir", str(wheels), cwd=project)
+        built = list(wheels.glob("serverfs_agent_bridge-*.whl"))
+        assert len(built) == 1
+        wheel = built[0]
+        run(
+            uv,
+            "export",
+            "--offline",
+            "--locked",
+            "--no-dev",
+            "--no-emit-project",
+            "--output-file",
+            str(requirements),
+            cwd=project,
+        )
+        run(
+            uv,
+            "venv",
+            "--offline",
+            "--no-project",
+            "--python",
+            str(Path(sys._base_executable).resolve(strict=True)),
+            str(venv),
+            cwd=project,
+        )
+        python = venv / "bin/python"
+        run(uv, "pip", "sync", "--offline", "--python", str(python), str(requirements), cwd=project)
+        run(
+            uv,
+            "pip",
+            "install",
+            "--offline",
+            "--no-deps",
+            "--python",
+            str(python),
+            str(wheel),
+            cwd=project,
+        )
+        packages = Path(
+            run(
+                str(python),
+                "-I",
+                "-B",
+                "-c",
+                "import pathlib,sys,sysconfig,serverfs_agent_bridge as b;"
+                "assert pathlib.Path(b.__file__).resolve().is_relative_to("
+                "pathlib.Path(sys.prefix).resolve());"
+                "print(sysconfig.get_path('purelib'))",
+                cwd=target,
+            )
+        )
+        assert packages.resolve(strict=True).is_relative_to(venv.resolve(strict=True))
+        with zipfile.ZipFile(wheel) as bundle:
+            assert bundle.testzip() is None
+            members = [
+                n
+                for n in bundle.namelist()
+                if n.startswith("serverfs_agent_bridge/") and not n.endswith("/")
+            ]
+            assert members
+            for member in members:
+                assert (packages / member).read_bytes() == bundle.read(member)
+        print(f"SMAPP_BRIDGE_WHEEL {name} {hashlib.sha256(wheel.read_bytes()).hexdigest()}")
+        outputs.append(python)
+    return outputs[0], outputs[1]
 
 
 def _pin_test_candidate(
@@ -628,6 +742,13 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
         core_source = _optional_versioned_core_source(source)
         bridge_python = _optional_versioned_bridge_python(source)
         _require_single_versioned_source(source, core_source, bridge_python)
+        historical = os.environ.get("SERVERFS_V27_HISTORICAL_SMAPP_BRIDGE_ROLLBACK") == "1"
+        first_bridge_python = bridge_python
+        if historical:
+            assert core_source == source and bridge_python is None
+            first_bridge_python, bridge_python = _installed_historical_bridge_pair(
+                source, scratch, str(Path(uv_binary).resolve(strict=True))
+            )
         provisioned = create_shared_core_runtime(
             work / "shared-python",
             core_source,
@@ -724,7 +845,7 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
         async def exercise() -> None:
             with ExitStack() as stack:
                 bridge, stderr = _start_test_owner(
-                    stack, source, scratch, scratch / "home", owner_config, 1, bridge_python
+                    stack, source, scratch, scratch / "home", owner_config, 1, first_bridge_python
                 )
                 await _wait_owner(bridge, stderr, direct[0])
                 bridge_pid = bridge.pid
@@ -780,6 +901,38 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                 foreign = await _mcp_call(ports[1], tokens[1], "get_agent_task", {"task_id": task})
                 assert foreign.is_error
 
+                async def retained_marker(client, marker):
+                    result = await client.call(
+                        "task.submit",
+                        {
+                            "runtime": "fake",
+                            "path": ".",
+                            "profile": "review",
+                            "prompt": f"complete:{marker}",
+                        },
+                    )
+                    task_id = result["task_id"]
+                    for _ in range(100):
+                        row = await client.call("task.get", {"task_id": task_id})
+                        if row["status"] == "succeeded":
+                            assert row["final_response"] == marker
+                            return task_id
+                        assert row["status"] in {"queued", "running"}
+                        await asyncio.sleep(0.05)
+                    pytest.fail("installed historical Bridge marker did not finish")
+
+                if historical:
+                    history_pids = tuple(
+                        darwin_service._launchd_job_pid(identity.macos_label("core"))
+                        for identity in ids
+                    )
+                    assert all(pid is not None for pid in history_pids)
+                    state_identity = (state.stat().st_dev, state.stat().st_ino)
+                    owner_bytes = owner_config.read_bytes()
+                    grant_file = state / "core-grants.json"
+                    grant_bytes = grant_file.read_bytes()
+                    historical_task = await retained_marker(direct[0], "historical-bridge-result")
+
                 # The synthetic Bridge owner can restart independently while
                 # both real signed Shared Core Login Items remain registered.
                 _stop(bridge)
@@ -826,6 +979,55 @@ def test_two_real_smappservice_shared_cores_keep_owner_alive() -> None:
                         {"task_id": restarted_tasks[i]},
                     )
                     assert foreign.is_error
+
+                if historical:
+                    old = await direct[0].call("task.get", {"task_id": historical_task})
+                    assert old["status"] == "succeeded"
+                    assert old["final_response"] == "historical-bridge-result"
+                    candidate_task = await retained_marker(direct[0], "candidate-bridge-result")
+                    assert bridge_next.pid != bridge_pid
+                    candidate_pid = bridge_next.pid
+                    _stop(bridge_next)
+                    assert bridge_next.poll() is not None
+                    bridge_next, stderr_next = _start_test_owner(
+                        stack,
+                        source,
+                        scratch,
+                        scratch / "home",
+                        owner_config,
+                        20,
+                        first_bridge_python,
+                    )
+                    await _wait_owner(bridge_next, stderr_next, direct[0])
+                    assert bridge_next.pid not in {bridge_pid, candidate_pid}
+                    for task_id, marker in (
+                        (historical_task, "historical-bridge-result"),
+                        (candidate_task, "candidate-bridge-result"),
+                    ):
+                        row = await direct[0].call("task.get", {"task_id": task_id})
+                        assert row["status"] == "succeeded" and row["final_response"] == marker
+                        owned = await _mcp_call(
+                            ports[0], tokens[0], "get_agent_task", {"task_id": task_id}
+                        )
+                        assert not owned.is_error
+                        assert owned.structured_content["final_response"] == marker
+                        foreign = await _mcp_call(
+                            ports[1], tokens[1], "get_agent_task", {"task_id": task_id}
+                        )
+                        assert foreign.is_error
+                    assert (state.stat().st_dev, state.stat().st_ino) == state_identity
+                    assert owner_config.read_bytes() == owner_bytes
+                    assert grant_file.read_bytes() == grant_bytes
+                    assert all(_registration_state(identity) == "registered" for identity in ids)
+                    assert (
+                        tuple(
+                            darwin_service._launchd_job_pid(identity.macos_label("core"))
+                            for identity in ids
+                        )
+                        == history_pids
+                    )
+                    assert protected_snapshot() == before
+                    print("SMAPP_HISTORICAL_BRIDGE_ROLLBACK_PASS", flush=True)
 
                 # 2026-11-16 diagnostic: revoke only Core B's owner grant and
                 # prove both signed Core jobs and file HTTP remain live.
