@@ -31,6 +31,8 @@ Linux supplied overlays provide one service per provider per project. macOS name
 
 ## Authoritative sources
 
+For the released v0.26.0 layout, resolve repository paths against the [v0.26.0 tagged source](https://github.com/NTLx/ServerFS_MCP/tree/v0.26.0), not the evolving default branch. For other installed versions, resolve the corresponding tagged source; an unpublished candidate is not a stable deployment target.
+
 Reference paths are relative to the matching checkout unless explicitly linked as packaged references. Read the relevant runbook section, actual client help and `site/src/content/docs/docs/tunnel-diagnostics.md` for failures; do not assume historical client flags still apply.
 
 ## Procedure

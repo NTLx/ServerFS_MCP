@@ -164,6 +164,9 @@ jobs:
       contents: write
     runs-on: windows-latest
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: windows
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -183,13 +186,13 @@ jobs:
           $native = (Get-ChildItem native/windows/target/wheels/*.whl).FullName
           $product = (Get-ChildItem dist/serverfs_mcp-*.whl).FullName
           $bridge = (Get-ChildItem dist/serverfs_agent_bridge-*.whl).FullName
-          uv run --no-project --python 3.12 python deployment/native/wheel_release.py version-gate `
-            --tag "${{ inputs.release_tag }}" --wheel $native --wheel $product --wheel $bridge
+          uv run --no-project --python 3.12 python ../deployment/native/wheel_release.py version-gate `
+            --tag "${{ inputs.release_tag }}" --platform windows --wheel $native --wheel $product --wheel $bridge
         shell: pwsh
 
       - name: validate and build ServerFS Agent Plugin release ZIP
         run: |
-          uv run --no-project --python 3.12 python deployment/plugin/package_plugin.py build `
+          uv run --no-project --python 3.12 python ../deployment/plugin/package_plugin.py build `
             --output-dir dist `
             --tag "${{ inputs.release_tag }}"
         shell: pwsh
@@ -200,7 +203,7 @@ jobs:
           $product = (Get-ChildItem dist/serverfs_mcp-*.whl).FullName
           $bridge = (Get-ChildItem dist/serverfs_agent_bridge-*.whl).FullName
           # Two isolated environments, matching the frozen ServerFS/Agent-Bridge process
-          # boundary: the wheels never share one dependency graph (root freezes mcp==2.2.0,
+          # boundary: the wheels never share one dependency graph (Core and Bridge use different SDK pins,
           # the Bridge's frozen Qoder SDK declares mcp<2.0.0), and the supervisor selects the
           # Bridge interpreter through SERVERFS_BRIDGE_PYTHON.
           uv venv --python 3.12 .venv-serverfs
@@ -267,7 +270,7 @@ jobs:
           $bridge = Get-ChildItem dist/serverfs_agent_bridge-*.whl
           $plugin = Get-ChildItem dist/serverfs-plugin-v*.zip
           if (-not (gh release view $tag 2>$null)) {
-            $notesFile = "docs/releases/$tag.md"
+            $notesFile = "../docs/releases/$tag.md"
             if (Test-Path -LiteralPath $notesFile -PathType Leaf) {
               gh release create $tag --target $env:COMMIT --verify-tag --title "ServerFS $tag" --notes-file $notesFile
             } else {
@@ -288,7 +291,7 @@ jobs:
           $bridgeUrl = "$env:SERVER_URL/$env:REPO/releases/download/$tag/$($bridge.Name)"
           (gh release view $tag --json body --jq '.body') -join "`n" |
             Set-Content -Encoding utf8NoBOM release-body-in.md
-          uv run --no-project --python 3.12 python deployment/native/wheel_release.py notes-update `
+          uv run --no-project --python 3.12 python ../deployment/native/wheel_release.py notes-update `
             --body-file release-body-in.md --out-file release-notes-out.md `
             --product-name $product.Name --product-url $productUrl --product-sha $productHash `
             --bridge-name $bridge.Name --bridge-url $bridgeUrl --bridge-sha $bridgeHash `
@@ -344,9 +347,9 @@ jobs:
 
           version="${RELEASE_TAG#v}"
           expected="$(printf '%s\n' \
-            "serverfs_agent_bridge-$version-py3-none-any.whl" \
+            "serverfs_agent_bridge-$version-py3-none-win_amd64.whl" \
             "serverfs-plugin-v$version.zip" \
-            "serverfs_mcp-$version-py3-none-any.whl" \
+            "serverfs_mcp-$version-py3-none-win_amd64.whl" \
             "serverfs_windows_native-$version-cp312-abi3-win_amd64.whl" | sort)"
           actual="$(jq -r '.assets[].name' <<<"$release_json" | sort)"
           test "$actual" = "$expected" || {

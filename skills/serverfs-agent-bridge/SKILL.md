@@ -23,6 +23,8 @@ Load only the applicable packaged reference: [Linux](references/linux.md), [macO
 
 ## Authoritative sources
 
+For the released v0.26.0 layout, resolve repository paths against the [v0.26.0 tagged source](https://github.com/NTLx/ServerFS_MCP/tree/v0.26.0), not the evolving default branch. For other installed versions, resolve the corresponding tagged source; an unpublished candidate is not a stable deployment target.
+
 References resolve against the version-matched checkout. Read the selected runbook section and `agent_bridge/README.md`; for specific tasks consult `site/src/content/docs/docs/agent-bridge.md`, `repo-ops.md`, `acp.md` or `jev-advisors.md` in that docs directory. Use installed CLI/help and actual advertised tool schema. No matching source or authority: stop at non-mutating guidance.
 
 ## Procedure

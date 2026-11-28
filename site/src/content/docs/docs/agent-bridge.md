@@ -13,7 +13,7 @@ Agent Bridge runs on the host and manages provider execution, task state, writer
 | `owned` | One Core has a dedicated owner. |
 | `shared` | Independently managed owner serves explicitly authorized Cores on the same host. |
 
-Named Linux uses a host user systemd service and signed Unix-socket attachments. macOS uses native SMAppService and Unix sockets; Owned mode defaults to v1 private manifest/policy checks; new Owned Cores can explicitly select signed v2. Windows uses native scheduled tasks and Named Pipe authorization. Follow the [Linux](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md), [macOS](../macos-native/) or [Windows](../windows-native/) guide.
+Named Linux uses a host user systemd service and signed Unix-socket attachments. macOS uses native SMAppService and Unix sockets; Owned mode defaults to v1 private manifest/policy checks; new Owned Cores can explicitly select signed v2. Windows uses native scheduled tasks and Named Pipe authorization. Follow the [Linux](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md), [macOS](../macos-native/) or [Windows](../windows-native/) guide.
 
 Shared Core grants restrict methods and aliases. A shared Core cannot start, stop or retire its owner. Matching UID/SID is not sufficient authorization; independent owners must not overlap writable roots. Keep owner credentials, state and configuration outside exposed workdirs.
 

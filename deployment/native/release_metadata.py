@@ -38,12 +38,17 @@ def validate(root: Path, tag: str) -> dict[str, str]:
         if value != expected:
             raise MetadataError(f"{label}: expected {expected!r}, got {value!r}")
 
+    platforms = ("linux", "macos", "windows")
     versions = {
-        "root": toml("pyproject.toml")["project"]["version"],
-        "bridge": toml("agent_bridge/pyproject.toml")["project"]["version"],
-        "windows-native": toml("native/windows/Cargo.toml")["package"]["version"],
-        "plugin": json_file("plugin.json")["version"],
+        f"{platform}-{component}": toml(f"{platform}/{manifest}")["project"]["version"]
+        for platform in platforms
+        for component, manifest in (
+            ("core", "pyproject.toml"),
+            ("bridge", "agent_bridge/pyproject.toml"),
+        )
     }
+    versions["windows-native"] = toml("windows/native/windows/Cargo.toml")["package"]["version"]
+    versions["plugin"] = json_file("plugin.json")["version"]
     registry = json_file("server.json")
     require_version(registry["version"], "server.json version")
     packages = registry["packages"]
@@ -62,8 +67,12 @@ def validate(root: Path, tag: str) -> dict[str, str]:
             )
 
     lock_records = (
-        ("uv.lock", "serverfs-mcp"),
-        ("agent_bridge/uv.lock", "serverfs-agent-bridge"),
+        (f"{platform}/{relative}", name)
+        for platform in platforms
+        for relative, name in (
+            ("uv.lock", "serverfs-mcp"),
+            ("agent_bridge/uv.lock", "serverfs-agent-bridge"),
+        )
     )
     for relative, name in lock_records:
         lock = toml(relative)
@@ -76,15 +85,17 @@ def validate(root: Path, tag: str) -> dict[str, str]:
         if records[0].get("source") != {"editable": "."}:
             raise MetadataError(f"{relative} package {name} is not the local editable package")
 
-    cargo_lock = toml("native/windows/Cargo.lock")
+    cargo_lock = toml("windows/native/windows/Cargo.lock")
     records = [
         p for p in cargo_lock.get("package", []) if p.get("name") == "serverfs-windows-native"
     ]
     if len(records) != 1:
         raise MetadataError(
-            "native/windows/Cargo.lock must contain exactly one local package record"
+            "windows/native/windows/Cargo.lock must contain exactly one local package record"
         )
-    require_version(records[0].get("version"), "native/windows/Cargo.lock serverfs-windows-native")
+    require_version(
+        records[0].get("version"), "windows/native/windows/Cargo.lock serverfs-windows-native"
+    )
 
     for label, version in versions.items():
         require_version(version, label)

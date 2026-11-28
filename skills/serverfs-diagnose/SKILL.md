@@ -35,6 +35,8 @@ Identify affected endpoint, exact component IDs, installed versions, effective d
 
 ## Authoritative sources
 
+For the released v0.26.0 layout, resolve repository paths against the [v0.26.0 tagged source](https://github.com/NTLx/ServerFS_MCP/tree/v0.26.0), not the evolving default branch. For other installed versions, resolve the corresponding tagged source; an unpublished candidate is not a stable deployment target.
+
 Paths are relative to the matching checkout, not the Skill archive. Read only the applicable runbook section; for ingress details use `site/src/content/docs/docs/tunnel-diagnostics.md`, for task recovery `site/src/content/docs/docs/agent-bridge.md`, for admission the specific API Key/OAuth guide. Generic `serverfs diagnostics snapshot/task` needs a compatible local endpoint; it is not a signed named attachment proof. Use actual CLI help for available flags/routes.
 
 ## Safety / stop conditions

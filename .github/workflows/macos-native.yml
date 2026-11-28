@@ -23,17 +23,29 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "site/**"
-      - ".github/workflows/pages.yml"
-
+      - feat/v0.27.0-platform-split
+      - feat/v0.27.0-macos
+    paths:
+      - "macos/**"
+      - "contracts/**"
+      - "deployment/native/wheel_release.py"
+      - "deployment/native/check_mcp_contract.py"
+      - "deployment/native/platform_isolation.py"
+      - "docs/diagnostics/v0270-capture-v026-contract.py"
+      - ".github/workflows/macos-native.yml"
   pull_request:
     branches:
       - main
-      - integration/v0.26.0
-    paths-ignore:
-      - "site/**"
-      - ".github/workflows/pages.yml"
+      - feat/v0.27.0-platform-split
+      - integration/v0.27.0
+    paths:
+      - "macos/**"
+      - "contracts/**"
+      - "deployment/native/wheel_release.py"
+      - "deployment/native/check_mcp_contract.py"
+      - "deployment/native/platform_isolation.py"
+      - "docs/diagnostics/v0270-capture-v026-contract.py"
+      - ".github/workflows/macos-native.yml"
 
 permissions:
   contents: read
@@ -62,12 +74,16 @@ jobs:
           echo "platform assertions passed: native arm64 macOS 27, not Rosetta"
 
   test:
+    defaults:
+      run:
+        working-directory: macos
     name: MCP suite (macOS 27 arm64)
     needs: platform-assert
     runs-on: ${{ vars.MACOS_RUNNER || 'xcode-27' }}
     steps:
       - name: Assert the platform again inside the job
         shell: bash
+        working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
           test "$(uname -m)" = "arm64"
@@ -106,13 +122,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/serverfs-wheel-ci
-          uv build --wheel --out-dir /tmp/serverfs-wheel-ci
+          dist="$RUNNER_TEMP/serverfs-macos-core-wheels"
+          uv build --wheel --out-dir "$dist"
+          version="$(uv run --frozen python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          uv run --no-project --python 3.12 python ../deployment/native/wheel_release.py version-gate \
+            --tag "v$version" --platform macos --wheel "$dist"/serverfs_mcp-*.whl
           .venv/bin/python - <<'PY'
+          import os
           from pathlib import Path
           from zipfile import ZipFile
 
-          wheel = next(Path('/tmp/serverfs-wheel-ci').glob('serverfs_mcp-*.whl'))
+          wheels = list((Path(os.environ['RUNNER_TEMP']) / 'serverfs-macos-core-wheels').glob('serverfs_mcp-*.whl'))
+          assert len(wheels) == 1, wheels
+          wheel = wheels[0]
           required = {
               'serverfs_mcp/_darwin_service_manager/build.sh',
               'serverfs_mcp/_darwin_service_manager/Info.plist',
@@ -136,8 +158,21 @@ jobs:
       - name: Test
         run: uv run pytest
 
+      - name: Compare frozen v0.26.0 MCP contract
+        run: uv run --frozen python -I -B ../deployment/native/check_mcp_contract.py ..
+
+      - name: Verify standalone platform source and installed wheels
+        run: uv run --frozen python -I -B ../deployment/native/platform_isolation.py . --online
+
       - name: Whitespace check
         run: git diff --check
+
+      - name: Retain verified macOS Core wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-core-wheel-${{ github.sha }}
+          path: ${{ runner.temp }}/serverfs-macos-core-wheels/*.whl
+          if-no-files-found: error
 
   bridge-test:
     name: Agent Bridge suite (macOS 27 arm64)
@@ -145,7 +180,7 @@ jobs:
     runs-on: ${{ vars.MACOS_RUNNER || 'xcode-27' }}
     defaults:
       run:
-        working-directory: agent_bridge
+        working-directory: macos/agent_bridge
     steps:
       - name: Assert the platform again inside the job
         shell: bash
@@ -174,7 +209,24 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
+      - name: Build and verify platform-local Bridge wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist="$RUNNER_TEMP/serverfs-macos-bridge-wheels"
+          uv build --wheel --out-dir "$dist"
+          version="$(uv run --frozen python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          uv run --no-project --python 3.12 python ../../deployment/native/wheel_release.py version-gate \
+            --tag "v$version" --platform macos --wheel "$dist"/serverfs_agent_bridge-*.whl
+
       # Real SMAppService registration/reboot/login acceptance is local and operator-scoped;
       # hosted CI covers the lifecycle adapter and Bridge suites without mutating Login Items.
       - name: Test
         run: uv run pytest
+
+      - name: Retain verified macOS Bridge wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-bridge-wheel-${{ github.sha }}
+          path: ${{ runner.temp }}/serverfs-macos-bridge-wheels/*.whl
+          if-no-files-found: error

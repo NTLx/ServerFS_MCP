@@ -188,6 +188,126 @@ class TestVersionGate:
         )
 
 
+@pytest.mark.parametrize(
+    ("platform", "dist", "tag"),
+    [
+        ("windows", "serverfs_mcp", "py3-none-win_amd64"),
+        ("windows", "serverfs_agent_bridge", "py3-none-win_amd64"),
+        ("windows", "serverfs_windows_native", "cp312-abi3-win_amd64"),
+        ("macos", "serverfs_mcp", "py3-none-macosx_27_0_arm64"),
+        ("macos", "serverfs_agent_bridge", "py3-none-macosx_27_0_arm64"),
+        ("linux-x86_64", "serverfs_mcp", "py3-none-linux_x86_64"),
+        ("linux-aarch64", "serverfs_agent_bridge", "py3-none-linux_aarch64"),
+    ],
+)
+def test_platform_wheel_gate(tmp_path, platform, dist, tag):
+    wheel = make_wheel(
+        tmp_path, f"{dist}-0.27.0-{tag}.whl", name=dist.replace("_", "-"), version="0.27.0"
+    )
+    with zipfile.ZipFile(wheel, "a") as bundle:
+        bundle.writestr(f"{dist}-0.27.0.dist-info/WHEEL", f"Wheel-Version: 1.0\nTag: {tag}\n")
+    assert wheel_release.cmd_version_gate("v0.27.0", [wheel], platform) == 0
+
+
+@pytest.mark.parametrize(
+    ("filename_tag", "metadata_tags"),
+    [
+        ("py3-none-any", ["py3-none-win_amd64"]),
+        ("py3-none-macosx_27_0_arm64", ["py3-none-macosx_27_0_arm64"]),
+        ("py3-none-win_amd64", ["py3-none-any"]),
+        ("py3-none-win_amd64", ["py3-none-win_amd64", "py3-none-any"]),
+        ("py3-none-win_amd64", []),
+        ("py3-none-win_amd64", None),
+    ],
+)
+def test_windows_wheel_gate_refuses_wrong_or_ambiguous_platform(tmp_path, filename_tag, metadata_tags):
+    wheel = make_wheel(
+        tmp_path,
+        f"serverfs_mcp-0.27.0-{filename_tag}.whl",
+        name="serverfs-mcp",
+        version="0.27.0",
+    )
+    if metadata_tags is not None:
+        with zipfile.ZipFile(wheel, "a") as bundle:
+            bundle.writestr(
+                "serverfs_mcp-0.27.0.dist-info/WHEEL",
+                "Wheel-Version: 1.0\n" + "".join(f"Tag: {tag}\n" for tag in metadata_tags),
+            )
+    assert (
+        wheel_release.cmd_version_gate("v0.27.0", [wheel], "windows")
+        == wheel_release.EXIT_VERSION_MISMATCH
+    )
+
+
+def test_windows_native_wheel_refused_by_macos_gate(tmp_path):
+    wheel = make_wheel(
+        tmp_path,
+        "serverfs_windows_native-0.27.0-cp312-abi3-win_amd64.whl",
+        name="serverfs-windows-native",
+        version="0.27.0",
+    )
+    assert (
+        wheel_release.cmd_version_gate("v0.27.0", [wheel], "macos")
+        == wheel_release.EXIT_VERSION_MISMATCH
+    )
+
+
+@pytest.mark.parametrize(
+    ("platform", "tag", "dist", "member"),
+    [
+        ("linux-x86_64", "py3-none-linux_x86_64", "serverfs_mcp", "windows_v25/spec.py"),
+        ("linux-aarch64", "py3-none-linux_aarch64", "serverfs_mcp", "darwin_backend.py"),
+        ("macos", "py3-none-macosx_27_0_arm64", "serverfs_mcp", "linux_backend.py"),
+        ("macos", "py3-none-macosx_27_0_arm64", "serverfs_agent_bridge", "windows_security.py"),
+        ("windows", "py3-none-win_amd64", "serverfs_mcp", "darwin_service.py"),
+        ("windows", "py3-none-win_amd64", "serverfs_mcp", "linux_backend.py"),
+        ("windows", "py3-none-win_amd64", "serverfs_mcp", "core_bridge_client_v2.py"),
+        ("windows", "py3-none-win_amd64", "serverfs_agent_bridge", "macos_owned_config.py"),
+        ("linux-x86_64", "py3-none-linux_x86_64", "serverfs_agent_bridge", "repo_ops_windows.py"),
+        ("windows", "py3-none-win_amd64", "serverfs_mcp", "_darwin_service_manager/build.sh"),
+    ],
+)
+def test_platform_wheel_rejects_foreign_members(tmp_path, platform, tag, dist, member):
+    wheel = make_wheel(
+        tmp_path, f"{dist}-0.27.0-{tag}.whl", name=dist.replace("_", "-"), version="0.27.0"
+    )
+    with zipfile.ZipFile(wheel, "a") as bundle:
+        bundle.writestr(f"{dist}-0.27.0.dist-info/WHEEL", f"Wheel-Version: 1.0\nTag: {tag}\n")
+        bundle.writestr(f"{dist}/{member}", "")
+    assert (
+        wheel_release.cmd_version_gate("v0.27.0", [wheel], platform)
+        == wheel_release.EXIT_VERSION_MISMATCH
+    )
+
+
+def test_core_wheel_rejects_embedded_bridge(tmp_path):
+    dist = "serverfs_mcp"
+    tag = "py3-none-win_amd64"
+    wheel = make_wheel(
+        tmp_path, f"{dist}-0.27.0-{tag}.whl", name="serverfs-mcp", version="0.27.0"
+    )
+    with zipfile.ZipFile(wheel, "a") as bundle:
+        bundle.writestr(f"{dist}-0.27.0.dist-info/WHEEL", f"Wheel-Version: 1.0\nTag: {tag}\n")
+        bundle.writestr("serverfs_agent_bridge/__init__.py", "")
+    assert (
+        wheel_release.cmd_version_gate("v0.27.0", [wheel], "windows")
+        == wheel_release.EXIT_VERSION_MISMATCH
+    )
+
+
+def test_platform_wheel_allows_owned_native_resources(tmp_path):
+    dist = "serverfs_mcp"
+    tag = "py3-none-macosx_27_0_arm64"
+    wheel = make_wheel(
+        tmp_path, f"{dist}-0.27.0-{tag}.whl", name="serverfs-mcp", version="0.27.0"
+    )
+    with zipfile.ZipFile(wheel, "a") as bundle:
+        bundle.writestr(f"{dist}-0.27.0.dist-info/WHEEL", f"Wheel-Version: 1.0\nTag: {tag}\n")
+        bundle.writestr(f"{dist}/darwin_backend.py", "")
+        bundle.writestr(f"{dist}/_darwin_service_manager/build.sh", "#!/bin/sh\n")
+    assert wheel_release.cmd_version_gate("v0.27.0", [wheel], "macos") == 0
+
+
 class TestNotesMatrix:
     def test_human_text_before_block_survives_first_append(self) -> None:
         body = "release v0.10.0\n\nnotes written by a human\n"

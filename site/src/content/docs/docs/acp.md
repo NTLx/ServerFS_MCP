@@ -50,7 +50,7 @@ The [v0.19.0 historical acceptance record](https://github.com/NTLx/ServerFS_MCP/
 
 ## Validate Bridge and runtime
 
-Use the named [Linux](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md), [macOS](../macos-native/) or [Windows](../windows-native/) runbook to verify the owner, attachment and effective workdir policy. `list_agent_runtimes` checks executable availability and reports cached capabilities for the matching profile; it does not launch an Agent or prove authentication. A successful authorized task negotiates the protocol and records measured capabilities. Test on a disposable authorized workdir, inspect the terminal result/events and confirm cleanup. The legacy singleton verifier is not evidence of named attachment readiness.
+Use the named [Linux](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md), [macOS](../macos-native/) or [Windows](../windows-native/) runbook to verify the owner, attachment and effective workdir policy. `list_agent_runtimes` checks executable availability and reports cached capabilities for the matching profile; it does not launch an Agent or prove authentication. A successful authorized task negotiates the protocol and records measured capabilities. Test on a disposable authorized workdir, inspect the terminal result/events and confirm cleanup. The legacy singleton verifier is not evidence of named attachment readiness.
 
 ## Task operation semantics
 

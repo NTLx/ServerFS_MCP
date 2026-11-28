@@ -30,7 +30,7 @@ Repo Ops 按 workdir 启用，并须通过所选 Bridge 接入方式的授权。
 
 ## 按 Workdir 配置
 
-Repo Ops 默认关闭。Linux 命名部署需在 Core slot 和对应的 owner 私有 JSON `workdirs` 条目（`repo_ops_enabled: true`）中同时启用，签名 grant 允许所需 `repo.*` 方法。详见 [Linux 指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)。v0.26.0 签名 overlay 支持 1–16 个显式授权槽位，包括 Agent 禁用的 Repo Ops-only 槽位。可写仓库的 Core 侧设置如下：
+Repo Ops 默认关闭。Linux 命名部署需在 Core slot 和对应的 owner 私有 JSON `workdirs` 条目（`repo_ops_enabled: true`）中同时启用，签名 grant 允许所需 `repo.*` 方法。详见 [Linux 指南](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md)。v0.26.0 签名 overlay 支持 1–16 个显式授权槽位，包括 Agent 禁用的 Repo Ops-only 槽位。可写仓库的 Core 侧设置如下：
 
 ```text
 WORKDIR_01_ALIAS=project
@@ -43,7 +43,7 @@ Named action 定义在授权 owner workdir 的私有 JSON `repo_actions` 中。�
 
 授权只读仓库可以执行 inspection，不需要 named action。Commit、push 及所有 named action 均需要可写策略和 writer lease。不需要 Agent Provider。
 
-Workdir 策略模型见[配置](../configuration/)；完整 Linux 环境变量以版本化 [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example) 为准。
+Workdir 策略模型见[配置](../configuration/)；完整 Linux 环境变量以版本化 [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/.env.example) 为准。
 
 ## Named actions
 

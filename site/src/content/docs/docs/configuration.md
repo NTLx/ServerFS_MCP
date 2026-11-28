@@ -12,7 +12,7 @@ Each Core has its own configuration. Workdir policy is resolved at startup. Choo
 | Linux | Private env + Compose; up to 16 slots | Named project, selected exposure and Bridge overlays; optional Connector profiles |
 | macOS / Windows | Native TOML; up to 64 workdirs | Private HTTP admission inputs, named service manifests and separate Bridge/Connector configuration |
 
-Use the version-matched [.env.example](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example) for Linux and [serverfs.toml.example](https://github.com/NTLx/ServerFS_MCP/blob/main/serverfs.toml.example) for native policy. These are reference templates: replace all active example paths and keep private inputs outside every exposed workdir.
+Use the version-matched [.env.example](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/.env.example) for Linux and [serverfs.toml.example](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/serverfs.toml.example) for native policy. These are reference templates: replace all active example paths and keep private inputs outside every exposed workdir.
 
 ## 2. Define the smallest necessary workdir
 
@@ -49,7 +49,7 @@ Default limits include 512 KiB / 500 lines per text-read page, 1 MiB per text mu
 
 ## 4. Configure HTTP admission separately
 
-For Linux, choose internal-only HTTP or direct publication using the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md). The Core listener is independent of the published host port. Empty Linux Host policy derives `serverfs-mcp:<HTTP_PORT>`; admit only the actual authorities needed. Empty Origin policy rejects nonempty Origin. Preserve DNS-rebinding protection and use HTTPS for public access.
+For Linux, choose internal-only HTTP or direct publication using the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md). The Core listener is independent of the published host port. Empty Linux Host policy derives `serverfs-mcp:<HTTP_PORT>`; admit only the actual authorities needed. Empty Origin policy rejects nonempty Origin. Preserve DNS-rebinding protection and use HTTPS for public access.
 
 Named native HTTP admission requires an exact configured hostname and loopback authority; follow the [macOS](../macos-native/) or [Windows](../windows-native/) runbook rather than the Linux env template.
 

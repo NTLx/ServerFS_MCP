@@ -9,7 +9,7 @@ Core 需要公网 HTTPS 路由但不需要直接公网端口时，可选择 Clou
 
 | 平台 | Origin（示例） | 指南 |
 | --- | --- | --- |
-| Linux | `http://serverfs-mcp:8000` | [Compose](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md) |
+| Linux | `http://serverfs-mcp:8000` | [Compose](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md) |
 | macOS | `http://127.0.0.1:18781` | [原生](../macos-native/) — 纯文件或 owned Core |
 | Windows | `http://127.0.0.1:18781` | [原生](../windows-native/) — 精确 Core 与 Connector ID |
 

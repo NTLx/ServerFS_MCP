@@ -30,7 +30,7 @@ Start with `inspect_repo(workdir="project", view="status")` and `inspect_repo(wo
 
 ## Per-workdir configuration
 
-Repo Ops defaults off. Linux named deployment enables the Core slot and the matching private owner JSON `workdirs` entry (`repo_ops_enabled: true`); the signed grant must allow the required `repo.*` methods. Follow the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md). The v0.26.0 signed overlay accepts 1–16 explicitly granted slots, including Repo Ops-only slots with Agent disabled. The Core-side settings for a writable repository are:
+Repo Ops defaults off. Linux named deployment enables the Core slot and the matching private owner JSON `workdirs` entry (`repo_ops_enabled: true`); the signed grant must allow the required `repo.*` methods. Follow the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md). The v0.26.0 signed overlay accepts 1–16 explicitly granted slots, including Repo Ops-only slots with Agent disabled. The Core-side settings for a writable repository are:
 
 ```text
 WORKDIR_01_ALIAS=project
@@ -43,7 +43,7 @@ Define named actions under the authorized owner workdir's private JSON `repo_act
 
 Inspection works on an authorized read-only repository without named actions. Commit, push and every named action require writable policy and the writer lease. No Agent provider is required.
 
-See [Configuration](../configuration/) for the workdir policy model and the versioned [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example) for the complete Linux variable surface.
+See [Configuration](../configuration/) for the workdir policy model and the versioned [`.env.example`](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/.env.example) for the complete Linux variable surface.
 
 ## Named actions
 

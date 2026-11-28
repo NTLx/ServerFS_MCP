@@ -1,6 +1,6 @@
 # Linux Docker deployment
 
-This is the v0.26.0 operator runbook for Linux amd64/arm64. Use one version-matched checkout and image set. It describes fresh named deployments; it is not an instruction to migrate an existing installation or to change its live Tunnel resources.
+This is the platform-local runbook for the v0.27.0 development candidate on Linux amd64/arm64, based on the v0.26.0 procedures. Run commands from this platform root. For a released installation use the matching tagged runbook and images; this candidate is not release-authorized. It describes fresh named deployments; it is not an instruction to migrate an existing installation or to change its live Tunnel resources.
 
 ## 1. Choose the topology
 
@@ -73,7 +73,7 @@ Skip the pull when using an already built local image. If building from source, 
 
 The healthcheck proves the listener accepts TCP connections; it does not prove authenticated MCP. Configure a Streamable HTTP client with `http://127.0.0.1:18080/mcp` and the private bearer key. Verify initialize, `tools/list` (11 tools with all optional capabilities disabled), `list_workdirs`, and a safe read of the intended workdir. Verify missing/wrong credential denial and rejected mutation in the read-only workdir. Use a new session for each transport test. No Agent task or Tunnel is needed.
 
-For an internal-only deployment replace the publication overlay with the internal overlay. Test from a client on an authorized network. For OAuth use [the OAuth guide](../../docs/oauth.md) and the separate auth service; do not apply the static bearer example unchanged. For binary transfer/file ingress, enable the appropriate policies and optional sidecar independently. See [configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) and [API Key](../../docs/api-key.md).
+For an internal-only deployment replace the publication overlay with the internal overlay. Test from a client on an authorized network. For OAuth use [the OAuth guide](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/docs/oauth.md) and the separate auth service; do not apply the static bearer example unchanged. For binary transfer/file ingress, enable the appropriate policies and optional sidecar independently. See [configuration](https://ntlx.github.io/ServerFS_MCP/docs/configuration/) and [API Key](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/docs/api-key.md).
 
 ## 3. Add or operate a Connector
 
@@ -94,7 +94,7 @@ cf=("${core[@]}" -f compose.cloudflare.yml
 "${cf[@]}" ps cloudflared
 ```
 
-See [Cloudflare Connector](../../docs/cloudflare-tunnel.md) for public route and admission verification.
+See [Cloudflare Connector](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/docs/cloudflare-tunnel.md) for public route and admission verification.
 
 ### OpenAI HTTP
 
@@ -350,6 +350,6 @@ For retirement, stop the selected ingress first, then its Core. Remove only the 
 
 ## Compatibility and evidence
 
-The previous single-owner `compose.agent.yml` / `deployment/agent-bridge/install.sh` path remains a compatibility option for existing deployments; it is not the named signed-Bridge installation path. Do not switch an existing deployment implicitly. Historical Linux acceptance, detailed test recipes and earlier source milestones are preserved in the [integration baseline runbook](https://github.com/NTLx/ServerFS_MCP/blob/fffc0adb8341edb30ac7b03e72a017ca95b8c83d/deployment/linux/README.md). The [release checklist](../../docs/v0.26.0-release-checklist.md) and [evidence ledger](../../docs/releases/v0.26.0-evidence.md) record tested scopes and remaining limitations.
+The previous single-owner `compose.agent.yml` / `deployment/agent-bridge/install.sh` path remains a compatibility option for existing deployments; it is not the named signed-Bridge installation path. Do not switch an existing deployment implicitly. Historical Linux acceptance, detailed test recipes and earlier source milestones are preserved in the [integration baseline runbook](https://github.com/NTLx/ServerFS_MCP/blob/fffc0adb8341edb30ac7b03e72a017ca95b8c83d/deployment/linux/README.md). The [release checklist](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/docs/v0.26.0-release-checklist.md) and [evidence ledger](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/docs/releases/v0.26.0-evidence.md) record tested scopes and remaining limitations.
 
 For live multi-Core acceptance evidence and its limits, consult the preserved integration-baseline record above and the current release checklist. Revalidate the actual Linux v2 deployment attachment, host/container identity and selected artifacts before activating a deployment.

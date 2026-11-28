@@ -26,7 +26,7 @@ EXPECTED_SKILLS = {
 
 
 def _project_version() -> str:
-    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    data = tomllib.loads((REPO_ROOT / "linux/pyproject.toml").read_text(encoding="utf-8"))
     return data["project"]["version"]
 
 
@@ -38,6 +38,13 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         check=False,
     )
+
+
+def test_each_stable_skill_resolves_version_matched_source() -> None:
+    for name in EXPECTED_SKILLS:
+        content = (REPO_ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+        assert "https://github.com/NTLx/ServerFS_MCP/tree/v0.26.0" in content
+        assert "not the evolving default branch" in content
 
 
 def test_skill_and_plugin_validation_passes() -> None:
@@ -97,10 +104,37 @@ def test_plugin_archive_is_minimal_and_deterministic(tmp_path: Path) -> None:
 def plugin_source(tmp_path: Path) -> Path:
     root = tmp_path / "source"
     root.mkdir()
-    for name in ("pyproject.toml", "plugin.json"):
-        shutil.copy2(REPO_ROOT / name, root / name)
+    shutil.copy2(REPO_ROOT / "plugin.json", root / "plugin.json")
+    for platform in ("linux", "macos", "windows"):
+        for manifest in ("pyproject.toml", "agent_bridge/pyproject.toml"):
+            relative = Path(platform) / manifest
+            destination = root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(REPO_ROOT / relative, destination)
     shutil.copytree(REPO_ROOT / "skills", root / "skills")
     return root
+
+
+@pytest.mark.parametrize("platform", ["linux", "macos", "windows"])
+@pytest.mark.parametrize("manifest", ["pyproject.toml", "agent_bridge/pyproject.toml"])
+def test_plugin_rejects_platform_version_mismatch(plugin_source, platform, manifest):
+    path = plugin_source / platform / manifest
+    path.write_text('[project]\nversion = "999.0.0"\n', encoding="utf-8")
+    with pytest.raises(PACKAGE_API["ValidationError"], match="platform project versions disagree"):
+        PACKAGE_API["validate"](plugin_source)
+
+
+def test_plugin_rejects_missing_platform_manifest(plugin_source):
+    (plugin_source / "windows/agent_bridge/pyproject.toml").unlink()
+    with pytest.raises(PACKAGE_API["ValidationError"], match="cannot read windows/agent_bridge"):
+        PACKAGE_API["validate"](plugin_source)
+
+
+def test_plugin_ignores_retired_root_manifest(plugin_source):
+    (plugin_source / "pyproject.toml").write_text(
+        '[project]\nversion = "999.0.0"\n', encoding="utf-8"
+    )
+    assert PACKAGE_API["validate"](plugin_source) == _project_version()
 
 
 @pytest.mark.parametrize("newline", [b"\r\n", b"\r"])

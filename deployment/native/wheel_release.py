@@ -68,12 +68,68 @@ def wheel_version(wheel: Path) -> tuple[str, str]:
     return message.get("Name", candidates[0].split("-", 1)[0]), str(version).strip()
 
 
-def cmd_version_gate(tag: str, wheels: list[Path]) -> int:
+def verify_platform_members(bundle: zipfile.ZipFile, distribution: str, platform: str) -> None:
+    """Reject explicit foreign implementation modules in platform-local packages."""
+    owner = platform.split("-", 1)[0]
+    prefixes = {
+        "linux": ("linux_",),
+        "macos": ("darwin_", "macos_", "_darwin_"),
+        "windows": ("windows_", "protocol_windows_", "repo_ops_windows"),
+    }
+    forbidden = tuple(
+        prefix for system, names in prefixes.items() if system != owner for prefix in names
+    )
+    packages = {"serverfs_mcp", "serverfs_agent_bridge", "serverfs_windows_native"}
+    for name in bundle.namelist():
+        parts = name.split("/")
+        # Check all members within a product package, including nested native resources.
+        # A pure Python wheel must not silently carry another product's package.
+        if parts[0] not in packages:
+            continue
+        if parts[0] != distribution:
+            raise ValueError(f"{bundle.filename}: contains foreign product package {parts[0]}")
+        if owner == "windows" and name == "serverfs_mcp/core_bridge_client_v2.py":
+            raise ValueError(f"{bundle.filename}: contains foreign platform member {name}")
+        if any(part.startswith(forbidden) for part in parts[1:] if part):
+            raise ValueError(f"{bundle.filename}: contains foreign platform member {name}")
+
+
+def verify_platform_tag(wheel: Path, name: str, version: str, platform: str) -> None:
+    """Check both archive metadata and filename; renaming cannot change compatibility."""
+    dist = re.sub(r"[-_.]+", "_", name).lower()
+    if dist not in {"serverfs_mcp", "serverfs_agent_bridge", "serverfs_windows_native"}:
+        raise ValueError(f"{wheel.name}: unexpected distribution")
+    if dist == "serverfs_windows_native":
+        if platform != "windows":
+            raise ValueError(f"{wheel.name}: Windows native wheel on another platform")
+        tag = "cp312-abi3-win_amd64"
+    else:
+        tag = {
+            "windows": "py3-none-win_amd64",
+            "macos": "py3-none-macosx_27_0_arm64",
+            "linux-x86_64": "py3-none-linux_x86_64",
+            "linux-aarch64": "py3-none-linux_aarch64",
+        }[platform]
+    if wheel.name != f"{dist}-{version}-{tag}.whl":
+        raise ValueError(f"{wheel.name}: expected platform-specific filename for {tag}")
+    with zipfile.ZipFile(wheel) as bundle:
+        metadata = [n for n in bundle.namelist() if n.endswith(".dist-info/WHEEL")]
+        if metadata != [f"{dist}-{version}.dist-info/WHEEL"]:
+            raise ValueError(f"{wheel.name}: missing or ambiguous WHEEL metadata")
+        info = Parser().parsestr(bundle.read(metadata[0]).decode("utf-8"), headersonly=True)
+        if info.get_all("Tag") != [tag]:
+            raise ValueError(f"{wheel.name}: WHEEL metadata Tag does not match {tag}")
+        verify_platform_members(bundle, dist, platform)
+
+
+def cmd_version_gate(tag: str, wheels: list[Path], platform: str | None = None) -> int:
     want = normalize_release_version(tag)
     seen: list[str] = []
     for wheel in wheels:
         try:
             name, version = wheel_version(wheel)
+            if platform is not None:
+                verify_platform_tag(wheel, name, version, platform)
         except (OSError, ValueError, zipfile.BadZipFile) as exc:
             sys.stderr.write(f"version-gate: invalid wheel {wheel.name}: {exc}\n")
             return EXIT_VERSION_MISMATCH
@@ -203,6 +259,7 @@ def build_parser() -> argparse.ArgumentParser:
     gate = sub.add_parser("version-gate")
     gate.add_argument("--tag", required=True)
     gate.add_argument("--wheel", required=True, action="append", type=Path)
+    gate.add_argument("--platform", choices=["windows", "macos", "linux-x86_64", "linux-aarch64"])
     notes = sub.add_parser("notes-update")
     notes.add_argument("--body-file", required=True)
     notes.add_argument("--out-file", required=True)
@@ -221,7 +278,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "version-gate":
-        return cmd_version_gate(args.tag, args.wheel)
+        return cmd_version_gate(args.tag, args.wheel, args.platform)
     return cmd_notes_update(args)
 
 

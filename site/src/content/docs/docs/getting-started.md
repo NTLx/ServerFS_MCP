@@ -77,4 +77,4 @@ A running container or TCP healthcheck is not enough. Confirm initialize and too
 - Agent delegation or deterministic [Repo Ops](../repo-ops/): deploy an authorized [host Bridge](../agent-bridge/), with the exact Core identity and allowed workdir/method scope. Do not start a provider runtime just to enable Repo Ops.
 - [Binary transfer](../binary-transfer/): enable the capability explicitly; optional file ingress is a separate sidecar path.
 
-See the [complete Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md) for configuration, Connector-specific lifecycle, signed Bridge provision, rollback and retirement. If operating another platform, use its native runbook rather than translating these Docker commands.
+See the [complete Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md) for configuration, Connector-specific lifecycle, signed Bridge provision, rollback and retirement. If operating another platform, use its native runbook rather than translating these Docker commands.

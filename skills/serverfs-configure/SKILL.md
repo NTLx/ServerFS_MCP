@@ -41,6 +41,8 @@ Native TOML uses shared `[defaults]` for file/binary limits; it does not accept 
 
 ## Authoritative sources
 
+For the released v0.26.0 layout, resolve repository paths against the [v0.26.0 tagged source](https://github.com/NTLx/ServerFS_MCP/tree/v0.26.0), not the evolving default branch. For other installed versions, resolve the corresponding tagged source; an unpublished candidate is not a stable deployment target.
+
 Paths above are checkout-relative, not packaged files. Locate matching source and installed CLI/help; open relevant sections only. For unresolved policy semantics, read `site/src/content/docs/docs/configuration.md` and the single applicable capability topic. Avoid historical reports unless investigating a specific regression.
 
 ## Verification

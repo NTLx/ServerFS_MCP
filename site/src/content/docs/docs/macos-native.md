@@ -18,7 +18,7 @@ File-only and owned Cores support optional OpenAI and Cloudflare Connectors. Sha
 
 ## Deploy
 
-Follow the [complete macOS runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md) for the exact commands and copyable configuration examples.
+Follow the [complete macOS runbook](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/macos/README.md) for the exact commands and copyable configuration examples.
 
 1. Prepare version-matched Core (and, if needed, Bridge) environments and build a signed template App.
 2. Create a minimal native TOML defining the intended workdirs. For persistent HTTP, prepare a distinct port and a private API Key or OAuth configuration. The Host allowlist must exactly match the configured hostname followed by the loopback authority.

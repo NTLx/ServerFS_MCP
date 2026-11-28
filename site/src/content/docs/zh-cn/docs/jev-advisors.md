@@ -24,7 +24,7 @@ ServerFS 可在宿主机 Agent Bridge 中启用 [TypeSafe Jev](https://docs.type
 }
 ```
 
-省略 `jev` 或留空 Key 即关闭顾问。按 [Linux owner provision 流程](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)使用受保护的配置。旧 Linux 单实例渲染器使用私有 env 文件中的 `SERVERFS_JEV_API_KEY` 和 `SERVERFS_JEV_USE_PROXY` 并渲染至 Bridge JSON。macOS 旧版原生配置 helper 也识别这些变量，但命名 macOS owned staging 不传递该私有 overlay。不能因 Bridge parser 支持 Jev 就推断原生 helper 支持其 provision。遵循 [macOS](../macos-native/) 或 [Windows](../windows-native/) 实际支持的 owner 流程，不直接覆盖已安装 owner 快照或共享 grant。
+省略 `jev` 或留空 Key 即关闭顾问。按 [Linux owner provision 流程](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md)使用受保护的配置。旧 Linux 单实例渲染器使用私有 env 文件中的 `SERVERFS_JEV_API_KEY` 和 `SERVERFS_JEV_USE_PROXY` 并渲染至 Bridge JSON。macOS 旧版原生配置 helper 也识别这些变量，但命名 macOS owned staging 不传递该私有 overlay。不能因 Bridge parser 支持 Jev 就推断原生 helper 支持其 provision。遵循 [macOS](../macos-native/) 或 [Windows](../windows-native/) 实际支持的 owner 流程，不直接覆盖已安装 owner 快照或共享 grant。
 
 当 `jev.use_proxy=true` 时，私有 JSON 必须配置有效共享 `proxy`。Jev 使用显式 HTTP client，不修改进程级代理变量。为 false 时 ServerFS 不传入显式 Jev 代理；涉及出站隔离时应核对 owner 环境与实际路由。仅 Jev 使用时可采用带认证的共享端点；如果 Agent 也使用同一端点，则必须无凭据。Tunnel 路由独立。
 

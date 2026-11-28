@@ -1,22 +1,7 @@
 name: Windows Agent
 
-# Agent-side Windows gate introduced by the v0.11 release contract and carried forward.
-#
-# Why this workflow exists: the `Windows native` workflow is the v0.10
-# filesystem/kernel compatibility gate, and its `pull_request` paths filter
-# covers native/ and src/serverfs_mcp/** only. Phase G measured the resulting
-# hole first-hand: the Windows Bridge product changed and no Windows job ran.
-# This workflow owns the Agent Bridge/runtime compatibility layer introduced in v0.11:
-#
-#   Windows native -> v0.10 filesystem/kernel compatibility (native/** paths)
-#   Windows Agent  -> Agent Bridge/runtime/packaging compatibility (introduced in v0.11)
-#
-# so an Agent-only change never re-runs the Rust kernel test suite, and a
-# Bridge change can never again land without a Windows job. The job builds
-# all three release wheels and runs the same wheel-only clean-install
-# acceptance the tag workflow uses (provenance checked from outside the
-# checkout), plus the full Bridge suite on Windows and the agent-related root
-# tests. The Linux jobs in `Container` remain unchanged and independent.
+# Windows-owned Agent Bridge and runtime packaging; all source inputs
+# come from windows/. Shared release metadata tooling is product-level only.
 
 on:
   workflow_call:
@@ -24,107 +9,28 @@ on:
   push:
     branches:
       - main
+      - feat/v0.27.0-platform-split
+      - feat/v0.27.0-windows
     paths:
-      - "agent_bridge/**"
-      - "native/windows/**"
-      - "src/serverfs_mcp/agent_client.py"
-      - "src/serverfs_mcp/agent_core_grant_client.py"
-      - "src/serverfs_mcp/windows_v25/**"
-      - "tests/test_windows_v25_bridge_v2_real_worker.py"
-      - "tests/test_windows_v026_named_proxy_live.py"
-      - "src/serverfs_mcp/agent_doctor.py"
-      - "src/serverfs_mcp/agent_leases.py"
-      - "src/serverfs_mcp/agent_lifecycle.py"
-      - "src/serverfs_mcp/agent_proxy.py"
-      - "src/serverfs_mcp/agent_tools.py"
-      - "src/serverfs_mcp/windows_agent_pipe.py"
-      - "src/serverfs_mcp/windows_job.py"
-      - "src/serverfs_mcp/windows_lease.py"
-      - "src/serverfs_mcp/config.py"
-      - "src/serverfs_mcp/doctor.py"
-      - "src/serverfs_mcp/main.py"
-      - "src/serverfs_mcp/native_config.py"
-      - "src/serverfs_mcp/native_tunnel.py"
-      - "src/serverfs_mcp/supervisor.py"
-      - "src/serverfs_mcp/tunnel_bootstrap.py"
-      - "src/serverfs_mcp/cli.py"
-      - "tests/test_agent_client.py"
-      - "tests/test_agent_deployment.py"
-      - "tests/test_agent_leases.py"
-      - "tests/test_agent_proxy.py"
-      - "tests/test_agent_proxy_ambient_url.py"
-      - "tests/test_agent_tools.py"
-      - "tests/test_d9_native_lifecycle.py"
-      - "tests/test_doctor.py"
-      - "tests/test_doctor_agent.py"
-      - "tests/test_doctor_agent_followup.py"
-      - "tests/test_import_safety.py"
-      - "tests/test_native_tunnel.py"
-      - "tests/test_supervisor_agent.py"
-      - "tests/test_tunnel_bootstrap.py"
-      - "tests/test_wheel_release.py"
-      - "tests/test_windows_agent_lease.py"
-      - "tests/test_windows_agent_pipe.py"
-      - "tests/test_windows_job.py"
-      - "tests/test_windows_job_cleanup.py"
-      - "tests/test_windows_mcp_agent_e2e.py"
-      - "tests/e2e/**"
+      - "windows/**"
+      - "contracts/**"
       - "deployment/native/wheel_release.py"
-      - "pyproject.toml"
-      - "uv.lock"
+      - "deployment/native/check_mcp_contract.py"
+      - "deployment/native/platform_isolation.py"
+      - "docs/diagnostics/v0270-capture-v026-contract.py"
       - ".github/workflows/windows-agent.yml"
   pull_request:
     branches:
       - main
-      - integration/v0.26.0
+      - feat/v0.27.0-platform-split
+      - integration/v0.27.0
     paths:
-      - "agent_bridge/**"
-      - "native/windows/**"
-      - "src/serverfs_mcp/agent_client.py"
-      - "src/serverfs_mcp/agent_core_grant_client.py"
-      - "src/serverfs_mcp/windows_v25/**"
-      - "tests/test_windows_v25_bridge_v2_real_worker.py"
-      - "tests/test_windows_v026_named_proxy_live.py"
-      - "src/serverfs_mcp/agent_doctor.py"
-      - "src/serverfs_mcp/agent_leases.py"
-      - "src/serverfs_mcp/agent_lifecycle.py"
-      - "src/serverfs_mcp/agent_proxy.py"
-      - "src/serverfs_mcp/agent_tools.py"
-      - "src/serverfs_mcp/windows_agent_pipe.py"
-      - "src/serverfs_mcp/windows_job.py"
-      - "src/serverfs_mcp/windows_lease.py"
-      - "src/serverfs_mcp/config.py"
-      - "src/serverfs_mcp/doctor.py"
-      - "src/serverfs_mcp/main.py"
-      - "src/serverfs_mcp/native_config.py"
-      - "src/serverfs_mcp/native_tunnel.py"
-      - "src/serverfs_mcp/supervisor.py"
-      - "src/serverfs_mcp/tunnel_bootstrap.py"
-      - "src/serverfs_mcp/cli.py"
-      - "tests/test_agent_client.py"
-      - "tests/test_agent_deployment.py"
-      - "tests/test_agent_leases.py"
-      - "tests/test_agent_proxy.py"
-      - "tests/test_agent_proxy_ambient_url.py"
-      - "tests/test_agent_tools.py"
-      - "tests/test_d9_native_lifecycle.py"
-      - "tests/test_doctor.py"
-      - "tests/test_doctor_agent.py"
-      - "tests/test_doctor_agent_followup.py"
-      - "tests/test_import_safety.py"
-      - "tests/test_native_tunnel.py"
-      - "tests/test_supervisor_agent.py"
-      - "tests/test_tunnel_bootstrap.py"
-      - "tests/test_wheel_release.py"
-      - "tests/test_windows_agent_lease.py"
-      - "tests/test_windows_agent_pipe.py"
-      - "tests/test_windows_job.py"
-      - "tests/test_windows_job_cleanup.py"
-      - "tests/test_windows_mcp_agent_e2e.py"
-      - "tests/e2e/**"
+      - "windows/**"
+      - "contracts/**"
       - "deployment/native/wheel_release.py"
-      - "pyproject.toml"
-      - "uv.lock"
+      - "deployment/native/check_mcp_contract.py"
+      - "deployment/native/platform_isolation.py"
+      - "docs/diagnostics/v0270-capture-v026-contract.py"
       - ".github/workflows/windows-agent.yml"
 
 permissions:
@@ -139,6 +45,9 @@ jobs:
     name: Windows Agent
     runs-on: windows-latest
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: windows
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -168,9 +77,9 @@ jobs:
           $native = (Get-ChildItem native/windows/target/wheels/*.whl).FullName
           $product = (Get-ChildItem dist/serverfs_mcp-*.whl).FullName
           $bridge = (Get-ChildItem dist/serverfs_agent_bridge-*.whl).FullName
-          uv run --no-project --python 3.12 python deployment/native/wheel_release.py version-gate `
+          uv run --no-project --python 3.12 python ../deployment/native/wheel_release.py version-gate `
             --tag "v$(uv run --no-project --python 3.12 python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")" `
-            --wheel $native --wheel $product --wheel $bridge
+            --platform windows --wheel $native --wheel $product --wheel $bridge
         shell: pwsh
 
       # The same split-environment acceptance the tag workflow runs: two
@@ -313,13 +222,13 @@ jobs:
         shell: pwsh
 
       - name: Agent Bridge suite on Windows (the full Windows-executed Bridge suite)
-        working-directory: agent_bridge
+        working-directory: windows/agent_bridge
         run: |
           uv sync --frozen
           uv run pytest
         shell: pwsh
 
-      - name: agent-related root tests on Windows (wheel-built native, repo tests)
+      - name: agent-related platform tests on Windows (wheel-built native, repo tests)
         run: |
           # The agent tests render Bridge configs with Codex enabled, whose
           # default codex_home (~/.codex) only needs to exist for the config
@@ -334,7 +243,6 @@ jobs:
             tests/test_agent_client.py `
             tests/test_agent_proxy.py `
             tests/test_agent_proxy_ambient_url.py `
-            tests/test_agent_deployment.py `
             tests/test_doctor_agent.py `
             tests/test_doctor_agent_followup.py `
             tests/test_d9_native_lifecycle.py `
@@ -342,7 +250,6 @@ jobs:
             tests/test_native_tunnel.py `
             tests/test_supervisor_agent.py `
             tests/test_tunnel_bootstrap.py `
-            tests/test_wheel_release.py `
             tests/test_windows_agent_lease.py `
             tests/test_windows_agent_pipe.py `
             tests/test_windows_job.py `
@@ -352,12 +259,20 @@ jobs:
             tests/test_windows_mcp_agent_e2e.py -q
         shell: pwsh
 
-      - name: upload the three wheels as PR artifacts
+      - name: Compare frozen v0.26.0 MCP contract
+        run: .venv/Scripts/python.exe -I -B ../deployment/native/check_mcp_contract.py ..
+        shell: pwsh
+
+      - name: Verify standalone platform source and installed wheels
+        run: .venv/Scripts/python.exe -I -B ../deployment/native/platform_isolation.py . --online
+        shell: pwsh
+
+      - name: Retain verified Windows wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: windows-agent-wheels
+          name: windows-agent-wheels-${{ github.sha }}
           path: |
-            native/windows/target/wheels/*.whl
-            dist/serverfs_mcp-*.whl
-            dist/serverfs_agent_bridge-*.whl
+            windows/native/windows/target/wheels/*.whl
+            windows/dist/serverfs_mcp-*.whl
+            windows/dist/serverfs_agent_bridge-*.whl
           if-no-files-found: error

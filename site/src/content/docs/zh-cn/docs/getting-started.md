@@ -77,4 +77,4 @@ core=(docker compose -p serverfs-blue --env-file "$ENV_FILE"
 - Agent 委托或确定性 [Repo Ops](../repo-ops/)：部署已授权的[宿主机 Bridge](../agent-bridge/)，明确 Core 身份和 Workdir/方法范围。不要仅为启用 Repo Ops 而启动 Agent Provider。
 - [二进制传输](../binary-transfer/)：显式启用能力；可选文件入口采用独立 sidecar。
 
-完整配置、Connector 独立生命周期、签名 Bridge provision、回滚和退役步骤见 [Linux 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)。其他平台使用各自原生手册，不直接翻译 Docker 命令。
+完整配置、Connector 独立生命周期、签名 Bridge provision、回滚和退役步骤见 [Linux 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md)。其他平台使用各自原生手册，不直接翻译 Docker 命令。

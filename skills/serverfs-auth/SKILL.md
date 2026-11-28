@@ -30,6 +30,8 @@ Named native HTTP requires API Key or OAuth. Linux Compose supplies the auth ser
 
 ## Authoritative sources
 
+For the released v0.26.0 layout, resolve repository paths against the [v0.26.0 tagged source](https://github.com/NTLx/ServerFS_MCP/tree/v0.26.0), not the evolving default branch. For other installed versions, resolve the corresponding tagged source; an unpublished candidate is not a stable deployment target.
+
 Paths in references point to the matching checkout; links above are packaged. Use the selected auth guide, applicable platform runbook and actual CLI/config parser when necessary. Do not guess missing settings or copy template secrets into a live configuration.
 
 ## Procedure

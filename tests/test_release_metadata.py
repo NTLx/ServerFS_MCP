@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-PROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+PROJECT = tomllib.loads((ROOT / "linux/pyproject.toml").read_text(encoding="utf-8"))
 CURRENT_VERSION = PROJECT["project"]["version"]
 CURRENT_TAG = f"v{CURRENT_VERSION}"
 MISMATCH_VERSION = "0.0.0" if CURRENT_VERSION != "0.0.0" else "0.0.1"
@@ -24,13 +24,20 @@ sys.modules[_SPEC.name] = release_metadata
 _SPEC.loader.exec_module(release_metadata)
 MetadataError = release_metadata.MetadataError
 validate = release_metadata.validate
+PLATFORMS = ("linux", "macos", "windows")
+MANIFESTS = ("pyproject.toml", "agent_bridge/pyproject.toml")
+LOCK_RECORDS = [
+    (f"{platform}/{relative}", name)
+    for platform in PLATFORMS
+    for relative, name in (
+        ("uv.lock", "serverfs-mcp"),
+        ("agent_bridge/uv.lock", "serverfs-agent-bridge"),
+    )
+] + [("windows/native/windows/Cargo.lock", "serverfs-windows-native")]
 FILES = (
-    "pyproject.toml",
-    "uv.lock",
-    "agent_bridge/pyproject.toml",
-    "agent_bridge/uv.lock",
-    "native/windows/Cargo.toml",
-    "native/windows/Cargo.lock",
+    *(f"{platform}/{relative}" for platform in PLATFORMS for relative in MANIFESTS),
+    *(relative for relative, _ in LOCK_RECORDS),
+    "windows/native/windows/Cargo.toml",
     "plugin.json",
     "server.json",
 )
@@ -53,7 +60,32 @@ def update_json(path: Path, mutate) -> None:
 
 def test_current_release_baseline_is_consistent(fixture_root: Path) -> None:
     result = validate(fixture_root, CURRENT_TAG)
-    assert result["root"] == result["registry"] == CURRENT_VERSION
+    for platform in PLATFORMS:
+        assert result[f"{platform}-core"] == CURRENT_VERSION
+        assert result[f"{platform}-bridge"] == CURRENT_VERSION
+    assert result["registry"] == result["windows-native"] == result["plugin"] == CURRENT_VERSION
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [f"{platform}/{manifest}" for platform in PLATFORMS for manifest in MANIFESTS]
+    + ["windows/native/windows/Cargo.toml"],
+)
+def test_platform_manifest_version_must_match(fixture_root: Path, relative: str) -> None:
+    path = fixture_root / relative
+    content = path.read_text(encoding="utf-8")
+    version = f'version = "{CURRENT_VERSION}"'
+    assert version in content
+    path.write_text(content.replace(version, f'version = "{MISMATCH_VERSION}"', 1))
+    with pytest.raises(MetadataError, match=f"expected {CURRENT_VERSION!r}"):
+        validate(fixture_root, CURRENT_TAG)
+
+
+@pytest.mark.parametrize("relative", FILES)
+def test_missing_release_input_fails(fixture_root: Path, relative: str) -> None:
+    (fixture_root / relative).unlink()
+    with pytest.raises(MetadataError, match=f"cannot read {relative}"):
+        validate(fixture_root, CURRENT_TAG)
 
 
 def test_nested_registry_package_version_must_match(fixture_root: Path) -> None:
@@ -83,11 +115,7 @@ def test_oci_tag_must_match_release_tag(fixture_root: Path) -> None:
 
 @pytest.mark.parametrize(
     ("relative", "name"),
-    [
-        ("uv.lock", "serverfs-mcp"),
-        ("agent_bridge/uv.lock", "serverfs-agent-bridge"),
-        ("native/windows/Cargo.lock", "serverfs-windows-native"),
-    ],
+    LOCK_RECORDS,
 )
 def test_missing_local_lock_record_fails(fixture_root: Path, relative: str, name: str) -> None:
     path = fixture_root / relative
@@ -106,11 +134,7 @@ def test_missing_local_lock_record_fails(fixture_root: Path, relative: str, name
 
 @pytest.mark.parametrize(
     ("relative", "name"),
-    [
-        ("uv.lock", "serverfs-mcp"),
-        ("agent_bridge/uv.lock", "serverfs-agent-bridge"),
-        ("native/windows/Cargo.lock", "serverfs-windows-native"),
-    ],
+    LOCK_RECORDS,
 )
 def test_stale_local_lock_record_fails(fixture_root: Path, relative: str, name: str) -> None:
     path = fixture_root / relative

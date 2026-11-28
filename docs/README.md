@@ -7,13 +7,13 @@ Start with the [English README](../README_EN.md) or [简体中文 README](../REA
 - [Accepted platform independence ADR](architecture/v0.27.0-platform-independence.md) — binding target architecture and three independent implementation boundaries.
 - [Approved v0.27.0 development plan](plans/dev_plan_v0.27.0.md) — split-first sequence, mandatory reliability fixes, MCP integration scope and release gates.
 
-These documents govern v0.27.0 development, not current v0.26.0 operations or acceptance. Start at [AGENTS.md](../AGENTS.md).
+These documents govern v0.27.0 development, not current v0.26.0 operations or acceptance. Start at [AGENTS.md](../AGENTS.md). The owning development trees are [Linux](../linux/), [macOS](../macos/), and [Windows](../windows/); run their own build/test commands from those directories.
 
 ## Operations
 
-- [Linux Docker deployment](../deployment/linux/README.md), [macOS native deployment](../deployment/macos/README.md), [Windows native deployment](deployment/windows/v0250-native-operations.md).
+- [Linux Docker deployment](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md), [macOS native deployment](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/macos/README.md), [Windows native deployment](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/docs/deployment/windows/v0250-native-operations.md).
 - [Windows named Agent proxy](deployment/windows/v0260-named-agent-proxy.md), [Windows Cloudflare](windows-cloudflare-tunnel.md), [Cloudflare Connector](cloudflare-tunnel.md).
-- [Static API Key](api-key.md), [OAuth](oauth.md), [host Agent Bridge](../agent_bridge/README.md), [operational Skills](../skills/README.md).
+- [Static API Key](api-key.md), [OAuth](oauth.md), [host Agent Bridge](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/agent_bridge/README.md), [operational Skills](../skills/README.md).
 - [English website docs](https://ntlx.github.io/ServerFS_MCP/docs/) · [中文网站文档](https://ntlx.github.io/ServerFS_MCP/zh-cn/docs/).
 
 ## Engineering and release history

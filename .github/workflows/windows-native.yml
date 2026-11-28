@@ -12,103 +12,20 @@ on:
   push:
     branches:
       - main
+      - feat/v0.27.0-platform-split
+      - feat/v0.27.0-windows
     paths:
-      - "native/**"
-      - "src/serverfs_mcp/backends.py"
-      - "src/serverfs_mcp/linux_backend.py"
-      - "src/serverfs_mcp/windows_backend.py"
-      - "src/serverfs_mcp/windows_*.py"
-      - "src/serverfs_mcp/windows_v25/**"
-      - "src/serverfs_mcp/agent_core_grant_client.py"
-      - "deployment/windows/**"
-      - "src/serverfs_mcp/agent_lifecycle.py"
-      - "src/serverfs_mcp/paths.py"
-      - "src/serverfs_mcp/tools.py"
-      - "src/serverfs_mcp/cli.py"
-      - "src/serverfs_mcp/cloudflare_bootstrap.py"
-      - "src/serverfs_mcp/config.py"
-      - "src/serverfs_mcp/main.py"
-      - "src/serverfs_mcp/http_auth.py"
-      - "src/serverfs_mcp/auth_config.py"
-      - "src/serverfs_mcp/file_ingress.py"
-      - "src/serverfs_mcp/native_config.py"
-      - "src/serverfs_mcp/native_tunnel.py"
-      - "src/serverfs_mcp/shared_proxy.py"
-      - "src/serverfs_mcp/doctor.py"
-      - "src/serverfs_mcp/tunnel_bootstrap.py"
-      - "src/serverfs_mcp/supervisor.py"
-      - "pyproject.toml"
-      - "src/serverfs_mcp/search_glob.py"
-      - "tests/test_cli.py"
-      - "tests/test_cloudflare_bootstrap.py"
-      - "tests/test_native_http.py"
-      - "tests/test_native_tunnel.py"
-      - "tests/test_doctor.py"
-      - "tests/test_tunnel_bootstrap.py"
-      - "tests/test_windows_*"
-      - "tests/test_search_glob*"
-      - "tests/test_search_find_contract.py"
-      - "tests/test_native_windows.py"
-      - "tests/test_import_safety.py"
-      - "tests/test_auth_config.py"
-      - "tests/test_file_ingress.py"
-      - "tests/test_http_auth.py"
-      - "tests/test_api_key_e2e.py"
-      - "tests/test_oauth_e2e.py"
-      - "tests/test_darwin_backend.py"
-      - "tests/test_darwin_service.py"
-      - "tests/test_darwin_bridge_policy.py"
+      - "windows/**"
+      - "contracts/**"
       - ".github/workflows/windows-native.yml"
   pull_request:
     branches:
       - main
-      - integration/v0.26.0
+      - feat/v0.27.0-platform-split
+      - integration/v0.27.0
     paths:
-      - "native/**"
-      - "src/serverfs_mcp/backends.py"
-      - "src/serverfs_mcp/linux_backend.py"
-      - "src/serverfs_mcp/windows_backend.py"
-      - "src/serverfs_mcp/windows_*.py"
-      - "src/serverfs_mcp/windows_v25/**"
-      - "src/serverfs_mcp/agent_core_grant_client.py"
-      - "deployment/windows/**"
-      - "src/serverfs_mcp/agent_lifecycle.py"
-      - "src/serverfs_mcp/paths.py"
-      - "src/serverfs_mcp/tools.py"
-      - "src/serverfs_mcp/cli.py"
-      - "src/serverfs_mcp/cloudflare_bootstrap.py"
-      - "src/serverfs_mcp/config.py"
-      - "src/serverfs_mcp/main.py"
-      - "src/serverfs_mcp/http_auth.py"
-      - "src/serverfs_mcp/auth_config.py"
-      - "src/serverfs_mcp/file_ingress.py"
-      - "src/serverfs_mcp/native_config.py"
-      - "src/serverfs_mcp/native_tunnel.py"
-      - "src/serverfs_mcp/shared_proxy.py"
-      - "src/serverfs_mcp/doctor.py"
-      - "src/serverfs_mcp/tunnel_bootstrap.py"
-      - "src/serverfs_mcp/supervisor.py"
-      - "pyproject.toml"
-      - "src/serverfs_mcp/search_glob.py"
-      - "tests/test_cli.py"
-      - "tests/test_cloudflare_bootstrap.py"
-      - "tests/test_native_http.py"
-      - "tests/test_native_tunnel.py"
-      - "tests/test_doctor.py"
-      - "tests/test_tunnel_bootstrap.py"
-      - "tests/test_windows_*"
-      - "tests/test_search_glob*"
-      - "tests/test_search_find_contract.py"
-      - "tests/test_native_windows.py"
-      - "tests/test_import_safety.py"
-      - "tests/test_auth_config.py"
-      - "tests/test_file_ingress.py"
-      - "tests/test_http_auth.py"
-      - "tests/test_api_key_e2e.py"
-      - "tests/test_oauth_e2e.py"
-      - "tests/test_darwin_backend.py"
-      - "tests/test_darwin_service.py"
-      - "tests/test_darwin_bridge_policy.py"
+      - "windows/**"
+      - "contracts/**"
       - ".github/workflows/windows-native.yml"
 
 permissions:
@@ -122,6 +39,9 @@ jobs:
   native-kernel:
     runs-on: windows-latest
     timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: windows
     env:
       # the acceptance job must EXECUTE the symlink-class reparse cases;
       # a soft skip is a failure here (tests/ntfs_traversal.rs honors it)
@@ -136,39 +56,39 @@ jobs:
         shell: pwsh
 
       - name: cargo fmt
-        working-directory: native/windows
+        working-directory: windows/native/windows
         run: cargo fmt --check
         shell: pwsh
 
       - name: cargo clippy (lib + integration, -D warnings)
-        working-directory: native/windows
+        working-directory: windows/native/windows
         run: cargo clippy --locked --all-targets -- -D warnings
         shell: pwsh
 
       - name: cargo clippy (python feature, -D warnings)
-        working-directory: native/windows
+        working-directory: windows/native/windows
         run: cargo clippy --locked --all-targets --features pyo3 -- -D warnings
         shell: pwsh
 
       - name: cargo test (kernel; symlink cases hard-required)
-        working-directory: native/windows
+        working-directory: windows/native/windows
         run: cargo test --locked
         shell: pwsh
 
       - name: mutation metadata-fixture evidence (disclose fixture branch taken)
-        working-directory: native/windows
+        working-directory: windows/native/windows
         run: >
           cargo test --locked --test ntfs_mutation -- --nocapture --test-threads=1
           extended_attributes object_id_fail
         shell: pwsh
 
       - name: cargo test (python-boundary unit tests)
-        working-directory: native/windows
+        working-directory: windows/native/windows
         run: cargo test --locked --features pyo3
         shell: pwsh
 
       - name: Build release extension module
-        working-directory: native/windows
+        working-directory: windows/native/windows
         run: |
           cargo build --locked --release --features pyo3
           New-Item -ItemType Directory -Force -Path pyd-staging | Out-Null
@@ -187,14 +107,14 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
 
-      - name: Cross-platform pytest collection gate
+      - name: Windows pytest collection gate
         env:
-          PYTHONPATH: "${{ github.workspace }}\\native\\windows\\pyd-staging"
+          PYTHONPATH: "${{ github.workspace }}\\windows\\native\\windows\\pyd-staging"
         run: uv run pytest --collect-only -q
 
       - name: Windows Python/native test set
         env:
-          PYTHONPATH: "${{ github.workspace }}\\native\\windows\\pyd-staging"
+          PYTHONPATH: "${{ github.workspace }}\\windows\\native\\windows\\pyd-staging"
         run: >
           uv run pytest
           tests/test_import_safety.py
@@ -228,7 +148,7 @@ jobs:
       - name: Windows v25 named-instance contracts
         shell: pwsh
         env:
-          PYTHONPATH: "${{ github.workspace }}\\native\\windows\\pyd-staging"
+          PYTHONPATH: "${{ github.workspace }}\\windows\\native\\windows\\pyd-staging"
         run: |
           $tests = @(Get-ChildItem tests/test_windows_v25_*.py | Sort-Object Name | ForEach-Object FullName)
           if ($tests.Count -eq 0) { throw "Windows v25 test inventory missing" }
@@ -242,7 +162,7 @@ jobs:
       # PYTHONPATH and no pyd-staging: only the wheel provides the native
       # module, proving end users get a usable backend from the wheel alone.
       - name: maturin wheel build (release, abi3, locked)
-        working-directory: native/windows
+        working-directory: windows/native/windows
         run: uv tool run --from maturin==1.8.2 maturin build --release --features pyo3 --locked
         shell: pwsh
 
@@ -304,5 +224,5 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: serverfs-windows-native-wheel
-          path: native/windows/target/wheels/*.whl
+          path: windows/native/windows/target/wheels/*.whl
           if-no-files-found: error

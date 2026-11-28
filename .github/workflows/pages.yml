@@ -18,7 +18,8 @@ on:
   pull_request:
     branches:
       - main
-      - integration/v0.26.0
+      - integration/v0.27.0
+      - feat/v0.27.0-platform-split
     paths:
       - "site/**"
       - ".github/workflows/pages.yml"
@@ -62,7 +63,7 @@ jobs:
         run: npm run build
 
       - name: Write PR preview provenance
-        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.26.0')
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.27.0')
         working-directory: site
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -89,7 +90,7 @@ jobs:
           PYCODE
 
       - name: Retain PR preview for offline browser acceptance
-        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.26.0')
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.27.0')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: site-preview-${{ github.sha }}

@@ -12,7 +12,7 @@ description: 配置 Core、Workdir 与可选能力。
 | Linux | 私有 env + Compose，最多 16 个槽位 | 命名 project、所选暴露及 Bridge overlay、可选 Connector profile |
 | macOS / Windows | 原生 TOML，最多 64 个 Workdir | 私有 HTTP 准入输入、命名服务 manifest、独立 Bridge/Connector 配置 |
 
-Linux 参考版本匹配的 [.env.example](https://github.com/NTLx/ServerFS_MCP/blob/main/.env.example)，原生平台参考 [serverfs.toml.example](https://github.com/NTLx/ServerFS_MCP/blob/main/serverfs.toml.example)。使用前替换所有生效的示例路径，私有输入不得位于暴露的 Workdir 中。
+Linux 参考版本匹配的 [.env.example](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/.env.example)，原生平台参考 [serverfs.toml.example](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/serverfs.toml.example)。使用前替换所有生效的示例路径，私有输入不得位于暴露的 Workdir 中。
 
 ## 2. 定义最小必要 Workdir
 
@@ -49,7 +49,7 @@ Linux 空标量继承默认值，显式值优先；Repo Ops 逐槽默认关闭�
 
 ## 4. 独立配置 HTTP 准入
 
-Linux 按[运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)选择仅内部 HTTP 或直接端口发布。Core 监听端口与宿主机发布端口分离。Linux Host 白名单留空时派生 `serverfs-mcp:<HTTP_PORT>`，只允许实际需要的 authority。Origin 白名单留空拒绝非空 Origin。保留 DNS rebinding 防护，公网访问使用 HTTPS。
+Linux 按[运维手册](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md)选择仅内部 HTTP 或直接端口发布。Core 监听端口与宿主机发布端口分离。Linux Host 白名单留空时派生 `serverfs-mcp:<HTTP_PORT>`，只允许实际需要的 authority。Origin 白名单留空拒绝非空 Origin。保留 DNS rebinding 防护，公网访问使用 HTTPS。
 
 命名原生 HTTP 准入要求精确配置 hostname 和 loopback authority，使用 [macOS](../macos-native/) 或 [Windows](../windows-native/) 手册，而非 Linux env 模板。
 

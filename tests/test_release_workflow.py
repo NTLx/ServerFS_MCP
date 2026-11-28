@@ -16,6 +16,31 @@ def on_block(name: str) -> str:
     return text(name).split("permissions:", 1)[0]
 
 
+def test_stable_site_does_not_link_to_retired_root_paths_on_main() -> None:
+    prefix = "https://github.com/NTLx/ServerFS_MCP/blob/main/"
+    retired_paths = (
+        "deployment/linux/README.md",
+        "deployment/macos/README.md",
+        ".env.example",
+        "serverfs.toml.example",
+    )
+    documents = sorted((ROOT / "site/src/content/docs").rglob("*.md"))
+    assert documents
+    for document in documents:
+        content = document.read_text(encoding="utf-8")
+        for path in retired_paths:
+            assert prefix + path not in content, (document, path)
+
+
+def test_common_distribution_gate_is_independent_of_product_runtime() -> None:
+    workflow = text("container.yml")
+    assert on_block("container.yml").count('      - "deployment/native/check_distribution.py"') == 2
+    assert "python -I -B ../deployment/native/check_distribution.py" in workflow
+    gate = (ROOT / "deployment/native/check_distribution.py").read_text(encoding="utf-8")
+    assert '"--noconftest"' in gate
+    assert "sys.modules[package] = None" in gate
+
+
 def test_stable_release_is_dispatch_first_not_tag_first() -> None:
     release = on_block("wheel-release.yml")
     assert "workflow_dispatch:" in release
@@ -59,13 +84,15 @@ def test_release_artifacts_are_downstream_of_validated_tag() -> None:
     container = release.split("  container-release:", 1)[1].split("  verify-publication:", 1)[0]
     verify = release.split("  verify-publication:", 1)[1]
     assert "needs: create-tag" in wheel
+    assert "working-directory: windows\n" in wheel
+    assert "--platform windows --wheel $native --wheel $product --wheel $bridge" in wheel
     assert "needs: wheel" in container
     assert "release_tag: ${{ inputs.release_tag }}" in container
     assert "- wheel" in verify
     assert "- container-release" in verify
     assert "Unexpected GitHub Release asset set" in verify
-    assert "serverfs_mcp-$version-py3-none-any.whl" in verify
-    assert "serverfs_agent_bridge-$version-py3-none-any.whl" in verify
+    assert "serverfs_mcp-$version-py3-none-win_amd64.whl" in verify
+    assert "serverfs_agent_bridge-$version-py3-none-win_amd64.whl" in verify
     assert "serverfs_windows_native-$version-cp312-abi3-win_amd64.whl" in verify
     assert "serverfs-plugin-v$version.zip" in verify
     assert "Stable GHCR tags do not resolve to the same OCI index" in verify
@@ -143,7 +170,9 @@ def test_linux_ci_and_publication_use_the_same_platform_local_context() -> None:
         assert "file: ./linux/Dockerfile\n" in source
         assert "context: .\n" not in source
     assert "../deployment/registry/validate.py" in container
-    assert "../tests/test_release_workflow.py" in container
+    assert "../deployment/native/check_distribution.py" in container
+    gate = (ROOT / "deployment/native/check_distribution.py").read_text(encoding="utf-8")
+    assert '"tests/test_release_workflow.py"' in gate
 
 
 def test_stable_container_publish_verifies_tag_points_to_candidate_sha() -> None:
@@ -157,35 +186,98 @@ def test_stable_container_publish_verifies_tag_points_to_candidate_sha() -> None
 
 
 def test_integration_pr_triggers_validation_without_expanding_push_publication() -> None:
-    for workflow in (
-        "container.yml",
-        "macos-native.yml",
-        "windows-native.yml",
-        "windows-agent.yml",
-        "pages.yml",
+    for workflow, platform in (
+        ("container.yml", "linux"),
+        ("macos-native.yml", "macos"),
+        ("windows-native.yml", "windows"),
+        ("windows-agent.yml", "windows"),
     ):
         triggers = on_block(workflow)
         pr = triggers.split("  pull_request:", 1)[1]
-        assert "    branches:\n      - main\n      - integration/v0.26.0\n" in pr
         push = triggers.split("  push:", 1)[1].split("  pull_request:", 1)[0]
-        assert "      - main\n" in push
-        assert "integration/v0.26.0" not in push
-    assert "integration/v0.26.0" not in on_block("wheel-release.yml")
-    assert "integration/v0.26.0" not in on_block("container-publish.yml")
+        for block in (pr, push):
+            assert "      - main\n" in block
+            assert "      - feat/v0.27.0-platform-split\n" in block
+            assert f'      - "{platform}/**"\n' in block
+            assert '      - "contracts/**"\n' in block
+        assert "      - integration/v0.27.0\n" in pr
+        assert "integration/v0.27.0" not in push
+        assert f"      - feat/v0.27.0-{platform}\n" in push
+        for other in {"linux", "macos", "windows"} - {platform}:
+            assert f'      - "{other}/**"\n' not in triggers
+    assert "integration/v0.27.0" not in on_block("wheel-release.yml")
+    assert "integration/v0.27.0" not in on_block("container-publish.yml")
 
 
 def test_windows_agent_ci_triggers_and_runs_named_proxy_traffic_regression() -> None:
     workflow = text("windows-agent.yml")
-    path = "tests/test_windows_v026_named_proxy_live.py"
     triggers = on_block("windows-agent.yml")
-    assert triggers.count(f'      - "{path}"') == 2
-    assert f"            {path} `" in workflow
+    assert triggers.count('      - "windows/**"') == 2
+    assert "working-directory: windows\n" in workflow
+    assert "working-directory: windows/agent_bridge\n" in workflow
+    assert "            tests/test_windows_v026_named_proxy_live.py `" in workflow
+
+
+def test_native_ci_uses_platform_local_paths() -> None:
+    macos = text("macos-native.yml")
+    assert "working-directory: macos\n" in macos
+    assert "working-directory: macos/agent_bridge\n" in macos
+    assert macos.count("--platform macos --wheel") == 2
+    native = text("windows-native.yml")
+    assert "working-directory: windows\n" in native
+    assert "working-directory: native/windows\n" not in native
+    assert "working-directory: windows/native/windows\n" in native
+    assert "path: windows/native/windows/target/wheels/*.whl" in native
+    agent = text("windows-agent.yml")
+    assert "python ../deployment/native/wheel_release.py version-gate" in agent
+    assert "--platform windows --wheel $native --wheel $product --wheel $bridge" in agent
+    assert "windows/dist/serverfs_mcp-*.whl" in agent
+    assert "windows/dist/serverfs_agent_bridge-*.whl" in agent
+    assert "tests/test_agent_deployment.py" not in agent
+
+
+def test_platform_wheels_are_retained_with_candidate_sha() -> None:
+    for workflow, platform in (("container.yml", "linux"), ("macos-native.yml", "macos")):
+        source = text(workflow)
+        for component in ("core", "bridge"):
+            assert f"name: {platform}-{component}-wheel-" + "${{ github.sha }}" in source
+            assert (
+                "path: ${{ runner.temp }}/" + f"serverfs-{platform}-{component}-wheels/*.whl"
+            ) in source
+        assert source.count("if-no-files-found: error") >= 2
+    assert "name: windows-agent-wheels-${{ github.sha }}" in text("windows-agent.yml")
+
+
+def test_platform_ci_runs_frozen_contract_comparison() -> None:
+    for workflow in ("container.yml", "macos-native.yml", "windows-agent.yml"):
+        source = text(workflow)
+        triggers = on_block(workflow)
+        assert triggers.count('      - "deployment/native/check_mcp_contract.py"') == 2
+        assert triggers.count('      - "docs/diagnostics/v0270-capture-v026-contract.py"') == 2
+        assert "-I -B ../deployment/native/check_mcp_contract.py .." in source
+
+
+def test_platform_ci_builds_outside_the_repository() -> None:
+    for workflow in ("container.yml", "macos-native.yml", "windows-agent.yml"):
+        source = text(workflow)
+        assert on_block(workflow).count('      - "deployment/native/platform_isolation.py"') == 2
+        assert source.count("../deployment/native/platform_isolation.py . --online") == 1
+        assert source.count("Verify standalone platform source and installed wheels") == 1
+
+
+def test_macos_platform_assertions_do_not_depend_on_unchecked_out_subtree() -> None:
+    workflow = text("macos-native.yml")
+    jobs = workflow.split("      - name: Assert the platform again inside the job")[1:]
+    assert len(jobs) == 2
+    for job in jobs:
+        before_checkout = job.split("      - name: Checkout", 1)[0]
+        assert "working-directory: ${{ github.workspace }}" in before_checkout
 
 
 def test_exact_integration_sha_gate_is_validation_only() -> None:
     gate = text("integration-candidate.yml")
-    assert "  push:\n    branches:\n      - integration/v0.26.0\n" in gate
-    assert "workflow_dispatch:" not in gate
+    assert "  push:\n    branches:\n      - integration/v0.27.0\n" in gate
+    assert "workflow_dispatch:" in gate
     assert "paths:" not in gate and "paths-ignore:" not in gate
     for workflow in (
         "container.yml",
@@ -201,9 +293,7 @@ def test_exact_integration_sha_gate_is_validation_only() -> None:
     publish = container.split("  publish:", 1)[1]
     assert "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" in publish
     check = container.split("  container-check:", 1)[1].split("  publish:", 1)[0]
-    assert (
-        "(github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.26.0')"
-    ) in check
+    assert "\n    if:" not in check
     pages = text("pages.yml")
     assert (
         pages.count(
@@ -215,7 +305,7 @@ def test_exact_integration_sha_gate_is_validation_only() -> None:
     assert (
         pages.count(
             "if: github.event_name == 'pull_request' || "
-            "(github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.26.0')"
+            "(github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.27.0')"
         )
         == 2
     )

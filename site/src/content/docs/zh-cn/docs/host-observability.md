@@ -119,7 +119,7 @@ WORKDIR_02_AGENT_RUNTIMES=
 WORKDIR_02_REPO_OPS_ENABLED=false
 ```
 
-纯文件 Core 选择禁用 Bridge overlay；若已使用签名 Bridge，此额外纯文件 slot 不得与授权 Bridge 根目录重叠。按 [Linux 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)执行 Core 范围内的部署与配置变更；新增 bind mount 需重建所选 Core，不重启无关 Connector 或 Bridge owner。
+纯文件 Core 选择禁用 Bridge overlay；若已使用签名 Bridge，此额外纯文件 slot 不得与授权 Bridge 根目录重叠。按 [Linux 部署指南](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md)执行 Core 范围内的部署与配置变更；新增 bind mount 需重建所选 Core，不重启无关 Connector 或 Bridge owner。
 
 检查实际暴露目录，包括意外条目和符号链接：
 

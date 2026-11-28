@@ -18,7 +18,7 @@ ServerFS 支持 Apple Silicon、原生 arm64、macOS 27.x 与本地 APFS，遵�
 
 ## 部署步骤
 
-完整命令和可参考的配置示例见 [macOS 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/macos/README.md)。
+完整命令和可参考的配置示例见 [macOS 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/macos/README.md)。
 
 1. 准备版本匹配的 Core 环境（如需 Bridge 则另外准备其环境），构建签名模板 App。
 2. 创建定义目标 Workdir 的最小原生 TOML。若使用持久 HTTP，准备独立端口和私有 API Key 或 OAuth 配置。Host 白名单必须精确匹配所配置的 hostname 及其后的 loopback authority。

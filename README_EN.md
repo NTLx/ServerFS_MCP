@@ -42,9 +42,9 @@ A Shared Core does not own the Bridge lifecycle or gain extra authority from a s
 
 | Platform | Deployment | Guide |
 | --- | --- | --- |
-| Linux | Docker Compose for named Cores and optional Connectors; direct HTTP or internal networking; optional host user systemd Bridge | [Linux deployment](deployment/linux/README.md) |
-| macOS | Apple Silicon, native arm64, macOS 27, APFS; signed SMAppService / LaunchAgents and authenticated Unix IPC | [macOS deployment](deployment/macos/README.md) |
-| Windows | Windows 11 x64, local NTFS, matching Native Wheel; current-user Task Scheduler, Job Objects and Named Pipe, without WSL/VM | [Windows deployment](docs/deployment/windows/v0250-native-operations.md) |
+| Linux | Docker Compose for named Cores and optional Connectors; direct HTTP or internal networking; optional host user systemd Bridge | [Linux deployment](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md) |
+| macOS | Apple Silicon, native arm64, macOS 27, APFS; signed SMAppService / LaunchAgents and authenticated Unix IPC | [macOS deployment](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/macos/README.md) |
+| Windows | Windows 11 x64, local NTFS, matching Native Wheel; current-user Task Scheduler, Job Objects and Named Pipe, without WSL/VM | [Windows deployment](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/docs/deployment/windows/v0250-native-operations.md) |
 
 The public MCP contract and security outcomes are shared, not necessarily the internal implementation. Follow the platform guides for actual component combinations, named Connector support, installation and upgrade limits. No central service manager is introduced.
 
@@ -54,13 +54,21 @@ The filesystem surface has 11 tools. Binary transfer adds 2, Agent delegation ad
 
 Workdir containment, deny/reserved-path policy, revision checks and write authorization do not expand with ingress choice. Configure exact HTTP Host/Origin admission; public ingress requires caller authentication. Tunnel credentials are separate from HTTP caller credentials. Bridge attachment requires explicit per-Core authorization rather than trusting a shared UID/SID.
 
+## Development checkout
+
+The v0.27.0 platform split is in development; it is not a release or a migration instruction.
+The owning source and build/test directory is [Linux](linux/), [macOS](macos/) or
+[Windows](windows/). Common public contracts and distribution tooling remain at repository
+level. Follow [AGENTS.md](AGENTS.md) and the [maintainer workflow](docs/maintainers/workflow.md)
+for candidate development and validation.
+
 ## Get started
 
 Begin with a minimal file-only instance; verify MCP file access, then add Connectors, Bridge and other capabilities only as required.
 
 - [Architecture and deployment choices](https://ntlx.github.io/ServerFS_MCP/docs/architecture/) · [Getting Started](https://ntlx.github.io/ServerFS_MCP/docs/getting-started/)
 - [HTTP API Key](docs/api-key.md) · [OAuth](docs/oauth.md) · [Cloudflare Connector](docs/cloudflare-tunnel.md)
-- [Agent Bridge](agent_bridge/README.md) · [Agent Skills](skills/README.md) (seven Skills and a skills-only Plugin)
+- [Agent Bridge](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/agent_bridge/README.md) · [Agent Skills](skills/README.md) (seven Skills and a skills-only Plugin)
 - [Repository documentation index](docs/README.md) · [Maintainer guide](docs/maintainers/README.md)
 
 Use documentation, source and installation artifacts matching the target version; do not implicitly migrate existing instances. [Release notes](docs/releases/v0.26.0.md) and the [release checklist](docs/v0.26.0-release-checklist.md) record actual acceptance and remaining gates. Historical evidence remains in `docs/releases/`, `docs/diagnostics/` and architecture decision records.

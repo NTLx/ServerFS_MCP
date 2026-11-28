@@ -119,7 +119,7 @@ WORKDIR_02_AGENT_RUNTIMES=
 WORKDIR_02_REPO_OPS_ENABLED=false
 ```
 
-For a file-only Core, select the disabled Bridge overlay. In a signed Bridge deployment, this extra file-only slot must remain disjoint from the authorized Bridge root. Follow the [Linux deployment runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md) for Core-scoped deployment/configuration; adding a bind mount requires recreating the selected Core, not restarting unrelated Connectors or Bridge owners.
+For a file-only Core, select the disabled Bridge overlay. In a signed Bridge deployment, this extra file-only slot must remain disjoint from the authorized Bridge root. Follow the [Linux deployment runbook](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md) for Core-scoped deployment/configuration; adding a bind mount requires recreating the selected Core, not restarting unrelated Connectors or Bridge owners.
 
 Verify the exact exposed directory, including unexpected entries and symlinks:
 

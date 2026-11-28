@@ -92,4 +92,4 @@ core=(docker compose -p serverfs-blue --env-file "$ENV_FILE"
 - OAuth 和文件入口：其 Linux 服务使用同一个 `SERVERFS_IMAGE`；分别准备配置、授权状态及实际所需 Provider/HTTPS fetch 出站路径。本地镜像不证明运行时外联可用。
 - 宿主机 Agent Bridge：在宿主机准备版本匹配的 Bridge 源码、uv 缓存和依赖。仅在所需缓存齐全时使用手册中的离线安装选项；Provider executable、凭据及出站路由留在宿主机。Repo Ops-only 不需要 Provider 执行前置验证。
 
-精确 overlay/profile、签名接入及组件级启停见 [Linux 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)。保持完整 Compose 参数，离线启动使用 `--no-build --pull never`，按对应手册显式启动并验证所需依赖。公网 Connector、OAuth 和原生 Agent 行为需各自实测，不能仅凭镜像转运成功推断。
+精确 overlay/profile、签名接入及组件级启停见 [Linux 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md)。保持完整 Compose 参数，离线启动使用 `--no-build --pull never`，按对应手册显式启动并验证所需依赖。公网 Connector、OAuth 和原生 Agent 行为需各自实测，不能仅凭镜像转运成功推断。

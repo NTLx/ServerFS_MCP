@@ -9,7 +9,7 @@ Choose Cloudflare when a Core needs a public HTTPS route without a direct public
 
 | Platform | Origin (example) | Guide |
 | --- | --- | --- |
-| Linux | `http://serverfs-mcp:8000` | [Compose](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md) |
+| Linux | `http://serverfs-mcp:8000` | [Compose](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md) |
 | macOS | `http://127.0.0.1:18781` | [Native](../macos-native/) — file-only or owned Core |
 | Windows | `http://127.0.0.1:18781` | [Native](../windows-native/) — exact Core and Connector IDs |
 

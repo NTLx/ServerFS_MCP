@@ -1,16 +1,16 @@
 # Host Agent Bridge deployment
 
-For ServerFS v0.26.0 use the [Linux independent component runbook](../linux/README.md), [macOS named native runbook](../macos/README.md) or [Windows named native runbook](../../docs/deployment/windows/v0250-native-operations.md). Bridge stays on the host so installed native runtimes remain accessible.
+For the Linux platform-local development candidate use the [Linux independent component runbook](../linux/README.md). For a released installation use its matching tagged source. Bridge stays on the host so installed native runtimes remain accessible.
 
 ## Choose the mode
 
 | Mode | Meaning |
 | --- | --- |
 | `disabled` | File-only Core; no Bridge installation or state. |
-| `owned` | Dedicated owner with private runtime/state. Use the platform's attachment mechanism (macOS Owned defaults to v1 private native IPC and manifest checks; new instances may explicitly select signed v2). |
+| `owned` | Dedicated owner with private runtime/state. Use the Linux signed attachment mechanism. |
 | `shared` | Explicit same-host grants per authorized Core. A shared Core does not manage the owner. |
 
-On Linux use the named provisioning/install modules, the per-owner user systemd unit and signed Compose attachment. Verify actual host/container socket peer identity; matching UID/GID alone is not authorization. On macOS and Windows use the native runbook, not these singleton scripts.
+On Linux use the named provisioning/install modules, the per-owner user systemd unit and signed Compose attachment. Verify actual host/container socket peer identity; matching UID/GID alone is not authorization. These singleton scripts are Linux compatibility procedures, not instructions for other platforms.
 
 Enable Agent and Repo Ops independently per workdir. Repo Ops-only needs a ready Bridge, but not an available Agent provider. Keep credentials, bindings and `state.sqlite3` private, outside exposed workdirs. Independent owners must not overlap writable roots. Before work, verify attachment, allowed methods/aliases and a negative authorization case. Before stopping or retiring an owner, check dependent Cores, active tasks and recovery guards according to its runbook.
 

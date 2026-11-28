@@ -667,9 +667,9 @@ def test_provisioned_bridge_cli_lifecycle(tmp_path, monkeypatch, systemd):
                 timeout=20,
                 check=False,
             )
-            # This uniquely named unit was proven absent above.
-            unit_created = True
+            # Never stop an unrelated unit if the create request was refused.
             assert result.returncode == 0, result.stderr
+            unit_created = True
         else:
             with log.open("ab") as output:
                 process = subprocess.Popen(
@@ -1081,24 +1081,35 @@ def test_actual_release_packaging(tmp_path, monkeypatch):
     config_path.write_text(json.dumps(doc))
     manifest["core"]["methods"] = ["bridge.ping", "task.submit", "task.get"]
     provision(manifest)
-    # Offline by default for opt-in; online explicitly permits locked dependency downloads.
-    # Both modes use only temporary release/config roots and a synthetic runtime.
+    # Preserve the actual installer and state store across both selections.
+    # An external controller can provide the exact historical release source.
     offline = os.environ["SERVERFS_LINUX_INSTALL_TEST"] != "online"
+    baseline_source = Path(
+        os.environ.get("SERVERFS_LINUX_BASELINE_BRIDGE_SOURCE", str(ROOT / "agent_bridge"))
+    )
+    baseline = installer.stage(
+        bridge_id, "fixture-baseline", baseline_source, Path(uv), offline=offline
+    )
     target = installer.stage(
         bridge_id, "fixture-candidate", ROOT / "agent_bridge", Path(uv), offline=offline
     )
+    assert (baseline / installer._MARKER).is_file()
     assert (target / installer._MARKER).is_file()
-    assert not (target.parent.parent / "current").exists()
+    current = target.parent.parent / "current"
+    assert not current.exists()
     if "XDG_RUNTIME_DIR" not in os.environ:
         monkeypatch.setenv("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
-    assert installer.select(bridge_id, "fixture-candidate") == target
-    current = target.parent.parent / "current"
-    assert current.resolve() == target
     template = ROOT / "deployment/linux/serverfs-agent-bridge@.service"
     assert installer.install_template(template).read_bytes() == template.read_bytes()
-    # Start the selected installed entrypoint directly, not a live manager unit.
-    binding = json.loads((root / "core-bindings/core-blue/core-bridge-binding.json").read_text())
+    # Run the installed entrypoint as a disposable process, not a manager unit.
+    # The real systemd lifecycle has a separate opt-in acceptance test.
+    binding_path = root / "core-bindings/core-blue/core-bridge-binding.json"
+    binding_bytes = binding_path.read_bytes()
+    binding = json.loads(binding_bytes)
     socket_path = root / "bridge/run/bridge.sock"
+    state_dir = root / "bridge/state"
+    state_identity = (state_dir.stat().st_dev, state_dir.stat().st_ino)
+    socket_identity = (socket_path.parent.stat().st_dev, socket_path.parent.stat().st_ino)
     client = CoreBridgeClientV2(
         socket_path,
         bridge_id=bridge_id,
@@ -1109,53 +1120,84 @@ def test_actual_release_packaging(tmp_path, monkeypatch):
         policy_revision=binding["policy_revision"],
         timeout_seconds=1,
     )
-    executable = current / ".venv/bin/serverfs-agent-bridge"
-    log = tmp_path / "installed-bridge.log"
-    with log.open("wb") as output:
-        process = subprocess.Popen(
-            [str(executable), "--config", str(root / "config.json")],
-            cwd=work,
-            env={"HOME": str(Path.home()), "PATH": os.defpath, "PYTHONUNBUFFERED": "1"},
-            stdout=output,
-            stderr=subprocess.STDOUT,
-        )
+    retained: dict[str, str] = {}
 
-    async def exercise():
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            try:
-                assert await client.call("bridge.ping", {}) == {"status": "ok"}
-                break
-            except CoreBridgeUnavailable:
-                assert process.poll() is None, log.read_text()[-2000:]
-                await asyncio.sleep(0.1)
-        else:
-            pytest.fail("installed Bridge not ready")
-        submitted = await client.call(
-            "task.submit",
-            {"runtime": "fake", "path": ".", "profile": "review", "prompt": "complete:installed"},
-        )
-        for _ in range(100):
-            task = await client.call("task.get", {"task_id": submitted["task_id"]})
-            if task["status"] == "succeeded":
-                assert task["final_response"] == "installed"
+    def run_selected(label: str, release: Path, marker: str | None) -> None:
+        assert installer.select(bridge_id, label) == release
+        assert current.resolve() == release
+        executable = current / ".venv/bin/serverfs-agent-bridge"
+        log = tmp_path / f"{label}.log"
+        with log.open("wb") as output:
+            process = subprocess.Popen(
+                [str(executable), "--config", str(root / "config.json")],
+                cwd=work,
+                env={"HOME": str(Path.home()), "PATH": os.defpath, "PYTHONUNBUFFERED": "1"},
+                stdout=output,
+                stderr=subprocess.STDOUT,
+            )
+
+        async def exercise():
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                try:
+                    assert await client.call("bridge.ping", {}) == {"status": "ok"}
+                    break
+                except CoreBridgeUnavailable:
+                    assert process.poll() is None, log.read_text()[-2000:]
+                    await asyncio.sleep(0.1)
+            else:
+                pytest.fail("installed Bridge not ready")
+            for task_id, expected in retained.items():
+                task = await client.call("task.get", {"task_id": task_id})
+                assert task["status"] == "succeeded"
+                assert task["final_response"] == expected
+            if marker is None:
                 return
-            await asyncio.sleep(0.05)
-        pytest.fail("installed Bridge task did not succeed")
+            submitted = await client.call(
+                "task.submit",
+                {
+                    "runtime": "fake",
+                    "path": ".",
+                    "profile": "review",
+                    "prompt": f"complete:{marker}",
+                },
+            )
+            task_id = submitted["task_id"]
+            for _ in range(100):
+                task = await client.call("task.get", {"task_id": task_id})
+                if task["status"] == "succeeded":
+                    assert task["final_response"] == marker
+                    retained[task_id] = marker
+                    return
+                assert task["status"] not in {"failed", "cancelled", "timed_out"}
+                await asyncio.sleep(0.05)
+            pytest.fail("installed Bridge task did not succeed")
 
-    try:
-        asyncio.run(exercise())
-    finally:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-                pytest.fail("installed Bridge did not stop gracefully")
-        assert process.returncode == 0
-        assert not socket_path.exists()
+        try:
+            asyncio.run(exercise())
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+                    pytest.fail("installed Bridge did not stop gracefully")
+            assert process.returncode == 0
+            assert not socket_path.exists()
+        assert (state_dir.stat().st_dev, state_dir.stat().st_ino) == state_identity
+        assert (
+            socket_path.parent.stat().st_dev,
+            socket_path.parent.stat().st_ino,
+        ) == socket_identity
+        assert binding_path.read_bytes() == binding_bytes
+
+    run_selected("fixture-baseline", baseline, "baseline-result")
+    run_selected("fixture-candidate", target, "candidate-result")
+    run_selected("fixture-baseline", baseline, None)
+    assert len(retained) == 2
+    assert current.resolve() == baseline
 
 
 @pytest.mark.skipif(
@@ -1194,6 +1236,9 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
     original_home = os.environ.get("HOME", str(fixture_home))
     uv_cache = os.environ.get("UV_CACHE_DIR", str(Path(original_home) / ".cache/uv"))
     monkeypatch.setenv("UV_CACHE_DIR", uv_cache)
+    # The isolated HOME hides uv-managed Python installations. Use the already
+    # running test interpreter's base executable, not an offline download.
+    monkeypatch.setenv("UV_PYTHON", str(Path(sys._base_executable).resolve(strict=True)))
     monkeypatch.setenv("HOME", str(fixture_home))
     if "XDG_RUNTIME_DIR" not in os.environ:
         monkeypatch.setenv("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
@@ -1229,6 +1274,10 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
     )
     initial_fields = dict(
         line.split("=", 1) for line in initial_unit.stdout.splitlines() if "=" in line
+    )
+    assert initial_fields.get("LoadState") == "not-found", (
+        "release acceptance requires a clean isolated systemd user manager; "
+        "an installed template or unit must not be overwritten"
     )
     assert initial_fields.get("ActiveState") == "inactive"
     assert initial_fields.get("MainPID") in {None, "0"}
@@ -1279,6 +1328,9 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
             check=False,
         )
         fields = dict(line.split("=", 1) for line in state.stdout.splitlines() if "=" in line)
+        assert fields.get("LoadState") == "not-found", (
+            "transient acceptance unit is already loaded or has a fragment"
+        )
         assert fields.get("ActiveState") == "inactive" and fields.get("MainPID") in {None, "0"}
         executable = selected / ".venv/bin/serverfs-agent-bridge"
         command = [
@@ -1302,11 +1354,12 @@ def test_actual_release_systemd_upgrade_rollback(tmp_path, monkeypatch):
             "--config",
             str(root / "config.json"),
         ]
-        unit_created = True
         result = subprocess.run(
             command, env=bus_env, capture_output=True, text=True, timeout=30, check=False
         )
-        assert result.returncode == 0, "transient unit start failed"
+        assert result.returncode == 0, "transient unit start failed: " + result.stderr
+        # Only a successful creation grants this fixture ownership for cleanup.
+        unit_created = True
         deadline = time.monotonic() + 12
         while time.monotonic() < deadline:
             state = ctl("show", unit, "--property=ActiveState", "--property=MainPID", check=False)

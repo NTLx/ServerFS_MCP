@@ -19,7 +19,7 @@ Check in order and stop at the first failing boundary. Verify the actual Host an
 
 ## 2. Inspect the selected component
 
-Linux: use the exact project's existing env, overlays and profiles. In Bash, retain the complete Compose command array from the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md), referred to below as `deployment`. Do not build a new incomplete selection just for troubleshooting.
+Linux: use the exact project's existing env, overlays and profiles. In Bash, retain the complete Compose command array from the [Linux runbook](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md), referred to below as `deployment`. Do not build a new incomplete selection just for troubleshooting.
 
 ```bash
 # Select exactly openai-tunnel OR cloudflared, as configured.

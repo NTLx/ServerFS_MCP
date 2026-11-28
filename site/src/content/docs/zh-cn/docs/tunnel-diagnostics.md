@@ -19,7 +19,7 @@ description: 分别诊断 Core 可达、Connector 注册、公网 MCP 与响应�
 
 ## 2. 检查所选组件
 
-Linux 使用目标 project 已有的完整 env、overlay 和 profile。在 Bash 中保留 [Linux 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)所述完整 Compose 命令数组，下方以 `deployment` 表示。不要为了诊断另建不完整的部署组合。
+Linux 使用目标 project 已有的完整 env、overlay 和 profile。在 Bash 中保留 [Linux 运维手册](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md)所述完整 Compose 命令数组，下方以 `deployment` 表示。不要为了诊断另建不完整的部署组合。
 
 ```bash
 # 根据实际部署选择 openai-tunnel 或 cloudflared。

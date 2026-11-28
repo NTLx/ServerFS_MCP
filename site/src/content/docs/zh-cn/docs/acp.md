@@ -50,7 +50,7 @@ Linux 命名部署在 owner JSON 和所选授权 Core 槽位中配置匹配的�
 
 ## 验证 Bridge 与 runtime
 
-按 [Linux](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)、[macOS](../macos-native/) 或 [Windows](../windows-native/) 命名部署指南验证 owner、接入与有效 workdir 策略。`list_agent_runtimes` 检查可执行文件是否可用并返回匹配 profile 的缓存能力，不会启动 Agent，也不能证明登录有效。成功的授权任务才完成协议协商并记录实测能力。在一次性授权 workdir 执行小任务，检查终态、事件及清理情况。旧单实例 verifier 不是命名接入验收证据。
+按 [Linux](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md)、[macOS](../macos-native/) 或 [Windows](../windows-native/) 命名部署指南验证 owner、接入与有效 workdir 策略。`list_agent_runtimes` 检查可执行文件是否可用并返回匹配 profile 的缓存能力，不会启动 Agent，也不能证明登录有效。成功的授权任务才完成协议协商并记录实测能力。在一次性授权 workdir 执行小任务，检查终态、事件及清理情况。旧单实例 verifier 不是命名接入验收证据。
 
 ## 任务操作语义
 

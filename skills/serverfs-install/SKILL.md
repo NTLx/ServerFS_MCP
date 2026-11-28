@@ -35,6 +35,8 @@ Identify platform, architecture, storage, actual version, target topology and au
 
 ## Authoritative sources
 
+For the released v0.26.0 layout, resolve repository paths against the [v0.26.0 tagged source](https://github.com/NTLx/ServerFS_MCP/tree/v0.26.0), not the evolving default branch. For other installed versions, resolve the corresponding tagged source; an unpublished candidate is not a stable deployment target.
+
 Paths refer to the matching checkout, not files packaged in this Skill. Use the selected runbook section and `.env.example` (Linux) or `serverfs.toml.example` (native). Consult installed CLI help when uncertain. Without matching source or verified ownership, give non-mutating guidance only.
 
 ## Safety / stop conditions

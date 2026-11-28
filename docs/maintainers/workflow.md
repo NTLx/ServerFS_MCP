@@ -24,21 +24,61 @@ Never disguise, fragment or relocate instructions to evade a provider safety che
 
 ## 3. Validation gates
 
-### Root runtime / filesystem / security / base deployment
+### Platform runtime / filesystem / security / base deployment
 
-Use the root Development gate documented in `README.md`:
+For the v0.27.0 split candidate, run development commands from the owning
+`linux/`, `macos/` or `windows/` directory, not the old root runtime.
+For the released v0.26.0 tree, use the workflow in that exact release checkout.
+The split is not deployment or release authorization.
+
+In each platform's own Core directory:
 
 ```bash
 uv sync --frozen
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest
+uv build --wheel
+```
+
+For Linux ingress/deployment changes, additionally run inside `linux/`:
+
+```bash
 docker compose config --quiet
 docker compose -f compose.yml -f compose.http.yml config --quiet
 SERVERFS_IMAGE=serverfs-mcp:dev docker compose build
 ```
 
-Run all applicable gates when the change crosses that boundary. The generic HTTP Compose render is mandatory for ingress/deployment changes; use `--quiet` when only validity is required so expanded secrets are never printed. The scratch image tag is mandatory: Compose builds to the image name it is given, so building under a published production tag can shadow that release locally.
+Use `--quiet` for validity-only Compose rendering so expanded secrets are never
+printed. The scratch image tag is mandatory: building a published production
+tag can shadow that release locally. For Windows, build and test the native
+locked Rust kernel in `windows/native/windows/`, including a clean-wheel
+import/installation test; for macOS, build the native companion inside
+`macos/` and verify its packaged source assets. Follow the platform-specific
+acceptance sections below. Platform-local builds and tests may not consume
+other platform implementations or the retired root runtime. Common release
+checks run separately from repository root.
+
+For behavior-preserving split acceptance, use the following external
+repository-level verification tools on the owning native host:
+
+- `<platform Core Python> -I -B deployment/native/platform_isolation.py <platform>`
+  (offline by default; `--online` only on a disposable CI runner).
+- `<platform Core Python> -I -B deployment/native/check_mcp_contract.py .`
+  (frozen v0.26.0 public tool definitions and capability combinations).
+- `linux/agent_bridge/.venv/bin/python -I -B deployment/native/check_linux_upgrade.py`,
+  `macos/.venv/bin/python -I -B deployment/native/check_macos_upgrade.py`, or
+  `windows/.venv/Scripts/python.exe -I -B deployment/native/check_windows_upgrade.py`
+  for actual historical installed Bridge process rollback against the pinned
+  pre-split Git baseline. These external tests use private state, synthetic
+  providers and offline dependencies. They are not persistent native-service,
+  authenticated ingress or real-provider acceptance; do not substitute them for
+  those gates.
+
+Before retiring legacy root runtime files, integrate the reviewed platform
+changes at one candidate SHA and prove their replacements. Preserve common
+distribution tooling, immutable contracts and historical records. No Git
+mutation or publication without explicit maintainer authorization.
 
 ### Agent Skills / portable Plugin
 
@@ -47,27 +87,27 @@ Repository operational skills live under `skills/` and the portable skills-only 
 For any `skills/**`, `plugin.json`, Plugin packaging, or Plugin release-workflow change, run:
 
 ```bash
-uv run python deployment/plugin/package_plugin.py validate
-uv run pytest tests/test_agent_skills.py
+uv run --no-project --python 3.12 python deployment/plugin/package_plugin.py validate
+linux/.venv/bin/python -I -B deployment/native/check_distribution.py
 ```
 
 For changes to packaged content or packaging, also build the archive into a disposable directory and inspect its file list:
 
 ```bash
-uv run python deployment/plugin/package_plugin.py build --output-dir /tmp/serverfs-plugin-check
+uv run --no-project --python 3.12 python deployment/plugin/package_plugin.py build --output-dir /tmp/serverfs-plugin-check
 ```
 
 The archive must contain exactly one top-level `serverfs/` Plugin, its `plugin.json`, and the seven runtime Skill directories with Markdown references. Verify tag-matched archive contents; no packaged link escapes its Skill directory. It must not contain `skills/README.md`, local configuration, source/VCS state, `mcp.json`, credentials, or a parallel `.codex-plugin/plugin.json`.
 
-`plugin.json` version must equal the root project version. On a release tag, the packaging command also receives `--tag vX.Y.Z` and fails closed unless tag, project and Plugin versions agree. Agent Skill instructions must keep platform/source-of-truth links current; do not copy the whole `.env`/TOML schema into skill prose merely to satisfy a test.
+In the split candidate, `plugin.json` version must equal all six platform-local Core and Bridge project versions. On a release tag, the packaging command also receives `--tag vX.Y.Z` and fails closed unless tag, project and Plugin versions agree. Agent Skill instructions must keep platform/source-of-truth links current; do not copy the whole `.env`/TOML schema into skill prose merely to satisfy a test.
 
 ### Release metadata and Registry
 
-From repository root run `uv run python deployment/native/release_metadata.py --root . --tag vX.Y.Z` (substitute the intended tag), `uv run python deployment/registry/validate.py`, and focused release metadata/version-gate tests. Check both Python locks with `uv lock --check --offline` from their respective roots; verify the native locked Cargo build on Windows. Version-match the Core, Bridge, native wheel, OCI tag and Plugin; site package version is independent. Registry is a loopback-only read-only Docker entry without built-in caller authentication, not the full deployment. Do not add secrets or broaden its binding to satisfy validation.
+For the split candidate, from repository root run `uv run --no-project --python 3.12 python deployment/native/release_metadata.py --root . --tag vX.Y.Z` (substitute the intended tag), `linux/.venv/bin/python deployment/registry/validate.py`, and focused release metadata/version-gate tests using the Linux development interpreter. Check all six Python locks with `uv lock --check --offline` from their respective platform-local roots; verify the native locked Cargo build on Windows. Version-match the Core, Bridge, native wheel, OCI tag and Plugin; site package version is independent. Registry is a loopback-only read-only Docker entry without built-in caller authentication, not the full deployment. Do not add secrets or broaden its binding to satisfy validation.
 
 ### Agent Bridge
 
-The root pytest configuration does not collect `agent_bridge/tests/`. For any `agent_bridge/` change, also run from `agent_bridge/`:
+A platform's Core pytest configuration does not collect its Bridge suite. For any platform Bridge change, also run from that platform's `agent_bridge/` directory:
 
 ```bash
 uv sync --frozen
@@ -76,9 +116,9 @@ uv run ruff format --check .
 uv run pytest
 ```
 
-For the two-process MCP E2E harness, install/sync the Bridge environment and invoke the harness from the repository root using the root environment as documented by `agent_bridge/README.md`.
+For platform-local process E2E, install/sync the matching Core and Bridge environments and use the owning platform's harness and Bridge README. Historical root-based commands apply only to the corresponding released checkout.
 
-When Linux host-Bridge shell scripts change, additionally run:
+When Linux host-Bridge shell scripts change, additionally run from `linux/`:
 
 ```bash
 bash -n deployment/agent-bridge/*.sh
@@ -90,7 +130,7 @@ For Windows lifecycle changes, run native source/wheel tests plus isolated curre
 
 For Windows pre-upgrade acceptance, do not assume the installed Bridge supports checkout-new private RPCs. Only the exact legacy `METHOD_NOT_FOUND` for a newly introduced probe permits narrowly scoped read-only proof from installed durable state; different or ambiguous failure fails closed. PowerShell 5.1 may promote native stderr to terminating `NativeCommandError` under `$ErrorActionPreference = 'Stop'` even when exit succeeds: temporarily use non-terminating handling, capture streams, restore preference, use `$LASTEXITCODE` and explicit output validation. Do not pass multiline/quote-sensitive source via native argv (`python -c $PythonCode`); use stdin or controlled temporary file with ordinary data as separate args.
 
-For macOS lifecycle changes, additionally build and validate the ServiceManagement companion on the supported Mac and verify the wheel carries its build sources:
+For macOS lifecycle changes, additionally build and validate the ServiceManagement companion on the supported Mac from `macos/` and verify the wheel carries its build sources:
 
 ```bash
 bash native/macos/service_manager/build.sh /tmp/serverfs-service-manager-check

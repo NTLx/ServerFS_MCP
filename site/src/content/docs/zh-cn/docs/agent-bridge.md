@@ -13,7 +13,7 @@ Agent Bridge 在宿主机运行，独立于 MCP Core 和 Connector，负责 Agen
 | `owned` | 一个 Core 拥有专用 Bridge。 |
 | `shared` | 独立管理的 Bridge 为同一宿主机上显式授权的 Core 提供服务。 |
 
-Linux 命名实例使用宿主机用户级 systemd 服务及签名 Unix Socket 接入。macOS 使用原生 SMAppService 和 Unix Socket；Owned 模式默认使用 v1 私有 manifest、策略与 IPC 校验；新建 Owned Core 可显式选择签名 v2。Windows 使用原生计划任务和 Named Pipe 授权。部署见 [Linux 指南](https://github.com/NTLx/ServerFS_MCP/blob/main/deployment/linux/README.md)、[macOS](../macos-native/) 或 [Windows](../windows-native/)。
+Linux 命名实例使用宿主机用户级 systemd 服务及签名 Unix Socket 接入。macOS 使用原生 SMAppService 和 Unix Socket；Owned 模式默认使用 v1 私有 manifest、策略与 IPC 校验；新建 Owned Core 可显式选择签名 v2。Windows 使用原生计划任务和 Named Pipe 授权。部署见 [Linux 指南](https://github.com/NTLx/ServerFS_MCP/blob/v0.26.0/deployment/linux/README.md)、[macOS](../macos-native/) 或 [Windows](../windows-native/)。
 
 共享 Core grant 限制允许的方法与 workdir 别名。共享 Core 无权启动、停止或退役 owner。相同 UID/SID 不代表授权；独立 owner 的可写目录不得重叠。owner 的凭据、状态与配置必须位于对外 workdir 之外。
 

@@ -55,11 +55,21 @@ def repo_root() -> Path:
 
 
 def project_version(root: Path) -> str:
-    data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-    version = data.get("project", {}).get("version")
-    if not isinstance(version, str) or not version:
-        raise ValidationError("pyproject.toml is missing [project].version")
-    return version
+    versions: dict[str, str] = {}
+    for platform in ("linux", "macos", "windows"):
+        for manifest in ("pyproject.toml", "agent_bridge/pyproject.toml"):
+            relative = f"{platform}/{manifest}"
+            try:
+                data = tomllib.loads((root / relative).read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+                raise ValidationError(f"cannot read {relative}: {exc}") from exc
+            version = data.get("project", {}).get("version")
+            if not isinstance(version, str) or not version:
+                raise ValidationError(f"{relative} is missing [project].version")
+            versions[relative] = version
+    if len(set(versions.values())) != 1:
+        raise ValidationError(f"platform project versions disagree: {versions}")
+    return versions["linux/pyproject.toml"]
 
 
 def _parse_front_matter(path: Path, content: str) -> dict[str, str]:

@@ -5,7 +5,8 @@ name: Integration candidate gates
 on:
   push:
     branches:
-      - integration/v0.26.0
+      - integration/v0.27.0
+  workflow_dispatch:
 
 permissions:
   contents: read

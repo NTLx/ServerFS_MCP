@@ -6,17 +6,57 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "site/**"
-      - ".github/workflows/pages.yml"
-
+      - feat/v0.27.0-platform-split
+      - feat/v0.27.0-linux
+    paths:
+      - "linux/**"
+      - "contracts/**"
+      - "deployment/plugin/**"
+      - "deployment/registry/**"
+      - "deployment/native/wheel_release.py"
+      - "deployment/native/check_mcp_contract.py"
+      - "deployment/native/check_distribution.py"
+      - "deployment/native/platform_isolation.py"
+      - "docs/diagnostics/v0270-capture-v026-contract.py"
+      - "deployment/native/release_metadata.py"
+      - "tests/test_agent_skills.py"
+      - "tests/test_registry_manifest.py"
+      - "tests/test_release_metadata.py"
+      - "tests/test_release_workflow.py"
+      - "tests/test_wheel_release.py"
+      - "tests/e2e/test_v026_site_static_acceptance.py"
+      - "skills/**"
+      - "plugin.json"
+      - "server.json"
+      - ".github/workflows/container.yml"
+      - ".github/workflows/container-publish.yml"
   pull_request:
     branches:
       - main
-      - integration/v0.26.0
-    paths-ignore:
-      - "site/**"
-      - ".github/workflows/pages.yml"
+      - feat/v0.27.0-platform-split
+      - integration/v0.27.0
+    paths:
+      - "linux/**"
+      - "contracts/**"
+      - "deployment/plugin/**"
+      - "deployment/registry/**"
+      - "deployment/native/wheel_release.py"
+      - "deployment/native/check_mcp_contract.py"
+      - "deployment/native/check_distribution.py"
+      - "deployment/native/platform_isolation.py"
+      - "docs/diagnostics/v0270-capture-v026-contract.py"
+      - "deployment/native/release_metadata.py"
+      - "tests/test_agent_skills.py"
+      - "tests/test_registry_manifest.py"
+      - "tests/test_release_metadata.py"
+      - "tests/test_release_workflow.py"
+      - "tests/test_wheel_release.py"
+      - "tests/e2e/test_v026_site_static_acceptance.py"
+      - "skills/**"
+      - "plugin.json"
+      - "server.json"
+      - ".github/workflows/container.yml"
+      - ".github/workflows/container-publish.yml"
 
 permissions:
   contents: read
@@ -98,18 +138,34 @@ jobs:
       - name: Ruff format
         run: uv run ruff format --check .
 
+      - name: Compare frozen v0.26.0 MCP contract
+        run: uv run --frozen python -I -B ../deployment/native/check_mcp_contract.py ..
+
+      - name: Verify standalone platform source and installed wheels
+        run: uv run --frozen python -I -B ../deployment/native/platform_isolation.py . --online
+
       - name: Test Linux Core
         run: uv run pytest
 
+      - name: Build and verify platform-local Linux Core wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist="$RUNNER_TEMP/serverfs-linux-core-wheels"
+          uv build --wheel --out-dir "$dist"
+          version="$(uv run --frozen python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          uv run --no-project --python 3.12 python ../deployment/native/wheel_release.py version-gate \
+            --tag "v$version" --platform "linux-$(uname -m)" --wheel "$dist"/serverfs_mcp-*.whl
+
+      - name: Retain verified Linux core wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-core-wheel-${{ github.sha }}
+          path: ${{ runner.temp }}/serverfs-linux-core-wheels/*.whl
+          if-no-files-found: error
+
       - name: Test shared product distribution
-        run: >-
-          uv run pytest
-          ../tests/test_agent_skills.py
-          ../tests/test_registry_manifest.py
-          ../tests/test_release_metadata.py
-          ../tests/test_release_workflow.py
-          ../tests/test_wheel_release.py
-          ../tests/e2e/test_v026_site_static_acceptance.py
+        run: uv run --frozen python -I -B ../deployment/native/check_distribution.py
 
   mcp-conformance:
     name: MCP conformance
@@ -285,10 +341,26 @@ jobs:
       - name: Test
         run: uv run pytest
 
+      - name: Build and verify platform-local Linux Bridge wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist="$RUNNER_TEMP/serverfs-linux-bridge-wheels"
+          uv build --wheel --out-dir "$dist"
+          version="$(uv run --frozen python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          uv run --no-project --python 3.12 python ../../deployment/native/wheel_release.py version-gate \
+            --tag "v$version" --platform "linux-$(uname -m)" --wheel "$dist"/serverfs_agent_bridge-*.whl
+
+      - name: Retain verified Linux bridge wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-bridge-wheel-${{ github.sha }}
+          path: ${{ runner.temp }}/serverfs-linux-bridge-wheels/*.whl
+          if-no-files-found: error
+
   container-check:
     name: Container check
     # Also hard-gate the reusable Release workflow before it can create a tag.
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/integration/v0.26.0')
     needs:
       - test
     runs-on: ubuntu-latest

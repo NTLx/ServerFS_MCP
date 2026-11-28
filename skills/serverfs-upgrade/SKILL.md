@@ -23,6 +23,8 @@ Read only the matching packaged reference: [Linux](references/linux.md), [macOS]
 
 ## Authoritative sources
 
+For the released v0.26.0 layout, resolve repository paths against the [v0.26.0 tagged source](https://github.com/NTLx/ServerFS_MCP/tree/v0.26.0), not the evolving default branch. For other installed versions, resolve the corresponding tagged source; an unpublished candidate is not a stable deployment target.
+
 Reference paths are checkout-relative except links to packaged references. Use the exact current and target release metadata, selected platform runbook and installed CLI help. Stop at a migration plan if compatibility, ownership or supported lifecycle is not established.
 
 ## Procedure
